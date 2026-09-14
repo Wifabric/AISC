@@ -7,6 +7,9 @@
 
 ## 0. 总览
 
+节奏分两级：**日常开发**（UI 改动、功能修复）在宿主机本机 `npm run tauri dev` 直接闭环，
+不需要打包、不需要 VM（第 3 节）；**发布节奏**才走下面的 CI + VM 链路（第 4 节）。
+
 ```text
 ┌─ Arch Linux 宿主机 ─────────────────────────────────────────────┐
 │ develop 分支开发                                                  │
@@ -177,7 +180,48 @@ virsh start aisc-win11                     # 开机（sshd 已设自动启动）
 virt-manager                               # 图形窗口（真人手测时用）
 ```
 
-## 3. 日常测试循环
+## 3. 日常开发循环（本机直接看，无需打包）
+
+Workbench 是 Tauri 应用，`npm run tauri dev` 在 Linux 桌面直接起**真的应用窗口**
+（WebKitGTK 渲染，与 Windows 版 99% 一致；前端背后是 Vite 开发服务器）。测试里的
+Tauri mock 只服务 vitest，纯 `npm run dev`（仅 vite）跑不起完整应用——开发预览一律走
+tauri dev：
+
+```bash
+cd workbench
+npm run tauri dev
+```
+
+| 改动面 | 怎么看 | 反馈速度 |
+|---|---|---|
+| 前端 UI（Vue/TS/CSS） | 保存即 HMR，窗口原地刷新 | 秒级 |
+| Rust（pty / cli / 状态机） | tauri dev 检测到改动自动重编并重启 | ~10–60 秒（首次全量编译数分钟） |
+| Python CLI（src/aisc） | 见 3.1 | 分钟级 |
+| runtime/session 等容器链路 | Linux 本机 docker daemon 直接跑全链路，无需 VM | — |
+
+### 3.1 Python CLI 改动的两种看法
+
+- **方式 A（迭代推荐）**：让 Workbench 显式指向 venv 里的 aisc（editable 安装，改完
+  Python 代码重启 Workbench 即生效，不重建 sidecar）：
+  ```bash
+  npm run tauri dev -- -- --aisc-cli ../.venv/bin/aisc
+  ```
+  注意 tauri CLI 需要**双层 `--`** 才能把参数透传给应用本体（devlog 已验证过的用法）。
+- **方式 B（贴近发布形态）**：重建 PyInstaller sidecar：
+  ```bash
+  bash scripts/build-cli.sh && cp dist/aisc-x86_64-unknown-linux-gnu src-tauri/binaries/
+  ```
+  **先关 Workbench 再拷**——运行中的实例会锁住 sidecar 文件（devlog r8 的教训：
+  构建前置检测就是为这个加的）。`binaries/` 下的空占位文件在首次执行方式 B 时自然
+  被真产物替换。
+
+### 3.2 Linux 上看不到、必须 VM 眼见为实的残余差异
+
+ConPTY 终端手感（Linux 走 openpty）、GBK/zh-CN 控制台编码路径、winreg/locale 读取、
+WebView2 与 WebKitGTK 的渲染/字体差异、安装器（升级/卸载/PATH）交互。这些归入第 4 节
+的 VM 回归项，日常迭代不用管。
+
+## 4. VM 测试循环（发布节奏）
 
 ```bash
 # ① 开发 + 门禁（Linux 本地）
@@ -201,9 +245,9 @@ ip=$(/mnt/data/vm/aisc-win11/vm.sh ip)
 注意：`packaging/windows/smoke_installer.ps1` 是**旧 Inno 安装器**（`/VERYSILENT`、
 `Programs\AISC`）的冒烟，不适用于 Workbench NSIS 包；NSIS 的深度冒烟（G-18 PATH 冲突、
 REG_EXPAND_SZ、升级/卸载保留）已在 `nsis-installer.yml` 的 windows-2022 runner 内联执行，
-VM 侧负责的是"真 Windows + 真 GUI"这一层（见 3.1）。
+VM 侧负责的是"真 Windows + 真 GUI"这一层（见 4.1）。
 
-### 3.1 VM 侧验收清单（2026-09-14 首轮实测全过）
+### 4.1 VM 侧验收清单（2026-09-14 首轮实测全过）
 
 1. 布局：`%LOCALAPPDATA%\AISC Workbench\` 下 `workbench.exe`（主程序）、`aisc.exe`
    （sidecar，注意安装后不带 target triple 后缀）、`aisc-bundle\`、`wg-transcode.ps1`、
@@ -220,7 +264,31 @@ VM 侧负责的是"真 Windows + 真 GUI"这一层（见 3.1）。
    展示可操作状态而非崩溃（对应 S2 验收项"稳定可操作错误"）。
 4. 远程 SSH 输出中文乱码属预期（GBK 控制台 vs UTF-8 终端），验证命令尽量用英文输出。
 
-## 4. 已知问题与边界
+### 4.2 真人手测入口
+
+```bash
+virsh start aisc-win11
+virt-manager --show-domain-console aisc-win11    # 图形窗口；账户 aisc，密码见 credentials
+```
+
+- SPICE 剪贴板与宿主机互通、窗口拖动分辨率自适应（virtio guest tools 已装）；嫌不顺手
+  可用 RDP（已启用）：Remmina / GNOME Connections 连 `vm.sh ip`。
+- 被测应用：开始菜单 "AISC Workbench" 或 `%LOCALAPPDATA%\AISC Workbench\workbench.exe`。
+- 手测清单跟着项目方法论：`docs/devlog.md` 的 r1–r11 轮次格式（操作 → 现象 → 判定）、
+  `docs/archive/2.1.11-dev-plans/p1-manual-test.md`、`shell-redesign.md`。核心路径：
+  选工作区 → preflight → Start → 四种 Session → 中文/emoji、resize、Ctrl+C、大段粘贴 →
+  关 Session / 停 Runtime / 退出 → 任务管理器查残留（`tasklist | findstr /i workbench aisc`）。
+
+**装 Docker Desktop 前先打快照**（该步骤触发过一次 WinRE 启动失败，见第 5 节）：
+
+```bash
+virsh snapshot-create-as aisc-win11 pre-docker-clean   # 关机状态下打，秒级
+# ... winget 装 Docker Desktop、重启 ...
+virsh snapshot-revert aisc-win11 pre-docker-clean      # 出事一键回滚
+virsh snapshot-delete aisc-win11 pre-docker-clean      # 稳定后清掉（快照链影响性能）
+```
+
+## 5. 已知问题与边界
 
 - **Docker Desktop in VM**：winget 安装本身成功，但启用 WSL2/Hyper-V 后的重启在本机
   （q35+OVMF SecureBoot+嵌套 KVM）上触发过一次"自动修复失败"（SrtTrail）。复现一次，
@@ -234,7 +302,7 @@ VM 侧负责的是"真 Windows + 真 GUI"这一层（见 3.1）。
 - 真 Windows 手测（ConPTY 手感、GBK 控制台、Docker Desktop 集成、安装器 GUI 交互）仍需
   virt-manager 窗口人工过一遍；SSH 能覆盖的是静默安装 + 进程级校验 + smoke 脚本。
 
-## 5. 首轮全流程实测记录（2026-09-14）
+## 6. 首轮全流程实测记录（2026-09-14）
 
 | 环节 | 实测 |
 |---|---|
@@ -243,13 +311,13 @@ VM 侧负责的是"真 Windows + 真 GUI"这一层（见 3.1）。
 | CI NSIS 构建（8b0e38e，run 34770092784） | ~14 分钟，产物 44,145,297 字节 |
 | VM 无人值守安装 | ~40 分钟（含三次因探索踩坑重装；按本文流程一次 ~35 分钟） |
 | VM 静默安装 + 3.1 验收 | 全过（envelope / dry-run / GUI 渲染见 3.1） |
-| Docker Desktop in VM | 未纳入本轮（见第 4 节已知问题） |
+| Docker Desktop in VM | 未纳入本轮（见第 5 节已知问题） |
 
-## 6. 迁移与复刻 checklist（换机器时）
+## 7. 迁移与复刻 checklist（换机器时）
 
 1. 装 1.1 的工具链，跑 1.4 门禁确认 ALL GREEN
 2. 拷贝 `/mnt/data/vm/aisc-win11/`（answer-root、vm.sh、askpass.sh、credentials）与
    `/mnt/data/iso/` 两个 ISO
 3. 按 2.2 建机（约 40 分钟无人值守）
-4. 按 3.4–3.5 跑一轮安装包冒烟闭环
+4. 按第 4 节跑一轮安装包冒烟闭环
 5. 首次 `gh auth login` + `git remote` 指向仓库
