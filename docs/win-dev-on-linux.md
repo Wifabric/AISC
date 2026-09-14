@@ -1,5 +1,9 @@
 # 在 Linux 上开发 Windows 端：全流程手册
 
+> **状态注记（2026-09-14 晚）：** 本机 VM 基建已全部清理（域、磁盘、ISO 均删除），
+> Windows 端开发回归 Windows 真机进行。本文保留为**可复刻手册**——流程、命令与坑表
+> 均经过实测；第 1、3 节的 Linux 环境与门禁脚本在宿主机上仍然有效。
+
 > 建立日期：2026-09-14。场景：开发机从 zh-CN Windows 迁移到 Arch Linux 后，继续开发
 > AISC Workbench（Tauri 2 + Vue 3 + Rust 桌面端），并在本机 KVM 的 Windows 虚拟机里完成
 > Windows 端验证。本文记录一次性搭建、日常循环和踩坑经验，是 Hyper-V "k3" 测试机流程
