@@ -279,22 +279,26 @@ virt-manager --show-domain-console aisc-win11    # 图形窗口；账户 aisc，
   选工作区 → preflight → Start → 四种 Session → 中文/emoji、resize、Ctrl+C、大段粘贴 →
   关 Session / 停 Runtime / 退出 → 任务管理器查残留（`tasklist | findstr /i workbench aisc`）。
 
-**装 Docker Desktop 前先打快照**（该步骤触发过一次 WinRE 启动失败，见第 5 节）：
-
-```bash
-virsh snapshot-create-as aisc-win11 pre-docker-clean   # 关机状态下打，秒级
-# ... winget 装 Docker Desktop、重启 ...
-virsh snapshot-revert aisc-win11 pre-docker-clean      # 出事一键回滚
-virsh snapshot-delete aisc-win11 pre-docker-clean      # 稳定后清掉（快照链影响性能）
-```
+**Docker Desktop：已定案不可行（见第 5 节）**——不要在 VM 里尝试启用 WSL2/VMP 组件，
+会触发不可恢复的启动事务砖机；VM 专测非 Docker 场景。
 
 ## 5. 已知问题与边界
 
-- **Docker Desktop in VM**：winget 安装本身成功，但启用 WSL2/Hyper-V 后的重启在本机
-  （q35+OVMF SecureBoot+嵌套 KVM）上触发过一次"自动修复失败"（SrtTrail）。复现一次，
-  未见系统性结论。**安装 Docker 前请先完成当轮安装包测试**，把它当作独立风险步骤；
-  排查方向：Hyper-V hypervisor launch 与 OVMF 的交互、`bcdedit /set hypervisorlaunchtype off`
-  后用 Docker 的 Hyper-V 后端替代 WSL2 后端。
+- **Docker Desktop in VM：不可行（2026-09-14 四轮对照实验定案）**。启用
+  VirtualMachinePlatform/WSL 后的重启 **4/4 全砖**（WinRE"自动修复失败"循环），逐一排除：
+  Windows Update 叠加（禁用 wuauserv 后复现）、SecureBoot（换 OVMF_CODE.4m.fd 非安全
+  启动固件后复现）、缺 reenlightenment（补 reenlightenment+reset 后复现）。取证方式：
+  `virsh destroy` 释放镜像锁 + `sudo setfacl -m u:<user>:r disk.qcow2`（libvirt 动态
+  属主 600）后用 guestfish 只读挂载，证据：`WinSxS/pending.xml` 残留、CBS.log
+  "Failed to commit CSI transaction (file in use / reboot required)"、Lxss 内核包与
+  Hyper-V-Drivers-Hypervisor-Bcd 事务挂起、无 Minidump（非蓝屏，早期启动挂死）。
+  结论：功能事务的早期启动应用阶段在本嵌套栈（KVM host-passthrough + OVMF + q35）
+  下挂死，超出宿主侧可调旋钮范围。**影响与对策**：VM 手测覆盖非 Docker 场景
+  （UI/安装器/GBK/ConPTY/升级卸载）；Docker 全链路在 Linux 本机 `tauri dev` 验证
+  （第 3 节）；Windows+Docker 组合回归依赖 CI 与真机。**快照 `pre-docker-clean`
+  保留勿删**（`virsh snapshot-revert aisc-win11 pre-docker-clean` 是唯一恢复路径）。
+  若将来再战：kvm 模块参数（如 enable_apicv，需宿主重启）、hyperv mode='passthrough'，
+  或干脆换真机/支持嵌套的云 Windows。
 - **NSIS 安装器只能由 CI 构建**（windows-2022 runner），Linux 本地无法验证 installer.nsi
   （workflow 注释原话）。`gh` 已登录即可拉产物。
 - **vendor checksums**：改 `container/` 忘了 `tools/vendor-refresh.sh` 会红 CI
