@@ -92,3 +92,4 @@ error_log/
 release-staging/
 .pnpm-store/
 .containers.lock
+/containers.json
