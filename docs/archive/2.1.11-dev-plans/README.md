@@ -8,10 +8,10 @@
 | --- | --- | --- | --- |
 | P1 快修批 | provider key 显隐（已配置态+可查看）/ 历史恢复顶部空白诊断修复 / 忘记工作区勾选清理+可选导出 | **手测 PASS（r1-r8，含 5 项增补），已并 develop** | [p1-manual-test.md](p1-manual-test.md) · [decisions.md](decisions.md) |
 | S2 传输统一 | 本地全命令切池化 serve + 版本配对驱逐（D-5 两步走收官） | **手测 PASS，已并 develop** | [decisions.md D-5](decisions.md) |
-| P2 UI 批 | 反馈语法（全局 Toast+空态 CTA）→ topbar 整行砍除（status 右移+窗口标题动态）→ rail 图标化（activity bar+Ctrl+B）→ 命令面板（Ctrl+Shift+P）→ 设置页搜索 | 待做 | [ui-review-vscode.md](../archive/2.1.10-dev-plans/ui-review-vscode.md)（输入） |
+| P2 UI 批 | 反馈语法（全局 Toast+空态 CTA）→ topbar 整行砍除（status 右移+窗口标题动态）→ rail 图标化（activity bar+Ctrl+B）→ 命令面板（Ctrl+Shift+P）→ 设置页搜索 | **已交付（P2-1..5，见 devlog 2.1.11 段），2026-09-16 回填** | [ui-review-vscode.md](../archive/2.1.10-dev-plans/ui-review-vscode.md)（输入） |
 | Shell 重设计 | rail 底部图标+浮窗化（W1）→ 菜单栏+一窗一工作区（W2+W3 合并）| **手测 PASS（W3 r1-r11），已并 develop** | [shell-redesign.md](shell-redesign.md) |
 | P3 调研批 | 热切换可行性 ✅（结论：provider 间事实上已热，官方直连与会话边界成文）/ Slurm/PBS（阻塞等用户场景） | 热切换完成；Slurm 顺延 | [p3-provider-hotswap.md](p3-provider-hotswap.md) | [decisions.md](decisions.md) |
-| 收口 | devlog / 阶段表 / 手测清单 / VERSION 四件套冻结 / plans 归档 / release | 待做 | — |
+| 收口 | devlog / 阶段表 / 手测清单 / VERSION 四件套冻结 / plans 归档 / release | **已完成：0db2b13 封版 + v2.1.11-dev tag + Pre-release（2026-09-12），2026-09-16 回填** | — |
 
 ## 关键裁决（2026-09-10 审问）
 

@@ -385,15 +385,10 @@ mod tests {
         let _ = engine_reachable_detail().await;
     }
 
-    /// KI-1 diagnostic (Stage 6, 6a): on this machine Docker is running and
-    /// `docker version` succeeds from a shell, so the probe MUST be true. This
-    /// is a temporary reproduction test — remove once KI-1 is root-caused.
-    #[tokio::test]
-    async fn diag_engine_reachable_true_with_running_docker() {
-        let (ok, detail) = engine_reachable_detail().await;
-        eprintln!("[diag] engine_reachable = {ok} detail = {detail:?}");
-        assert!(ok, "Docker is running; engine_reachable_detail() must be true (detail: {detail})");
-    }
+    // KI-1's temporary reproduction test (asserted Docker was running on the
+    // dev machine — red whenever the engine wasn't started) was removed once
+    // KI-1 was root-caused and fixed (2026-08-09, todo 20260806 A+C). The
+    // no-panic probe above is the hermetic remainder.
 
     #[test]
     fn diag_docker_cli_candidates_are_well_formed() {

@@ -15,6 +15,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# 拉起项目范围工具链（.tools Node 22、--no-modify-path 安装的 cargo、.venv），
+# 门禁自含激活，不要求调用方先手工 source dev-env。
+. "$PSScriptRoot\dev-env.ps1"
+
 function Step($name, $script) {
     Write-Host "`n=== $name ===" -ForegroundColor Cyan
     & $script
@@ -25,6 +29,18 @@ function Step($name, $script) {
 }
 
 Step "python full tests" {
+    # Windows MAX_PATH(260)：长测试夹具路径实测 ~275 字符（tmp\data-root\
+    # workspaces\sha256-v1-<64hex>\codex\sessions\<date>\<73-char file>），
+    # 超 260 即 FileNotFoundError。不改宿主机注册表（LongPathsEnabled 属
+    # 系统配置），按 local-gates.sh 修 Linux 坑的同一先例把 pytest 临时根
+    # 指到短路径（C:\ 根建目录标准用户可写、无需管理员）。
+    $shortTmp = 'C:\pt'
+    try {
+        New-Item -ItemType Directory -Force -Path $shortTmp | Out-Null
+        $env:TMP = $shortTmp; $env:TEMP = $shortTmp
+    } catch {
+        Write-Warning "无法创建短临时目录 $shortTmp，沿用默认 TEMP（长路径用例将失败）"
+    }
     python -m pytest tests/ -q --ignore=tests/integration
 }
 

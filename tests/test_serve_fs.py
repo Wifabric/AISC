@@ -159,7 +159,9 @@ class WatchRegistryTests(unittest.TestCase):
         self.reg.shutdown()
         frames = [e for e in self.events if e["event"] == "fs.change"]
         self.assertTrue(frames, "no fs.change frame")
-        paths = {p["path"].split("/")[-1] for fr in frames for p in fr["data"]["paths"]}
+        # WatchRegistry passes native absolute paths through (backslashes on
+        # Windows) — basename, not a "/"-split, like the handler itself does.
+        paths = {os.path.basename(p["path"]) for fr in frames for p in fr["data"]["paths"]}
         self.assertIn("w1.txt", paths)
         self.assertIn("wdir", paths)
         # atomic-write residue never surfaces
