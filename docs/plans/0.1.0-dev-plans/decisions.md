@@ -41,7 +41,7 @@ v1 维持最小 sdist；下游验证走 GitHub Release SBOM 与源码 tag；若�
 - **理由**：「热」的本质上限=免重启换 CLI（本地池 mtime 驱逐机制已就绪）；与 A3 fetch 共用同一「下载+校验+原子安装」底座（指南 3.3.3 要求 safe-extract/verify 迁入 src/aisc，两任务共享此前置）；信任模型对齐 fetch（API digest、fail-closed、--from-file 离线注入）。
 - **回滚/边界**：新命令独立可 revert；.old 残留由下次 update 或启动清扫；远程机器自动同步显式出周期（D-18）。注意：bundle 属全量替换面（连带其内 config/versions.env）——工具 pin 的存续语义由 D-27 定义（pin 落数据根用户层，不在替换面内）。
 
-## D-8 · Workbench 自更新选型：自研轻量，不用 Tauri updater【拟裁（推荐），R4——A7 开工前请用户确认】
+## D-8 · Workbench 自更新选型：自研轻量，不用 Tauri updater【已裁决，2026-09-16 用户确认「选自研」】
 
 - **裁决（推荐）**：不引 tauri-plugin-updater。自研：Rust 侧查 GitHub Releases 最新 final（reqwest+系统代理，复用 subscription.rs:5-22,127-133 模式）→ 对比四件套版本 → 下载 NSIS setup.exe + sha256 校验 → 用户确认后退出应用并静默执行安装器，安装器自带完整升级链（PATH 接管 installer.nsi:801-811、maintenance docker-scan/cleanup/rebuild --context upgrade installer.nsi:1542-1638、S4.2 升级冒烟）。标准体验=「检查更新→下载→重启完成」；真热替换（不重启换 Workbench 本体）明确不做。
 - **证据**：零 updater 底座（workbench/src-tauri/Cargo.toml:21、tauri.conf.json:25-57、capabilities/default.json:9-22、artifact.yml 无 updater 痕迹）；现行发布资产仅 NSIS+sha256 两件（gh release view v2.1.11-dev）；installer.nsi:767-780 唯一 updater 字样是 WebView2 修复，与自更新无关。

@@ -95,6 +95,22 @@
   v5.10.4 统一收口；vendor checksums 行刷（1515/1515 verified）。10 例新测 +
   pytest 1281；真轮：--pin-tool 落盘、--check 报 user 来源、dry-run argv 携
   node:22-slim+双 pin。
+- **A6 pypi-publish 流水线（2026-09-16/17，92ef953）**：dispatch-only OIDC 双
+  environment（pypi 带 Required reviewers 人工门）+ final-only 正则门 + 制品
+  薄形负向守卫 + gitleaks 制品终扫 + pip-audit + SBOM 附 Release；artifact.yml
+  release 段第二道 tag==VERSION guard；check-version-sync.py 四件套机械校验；
+  verify-pypi-install.py（真实 index 装机验证+传播重试）；verify-cli-install 增
+  off-checkout 腿（临时目录+AISC_ROOT 剥离：version null-bundle/doctor 降级/
+  build 报 bundle fetch 指引）与 twine 内建。D-26 接受（devN 逐次 bump+dot tag
+  链）、D-25=B（不发中段预览，A7 用本地假素材）。教训：main 合并权限误触——
+  用户裁定 Claude 仅可自主「阶段分支→develop」，main 一律显式批准（已入记忆）。
+- **A7 Workbench 自更新（分支 a7-workbench-selfupdate，2026-09-17）**：D-8 裁
+  「自研」——check（Releases API，final-only，dash 归一比较）/流式下载（sha256
+  sidecar 先验后落，失配即弃）/update://progress 事件/silent NSIS（installer.nsi
+  原生 ${Silent} 分支）detached 启动后 app.exit，安装器自带 PATH 接管与 Docker
+  升级链（不引 tauri-plugin-updater 的全部理由落地）。UI：帮助菜单「检查更新」
+  + 设置页「关于与更新」组（下载进度/就绪态/确认后安装）；sidecar 更新指引指
+  aisc update（免重启）。cargo 318 / vitest 500 / vue-tsc 净。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
