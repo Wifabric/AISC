@@ -2,14 +2,14 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
-# v2.1.12-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
+# v0.1.0-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
 
-> 规划入口：`docs/plans/2.1.12-dev-plans/`（README 阶段表 + decisions.md
+> 规划入口：`docs/plans/0.1.0-dev-plans/`（README 阶段表 + decisions.md
 > D-1~D-27 + 四条分链计划；执行蓝本 `pypi-release-guide.md` 同目录）。
-> 版本策略（D-1）：开池即四件套 bump `2.1.12.dev0`——打破「开发期保持
+> 版本策略（D-1）：开池即四件套 bump `0.1.0.dev0`——打破「开发期保持
 > 上一版 dev0」惯例，动因是 TestPyPI dev 迭代要求 dev 版元数据 + 每次
 > 上传须推 dot tag（D-26）。2.1.11 final 显式跳过（v2.1.11-dev Preview
-> 即其最终产物）；周期末出 2.1.12 final + PyPI 首发同 tag。
+> 即其最终产物）；周期末出 0.1.0 final + PyPI 首发同 tag。
 
 - **P0 开池前置批（分支 2.1.12-p0-pool-open，五批提交）**：①docs（wiki
   §2 裸机环境重写 + todo R1-R8 补注 + 指南迁入 plans + check-docs 排除
@@ -18,7 +18,7 @@
   ignore）③workbench（远程机器表头 + 密钥认证提示；顺手移除 KI-1 临时
   复现测试 `diag_engine_reachable_true_with_running_docker`——自注释即
   「根因后移除」，断言本机 Docker 在跑，引擎未启动即红）④tests（Windows
-  裸机修复）⑤四件套 bump 2.1.12.dev0 + plans 入库 + plans/README 指向
+  裸机修复）⑤四件套 bump 0.1.0.dev0 + plans 入库 + plans/README 指向
   修正 + 2.1.11 收口卫生回填（本条与下条）。
 - **B0 主题切换残留修复（分支 2.1.12-b0-theme-residue，手测 PASS
   2026-09-16）**：v2.1.11 bug——切 dark→light 后切换前的终端输出留深色
@@ -43,6 +43,15 @@
   （未扫描禁用清理/重建，预览即确认依据——用户裁决）+ 五按钮悬浮提示
   （清理 vs 重建语义上浮）；store 5 例 + Rust 6 例 + 组件门测 1 例
   （vitest 494 / cargo lib 314）。
+- **版本策略切换 0.x + A1 元数据与改名（分支 a1-pypi-metadata，2026-09-16）**：
+  D-4 裁决推翻指南 D-3——0.x 是比 2.x+契约页更强的 Alpha 信号；pip 渠道
+  全新（aisc-cli 无存量）、NSIS/便携覆盖安装不比版本，四件套切
+  0.1.0.dev0，周期目录更名 0.1.0-dev-plans，final tag v0.1.0。A1：pyproject
+  name=aisc-cli（包名/命令名不动）+ SPDX license/license-files/setuptools
+  >=77 + requests 显式 + docker<8 上界 + 删 3.14 classifier + DIST_NAME
+  常量与 fallback 改查 aisc-cli（防休眠同名包污染）+ 双脚本字面量同步 +
+  fallback 单测。验收：build 零 license 告警；CLI-A01 三腿 PASS；pytest
+  1238。D-6 sdist 不含 tests 同场确认。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
@@ -54,7 +63,7 @@
 > Pre-release「AISC v2.1.11-dev Preview」当日发布（资产 NSIS setup.exe
 > + sha256.txt，沿 2.1.9 先例取 NSIS lane 产物手工附上）。2026-09-16
 > 裁决：2.1.11 final 不再单独发，该 Preview 即 2.1.11 最终对外产物
-> （2.1.12 D-1）。
+> （0.1.0 D-1）。
 
 - **P1-1 provider API key 显隐（六层链 + 四轮修复）**：编辑已配置
   provider 的 key 字段占位态「已配置——留空保存不变」+ 眼睛按钮按需

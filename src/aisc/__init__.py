@@ -6,6 +6,13 @@ import sys
 from importlib import metadata
 from pathlib import Path
 
+#: PyPI distribution name. The import package and console script stay
+#: ``aisc``; only the dist name differs (guide D-1 / decisions D-2 — the
+#: bare ``aisc`` name is a dormant third-party PyPI package since 2019,
+#: and a stale install of it would answer metadata queries with a
+#: stranger's version).
+DIST_NAME = "aisc-cli"
+
 
 def _read_version() -> str:
     """Resolve the project version from the canonical ``VERSION`` file."""
@@ -32,7 +39,7 @@ def _read_version() -> str:
             return version
 
     try:
-        return metadata.version("aisc")
+        return metadata.version(DIST_NAME)
     except metadata.PackageNotFoundError:
         return "0+unknown"
 

@@ -83,7 +83,7 @@ def _assert_envelope(stdout: str, expected_version: str, *, context: str) -> Non
 
 def _assert_dist_version(venv: Path, expected_version: str, *, context: str) -> None:
     proc = _run(
-        [_venv_python(venv), "-c", "from importlib import metadata; print(metadata.version('aisc'))"],
+        [_venv_python(venv), "-c", "from importlib import metadata; print(metadata.version('aisc-cli'))"],
     )
     if proc.stdout.strip() != expected_version:
         _fail(f"[{context}] dist metadata {proc.stdout.strip()!r} != expected {expected_version!r}")
@@ -134,7 +134,7 @@ def install_verify(
 
         # uninstall -> entry gone -> reinstall works again
         print(f"== [{label}] uninstall -> reinstall round-trip ==")
-        _run([py, "-m", "pip", "uninstall", "--quiet", "-y", "aisc"])
+        _run([py, "-m", "pip", "uninstall", "--quiet", "-y", "aisc-cli"])
         try:
             gone = subprocess.run([_venv_entry(venv), "version"], capture_output=True)
         except FileNotFoundError:

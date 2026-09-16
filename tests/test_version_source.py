@@ -36,6 +36,41 @@ class VersionSourceTests(unittest.TestCase):
         self.assertIn('[tool.setuptools.data-files]\naisc = ["VERSION"]', pyproject)
 
 
+class DistNameFallbackTests(unittest.TestCase):
+    """A1 (guide D-1): the metadata fallback must query the DISTRIBUTION
+    name (aisc-cli), never the import name — a stale install of the dormant
+    third-party ``aisc`` package would otherwise answer with a stranger's
+    version, and the pre-rename fallback would return 0+unknown forever."""
+
+    def test_dist_name_constant(self) -> None:
+        self.assertEqual(aisc.DIST_NAME, "aisc-cli")
+
+    def test_fallback_queries_distribution_name_and_returns_real_version(self) -> None:
+        from unittest import mock
+
+        from importlib import metadata as _metadata
+
+        def fake_version(name: str) -> str:
+            queried.append(name)
+            if name == "aisc-cli":
+                return "9.9.9"
+            raise _metadata.PackageNotFoundError(name)
+
+        queried: list[str] = []
+        # Force every VERSION-file candidate to miss so the fallback runs.
+        real_read_text = Path.read_text
+
+        def missing(self: Path, *args, **kwargs):  # noqa: ANN001, ANN002
+            if self.name == "VERSION":
+                raise OSError("forced miss")
+            return real_read_text(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", missing), \
+                mock.patch.object(_metadata, "version", fake_version):
+            self.assertEqual(aisc._read_version(), "9.9.9")
+        self.assertEqual(queried, ["aisc-cli"])
+
+
 class TestWorkbenchCapabilities(unittest.TestCase):
     """Workbench capability negotiation (05-cli-gui-contract.md §四)."""
 

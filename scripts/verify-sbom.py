@@ -28,7 +28,7 @@ def installed_requires(venv_python: Path) -> list[str]:
     """Requires-Dist of the installed aisc distribution, via its venv python."""
     script = (
         "import importlib.metadata as m;"
-        "print('\\n'.join(m.requires('aisc') or []))"
+        "print('\\n'.join(m.requires('aisc-cli') or []))"
     )
     proc = subprocess.run([str(venv_python), "-c", script], capture_output=True, text=True)
     if proc.returncode != 0:
@@ -73,7 +73,7 @@ def main() -> None:
 
     sbom = {
         "schema_version": SCHEMA_VERSION,
-        "project": "aisc",
+        "project": "aisc-cli",
         "declared_dependencies": requires,
         "installed": installed,
         "integrity_ok": not problems,
