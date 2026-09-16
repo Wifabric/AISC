@@ -189,7 +189,7 @@ def main() -> None:
     ap.add_argument("--skip-pipx", action="store_true", help="skip the pipx smoke")
     args = ap.parse_args()
 
-    expected = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    expected = (REPO_ROOT / "src" / "aisc" / "VERSION").read_text(encoding="utf-8").strip()
 
     built = args.build_dir or Path(tempfile.mkdtemp(prefix="aisc-build-"))
     if args.build_dir is None:

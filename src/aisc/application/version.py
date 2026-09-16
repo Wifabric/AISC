@@ -22,14 +22,18 @@ from aisc.application.resources import locate_aisc_root, _RootSourceError
 
 
 def _read_version_file(root: Path) -> Optional[str]:
-    """Read the first non-empty line of ``VERSION`` in *root*."""
-    version_file = root / "VERSION"
-    if not version_file.is_file():
-        return None
-    text = version_file.read_text(encoding="utf-8").strip()
-    if not text:
-        return None
-    return text
+    """Read the first non-empty line of the root's VERSION file.
+
+    A2 dual-shape: repo checkouts carry it at ``src/aisc/VERSION``; staged
+    bundles and frozen roots keep ``VERSION`` at their root."""
+    for rel in ("VERSION", "src/aisc/VERSION"):
+        version_file = root / rel
+        if not version_file.is_file():
+            continue
+        text = version_file.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    return None
 
 
 def _parse_versions_env(root: Path) -> dict:

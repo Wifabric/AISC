@@ -38,9 +38,13 @@ ARCH_TAG = _detect_arch()
 # ===========================================================================
 
 def get_version(root: Path) -> str:
-    vf = root / "VERSION"
-    if not vf.is_file(): sys.exit(f"ERROR: VERSION not found at {vf}")
-    return vf.read_text(encoding="utf-8").strip().split("\n")[0].strip()
+    # A2 dual-shape: staged bundles/frozen roots carry VERSION at their
+    # root; repo checkouts carry it as package data at src/aisc/VERSION.
+    for rel in ("VERSION", "src/aisc/VERSION"):
+        vf = root / rel
+        if vf.is_file():
+            return vf.read_text(encoding="utf-8").strip().split("\n")[0].strip()
+    sys.exit(f"ERROR: VERSION not found at {root}")
 
 def _assert_version_guard(root: Path) -> str:
     """Return the sole project version source after validating it exists."""
@@ -52,6 +56,10 @@ def _assert_version_guard(root: Path) -> str:
 # ===========================================================================
 
 BUNDLE_REQUIRED = ["VERSION", "README.md", "LICENSE", ".dockerignore", "config/versions.env"]
+# A2: the staging SOURCE (repo root) no longer carries VERSION at its root
+# (package data now); the bundle OUTPUT still must. VERSION rides separately
+# via get_version() and is written below.
+STAGING_SOURCE_REQUIRED = ["README.md", "LICENSE", ".dockerignore", "config/versions.env"]
 BUNDLE_EXCLUDE_PATTERNS = [
     "__pycache__", "*.pyc", "*.pyo", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     ".coverage", "coverage", "htmlcov", ".tox", ".git", ".github", ".gitignore",
@@ -142,7 +150,7 @@ def stage_bundle(root: Path, output_dir: Path, *, verify_version: bool = True) -
     br = output_dir / "aisc-bundle"
     if br.exists(): shutil.rmtree(br)
     br.mkdir(parents=True)
-    for fn in BUNDLE_REQUIRED:
+    for fn in STAGING_SOURCE_REQUIRED:
         if not (root / fn).is_file(): sys.exit(f"ERROR: required file missing: {fn}")
         _stage_file(root / fn, br, fn)
     _stage_file(root / "config" / "versions.env", br, "config/versions.env")
@@ -400,7 +408,7 @@ def build_onefile(root: Path, output_dir: Path) -> Tuple[Path, str]:
                 sys.executable, "-m", "PyInstaller", "--onefile",
                 "--name", "aisc",
                 "--paths", str(root / "src"),
-                "--add-data", f"{root / 'VERSION'}:.",
+                "--add-data", f"{root / 'src' / 'aisc' / 'VERSION'}:.",
                 "--distpath", str(dd),
                 "--workpath", str(wd / "build"),
                 "--specpath", str(wd),
@@ -768,11 +776,15 @@ def main() -> None:
 def _find_repo_root(explicit: Optional[str] = None) -> Path:
     if explicit:
         p = Path(explicit).resolve()
+        # A2: dual-shape version marker (repo: src/aisc/VERSION; legacy
+        # checkouts and staged bundles: root VERSION).
+        if (p/"src"/"aisc"/"VERSION").is_file() and (p/"container"/"Dockerfile").is_file(): return p
         if (p/"VERSION").is_file() and (p/"container"/"Dockerfile").is_file(): return p
         sys.exit(f"Not a valid AISC repo root: {explicit}")
     for start in [Path(__file__).resolve().parent.parent, Path.cwd()]:
         c = start
         while True:
+            if (c/"src"/"aisc"/"VERSION").is_file() and (c/"container"/"Dockerfile").is_file(): return c
             if (c/"VERSION").is_file() and (c/"container"/"Dockerfile").is_file(): return c
             parent = c.parent
             if parent == c: break

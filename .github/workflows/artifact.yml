@@ -45,13 +45,13 @@ jobs:
         run: python -m unittest discover -s tests/packaging -p "test_*.py" -v
 
       - name: Build onedir (CI smoke only)
-        run: python -m PyInstaller --onedir --name aisc --paths src --add-data "${{ github.workspace }}/VERSION:." --distpath "${{ runner.temp }}/onedir-dist" --workpath "${{ runner.temp }}/onedir-work" --specpath "${{ runner.temp }}" --icon ${{ github.workspace }}/packaging/favicon_logosc/favicon.ico packaging/pyinstaller/entrypoint.py
+        run: python -m PyInstaller --onedir --name aisc --paths src --add-data "${{ github.workspace }}/src/aisc/VERSION:." --distpath "${{ runner.temp }}/onedir-dist" --workpath "${{ runner.temp }}/onedir-work" --specpath "${{ runner.temp }}" --icon ${{ github.workspace }}/packaging/favicon_logosc/favicon.ico packaging/pyinstaller/entrypoint.py
 
       - name: Smoke onedir version
-        run: python packaging/ci_smoke.py --executable "${{ runner.temp }}/onedir-dist/aisc/aisc${{ matrix.exe_suffix }}" --expected-version-file VERSION
+        run: python packaging/ci_smoke.py --executable "${{ runner.temp }}/onedir-dist/aisc/aisc${{ matrix.exe_suffix }}" --expected-version-file src/aisc/VERSION
 
       - name: Build onefile
-        run: python -m PyInstaller --onefile --name aisc --paths src --add-data "${{ github.workspace }}/VERSION:." --distpath "${{ runner.temp }}/onefile-dist" --workpath "${{ runner.temp }}/onefile-work" --specpath "${{ runner.temp }}" --icon ${{ github.workspace }}/packaging/favicon_logosc/favicon.ico packaging/pyinstaller/entrypoint.py
+        run: python -m PyInstaller --onefile --name aisc --paths src --add-data "${{ github.workspace }}/src/aisc/VERSION:." --distpath "${{ runner.temp }}/onefile-dist" --workpath "${{ runner.temp }}/onefile-work" --specpath "${{ runner.temp }}" --icon ${{ github.workspace }}/packaging/favicon_logosc/favicon.ico packaging/pyinstaller/entrypoint.py
 
       - name: Stage bundle
         run: python packaging/artifact.py stage --output "${{ runner.temp }}/staging"
@@ -94,7 +94,7 @@ jobs:
           if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
           Write-Host "ISCC: $iscc"
 
-          $ver = (Get-Content VERSION -First 1).Trim()
+          $ver = (Get-Content src/aisc/VERSION -First 1).Trim()
           # Derive numeric X.Y.Z.W for VersionInfoVersion (strip suffix, default 0 for 4th component)
           $numVer = if ($ver -match '^(\d+\.\d+\.\d+)') { "$($Matches[1]).0" } else { "0.0.0.0" }
           Write-Host "Display version: $ver  Numeric version: $numVer"
@@ -133,7 +133,7 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           set -euo pipefail
-          ver="$(head -1 VERSION | tr -d '[:space:]')"
+          ver="$(head -1 src/aisc/VERSION | tr -d '[:space:]')"
           onedir="${{ runner.temp }}/onefile-dist/aisc"
           bundir="${{ runner.temp }}/staging/aisc-bundle"
           outdir="${{ runner.temp }}/dist"
