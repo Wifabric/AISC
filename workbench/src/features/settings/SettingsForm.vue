@@ -442,11 +442,21 @@ async function reopenOnboarding() {
         <!-- R4b: remote machines — the targets the Workbench can drive. -->
         <template v-else-if="group === 'machines'">
           <p class="help">{{ t("settings.machines.hint") }}</p>
+          <!-- Column header: placeholders vanish once a row is filled, so the
+               fields need standing labels (the port column has no placeholder
+               at all when empty — hand-test 2026-09-15: "第4个空是什么?"). -->
+          <div v-if="machines.length" class="machine-head">
+            <span>{{ t("settings.machines.colName") }}</span>
+            <span>{{ t("settings.machines.colHost") }}</span>
+            <span>{{ t("settings.machines.colUser") }}</span>
+            <span>{{ t("settings.machines.colPort") }}</span>
+            <span>{{ t("settings.machines.colKey") }}</span>
+          </div>
           <div v-for="(row, i) in machines" :key="i" class="field machine-row">
             <input v-model.trim="row.name" class="m-name" :placeholder="t('settings.machines.namePh')" :disabled="store.readOnly" />
             <input v-model.trim="row.host" class="m-host" :placeholder="t('settings.machines.hostPh')" :disabled="store.readOnly" />
             <input v-model.trim="row.user" class="m-user" :placeholder="t('settings.machines.userPh')" :disabled="store.readOnly" />
-            <input v-model.number="row.port" type="number" min="1" max="65535" class="m-port" :disabled="store.readOnly" />
+            <input v-model.number="row.port" type="number" min="1" max="65535" class="m-port" :placeholder="t('settings.machines.portPh')" :disabled="store.readOnly" />
             <input v-model.trim="row.keyPath" class="m-key mono-input" :placeholder="t('settings.machines.keyPh')" :disabled="store.readOnly" />
             <button class="ht-del" :disabled="store.readOnly" :title="t('settings.machines.remove')" @click="machines.splice(i, 1)">×</button>
           </div>
@@ -456,6 +466,10 @@ async function reopenOnboarding() {
             </button>
           </div>
           <p class="note">{{ t("settings.machines.note") }}</p>
+          <!-- Key-auth-only is a hard ruling (D-7, BatchMode=yes): without
+               this note a password-auth user just sees "Permission denied"
+               with no clue why no prompt ever appeared. -->
+          <p class="note">{{ t("settings.machines.authNote") }}</p>
         </template>
 
         <!-- PERF P8 (D-13): performance / low-spec mode. lowSpec gates the
@@ -627,14 +641,17 @@ input:disabled, select:disabled { opacity: 0.5; }
 .ht-del {
   min-width: 26px; min-height: 26px; padding: 0; flex: none;
 }
-/* F1: SSH profile rows */
 .mono-input { font-family: var(--font-mono); font-size: var(--font-sm); }
-.machine-row { flex-wrap: nowrap; }
-.m-name { max-width: 110px; }
-.m-host { max-width: 160px; font-family: var(--font-mono); font-size: var(--font-sm); }
-.m-user { max-width: 90px; }
-.m-port { max-width: 72px; }
-.m-key { flex: 1; min-width: 0; }
+/* F1: SSH profile rows. Grid (not flex) so the column header shares the
+ * exact tracks — a flex header can't align with max-width'd inputs.
+ * min-width:0 is required: the generic input rule's 120px min overflows
+ * the 110/90/72 tracks, and there's no global border-box reset (the same
+ * disease ModelMappingEditor's cat-row hit and documented). */
+.machine-head { display: grid; grid-template-columns: 110px 160px 90px 72px 1fr; gap: 8px;
+  align-items: center; margin: 6px 0 0; font-size: var(--font-xs); color: var(--text-faint); }
+.machine-row { display: grid; grid-template-columns: 110px 160px 90px 72px 1fr 26px; gap: 8px; align-items: stretch; }
+.machine-row input { box-sizing: border-box; min-width: 0; }
+.m-host { font-family: var(--font-mono); font-size: var(--font-sm); }
 .loading { color: var(--text-muted); font-size: var(--font-md); }
 .foot {
   display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border);
