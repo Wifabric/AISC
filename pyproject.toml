@@ -55,7 +55,10 @@ Security = "https://github.com/wangyuncepu/AISC/security/advisories/new"
 aisc = "aisc.cli.main:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "PyInstaller>=6", "PyYAML>=6"]
+# build>=1: tests/packaging/test_wheel_guards.py shells out to `python -m
+# build` — the wheel guards must run wherever the dev suite runs (CI's
+# `pip install -e ".[dev]"` pre-pytest), not only in the clean-room step.
+dev = ["pytest>=8", "PyInstaller>=6", "PyYAML>=6", "build>=1"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
