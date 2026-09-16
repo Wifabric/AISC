@@ -43,6 +43,15 @@
   （未扫描禁用清理/重建，预览即确认依据——用户裁决）+ 五按钮悬浮提示
   （清理 vs 重建语义上浮）；store 5 例 + Rust 6 例 + 组件门测 1 例
   （vitest 494 / cargo lib 314）。
+- **版本策略切换 0.x + A1 元数据与改名（分支 a1-pypi-metadata，2026-09-16）**：
+  D-4 裁决推翻指南 D-3——0.x 是比 2.x+契约页更强的 Alpha 信号；pip 渠道
+  全新（aisc-cli 无存量）、NSIS/便携覆盖安装不比版本，四件套切
+  0.1.0.dev0，周期目录更名 0.1.0-dev-plans，final tag v0.1.0。A1：pyproject
+  name=aisc-cli（包名/命令名不动）+ SPDX license/license-files/setuptools
+  >=77 + requests 显式 + docker<8 上界 + 删 3.14 classifier + DIST_NAME
+  常量与 fallback 改查 aisc-cli（防休眠同名包污染）+ 双脚本字面量同步 +
+  fallback 单测。验收：build 零 license 告警；CLI-A01 三腿 PASS；pytest
+  1238。D-6 sdist 不含 tests 同场确认。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
