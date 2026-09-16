@@ -317,6 +317,11 @@ class BuildPlan:
     pull: bool = False
     build_arg_use_cn_mirror: str = "1"
     build_arg_node_image: str = "node:20-slim"
+    # A5 (D-9): forwarded tool pins — factory default under the data-root
+    # user overlay (D-27); "latest" keeps the pre-A5 behavior when the
+    # factory file carries no pin.
+    build_arg_claude_code_version: str = "latest"
+    build_arg_codex_version: str = "latest"
     # T8a (2.1.9 D-9): fallback registry prefixes for the host-side pre-pull
     # chain (versions.env NODE_IMAGE_MIRRORS). Each entry joins the bare
     # node_image name; the first candidate is always build_arg_node_image.
@@ -345,6 +350,8 @@ class BuildPlan:
         argv.extend([
             "--build-arg", f"USE_CN_MIRROR={self.build_arg_use_cn_mirror}",
             "--build-arg", f"NODE_IMAGE={self.build_arg_node_image}",
+            "--build-arg", f"CLAUDE_CODE_VERSION={self.build_arg_claude_code_version}",
+            "--build-arg", f"CODEX_VERSION={self.build_arg_codex_version}",
         ])
         # docker-resource-lifecycle A2: provenance labels injected by the
         # unified build argv (org.aisc.*; 02 §1.2 — never only host logs).

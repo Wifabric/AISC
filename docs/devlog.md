@@ -85,6 +85,16 @@
   serve 池按 exe mtime 驱逐，下一条命令自动用新二进制（Rust 侧 drain_pool
   编排归 A5/A7）。`aisc update [--check|--version|--from-file|--sha256|
   --rebuild]` + README 表行；16 例矩阵，pytest 1271。
+- **A5 工具更新合一入口（分支 a5-tool-pins，2026-09-16）**：D-27 裁决落 A——
+  双层真值：出厂层（root config/versions.env，只读随 bundle 走）+ 用户层
+  （<数据根>/config/versions.env，--pin-tool 唯一落点，更新/升级/fetch 结构性
+  不碰；r4 静默降级不可再现）。CLAUDE_CODE/CODEX_VERSION 以 build args 进
+  构建管线（D-9 消费化）；--check 附三工具对照（npmmirror，断网降级 null）。
+  D-10 评估门触发：claude-code 2.1.273 要求 node>=22——基底升 node:22-slim
+  （1ms.run 镜像预拉实证）；cc-switch 三处漂移以 resolver 缓存最新 stable
+  v5.10.4 统一收口；vendor checksums 行刷（1515/1515 verified）。10 例新测 +
+  pytest 1281；真轮：--pin-tool 落盘、--check 报 user 来源、dry-run argv 携
+  node:22-slim+双 pin。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 

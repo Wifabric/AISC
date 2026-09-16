@@ -39,11 +39,23 @@ class _BuildEnv:
     node_image: str = ""
     node_image_cn: str = ""
     node_image_mirrors: tuple = ()
+    # A5 (D-9): tool pins forwarded as build args — factory values layered
+    # under the data-root USER pin overlay (tool_versions.py, D-27).
+    claude_code_version: str = "latest"
+    codex_version: str = "latest"
 
 
-def _parse_build_env(root: Path) -> _BuildEnv:
-    """Parse build-relevant values from config/versions.env."""
+def _parse_build_env(root: Path, data_root: Optional[Path] = None) -> _BuildEnv:
+    """Parse build-relevant values from config/versions.env.
+
+    A5: tool versions resolve through the D-27 overlay — factory base from
+    the root, per-key overrides from the data-root user layer."""
+    from aisc.application.tool_versions import effective_tool_versions
+
     env = _parse_versions_env(root)
+    eff = effective_tool_versions(root, data_root)
+    claude = eff.get("CLAUDE_CODE_VERSION", ("latest", "default"))[0]
+    codex = eff.get("CODEX_VERSION", ("latest", "default"))[0]
     use_cn = env.get("USE_CN_MIRROR", "1")
     node_image = env.get("NODE_IMAGE", "")
     node_image_cn = env.get("NODE_IMAGE_CN", "")
@@ -56,6 +68,8 @@ def _parse_build_env(root: Path) -> _BuildEnv:
     return _BuildEnv(
         use_cn_mirror=use_cn, node_image=node_image,
         node_image_cn=node_image_cn, node_image_mirrors=mirrors,
+        claude_code_version=claude or "latest",
+        codex_version=codex or "latest",
     )
 
 
@@ -142,6 +156,7 @@ def plan_build(
     pull: bool = False,
     dry_run: bool = False,
     cc_switch: Optional[Any] = None,
+    data_root: Optional[Path] = None,
 ) -> BuildPlan:
     """Create an immutable ``BuildPlan`` from user args.
 
@@ -166,7 +181,7 @@ def plan_build(
                        error_code="AISC_ERR_GENERAL") from exc
 
     dockerfile = str(root / "container" / "Dockerfile")
-    build_env = _parse_build_env(root)
+    build_env = _parse_build_env(root, data_root)
 
     if not build_env.node_image:
         raise CliError(
@@ -219,6 +234,8 @@ def plan_build(
         build_arg_use_cn_mirror=build_env.use_cn_mirror,
         node_image_mirrors=build_env.node_image_mirrors,
         build_arg_node_image=selected_node_image,
+        build_arg_claude_code_version=build_env.claude_code_version,
+        build_arg_codex_version=build_env.codex_version,
         dry_run=dry_run,
         **cc_kwargs,
     )

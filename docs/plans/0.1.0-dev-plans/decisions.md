@@ -140,10 +140,11 @@ cc-switch 内置 8 个赞助商模板自带返佣注册链接与 promo code（�
 - **备选（方案 b，不推荐）**：修订 workflow 设计——testpypi 段允许 dispatch 于 develop ref、guard 只查该 ref 的 VERSION 合法性，正式 PyPI 段维持 tag-input，并同步回写指南 3.4.1。代价：刚定稿的流水线设计二次改动 + develop 直发削弱「tag 即发布单元」的 provenance；除非用户嫌 devN tag 噪音，否则不取。
 - **边界**：devN tag 推送不触发任何 workflow（artifact.yml dispatch-only；nsis-installer.yml 的 push 触发 branches 限 develop/main，tests.yml 同理），tag 本身零副作用；devN bump 与 A 链开发提交交错时四件套必须同步（不同步会被 check-version-sync 与 test_release_notes 拦）。
 
-## D-27 · 工具 pin 权威位置与 update 覆盖语义【拟裁（A5 开工前拍板）】
+## D-27 · 工具 pin 权威位置与 update 覆盖语义【已裁决，2026-09-16 A5 开工审问——采纳推荐 A】
 
 - **问题**：若把工具 pin 写进「解析 root」的 config/versions.env，则 D-7 的 `aisc update` 全量替换 bundle、NSIS 升级替换安装目录 aisc-bundle 副本（installer.nsi:1636-1638）、pip 形态 fetch 换 `bundles/<ver>/` 目录（同版本幂等 no-op、版本升级换新目录，指南 3.3.3）——用户手动 bump 的 pin 每次更新即被出厂默认**静默覆盖**，该交互是否预期此前未定义；且 pip 形态的 root 由 fetch 生命周期管理，「工具更新」动作实际无落地路径。recon2 开放问题（fetch 新 bundle→docker-rebuild 成为第三个更新锚点、避免双份 bundle 来源漂移）需一并吸收。
 - **裁决（推荐）**：pin 权威位置 = **数据根用户层 `<data-root>/config/versions.env`**（`shared_root()` 解析，data_root.py:249-256；`AISC_DATA_ROOT` 旋钮沿用；与指南 3.3.1 的 `bundles/` 同根）。所有安装形态统一：解析 root（repo 检出 / 安装目录 aisc-bundle 副本 / pip `bundles/<ver>/`）内 config/versions.env 一律为出厂默认、只读；消费解析序 = 出厂默认为底、用户层**按键覆盖**（只覆盖用户 bump 过的键，保留 versions.env 注释可读性）。`aisc update` / NSIS 升级 / bundle fetch 的替换面均不含数据根用户层——pin 恒不丢；update 完成输出与 `--check` 联动报告工具 pin 现值与来源（user/default），用户层为空时行为=现状。
 - **理由**：第三个更新锚点（fetch→rebuild）的漂移在结构上消除——出厂默认随新 bundle 走、用户 pin 恒在用户层；r4 事故教训（pin 被静默降级）不可再现；versions.env 消费链本周期才建立（D-9），day-one 定权威位置比事后回迁便宜。
+- **裁决落地（2026-09-16）**：用户选 A（通俗版：偏好与软件本体分开存，更新不覆盖偏好）。实现为 `tool_versions.py`（effective_tool_versions 双层解析 + write_user_pins 注释保留原子写 + PINNABLE_TOOL_KEYS=CLAUDE_CODE_VERSION/CODEX_VERSION/CC_SWITCH_VERSION；NODE_IMAGE 留出厂层——CN 镜像链与其配对，裸覆盖会失配）。CLI 面：`aisc update --pin-tool KEY=VALUE`（可重复）与 `--check` 的 tools 区（现值+来源 user/default+最新版，registry 失败降级 null）。
 - **备选（若用户否决用户层）**：v1 维持写解析 root + 显式定义「update 后 pin 重置为出厂默认」并在 `--check` 报告——代价：用户 pin 每次更新即丢、pip 形态无路径，不推荐。
 - **回滚**：用户层纯增量（不存在即回退现状）；按键覆盖为纯函数可单测。
