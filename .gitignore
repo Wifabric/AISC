@@ -69,6 +69,10 @@ tasks/
 # Local archive (project cleanup snapshots — never delete)
 .archive/
 
+# Project-scoped portable toolchains (Node 22 for workbench dev; restored on
+# demand — see scripts/dev-env.ps1 / scripts/dev-env.sh). Host Node stays untouched.
+.tools/
+
 # Backup / temp artefact clutter
 *.bak
 workbench/src-tauri/binaries/
