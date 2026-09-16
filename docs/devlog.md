@@ -19,9 +19,16 @@
   复现测试 `diag_engine_reachable_true_with_running_docker`——自注释即
   「根因后移除」，断言本机 Docker 在跑，引擎未启动即红）④tests（Windows
   裸机修复）⑤四件套 bump 2.1.12.dev0 + plans 入库 + plans/README 指向
-  修正 + 2.1.11 收口卫生回填（本条与下条）。新增 B0：v2.1.11 主题切换
-  残留 bug（切主题后历史会话消息/输出块深色残留，2026-09-16 用户截图
-  报障，修于独立分支）。
+  修正 + 2.1.11 收口卫生回填（本条与下条）。
+- **B0 主题切换残留修复（分支 2.1.12-b0-theme-residue，手测 PASS
+  2026-09-16）**：v2.1.11 bug——切 dark→light 后切换前的终端输出留深色
+  带（暗字+旧深底），新写入正常。根因：addon-webgl 0.19 的字形图集/
+  行脏标记不随 `options.theme` 重绘既有 cell，`refresh()` 够不着（DOM
+  渲染器无恙，Step 17 验收即此路径）。修法：`effectiveTheme` watch 在
+  webgl 活动时 dispose+重建 addon（图集按新主题重建；session/PTY 不动；
+  重建失败沿 context-loss 降级语义 A-G06-2），新增
+  `renderer_theme_remount` 遥测；terminalThemeSwitch.test.ts 两例钉住
+  往返回收+调色板+repaint。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
