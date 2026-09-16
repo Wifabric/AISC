@@ -52,6 +52,15 @@
   常量与 fallback 改查 aisc-cli（防休眠同名包污染）+ 双脚本字面量同步 +
   fallback 单测。验收：build 零 license 告警；CLI-A01 三腿 PASS；pytest
   1238。D-6 sdist 不含 tests 同场确认。
+- **A2 VERSION 迁移为 package-data（分支 a2-version-migration，2026-09-16）**：
+  `git mv VERSION src/aisc/VERSION` + package-data + 动态版本 file 化。落地中
+  补了指南 14 触点表的三个盲点——版本 marker 双形（repo=src/aisc/VERSION、
+  bundle/frozen=根 VERSION，三处根识别与 get_version/_read_version_file 全
+  部双形）、staging 输入校验与 bundle 输出必清单拆分、version.py 的
+  bundle_version 读者（envelope deep-equal 夹具当场抓获）。验收：pytest
+  1238/packaging 207/sdist 含 src/aisc/VERSION/CLI-A01 三腿/sidecar 重建
+  cli_version=bundle_version=0.1.0.dev0。期间 CI 监控代理另修 artifact.rs
+  基准 flake（gated<full 共享 runner 单发反转，有界 pair-retry，fbae598）。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
