@@ -1840,9 +1840,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * construction failure, and runtime context loss each land on the shared
    * timeline with the GPU probe summary (WEBGL_debug_renderer_info; software
    * rasterizers are the low-end-device signal). Same layer contract as
-   * logTerminalResizeError. */
+   * logTerminalResizeError. B0 adds theme_remount (WebglAddon recycled on
+   * theme switch so the glyph atlas rebuilds — see Terminal.vue B0 note). */
   function logRendererEvent(
-    kind: "mount" | "context_loss",
+    kind: "mount" | "context_loss" | "theme_remount",
     outcome: "ok" | "error",
     detail?: string,
   ): void {

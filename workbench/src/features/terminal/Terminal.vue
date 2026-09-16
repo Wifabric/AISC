@@ -947,9 +947,23 @@ onMounted(() => {
 
   // G-04 (Step 17, A-G04-2): apply the effective theme to the EXISTING xterm -
   // only its options change, never a rebuild / session / PTY.
+  // B0 (2026-09-16): addon-webgl 0.19 keeps pre-switch cells in the OLD
+  // palette after an options.theme change — its glyph atlas and row-dirty
+  // tracking don't repaint existing content, and refresh() doesn't reach it
+  // (user screenshot: dark bands of pre-switch output inside a light
+  // viewport while new writes painted correctly; DOM renderer unaffected).
+  // Recreating the addon rebuilds the atlas against the new theme; the
+  // session/PTY are untouched and disposal falls back to DOM mid-flight
+  // exactly like the context-loss path (A-G06-2).
   watch(effectiveTheme, (eff) => {
     if (!term) return;
     term.options.theme = terminalTheme(eff);
+    if (webgl) {
+      store.logRendererEvent("theme_remount", "ok", `webgl|eff=${eff}`);
+      webgl.dispose();
+      webgl = null;
+      mountWebgl();
+    }
     term.refresh(0, term.rows - 1);
   });
 
