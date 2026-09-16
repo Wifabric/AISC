@@ -7,7 +7,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha。** 当前开发预览版本为 **v2.1.7-dev**（以仓库 [`VERSION`](VERSION) 为准），公开发布以 [Releases](https://github.com/wangyuncepu/AISC/releases) 页为准。Alpha 版本的命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** 当前版本以仓库 [`VERSION`](https://github.com/wangyuncepu/AISC/blob/develop/src/aisc/VERSION) 与 [Releases](https://github.com/wangyuncepu/AISC/releases) 页为准。Alpha 版本的命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。Alpha 版本的命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
 
 ## 目录
 
@@ -55,7 +55,7 @@ docker version
 
 ### 安装
 
-从 [GitHub Releases](https://github.com/wangyuncepu/AISC/releases) 下载 Windows 安装器（如 `AISC Workbench_2.1.7-dev_x64-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\Programs\AISC`，并添加用户 `PATH`。
+从 [GitHub Releases](https://github.com/wangyuncepu/AISC/releases) 下载 Windows 安装器（`AISC Workbench_<版本>_x64-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\Programs\AISC`，并添加用户 `PATH`。
 
 AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目 Release 且 SHA256 正确，再选择“更多信息 -> 仍要运行”。
 
@@ -79,7 +79,7 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 - **彻底忘记工作区**：工作区历史右键 -> 彻底忘记，单事务清理 AISC 数据根内该工作区的状态与记录（容器先停止删除，失败自动回滚）；你磁盘上的原始文件永不被触碰。
 - **诊断**：任何页面可打开诊断对话框（环境检查、最近日志、导出诊断包）。
 
-### 预配置供应商（v2.1.7+）
+### 预配置供应商
 
 镜像内置以下预置 Provider，用户只需填 API Key：
 
@@ -91,7 +91,7 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 | **Kimi** | 月之暗面 Kimi K3 |
 | **Codesome-Group** | 二合一中转；Codex 默认模型 `gpt-5.6-sol`，Claude 侧 `https://v5.codesome.cn/api` |
 
-v2.1.7 起所有预置供应商的 Codex 上游格式统一为 **OpenAI Responses API（原生直连）**，存量容器在下次启动时自动刷新（用户自定义值不受影响）。
+所有预置供应商的 Codex 上游格式统一为 **OpenAI Responses API（原生直连）**，存量容器在下次启动时自动刷新（用户自定义值不受影响）。
 
 ## CLI 使用指南
 
@@ -327,7 +327,7 @@ Workbench 内：打开诊断对话框查看环境检查与最近日志，可导�
 
 ## 许可
 
-MIT License，详见 [LICENSE](LICENSE)。镜像还包含第三方组件，其来源、校验和与许可证记录在 `vendor/` 中。
+MIT License，详见 [LICENSE](https://github.com/wangyuncepu/AISC/blob/main/LICENSE)。镜像还包含第三方组件，其来源、校验和与许可证记录在 `vendor/` 中。
 
 ## 推荐服务
 

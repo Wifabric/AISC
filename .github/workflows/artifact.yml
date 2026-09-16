@@ -345,6 +345,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 0.1.0 A6 (guide 3.4.2): tag must equal the in-tree VERSION — kills
+      # dash/dot format drift and dev-tag-before-bump mistakes at the last
+      # gate before assets go public.
+      - name: Version/tag guard
+        run: '[ "v$(cat src/aisc/VERSION)" = "${{ github.ref_name }}" ] || { echo "tag ${{ github.ref_name }} != v$(cat src/aisc/VERSION)"; exit 1; }'
+
       - uses: actions/download-artifact@v4
         with:
           name: AISC-workflow-artifacts
