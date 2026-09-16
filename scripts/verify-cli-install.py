@@ -58,7 +58,8 @@ def _venv_entry(venv: Path) -> Path:
     return venv / ("Scripts/aisc.exe" if sys.platform == "win32" else "bin/aisc")
 
 
-def _assert_envelope(stdout: str, expected_version: str, *, context: str) -> None:
+def _assert_envelope(stdout: str, expected_version: str, *, context: str,
+                     require_bundle: bool = True) -> None:
     env = json.loads(stdout)
     meta, data, errors = env["meta"], env["data"], env["errors"]
     if meta["protocol"] != PROTOCOL:
@@ -71,7 +72,7 @@ def _assert_envelope(stdout: str, expected_version: str, *, context: str) -> Non
         _fail(f"[{context}] meta.version {meta['version']!r} != expected {expected_version!r}")
     if data.get("cli_version") != expected_version:
         _fail(f"[{context}] cli_version {data.get('cli_version')!r} != expected {expected_version!r}")
-    if data.get("bundle_version") != expected_version:
+    if require_bundle and data.get("bundle_version") != expected_version:
         _fail(f"[{context}] bundle_version {data.get('bundle_version')!r} != expected {expected_version!r}")
     caps = data.get("capabilities") or {}
     missing = REQUIRED_CAPS - set(caps)
@@ -180,6 +181,49 @@ def pipx_verify(artifact: Path, expected_version: str) -> None:
     print("== [pipx] PASS ==")
 
 
+def offcheckout_verify(wheel: Path, expected_version: str) -> None:
+    """A6 (guide 3.4.3): the pip user's first experience — a TEMPORARY cwd,
+    AISC_ROOT stripped. The prior clean-room legs ran inside the repo, so
+    `bundle_version == VERSION` passed only by accident of location; this
+    leg pins the real contract: version exits 0 with bundle_version=None,
+    doctor degrades (does not crash), and `build` exits 1 naming
+    `aisc bundle fetch`."""
+    import json
+
+    print("== [offcheckout] pip form, no repo, no bundle ==")
+    with tempfile.TemporaryDirectory(prefix="aisc-verify-offco-") as td:
+        venv = Path(td) / "venv"
+        _run([sys.executable, "-m", "venv", str(venv)])
+        py = _venv_python(venv)
+        r = _run([py, "-m", "pip", "install", "--quiet", str(wheel)])
+        if r.returncode != 0:
+            _fail(f"[offcheckout] install failed: {r.stderr[-500:]}")
+        entry = _venv_entry(venv)
+        cwd = Path(td) / "cwd"
+        cwd.mkdir()
+        env = {k: v for k, v in os.environ.items() if k != "AISC_ROOT"}
+        out = subprocess.run([str(entry), "version", "--format", "json"],
+                             capture_output=True, text=True, cwd=str(cwd), env=env)
+        _assert_envelope(out.stdout, expected_version, context="offcheckout",
+                         require_bundle=False)
+        data = json.loads(out.stdout)["data"]
+        if data.get("bundle_version") is not None:
+            _fail(f"[offcheckout] bundle_version={data['bundle_version']!r} — "
+                  f"a pip install off-checkout must report null")
+        doc = subprocess.run([str(entry), "doctor", "--format", "json"],
+                             capture_output=True, text=True, cwd=str(cwd), env=env)
+        if doc.returncode != 0:
+            _fail(f"[offcheckout] doctor crashed: {doc.stderr[-300:]}")
+        build = subprocess.run([str(entry), "build", "--format", "json"],
+                               capture_output=True, text=True, cwd=str(cwd), env=env)
+        if build.returncode == 0:
+            _fail("[offcheckout] build unexpectedly succeeded without a bundle")
+        if "bundle fetch" not in build.stdout:
+            _fail("[offcheckout] build failure copy must name `aisc bundle fetch`")
+        print("== [offcheckout] PASS (version null-bundle / doctor degrades / "
+              "build names bundle fetch) ==")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build-dir", type=Path, default=None, help="dir to build into (default: temp)")
@@ -209,11 +253,20 @@ def main() -> None:
 
     offline = args.offline_deps_dir
     try:
+        # A6 (guide 3.4.3): twine check is builtin — a broken long_description
+        # must fail HERE, not at publish time. Missing twine is an explicit
+        # FAIL (never silently skipped).
+        twine = shutil.which("twine")
+        if twine is None:
+            _fail("twine not on PATH (pip install twine) — the check is mandatory")
+        else:
+            _run([twine, "check", str(wheel), str(sdist)], cwd=REPO_ROOT)
         install_verify(wheel, expected, keep_dir=built, offline_deps=offline, label="wheel")
         install_verify(sdist, expected, keep_dir=built, offline_deps=offline, label="sdist",
                        is_sdist=True)
         if not args.skip_pipx:
             pipx_verify(wheel, expected)
+        offcheckout_verify(wheel, expected)
     except SystemExit:
         if args.keep:
             print(f"== artifacts kept in {built} ==", file=sys.stderr)

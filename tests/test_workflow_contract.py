@@ -100,3 +100,21 @@ def test_all_workflows_are_valid_yaml():
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         assert isinstance(data, dict), f"{path.name} must parse to a mapping"
         assert "jobs" in data, f"{path.name} must define jobs"
+
+
+def test_pypi_publish_is_dispatch_only_with_oidc_gates():
+    """0.1.0 A6: pypi-publish.yml must never auto-trigger (CLI-D08), must
+    use Trusted Publishing (no static tokens), and must gate the real
+    index on final-only tags inside the job."""
+    data = yaml.safe_load((WORKFLOW_DIR / "pypi-publish.yml").read_text(encoding="utf-8"))
+    triggers = data.get("on", data.get(True, {}))
+    assert set(triggers.keys()) == {"workflow_dispatch"}, (
+        f"pypi-publish must be dispatch-only, got {sorted(triggers.keys())}")
+    text = (WORKFLOW_DIR / "pypi-publish.yml").read_text(encoding="utf-8")
+    assert "gh-action-pypi-publish@release/v1" in text
+    assert "api-token" not in text.lower(), "Trusted Publishing only — no static tokens"
+    assert "environment: pypi" in text and "environment: testpypi" in text
+    # the mechanical final-only gate lives in the publish-pypi job
+    assert "Final-only gate" in text
+    # top-level permissions stay empty; jobs declare their own
+    assert data.get("permissions") in ({}, None)
