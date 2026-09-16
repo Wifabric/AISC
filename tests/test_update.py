@@ -19,7 +19,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from aisc.application.bundle_fetch import BundleFetcher
+from aisc.application.bundle_fetch import ARCH_TAG, BundleFetcher, _PLAT_TAG
 from aisc.application.update import (
     UPDATE_ERROR_USAGE,
     UpdateError,
@@ -30,16 +30,21 @@ from aisc.application.update import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_bundle_fetch import FakeApi, fake_download, releases_page  # noqa: E402
+from test_bundle_fetch import FakeApi, _reg_entry, fake_download, releases_page  # noqa: E402
 
 CUR = "1.0.0"
 
 
 def build_update_zip(version: str, exe_payload: bytes = b"NEW-EXE") -> bytes:
     buf = io.BytesIO()
-    top = f"AISC-{version}-windows-x86_64"
+    top = f"AISC-{version}-{_PLAT_TAG}-{ARCH_TAG}"
+    # perform_update looks for aisc.exe on Windows, bare `aisc` elsewhere —
+    # the archive must carry the exe under the RUNTIME platform's name, the
+    # dir/asset tags must match resolve_asset's runtime _PLAT_TAG/ARCH_TAG
+    # defaults, and every member needs the release-shape type bits (_reg_entry).
+    exe_name = "aisc.exe" if os.name == "nt" else "aisc"
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr(f"{top}/aisc.exe", exe_payload.decode("latin-1"))
+        zf.writestr(_reg_entry(f"{top}/{exe_name}", 0o755), exe_payload.decode("latin-1"))
         for rel, content in (
             ("VERSION", version + "\n"),
             ("README.md", "# T\n"),
@@ -52,15 +57,15 @@ def build_update_zip(version: str, exe_payload: bytes = b"NEW-EXE") -> bytes:
             ("vendor/checksums.txt",
              hashlib.sha256(b"").hexdigest() + "  container/_bundle/plugins/.keep\n"),
         ):
-            zf.writestr(f"{top}/aisc-bundle/{rel}", content)
+            zf.writestr(_reg_entry(f"{top}/aisc-bundle/{rel}"), content)
         manifest = ('{\n  "schema_version": 1,\n  "compatible_cli_versions": '
                     + json.dumps(sorted([version])) + '\n}\n')
-        zf.writestr(f"{top}/aisc-bundle/manifest.json", manifest)
+        zf.writestr(_reg_entry(f"{top}/aisc-bundle/manifest.json"), manifest)
     return buf.getvalue()
 
 
 def fake_fetcher_with(data: bytes, version: str, tags=("v0.1.0", "v1.0.0", "v1.2.0")) -> BundleFetcher:
-    name = f"AISC-{version}-windows-x86_64.zip"
+    name = f"AISC-{version}-{_PLAT_TAG}-{ARCH_TAG}.zip"
     pages = [{
         "tag_name": t,
         "assets": ([{"name": name, "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
@@ -156,7 +161,7 @@ class PerformUpdate(unittest.TestCase):
 
     def test_from_file_replaces_exe_and_bundle_with_rollback_copy(self):
         data = build_update_zip("1.2.0")
-        arch = self.td / "AISC-1.2.0-windows-x86_64.zip"
+        arch = self.td / f"AISC-1.2.0-{_PLAT_TAG}-{ARCH_TAG}.zip"
         arch.write_bytes(data)
         f = BundleFetcher()
         r = perform_update(cli_version=CUR, form=self._form(), fetcher=f,
@@ -187,7 +192,7 @@ class PerformUpdate(unittest.TestCase):
 
     def test_from_file_without_sha_rejected(self):
         data = build_update_zip("1.2.0")
-        arch = self.td / "AISC-1.2.0-windows-x86_64.zip"
+        arch = self.td / f"AISC-1.2.0-{_PLAT_TAG}-{ARCH_TAG}.zip"
         arch.write_bytes(data)
         with self.assertRaises(UpdateError) as cm:
             perform_update(cli_version=CUR, form=self._form(), fetcher=BundleFetcher(),
@@ -197,7 +202,7 @@ class PerformUpdate(unittest.TestCase):
 
     def test_bad_digest_rejected_nothing_replaced(self):
         data = build_update_zip("1.2.0")
-        arch = self.td / "AISC-1.2.0-windows-x86_64.zip"
+        arch = self.td / f"AISC-1.2.0-{_PLAT_TAG}-{ARCH_TAG}.zip"
         arch.write_bytes(data)
         with self.assertRaises(UpdateError):
             perform_update(cli_version=CUR, form=self._form(), fetcher=BundleFetcher(),
