@@ -783,6 +783,24 @@ fn log_cli_op(
     crate::logging::append_event(level, "app", "op", Some(run_id), extra);
 }
 
+/// Direct per-op spawn, no serve pool: the raw runner-IO path. Kept public
+/// (test surface) for `tests/cli_runner.rs`, which drives a plain
+/// `python3 -c` process — it is not an `aisc serve`, so the pooled
+/// transport's ready-banner handshake can never complete against it.
+/// (2.1.11 step2 routed `run_control` through the pool; these tests broke
+/// on CI and the red stayed hidden behind the workbench-ci paths filter
+/// until 2026-09-16 — dev pushes were docs-only for four commits.)
+#[doc(hidden)]
+pub async fn run_control_direct_for_tests(
+    executable: &Path,
+    argv: Vec<String>,
+    timeout: Duration,
+    cancel: CancellationToken,
+) -> Result<Envelope, WorkbenchError> {
+    let run_id = uuid::Uuid::new_v4().to_string();
+    run_control_inner(&CliTarget::Local(executable.to_path_buf()), argv, None, timeout, cancel, &run_id).await
+}
+
 async fn run_control_inner(
     target: &CliTarget,
     argv: Vec<String>,
@@ -790,8 +808,7 @@ async fn run_control_inner(
     timeout: Duration,
     cancel: CancellationToken,
     run_id: &str,
-) -> Result<Envelope, WorkbenchError> {
-    let (program, spawn_args) = target.spawn_pieces(&argv);
+) -> Result<Envelope, WorkbenchError> {    let (program, spawn_args) = target.spawn_pieces(&argv);
     let mut cmd = Command::new(&program);
     cmd.args(&spawn_args);
     cmd.env("AISC_RUN_ID", run_id);

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use workbench_lib::cli::run_control;
+use workbench_lib::cli::run_control_direct_for_tests as run_control;
 use workbench_lib::error::WorkbenchError;
 
 fn python3() -> Option<PathBuf> {
