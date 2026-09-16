@@ -244,3 +244,28 @@ describe("build.progress events (v2.1.7 S4 / Gate-S4)", () => {
     expect(s.buildStatus).toBe("complete"); // the build itself is unaffected
   });
 });
+
+describe("rebuild from terminal state (2.1.12 B1)", () => {
+  it("failed: startBuild with the same tag re-invokes ipc.buildImage and can complete", async () => {
+    mockIpc.buildImage.mockRejectedValueOnce({ code: "AISC_ERR_GENERAL" }).mockResolvedValueOnce(undefined);
+    const s = useRuntimeStore();
+    await s.startBuild("img");
+    expect(s.buildStatus).toBe("failed");
+    expect(s.buildTag).toBe("img");
+    // The Rebuild button's call: same tag, fresh op.
+    await s.startBuild(s.buildTag);
+    expect(s.buildStatus).toBe("complete");
+    expect(mockIpc.buildImage).toHaveBeenCalledTimes(2);
+    expect(mockIpc.buildImage).toHaveBeenNthCalledWith(2, "img", expect.anything());
+  });
+
+  it("cancelled: same-tag retry drives building again", async () => {
+    mockIpc.buildImage.mockRejectedValueOnce({ code: "WB_ERR_CLI_CANCELLED" }).mockResolvedValueOnce(undefined);
+    const s = useRuntimeStore();
+    await s.startBuild("img");
+    expect(s.buildStatus).toBe("cancelled");
+    await s.startBuild(s.buildTag);
+    expect(s.buildStatus).toBe("complete");
+    expect(mockIpc.buildImage).toHaveBeenCalledTimes(2);
+  });
+});
