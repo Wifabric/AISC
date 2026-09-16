@@ -36,6 +36,13 @@
   初次构建 10-20 分钟，600s 会把真实首构建杀成「已取消」假象）。测试：
   buildProgressRebuild.test.ts 三例 + runtimeBuild.test.ts 双终态回建
   两例（vitest 488 全绿，cargo lib 308）。
+- **B3 Docker 资源管理 UI（分支 2.1.12-b3-docker-ui，手测 PASS 2026-09-16）**：
+  设置页磁盘与缓存卡扩展「Docker 资源」组——docker_admin.rs 三命令（scan
+  预览 / cleanup uninstall 语境 / rebuild 本机 bundle 根，CLI maintenance
+  契约零改动，Rust 仅传输+envelope 校验沿 cache.rs 模式）；扫描前置门
+  （未扫描禁用清理/重建，预览即确认依据——用户裁决）+ 五按钮悬浮提示
+  （清理 vs 重建语义上浮）；store 5 例 + Rust 6 例 + 组件门测 1 例
+  （vitest 494 / cargo lib 314）。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 

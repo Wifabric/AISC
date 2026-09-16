@@ -8,6 +8,7 @@ pub mod cache;
 pub mod cli;
 pub mod conversation;
 pub mod data_root;
+pub mod docker_admin;
 pub mod docker_ownership;
 pub mod doctor;
 pub mod host_mcp;
@@ -94,6 +95,7 @@ use session::{
     shutdown_workbench, shutdown_workbench_v2, write_session, SessionRegistry,
 };
 use cache::{cache_cleanup, cache_usage};
+use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
 use settings::{load_settings, reset_gui_settings, save_settings};
 use tray::{build_tray, tray_available, tray_remove};
 use window::{capture_window_geometry, restore_window_geometry};
@@ -140,6 +142,9 @@ pub fn run(cli_arg: Option<String>) {
             resize_session,
             session_read_spool,
             cache_usage,
+            docker_scan,
+            docker_cleanup,
+            docker_rebuild,
             cache_cleanup,
             close_session,
             ack_session_exit,

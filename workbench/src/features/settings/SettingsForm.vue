@@ -276,6 +276,41 @@ async function onCacheCleanup() {
   await store.runCacheCleanup(24);
 }
 
+// --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
+function dockerActionableCount(b: { owned: unknown[]; legacy_owned: unknown[] }): number {
+  return b.owned.length + b.legacy_owned.length;
+}
+
+/** Compact preview rows: one per actionable/unverified bucket, names capped. */
+const dockerPreviewRows = computed(() => {
+  const r = store.dockerReport;
+  if (!r) return [];
+  const names = (list: { name: string }[]) =>
+    list.length === 0
+      ? "—"
+      : list.map((e) => e.name).slice(0, 6).join("、") + (list.length > 6 ? ` …（${list.length}）` : "");
+  return [
+    { label: t("settings.docker.rowContainers"), value: names([...r.containers.owned, ...r.containers.legacy_owned]) },
+    { label: t("settings.docker.rowUnverifiedContainers"), value: names(r.containers.unverified) },
+    { label: t("settings.docker.rowImages"), value: names([...r.images.owned, ...r.images.legacy_owned]) },
+    { label: t("settings.docker.rowUnverifiedImages"), value: names(r.images.unverified) },
+  ];
+});
+
+async function onDockerCleanup() {
+  const { confirm } = await import("@tauri-apps/plugin-dialog");
+  const ok = await confirm(t("settings.docker.cleanupConfirm"));
+  if (!ok) return;
+  await store.runDockerCleanup();
+}
+
+async function onDockerRebuild() {
+  const { confirm } = await import("@tauri-apps/plugin-dialog");
+  const ok = await confirm(t("settings.docker.rebuildConfirm"));
+  if (!ok) return;
+  await store.runDockerRebuild();
+}
+
 async function onReset() {
   const ok = await confirm(t("settings.resetConfirm"));
   if (!ok) return;
@@ -529,10 +564,40 @@ async function reopenOnboarding() {
           </template>
           <p v-else-if="!store.cacheError" class="note">{{ t("settings.disk.unavailable") }}</p>
           <div class="field">
-            <button :disabled="store.cacheBusy" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
-            <button class="primary" :disabled="store.cacheBusy" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
+            <button :disabled="store.cacheBusy" :title="t('settings.disk.refreshTip')" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
+            <button class="primary" :disabled="store.cacheBusy" :title="t('settings.disk.cleanupTip')" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
           </div>
           <p v-for="(line, i) in store.cacheLog" :key="i" class="note">{{ line }}</p>
+
+          <!-- B3 (2.1.12): docker resource admin — scan preview -> confirm ->
+               act. Rebuild is LOCAL-only (remote machines manage their own
+               bundle; A-chain update orchestration owns that later). -->
+          <p class="group">{{ t("settings.docker.group") }}</p>
+          <p class="help">{{ t("settings.docker.hint") }}</p>
+          <div class="field">
+            <button :disabled="store.dockerBusy" :title="t('settings.docker.scanTip')" @click="store.loadDockerScan()">{{ t("settings.docker.scan") }}</button>
+            <!-- Scan-first gate (user ruling 2026-09-16): cleanup/rebuild stay
+                 disabled until a scan has classified what's there — the
+                 preview IS the confirmation basis; acting blind is how the
+                 wrong mental model (cleanup deletes my files?) forms. -->
+            <button class="danger" :disabled="store.dockerBusy || !store.dockerReport" :title="t('settings.docker.cleanupTip')" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
+            <button :disabled="store.dockerRebuilding || !store.dockerReport" :title="t('settings.docker.rebuildTip')" @click="onDockerRebuild">
+              {{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}
+            </button>
+          </div>
+          <template v-if="store.dockerReport">
+            <p v-if="!store.dockerReport.dockerAvailable" class="note">{{ t("settings.docker.unavailable") }}</p>
+            <template v-else>
+              <p class="note">{{ t("settings.docker.summary", { c: dockerActionableCount(store.dockerReport.containers), i: dockerActionableCount(store.dockerReport.images), d: store.dockerReport.danglingOwned.length }) }}</p>
+              <div v-for="row in dockerPreviewRows" :key="row.label" class="field disk-row">
+                <span class="label">{{ row.label }}</span>
+                <span class="val">{{ row.value }}</span>
+              </div>
+            </template>
+          </template>
+          <p v-if="store.dockerError" class="err-text">{{ store.dockerError }}</p>
+          <p v-for="(line, i) in store.dockerLog" :key="i" class="note">{{ line }}</p>
+          <p class="note">{{ t("settings.docker.rebuildNote") }}</p>
         </template>
       </template>
       </div>
