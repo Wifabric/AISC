@@ -6,7 +6,12 @@ Priority:
   3. Frozen executable: adjacent ``aisc-bundle/`` directory
      (bundle missing → continue to repo discovery; bundle corrupt → raise)
   4. Walk up from *cwd* discovering a repo (``.git`` + structure markers)
-  5. Installed package ancestor fallback: walk ancestors of the aisc package
+  5. Data-root bundles: ``<data-root>/bundles/<ver>/aisc-bundle`` installed
+     by ``aisc bundle fetch`` (0.1.0 A3). Inserted AFTER cwd-repo so a
+     developer running in the repo keeps hitting the working tree, and
+     BEFORE package ancestors so pip installs resolve fetched bundles.
+     Incompatible manifests are skipped, not errors (guide 3.3.1).
+  6. Installed package ancestor fallback: walk ancestors of the aisc package
      source (``Path(__file__).resolve()``) looking for structure markers.
      Supports editable installs; ordinary site-packages wheels return ``None``.
 """
@@ -16,7 +21,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Callable, Optional, List
+from typing import Callable, Optional, List, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +57,48 @@ def _find_repo_root(start: Path) -> Optional[Path]:
             break
         current = parent
     return None
+
+
+# ---------------------------------------------------------------------------
+# Data-root bundle layer (0.1.0 A3, guide 3.3.1)
+# ---------------------------------------------------------------------------
+
+def _bundle_manifest_compatible(bundle_root: Path) -> bool:
+    """Runtime manifest gate at RESOLUTION time: an incompatible bundle is
+    skipped (not an error) — the chain continues. Imported lazily so this
+    module stays importable without the fetch machinery (resources.py is a
+    zero-dependency leaf by design)."""
+    from aisc import __version__
+    from aisc.application.bundle_fetch import bundle_compatible
+
+    ok, _reason = bundle_compatible(bundle_root, __version__)
+    return ok
+
+
+def find_data_root_bundles(data_root: Path) -> Tuple[List[Path], List[str]]:
+    """Compatible bundle roots under ``<data_root>/bundles/<ver>/aisc-bundle``.
+
+    Returns (compatible_roots, skipped_notes) — incompatible/corrupt entries
+    are skipped with a note for the failure-path error copy (guide 3.3.1:
+    全链失败时错误信息列出「发现 bundle X 但要求 CLI 版本 Y」).
+    """
+    bundles = data_root / "bundles"
+    if not bundles.is_dir():
+        return [], []
+    roots: List[Path] = []
+    skipped: List[str] = []
+    for child in sorted(bundles.iterdir(), reverse=True):
+        bundle = child / "aisc-bundle"
+        if not bundle.is_dir():
+            continue
+        if not _is_root(bundle):
+            skipped.append(f"{bundle}: missing structure markers")
+            continue
+        if not _bundle_manifest_compatible(bundle):
+            skipped.append(f"{bundle}: manifest does not allow this CLI version")
+            continue
+        roots.append(bundle)
+    return roots, skipped
 
 
 def _find_installed_root(package_start: Optional[Path] = None) -> Optional[Path]:
@@ -119,6 +166,7 @@ def locate_aisc_root(
     is_frozen: Optional[Callable[[], bool]] = None,
     executable_path: Optional[str] = None,
     package_start: Optional[Path] = None,
+    data_root: Optional[Path] = None,
 ) -> Optional[Path]:
     """Find the AISC root directory.
 
@@ -137,6 +185,10 @@ def locate_aisc_root(
         Path to use as starting point for installed-package ancestor walk.
         Default: ``Path(__file__).resolve()`` in this module.
         Injection point for deterministic tests.
+    data_root:
+        Data root for the fetched-bundles layer (step 5). Default: lazily
+        ``aisc.application.data_root.shared_root()`` (local import — this
+        module stays a zero-dependency leaf; build.py:67 pattern).
 
     Returns
     -------
@@ -199,7 +251,20 @@ def locate_aisc_root(
     if repo is not None:
         return repo
 
-    # -- 5. Installed package ancestor fallback --
+    # -- 5. Data-root bundles (aisc bundle fetch) --
+    if data_root is None:
+        from aisc.application.data_root import shared_root
+
+        try:
+            data_root = shared_root()
+        except Exception:
+            data_root = None
+    if data_root is not None:
+        candidates, _skipped = find_data_root_bundles(data_root)
+        if candidates:
+            return candidates[0]
+
+    # -- 6. Installed package ancestor fallback --
     # Walks up from the aisc package source. Supports editable installs.
     # Ordinary site-packages wheels will reach filesystem root and return None.
     return _find_installed_root(package_start)
