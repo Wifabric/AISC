@@ -2,11 +2,38 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.12-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
+
+> 规划入口：`docs/plans/2.1.12-dev-plans/`（README 阶段表 + decisions.md
+> D-1~D-27 + 四条分链计划；执行蓝本 `pypi-release-guide.md` 同目录）。
+> 版本策略（D-1）：开池即四件套 bump `2.1.12.dev0`——打破「开发期保持
+> 上一版 dev0」惯例，动因是 TestPyPI dev 迭代要求 dev 版元数据 + 每次
+> 上传须推 dot tag（D-26）。2.1.11 final 显式跳过（v2.1.11-dev Preview
+> 即其最终产物）；周期末出 2.1.12 final + PyPI 首发同 tag。
+
+- **P0 开池前置批（分支 2.1.12-p0-pool-open，五批提交）**：①docs（wiki
+  §2 裸机环境重写 + todo R1-R8 补注 + 指南迁入 plans + check-docs 排除
+  archive/completed——既有红，归档史实文档引用旧路径属正常）②scripts
+  （dev-env 双脚本 + local-gates 短 TEMP + 删游离 containers.json 并
+  ignore）③workbench（远程机器表头 + 密钥认证提示；顺手移除 KI-1 临时
+  复现测试 `diag_engine_reachable_true_with_running_docker`——自注释即
+  「根因后移除」，断言本机 Docker 在跑，引擎未启动即红）④tests（Windows
+  裸机修复）⑤四件套 bump 2.1.12.dev0 + plans 入库 + plans/README 指向
+  修正 + 2.1.11 收口卫生回填（本条与下条）。新增 B0：v2.1.11 主题切换
+  残留 bug（切主题后历史会话消息/输出块深色残留，2026-09-16 用户截图
+  报障，修于独立分支）。
+
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
 > 规划入口：`docs/plans/2.1.11-dev-plans/`（README 阶段表 + decisions.md）。
 > VERSION 冻结前保持 2.1.10.dev0。P1 收官记录见
 > `p1-manual-test.md`（r1-r8 全 PASS）；S2 传输统一见 D-5。
+> 封版与发布补记（2026-09-16 补录）：封版提交 0db2b13（四件套冻结 +
+> plans 归档，2026-09-12），dash tag `v2.1.11-dev` 打于该提交，GitHub
+> Pre-release「AISC v2.1.11-dev Preview」当日发布（资产 NSIS setup.exe
+> + sha256.txt，沿 2.1.9 先例取 NSIS lane 产物手工附上）。2026-09-16
+> 裁决：2.1.11 final 不再单独发，该 Preview 即 2.1.11 最终对外产物
+> （2.1.12 D-1）。
 
 - **P1-1 provider API key 显隐（六层链 + 四轮修复）**：编辑已配置
   provider 的 key 字段占位态「已配置——留空保存不变」+ 眼睛按钮按需
