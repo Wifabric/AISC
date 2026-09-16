@@ -60,7 +60,14 @@ def _process_alive(pid: int) -> bool:
 
 class TestRunStreamingCapturedCrossPlatform(unittest.TestCase):
     def setUp(self):
-        self.executor = RealDockerExecutor(docker_path=sys.executable)
+        # Kill-path tests rely on the child's dup2 releasing the inherited
+        # pipe handles. A Windows venv python.exe is a launcher shim that
+        # keeps holding them until ITS real child exits (drain never EOFs,
+        # the wait timeout cannot fire — seen 2026-09-14 on a bare-metal
+        # restore); sys._base_executable resolves the real interpreter
+        # (identity when the runner is not a venv).
+        docker_py = getattr(sys, "_base_executable", None) or sys.executable
+        self.executor = RealDockerExecutor(docker_path=docker_py)
         self.chunks = []
 
     def _on_chunk(self, stream, chunk):
