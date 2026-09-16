@@ -23,6 +23,9 @@ const mockIpc = vi.hoisted(() => ({
   saveSettings: vi.fn(),
   resetGuiSettings: vi.fn(),
   cacheUsage: vi.fn().mockResolvedValue({ dockerAvailable: true, rows: [] }),
+  dockerScan: vi.fn(),
+  dockerCleanup: vi.fn(),
+  dockerRebuild: vi.fn(),
   lowSpecStatus: vi.fn().mockResolvedValue({ totalRam: 16 * 1024 ** 3, lowSpec: false }),
 }));
 
@@ -116,5 +119,38 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const body = wrapper.text();
     expect(body).toContain(i18n.global.t("settings.perf.memory"));
     expect(body).toContain(i18n.global.t("settings.perf.cpus"));
+  });
+});
+
+describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () => {
+  async function mountDiskSection() {
+    const store = useSettingsStore();
+    await store.load();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[6]!.trigger("click"); // disk section
+    return { store, wrapper };
+  }
+
+  it("cleanup/rebuild disabled before any scan, enabled after one loads", async () => {
+    mockIpc.dockerScan.mockResolvedValue({
+      dockerAvailable: true, dockerReason: "ok",
+      containers: { owned: [], legacy_owned: [], unverified: [] },
+      images: { owned: [], legacy_owned: [], unverified: [] },
+      danglingOwned: [], warnings: [],
+    });
+    const { store, wrapper } = await mountDiskSection();
+    const byText = (key: string) =>
+      wrapper.findAll("button").find((b) => b.text() === i18n.global.t(key));
+
+    const cleanup = byText("settings.docker.cleanup")!;
+    const rebuild = byText("settings.docker.rebuild")!;
+    expect((cleanup.element as HTMLButtonElement).disabled).toBe(true);
+    expect((rebuild.element as HTMLButtonElement).disabled).toBe(true);
+
+    await store.loadDockerScan();
+    await Promise.resolve();
+    expect((cleanup.element as HTMLButtonElement).disabled).toBe(false);
+    expect((rebuild.element as HTMLButtonElement).disabled).toBe(false);
+    wrapper.unmount();
   });
 });

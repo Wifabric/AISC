@@ -576,8 +576,12 @@ async function reopenOnboarding() {
           <p class="help">{{ t("settings.docker.hint") }}</p>
           <div class="field">
             <button :disabled="store.dockerBusy" :title="t('settings.docker.scanTip')" @click="store.loadDockerScan()">{{ t("settings.docker.scan") }}</button>
-            <button class="danger" :disabled="store.dockerBusy" :title="t('settings.docker.cleanupTip')" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
-            <button :disabled="store.dockerRebuilding" :title="t('settings.docker.rebuildTip')" @click="onDockerRebuild">
+            <!-- Scan-first gate (user ruling 2026-09-16): cleanup/rebuild stay
+                 disabled until a scan has classified what's there — the
+                 preview IS the confirmation basis; acting blind is how the
+                 wrong mental model (cleanup deletes my files?) forms. -->
+            <button class="danger" :disabled="store.dockerBusy || !store.dockerReport" :title="t('settings.docker.cleanupTip')" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
+            <button :disabled="store.dockerRebuilding || !store.dockerReport" :title="t('settings.docker.rebuildTip')" @click="onDockerRebuild">
               {{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}
             </button>
           </div>
