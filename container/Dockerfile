@@ -6,7 +6,7 @@
 # 使用官方轻量级 Node 镜像；国内网络可通过 --build-arg NODE_IMAGE=... 替换拉取源
 # USE_CN_MIRROR=1 时自动使用国内镜像加速（docker.1ms.run）
 ARG USE_CN_MIRROR=1
-ARG NODE_IMAGE=node:20-slim
+ARG NODE_IMAGE=node:22-slim
 FROM ${NODE_IMAGE}
 
 # 是否使用国内镜像源（apt 清华 / npm 淘宝）。1=用（默认），0=用官方源。
@@ -39,11 +39,11 @@ ARG CC_SWITCH_ASSET_SHA256=
 ARG CC_SWITCH_ASSET_NAME=
 ARG CC_SWITCH_BUILD_MANIFEST=
 
-# Claude Code npm 版本（@anthropic-ai/claude-code）
-ARG CLAUDE_CODE_VERSION=latest  # TODO: pin to specific version
+# Claude Code npm 版本（@anthropic-ai/claude-code）——A5：随 versions.env 出厂 pin（node>=22）
+ARG CLAUDE_CODE_VERSION=2.1.273
 
-# Codex CLI npm 版本（@openai/codex）
-ARG CODEX_VERSION=latest  # TODO: pin to specific version
+# Codex CLI npm 版本（@openai/codex）——A5：随 versions.env 出厂 pin
+ARG CODEX_VERSION=0.154.0
 
 # Geodata 发布版本（MetaCubeX/meta-rules-dat release tag）
 ARG GEODATA_VERSION=latest  # TODO: pin to dated release tag

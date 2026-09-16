@@ -570,7 +570,7 @@ PROXY_ENABLED=0|1
 
 ### 8.5 外部依赖与可复现性
 
-`config/versions.env` 是外部依赖和镜像变量的声明位置：
+`config/versions.env` 是外部依赖和镜像变量的声明位置（0.1.0 A5 起被构建消费：CLAUDE_CODE_VERSION/CODEX_VERSION 作为 build args 转发；用户层覆盖见 `<数据根>/config/versions.env`——`aisc update --pin-tool` 写入，按键覆盖出厂值，CLI 更新/NSIS 升级/bundle fetch 均不触碰，D-27）：
 
 | 变量 | v2.1.4 当前值 | 消费与风险 |
 | --- | --- | --- |

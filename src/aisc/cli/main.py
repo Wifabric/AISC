@@ -564,6 +564,10 @@ def _build_parser() -> _AiscArgumentParser:
                     help="Expected sha256 of --from-file")
     up.add_argument("--rebuild", action="store_true", default=False,
                     help="After replacing, run the installer-style no-cache image rebuild")
+    up.add_argument("--pin-tool", action="append", default=None, metavar="KEY=VALUE",
+                    help="Pin a container tool version in the data-root user layer "
+                         "(repeatable; CLAUDE_CODE_VERSION / CODEX_VERSION / CC_SWITCH_VERSION); "
+                         "applies at the next image build and survives updates")
 
     # --- runtime ---
     rtp = sub.add_parser("runtime", help="Runtime control plane (Workbench Phase 0)", allow_abbrev=False)
@@ -2000,7 +2004,8 @@ def _cmd_update(
         print_update_text("check", data) if effective_format != "json" else None
         return (data, 0, []) if effective_format == "json" else (None, 0, [])
     data = cmd_update(version=args.version, from_file=args.from_file,
-                      sha256=args.sha256, rebuild=args.rebuild)
+                      sha256=args.sha256, rebuild=args.rebuild,
+                      pin_tool=args.pin_tool)
     if effective_format != "json":
         print_update_text("update", data)
         return None, 0, []
