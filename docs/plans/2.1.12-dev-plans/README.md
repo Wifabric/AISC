@@ -8,9 +8,9 @@
 
 | 阶段 | 内容 | 状态 | 文档 |
 | --- | --- | --- | --- |
-| P0 开池前置 | 工作树存量分批提交 / 四件套 bump `2.1.12.dev0` / plans 目录建立与指向修正 / 2.1.11 收口卫生回填 | 待做 | [p0-pool-open.md](p0-pool-open.md) |
+| P0 开池前置 | 工作树存量分批提交 / 四件套 bump `2.1.12.dev0` / plans 目录建立与指向修正 / 2.1.11 收口卫生回填 | **门禁全绿，待并 develop（分支 2.1.12-p0-pool-open，6 提交）** | [p0-pool-open.md](p0-pool-open.md) |
 | A 链（P0） | pip 发布五批次（指南 3.1-3.5）+ `aisc bundle fetch` 底座 + `aisc update`（sidecar 热换编排）+ 工具更新合一入口 + Workbench 自更新 + 2.1.12 final/PyPI 收口（Release 全量资产 + PyPI 首发） | 待做 | [a-pypi-and-update.md](a-pypi-and-update.md) |
-| B 链（P0） | **B0 主题切换残留修复**（v2.1.11 bug：切主题后历史会话消息/输出块残留深色样式）+ 重新构建按钮（BuildProgress failed/cancelled + 摘要页；BUILD_TIMEOUT 600s 矛盾顺带修）+ Docker 资源管理简化 UI（maintenance 产品化） | 待做 | [b-docker-ui-and-rebuild.md](b-docker-ui-and-rebuild.md) |
+| B 链（P0） | **B0 主题切换残留修复 ✅ 手测 PASS（2026-09-16）** + 重新构建按钮（BuildProgress failed/cancelled + 摘要页；BUILD_TIMEOUT 600s 矛盾顺带修）+ Docker 资源管理简化 UI（maintenance 产品化） | B0 已交付；其余待做 | [b-docker-ui-and-rebuild.md](b-docker-ui-and-rebuild.md) |
 | C 链（P1 视余力） | provider 模板化调研（验证清单先行，结论后裁实施）+ codex computer use 调研（r0 形式 + 三路线对比 + 安全影响） | 待做 | [c-research.md](c-research.md) |
 | 收口 | devlog / 阶段表 / VERSION 四件套 final 冻结 / plans 归档 / v2.1.12 Release（三平台档案 + SHA256SUMS + NSIS + SBOM）+ PyPI 首发 | 待做 | — |
 

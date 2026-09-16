@@ -58,6 +58,15 @@ Write-Host "== synced: $Dst2"
 # The nsis/ directory is the SOURCE that cargo re-copies on every tauri dev restart —
 # leaving it stale means every dev restart reverts the debug bundle to old code.
 # Sync BOTH the source (nsis) and the current copy (target/debug).
+#
+# 2026-09-16 (2.1.12 B0 infra): PS 5.1 Remove-Item/Copy-Item die past
+# MAX_PATH(260) — the C:→E: repo move lengthened the root by 8 chars and the
+# vendored agent-skills office schemas now cross it inside the bundle copy.
+# robocopy is long-path native in both directions; /MIR onto an empty dir is
+# the canonical long-path delete. Exit codes 0-7 are success, >=8 is failure.
+$RoboQuiet = "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP"
+$EmptyDir = Join-Path $env:TEMP "aisc-bundle-sync-empty"
+New-Item -ItemType Directory -Force -Path $EmptyDir | Out-Null
 foreach ($Bundle in @(
     "workbench\src-tauri\nsis\bundle\aisc-bundle",
     "workbench\src-tauri\target\debug\aisc-bundle"
@@ -65,8 +74,14 @@ foreach ($Bundle in @(
     if (Test-Path $Bundle) {
         foreach ($Dir in @("container", "config", "vendor")) {
             $DstDir = Join-Path $Bundle $Dir
-            if (Test-Path $DstDir) { Remove-Item -Recurse -Force $DstDir }
-            Copy-Item -Recurse -Force $Dir $DstDir
+            if (Test-Path $DstDir) {
+                robocopy $EmptyDir $DstDir /MIR $RoboQuiet | Out-Null
+                if ($LASTEXITCODE -ge 8) { throw "robocopy clear failed for $DstDir (exit $LASTEXITCODE)" }
+                Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $DstDir
+                if (Test-Path $DstDir) { throw "failed to clear $DstDir" }
+            }
+            robocopy $Dir $DstDir /E $RoboQuiet | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "robocopy copy failed for $Dir -> $DstDir (exit $LASTEXITCODE)" }
         }
         Copy-Item -Force VERSION (Join-Path $Bundle "VERSION")
         Write-Host "== synced: $Bundle"
