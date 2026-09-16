@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import shutil
+import stat
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,7 @@ import zipfile
 from pathlib import Path
 
 from aisc.application.bundle_fetch import (
+    ARCH_TAG,
     BUNDLE_FETCH_ERROR_CONFLICT,
     BUNDLE_FETCH_ERROR_INTEGRITY,
     BUNDLE_FETCH_ERROR_INVALID,
@@ -26,6 +28,7 @@ from aisc.application.bundle_fetch import (
     BUNDLE_FETCH_ERROR_NOT_FOUND,
     BundleFetchError,
     BundleFetcher,
+    _PLAT_TAG,
     _write_manifest,
     bundle_compatible,
 )
@@ -58,13 +61,25 @@ def build_bundle_files(base: Path, version: str) -> None:
     _write_manifest(b / "manifest.json", {"schema_version": 1, "compatible_cli_versions": [version]})
 
 
-def build_release_zip(version: str, plat: str = "windows", arch: str = "x86_64",
+def _reg_entry(name: str, mode: int = 0o644) -> zipfile.ZipInfo:
+    """Regular-file ZipInfo the way the REAL packager writes it
+    (packaging/artifact.py create_zip_archive): create_system=3 with the
+    full S_IFREG type bits. Bare ``zf.writestr(name, ...)`` omits the type
+    bits, which validate_zip_members rightly rejects on Unix hosts — so
+    in-test archives must be built to the same shape as release archives."""
+    zi = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
+    zi.create_system = 3
+    zi.external_attr = (stat.S_IFREG | mode) << 16
+    return zi
+
+
+def build_release_zip(version: str, plat: str = _PLAT_TAG, arch: str = ARCH_TAG,
                       bundle_version: str | None = None) -> bytes:
     buf = io.BytesIO()
     top = f"AISC-{version}-{plat}-{arch}"
     bv = bundle_version or version
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr(f"{top}/aisc", "#!/bin/sh\n")
+        zf.writestr(_reg_entry(f"{top}/aisc", 0o755), "#!/bin/sh\n")
         for rel, content in (
             ("VERSION", bv + "\n"),
             ("README.md", "# T\n"),
@@ -76,11 +91,11 @@ def build_release_zip(version: str, plat: str = "windows", arch: str = "x86_64",
             ("vendor/checksums.txt",
              hashlib.sha256(b"").hexdigest() + "  container/_bundle/plugins/.keep\n"),
         ):
-            zf.writestr(f"{top}/aisc-bundle/{rel}", content)
+            zf.writestr(_reg_entry(f"{top}/aisc-bundle/{rel}"), content)
         manifest = '{\n  "schema_version": 1,\n  "compatible_cli_versions": '
         manifest += json.dumps(sorted([bv])) + '\n}\n'
-        zf.writestr(f"{top}/aisc-bundle/manifest.json", manifest)
-        zf.writestr(f"{top}/aisc-bundle/container/downloads/.keep", "")
+        zf.writestr(_reg_entry(f"{top}/aisc-bundle/manifest.json"), manifest)
+        zf.writestr(_reg_entry(f"{top}/aisc-bundle/container/downloads/.keep"), "")
     return buf.getvalue()
 
 
@@ -130,7 +145,7 @@ class FetchMatrix(unittest.TestCase):
     def fetcher(self, api: FakeApi, data: bytes) -> BundleFetcher:
         return BundleFetcher(transport=api, download=fake_download(data))
 
-    def page_for(self, version: str, data: bytes, plat="windows", arch="x86_64"):
+    def page_for(self, version: str, data: bytes, plat: str = _PLAT_TAG, arch: str = ARCH_TAG):
         name = f"AISC-{version}-{plat}-{arch}.zip"
         digest = "sha256:" + hashlib.sha256(data).hexdigest()
         return releases_page({name: {"digest": digest}})
@@ -215,7 +230,7 @@ class FetchMatrix(unittest.TestCase):
 
     def test_from_file_requires_sha_and_verifies_it(self):
         data = build_release_zip(CLI_VERSION)
-        arch = self.td / "AISC-9.9.9-windows-x86_64.zip"
+        arch = self.td / f"AISC-{CLI_VERSION}-{_PLAT_TAG}-{ARCH_TAG}.zip"
         arch.write_bytes(data)
         f = BundleFetcher()  # no transport needed for the offline path
         with self.assertRaises(BundleFetchError) as cm:
