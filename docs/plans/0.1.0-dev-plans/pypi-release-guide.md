@@ -180,7 +180,7 @@ fetch 流程:按当前 `__version__` 在 GitHub Releases(`wangyuncepu/AISC`)找 
 - **attestations:显式写 `true`**(PEP 740,默认开启但显式固化意图,防未来被"顺手"关掉);SBOM(`aisc-sbom.json`)同时附到对应 GitHub Release 资产。
 
 #### 3.4.2 版本/tag 收敛(下次发布起)
-- 历史 dash tag(`v2.1.11-dev` 等)**不迁移不改写**;下次发布收敛为 final:发布提交 VERSION 改 `2.1.11`(去 .dev0)、新增 `docs/releases/v2.1.11.md`、打 annotated tag `v2.1.11`(与历史 dash tag 并存无冲突;`artifact.yml:358,360` 的 prerelease 判断已兼容两种格式)。此后新 tag 一律 `v + VERSION 原文`;发布后紧跟一提交 bump 到 `2.1.12.dev0`。
+- 历史 dash tag(`v2.1.11-dev` 等)**不迁移不改写**;下次发布收敛为 final:发布提交 VERSION 改 `2.1.11`(去 .dev0)、新增 `docs/releases/v2.1.11.md`、打 annotated tag `v2.1.11`(与历史 dash tag 并存无冲突;`artifact.yml:358,360` 的 prerelease 判断已兼容两种格式)。此后新 tag 一律 `v + VERSION 原文`;发布后紧跟一提交 bump 到 `0.1.0.dev0`。
 - **两道 guard**:
   - publish 与 release job 前加 step:`[ "v$(cat VERSION)" = "$tag" ]` 否则 exit 1(publish 侧校验 dispatch input;artifact.yml 侧在 release job 内用 `github.ref_name` 比对)——同时天然挡掉 dev 误发;
   - 新增版本一致性检查(归入 `tests/packaging/` 或 `scripts/check-version-sync.py`):VERSION == tauri.conf.json version 的 PEP 440 归一化形式 == `docs/releases/v<VERSION>.md` 存在 == git tag(若在 tag 上)。**注意与 `test_release_notes.py:20-27` 已覆盖的 notes 存在性去重,聚焦 tauri.conf 与 tag**;该测试落地当天会红(README v2.1.7-dev 与 tauri 2.1.11-dev 归一化后都不等于 VERSION),必须与修两处字面量同一 PR。
@@ -254,7 +254,7 @@ fetch 流程:按当前 `__version__` 在 GitHub Releases(`wangyuncepu/AISC`)找 
 | manifest 运行时零消费 | CLI/bundle 版本静默漂移;ADR-001 声称的校验从未实现 | 3.3.2 新写校验(精确匹配首版) |
 | PATH 同名冲突 | Linux 三方争 `~/.local/bin/aisc`;macOS PKG 的 `/usr/local/bin/aisc` 遮蔽 pipx 新版(升级后仍跑旧版,无提示);install.sh 升级误删 pipx shim | doctor channel 检查 + version 加 channel 行 + install.sh/uninstall.sh 归属判定修补 |
 | AISC_ROOT 指错目录 | 便携包解压根目录顶层无 VERSION(markers 不满足)——文档必须写明 AISC_ROOT 指向解压出的 **`aisc-bundle/` 子目录**或 repo 根 | 降级文档明确(3.5.1) |
-| 四渠道版本漂移 | pip 版与 GitHub Release 产物不同 commit → "pip 装的 2.1.12 配 2.1.11 的 bundle" | 渠道治理政策(§7)+ 同 tag 一次产出全部产物 + manifest 校验兜底 |
+| 四渠道版本漂移 | pip 版与 GitHub Release 产物不同 commit → "pip 装的 0.1.0 配 2.1.11 的 bundle" | 渠道治理政策(§7)+ 同 tag 一次产出全部产物 + manifest 校验兜底 |
 
 ### 4.3 Medium
 
@@ -321,7 +321,7 @@ fetch 流程:按当前 `__version__` 在 GitHub Releases(`wangyuncepu/AISC`)找 
 1. **坏包但可升级**:立即发 `X.Y.Z+1` hotfix(tag 打在 main 含 cherry-pick 修复),旧版 **yank**。
 2. **yank 的边界**:已装用户不受影响;精确 pin 版本的用户 `pip install aisc-cli==X.Y.Z` **仍可装回 yanked 版**——yank 不是撤回。
 3. **版本烧录**:版本号一经上传任何 index 即永久占用,同名文件永不可重传(即使 yank 或删项目后);修复重发必须换版本号。
-4. **dev 迭代**:TestPyPI 同样文件名不可变——每次迭代 bump `.devN`(2.1.12.dev0 → dev1),不依赖删项目。
+4. **dev 迭代**:TestPyPI 同样文件名不可变——每次迭代 bump `.devN`(0.1.0.dev0 → dev1),不依赖删项目。
 5. **半发布状态**(tag 已推、PyPI 步骤失败,出现"GitHub Release 已出、PyPI 无包"):修 workflow 后 **re-run**,不重打 tag、不改版本号。
 6. **PyPI 页面描述错误**:项目页 long_description 只在上传时刷新,发版后发现 README 错误只能随下一版修正。
 7. **bundle 资产缺失**(GitHub Release 有、fetch 找不到):确认资产名版本段(dot 格式)与 CLI `__version__` 一致;fetch 的 `--version`/`--from-file` 逃生门兜底。

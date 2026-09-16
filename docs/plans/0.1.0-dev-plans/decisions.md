@@ -1,10 +1,10 @@
-# 2.1.12 决策记录
+# 0.1.0 决策记录
 
 > 状态标记：【已裁决】=2026-09-16 开池审问用户拍板，不可再议；【拟裁】=计划内推荐，随对应批次开工请用户确认；【待裁决】=开放问题，不阻塞开池。
 
-## D-1 · 版本时序：2.1.12 一版收敛 + 开池即 dev0【已裁决，R2】
+## D-1 · 版本时序：0.1.0 一版收敛 + 开池即 dev0【已裁决，R2】
 
-- **裁决**：2.1.11 final 跳过不发（v2.1.11-dev Preview 即其最终产物）；周期末出 2.1.12 final（dot tag `v2.1.12`）+ PyPI 首发同 tag；开池即四件套 bump `2.1.12.dev0`，TestPyPI dev 迭代从 dev0 起逐次 +1。final 发布执行链细化（tag 后 dispatch artifact.yml 出全量资产 Release、NSIS 补附、再 dispatch pypi-publish）见 A9；dev 迭代的 tag 前置链见 D-26——均为裁决的落地路径，不改变裁决本身。
+- **裁决**：2.1.11 final 跳过不发（v2.1.11-dev Preview 即其最终产物）；周期末出 0.1.0 final（dot tag `v0.1.0`）+ PyPI 首发同 tag；开池即四件套 bump `0.1.0.dev0`，TestPyPI dev 迭代从 dev0 起逐次 +1。final 发布执行链细化（tag 后 dispatch artifact.yml 出全量资产 Release、NSIS 补附、再 dispatch pypi-publish）见 A9；dev 迭代的 tag 前置链见 D-26——均为裁决的落地路径，不改变裁决本身。
 - **证据**：仓库根 VERSION=2.1.11.dev0；docs/devlog.md:138-146（四件套封版先例）；docs/archive/2.1.11-dev-plans/README.md:4（上周期「开发期保持 2.1.10.dev0」惯例）；pypi-release-guide.md:179（同目录）（TestPyPI 同 dev 版二次上传被拒，须逐次 bump .devN）；git tag 列表（v2.1.4 后全 dash 格式 -dev prerelease）。
 - **理由**：final-only PyPI 门（指南 3.4.1）使 2.1.11 final 无用户价值，跳过省一次裁切；dev 元数据是 TestPyPI 迭代硬前置，惯例让位于工程需要。
 - **回滚/边界**：周期中应急发版以当时 VERSION 出 dot tag 即可，不破坏本裁决；四件套不同步会被 A6 版本一致性检查（指南 3.4.2）挡下。
@@ -20,13 +20,18 @@
 - **证据**：src/aisc/application/resources.py:115-204（site-packages 安装按设计返回 None，今天发布即坏包）。
 - **回滚/边界**：fetch fail-closed + 三条手动逃生路（--from-file / 手动 URL / --aisc-root），降级模式文档化（指南 3.3.3/3.3.4）。fetch 的数据源 = Release 上的 `AISC-<ver>-<plat>-<arch>` 资产——这使「Release 必须先有全量档案资产」成为 A9 收口的硬前置（见 A9/D-25）。
 
-## D-4 · semver 承诺【拟裁，R3 范围内；指南 D-3——随 A1 开工请用户确认】
-维持 2.x + 显式契约页：CLI flag 与 JSON envelope 按 semver 兼容、破坏升 major；`compatible_cli_versions` 首版精确匹配。不改 0.x（四渠道存量代价大于收益）。详见指南 §2 D-3。
+## D-4 · 版本号策略：改 0.x，起始 0.1.0【已裁决，2026-09-16 A1 开工审问——推翻指南 D-3 推荐】
+
+- **裁决**：放弃 2.x，改用 **0.x 表达 Alpha**（semver 下 0.x 即「一切可变，minor 也可能破坏」，无需额外承诺页）；起始号 **`0.1.0`**（全新起号，不取 0.2.12 对应式）。落地：本周期四件套已切 `0.1.0.dev0`，TestPyPI 迭代 `0.1.0.devN`，final tag `v0.1.0`，周期/计划目录更名 `0.1.0-dev-plans`（历史分支名保留不改）。
+- **裁决理由**（用户）：0.x 是比「2.x + 契约页」更强的 Alpha 信号——公开 PyPI 首发期不该向用户暗示稳定。
+- **与指南的出入**：pypi-release-guide.md §2 D-3 推荐「维持 2.x + 契约页」，其论据（四渠道存量用户跨 major 代价）经验证不成立于 pip 渠道（aisc-cli 全新分发名，无 pip 存量）；NSIS/便携为覆盖安装不比版本号；tauri.conf 版本随四件套同动无兼容负担。指南原文不改（分析快照），以本条为准。
+- **连带**：`compatible_cli_versions` 首版精确匹配维持（指南 D-3 中与版本号无关的部分仍有效）；A8 的「semver 承诺页」改为「0.x Alpha 声明 + 升 1.x 的门槛说明」。
+
 
 ## D-5 · PyPI 长描述【拟裁，R3 范围内；指南 D-4——随 A8 文档批请用户确认】
 readme 面向 PyPI 去掉「推荐服务」返佣小节（README.md:330-363）；相对链接 :10/:328 改绝对 URL；description 语言一致性首发时确认。详见指南 §2 D-4。
 
-## D-6 · sdist 不含 tests【拟裁，R3 范围内；指南 D-5——随 A1 开工请用户确认】
+## D-6 · sdist 不含 tests【已裁决，2026-09-16 A1 开工确认；指南 D-5】
 v1 维持最小 sdist；下游验证走 GitHub Release SBOM 与源码 tag；若将来要含，配 MANIFEST.in 并记新 ADR。
 
 ## D-7 · `aisc update` = sidecar 热换编排【已裁决，R4】
@@ -86,13 +91,13 @@ P0 = A 链全部 + B 链全部（cli update+自更新、pip 首发链、Docker �
 
 ## D-16 · 工作树存量处置与 todo [x] 回填【拟裁，P0 执行】
 
-- **裁决（推荐）**：约 10 个未提交文件分四批提交（docs / scripts+gitignore / workbench UI / tests），每批过对应 local-gates 门；仓库根游离 containers.json（空 registry）判定为运行时 CWD 泄漏——删除并加入 .gitignore；todo.md 四条 [x] 翻改逐条核对：已交付者（doctor aisc-root 限定、picker 窄窗、热切换显示层——均在 2.1.11 P2/P3 轮内交付）保留 [x] 并补交付指针；「远程 CLI 版本配对与更新」实际只交付协议硬门+banner 记录（src/aisc/cli/commands/serve.py:48-53；serve.rs:12-13「cli_version recorded for display, serve_protocol is the hard gate」），主动提示/自动同步未交付——回退 [ ] 并注「由 V2.1.12-target A 链承接」。
-- **证据**：git status（约 10 文件）；git diff docs/todo.md:163-183（四条 [x] 翻转与 V2.1.12-target 段均为未提交新增）；v2.1.11-dev tag 后 develop 仅 4 个 docs 提交。
+- **裁决（推荐）**：约 10 个未提交文件分四批提交（docs / scripts+gitignore / workbench UI / tests），每批过对应 local-gates 门；仓库根游离 containers.json（空 registry）判定为运行时 CWD 泄漏——删除并加入 .gitignore；todo.md 四条 [x] 翻改逐条核对：已交付者（doctor aisc-root 限定、picker 窄窗、热切换显示层——均在 2.1.11 P2/P3 轮内交付）保留 [x] 并补交付指针；「远程 CLI 版本配对与更新」实际只交付协议硬门+banner 记录（src/aisc/cli/commands/serve.py:48-53；serve.rs:12-13「cli_version recorded for display, serve_protocol is the hard gate」），主动提示/自动同步未交付——回退 [ ] 并注「由 V0.1.0-target A 链承接」。
+- **证据**：git status（约 10 文件）；git diff docs/todo.md:163-183（四条 [x] 翻转与 V0.1.0-target 段均为未提交新增）；v2.1.11-dev tag 后 develop 仅 4 个 docs 提交。
 - **回滚**：纯 git/docs 操作，分批可逐一 revert。
 
 ## D-17 · 更新通道策略：final-only【拟裁】
 
-检查更新默认只跟 final（dot tag Release）；无 final 可更时报「已是最新」；prerelease 通道开关（--pre）留 v2；TestPyPI 只服务 dev 迭代不进检查入口。证据：git tag（v2.1.4 后无 final）+ 指南 4.2（无 final 时裸 pip 装上 prerelease 的风险）。理由：R2 后 2.1.12 final 即存在，final-only 上线即有物可更。
+检查更新默认只跟 final（dot tag Release）；无 final 可更时报「已是最新」；prerelease 通道开关（--pre）留 v2；TestPyPI 只服务 dev 迭代不进检查入口。证据：git tag（v2.1.4 后无 final）+ 指南 4.2（无 final 时裸 pip 装上 prerelease 的风险）。理由：R2 后 0.1.0 final 即存在，final-only 上线即有物可更。
 
 ## D-18 · `aisc update` 渠道边界与远程拆批【拟裁】
 
@@ -100,15 +105,15 @@ P0 = A 链全部 + B 链全部（cli update+自更新、pip 首发链、Docker �
 
 ## D-19 · 发版分支流与 main 同步【拟裁】
 
-v2.1.12 final tag 打 develop 封版提交（沿 2026-08 以来惯例）；A6 落地 pypi-publish.yml 时做一次 develop→main 同步合并（pending publisher 要求 workflow 先存在于默认分支，指南 5 阶段 0）；DEVELOP_WIKI §11.1/§11.2/§1 的过期描述随 A8 改写：认可 develop-tag 惯例 + 补 PyPI 步骤 + 六 workflow 清单。证据：git log -1 main = 81f1940（2026-08-06 起冻结）；git branch --contains（v2.1.5-dev 后 dev tag 全仅在 develop）；DEVELOP_WIKI.md:715-742 vs 实际。回滚：main 同步是快进性质合并，可重做。devN tag（D-26）同打 develop 提交，不改变本裁决。
+v0.1.0 final tag 打 develop 封版提交（沿 2026-08 以来惯例）；A6 落地 pypi-publish.yml 时做一次 develop→main 同步合并（pending publisher 要求 workflow 先存在于默认分支，指南 5 阶段 0）；DEVELOP_WIKI §11.1/§11.2/§1 的过期描述随 A8 改写：认可 develop-tag 惯例 + 补 PyPI 步骤 + 六 workflow 清单。证据：git log -1 main = 81f1940（2026-08-06 起冻结）；git branch --contains（v2.1.5-dev 后 dev tag 全仅在 develop）；DEVELOP_WIKI.md:715-742 vs 实际。回滚：main 同步是快进性质合并，可重做。devN tag（D-26）同打 develop 提交，不改变本裁决。
 
 ## D-20 · 收口卫生三件【拟裁，P0/A8 执行】
 
-①docs/archive/2.1.11-dev-plans/README.md:11,14 两行陈旧「待做」（P2 UI 批/收口）回填为已交付——证据 docs/devlog.md:109-117（P2-1..5 交付）与 :138-146（封版）；②docs/plans/README.md:10-12「Current active plan」改指 2.1.12-dev-plans（现仍指已搬走的 2.1.10）；③DEVELOP_WIKI §11 发版流程描述校正归 A8（指南 3.5.3）。另：devlog 补记 v2.1.11-dev tag/Release 发布条目（2.1.9 有专门发布条目先例 devlog:2349-2359，2.1.11 封版条目漏记 tag/Release）。
+①docs/archive/2.1.11-dev-plans/README.md:11,14 两行陈旧「待做」（P2 UI 批/收口）回填为已交付——证据 docs/devlog.md:109-117（P2-1..5 交付）与 :138-146（封版）；②docs/plans/README.md:10-12「Current active plan」改指 0.1.0-dev-plans（现仍指已搬走的 2.1.10）；③DEVELOP_WIKI §11 发版流程描述校正归 A8（指南 3.5.3）。另：devlog 补记 v2.1.11-dev tag/Release 发布条目（2.1.9 有专门发布条目先例 devlog:2349-2359，2.1.11 封版条目漏记 tag/Release）。
 
 ## D-21 · todo:72 旧项关闭【拟裁】
 
-「aisc cli 的更新命令优化」（20260806 段，docs/todo.md:72）无任何 devlog 实施记录、语义不可考，由 V2.1.12 cli update 取代——勾掉并注「由 V2.1.12-target 吸收」。
+「aisc cli 的更新命令优化」（20260806 段，docs/todo.md:72）无任何 devlog 实施记录、语义不可考，由 V0.1.0 cli update 取代——勾掉并注「由 V0.1.0-target 吸收」。
 
 ## D-22 · 检查更新执行者与节流【待裁决】
 
@@ -124,14 +129,14 @@ cc-switch 内置 8 个赞助商模板自带返佣注册链接与 promo code（�
 
 ## D-25 · 中段 dev 预览 Release【拟裁（随 D-26 于 A6 开工前拍板）】
 
-- **裁决（推荐）**：做，且机制不再是「额外打一次 tag」而是**复用 A6 迭代已存在的 `v2.1.12.devN` tag，dispatch artifact.yml 选该 tag ref**——aggregate/release job 仅在 tag ref 运行（artifact.yml:261,341），release job 自动建 prerelease Release 并附全量资产（`AISC-<devN>-<plat>-<arch>` 档案 + 各 .sha256 + SHA256SUMS + setup/pkg），body 取 `docs/releases/v2.1.12.devN.md`（devN 四件套 bump 已保证该文件存在，artifact.yml:359）。时点：A7 端到端真实验证需要时（或 A6 首轮全链验证时）执行一次；`--from-file` 离线注入保留为无 Release 时的冒烟路径。
+- **裁决（推荐）**：做，且机制不再是「额外打一次 tag」而是**复用 A6 迭代已存在的 `v0.1.0.devN` tag，dispatch artifact.yml 选该 tag ref**——aggregate/release job 仅在 tag ref 运行（artifact.yml:261,341），release job 自动建 prerelease Release 并附全量资产（`AISC-<devN>-<plat>-<arch>` 档案 + 各 .sha256 + SHA256SUMS + setup/pkg），body 取 `docs/releases/v0.1.0.devN.md`（devN 四件套 bump 已保证该文件存在，artifact.yml:359）。时点：A7 端到端真实验证需要时（或 A6 首轮全链验证时）执行一次；`--from-file` 离线注入保留为无 Release 时的冒烟路径。
 - **理由**：D-26 使 devN tag 成为 TestPyPI 迭代例行副产物，预览 Release 只多一次 dispatch；update/fetch 的端到端真链路必须命中真实 Release 资产（指南 3.3.3：按精确版本匹配资产，dev 无资产即 fail-closed），构造假 Release 覆盖不了资产名/digest/Release 元数据面。
 - **边界**：dev 预览 Release 是 prerelease，不进 D-17 final-only 检查入口；dispatch artifact.yml 有三平台 CI 成本，按需一次而非每个 devN 都跑。
 
 ## D-26 · TestPyPI dev 迭代的 tag 前置链【拟裁（A6 开工前拍板）】
 
 - **问题**：指南 3.4.1 的 pypi-publish.yml 为 workflow_dispatch-only、输入是**已存在的 v\* tag**、job checkout 该 ref 构建，guard 要求 `v$(cat VERSION)`==tag（指南 3.4.2）——因此 TestPyPI 每次上传都必须先有指向「VERSION 已 bump 提交」的 dot tag。P0 的四件套 bump 只是必要条件之一，tag 才是 dispatch 的直接输入；无此安排，A6 按原排程会在 dispatch 第一步卡住（无 tag 可选）。
-- **裁决（推荐，方案 a）**：每次 TestPyPI 迭代 = 四件套 bump `2.1.12.devN`（①VERSION ②tauri.conf.json `2.1.12-devN`——dash 语义保留，PEP 440 归一化后与 `2.1.12.devN` 相等，check-version-sync 兜底 ③envelope-version.json 三字段 ④`docs/releases/v2.1.12.devN.md` 占位——test_release_notes.py:20-27 既有门）→ 提交 → 推送 dot tag `v2.1.12.devN`（打在当时 develop HEAD）→ dispatch pypi-publish 选该 tag（dev 版被 publish-pypi 的 final regex 门挡住，只走 testpyi 段）。首个 dev0 直接复用 P0 bump，tag 随 A6 首次上传推送。D-25 的中段预览 Release 由此成为 A6 迭代的自然副产物。
+- **裁决（推荐，方案 a）**：每次 TestPyPI 迭代 = 四件套 bump `0.1.0.devN`（①VERSION ②tauri.conf.json `0.1.0-devN`——dash 语义保留，PEP 440 归一化后与 `0.1.0.devN` 相等，check-version-sync 兜底 ③envelope-version.json 三字段 ④`docs/releases/v0.1.0.devN.md` 占位——test_release_notes.py:20-27 既有门）→ 提交 → 推送 dot tag `v0.1.0.devN`（打在当时 develop HEAD）→ dispatch pypi-publish 选该 tag（dev 版被 publish-pypi 的 final regex 门挡住，只走 testpyi 段）。首个 dev0 直接复用 P0 bump，tag 随 A6 首次上传推送。D-25 的中段预览 Release 由此成为 A6 迭代的自然副产物。
 - **备选（方案 b，不推荐）**：修订 workflow 设计——testpypi 段允许 dispatch 于 develop ref、guard 只查该 ref 的 VERSION 合法性，正式 PyPI 段维持 tag-input，并同步回写指南 3.4.1。代价：刚定稿的流水线设计二次改动 + develop 直发削弱「tag 即发布单元」的 provenance；除非用户嫌 devN tag 噪音，否则不取。
 - **边界**：devN tag 推送不触发任何 workflow（artifact.yml dispatch-only；nsis-installer.yml 的 push 触发 branches 限 develop/main，tests.yml 同理），tag 本身零副作用；devN bump 与 A 链开发提交交错时四件套必须同步（不同步会被 check-version-sync 与 test_release_notes 拦）。
 

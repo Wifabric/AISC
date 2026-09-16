@@ -69,7 +69,7 @@
 - [x] 临时模式下，cc-switch不可用
 - [ ] aisc run命令解耦，引导混乱，用户感到费解
 - [ ] agent加上Pi/opencode
-- [x] aisc cli的更新命令优化（2026-09-16 关闭：无实施记录、语义不可考，由 V2.1.12-target cli update 吸收，D-21）
+- [x] aisc cli的更新命令优化（2026-09-16 关闭：无实施记录、语义不可考，由 V0.1.0-target cli update 吸收，D-21）
 - [x] 预配置的deepseek配置项错误，修复
 - [x] 预配置的codesome配置项错误，修复
 - [x] runtime内，cc-switch显示异常（表现为终端显示不及时，能正常使用TUI，但是选择的位置不到对应区域时，对应区域显示的是乱七八糟的TUI结构，应该是旧的。且在windows下，TUI不会随窗口变化自适应）
@@ -162,18 +162,18 @@
 
 # v2.1.11-target（已收口，余项转下周期）
 - fix（本周期已交付：P1 key 显隐/spool 空白/生命周期治理导出/recent 守门、S2 传输统一、Shell W1-W3+P2-1..5、P3 模型热切换 r1-r10）
-  - [ ] 远程机器 CLI 版本配对与更新：协议硬门+banner 记录已交付（SERVE_PROTOCOL=3）；「远程 CLI 需更新」主动提示 UI 与自动同步未交付，由 V2.1.12 A 链承接（2026-09-16 D-16 核对回退）
+  - [ ] 远程机器 CLI 版本配对与更新：协议硬门+banner 记录已交付（SERVE_PROTOCOL=3）；「远程 CLI 需更新」主动提示 UI 与自动同步未交付，由 V0.1.0 A 链承接（2026-09-16 D-16 核对回退）
   - [x] doctor 的 aisc-root 检查在生产容器恒警告（无 repo 根）——repo 根检查宜限定 dev 检出场景，远程/容器工作区不该出现「not found」级联（2026-09-11 远程诊断截图裁决入库）
   - [x] picker 界面窄窗持续挤压时整 UI 随 effectiveScale 同步缩小（App.vue `Math.min(scale, 1.5, w/800, h/600)` 把 <800px 拉进 zoom）——无害但不美观；下阶段让 picker 场景脱离 width-clamp 或改响应式布局（2026-09-11 P2-2 手测反馈，用户裁决下阶段处理）
   - [ ] “Slurm 工作负载管理器”和“PBS作业管理”工作流针对性优化（阻塞：等用户提供实际工作流，2026-09-12 顺延裁决）
   - [x] 热切换显示层边界：CLI 界面模型名仍停在启动值（两 CLI 显示层死结，功能已随切换实时变化；工作台侧以「实际模型」toast/卡片补真值）
 
 
-# V2.1.12-target（2026-09-16 开池，裁决 R1-R8 见 docs/plans/2.1.12-dev-plans/）
+# V0.1.0-target（2026-09-16 开池，裁决 R1-R8 见 docs/plans/0.1.0-dev-plans/）
 - new features
   - [x] docker管理的简易映射（R1 裁决 = Docker 资源管理简化 UI：maintenance scan/cleanup/rebuild 产品化入设置页 Docker 资源组，扫描前置门+悬浮提示；手测 PASS 2026-09-16）
   - [ ] cli update; workbench 热更新（R4：aisc update 热换 sidecar + Workbench 标准自更新）
-  - [ ] cli作为pip包发布准备（R3：周期内完整首发 aisc-cli，蓝本 = docs/plans/2.1.12-dev-plans/pypi-release-guide.md）
+  - [ ] cli作为pip包发布准备（R3：周期内完整首发 aisc-cli，蓝本 = docs/plans/0.1.0-dev-plans/pypi-release-guide.md）
 - fix
   - [ ] provider行为优化（R6：先调研 cc-switch --template 路径后裁实施）
     - [ ] 不再提供预配置，但是提供添加模板
