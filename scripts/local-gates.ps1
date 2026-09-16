@@ -37,11 +37,16 @@ Step "python full tests" {
     $shortTmp = 'C:\pt'
     try {
         New-Item -ItemType Directory -Force -Path $shortTmp | Out-Null
+        # pytest basetemp 目录逐次递增（pytest-1、pytest-2…），位数变长后
+        # 最深的 conversation 夹具恰好越过 MAX_PATH 260（2026-09-16 实测
+        # pytest-10 起红）。清掉旧目录让每次都从 pytest-0 起，路径恒定。
+        Get-ChildItem -Path $shortTmp -Directory -Filter 'pytest-*' -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         $env:TMP = $shortTmp; $env:TEMP = $shortTmp
     } catch {
         Write-Warning "无法创建短临时目录 $shortTmp，沿用默认 TEMP（长路径用例将失败）"
     }
-    python -m pytest tests/ -q --ignore=tests/integration
+    python -m pytest tests/ -q --ignore=tests/integration --basetemp="$shortTmp\pytest"
 }
 
 Step "cargo test --lib" {
