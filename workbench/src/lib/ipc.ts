@@ -650,3 +650,31 @@ export const workspaceWatchStop = () => invoke<void>("workspace_watch_stop");
 
 export const workspaceRescan = (workspace: string) =>
   invoke<void>("workspace_rescan", { workspace });
+
+// --- A7 (0.1.0, D-8 自研): Workbench self-update ---
+
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  setupUrl: string | null;
+  sha256Url: string | null;
+  releaseUrl: string | null;
+  note: string;
+}
+
+export interface UpdateDownloadResult {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export const appCheckUpdate = () => invoke<UpdateInfo>("app_check_update");
+
+/** Progress events ride the `update://progress` Tauri event. */
+export const appDownloadUpdate = (setupUrl: string, sha256Url: string) =>
+  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url });
+
+/** Runs the staged installer SILENT and exits the app (UI confirms first). */
+export const appInstallUpdate = (setupPath: string) =>
+  invoke<void>("app_install_update", { setupPath });

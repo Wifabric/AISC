@@ -31,6 +31,7 @@ pub mod low_spec;
 pub mod serve;
 pub mod target;
 pub mod tunnel;
+pub mod update;
 pub mod artifact;
 pub mod storage;
 pub mod trace;
@@ -96,6 +97,7 @@ use session::{
 };
 use cache::{cache_cleanup, cache_usage};
 use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
+use update::{app_check_update, app_download_update, app_install_update};
 use settings::{load_settings, reset_gui_settings, save_settings};
 use tray::{build_tray, tray_available, tray_remove};
 use window::{capture_window_geometry, restore_window_geometry};
@@ -145,6 +147,9 @@ pub fn run(cli_arg: Option<String>) {
             docker_scan,
             docker_cleanup,
             docker_rebuild,
+            app_check_update,
+            app_download_update,
+            app_install_update,
             cache_cleanup,
             close_session,
             ack_session_exit,

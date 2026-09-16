@@ -13,11 +13,13 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings";
+import { useUpdateStore } from "../../stores/update";
 import { buildSearchMatcher } from "../../lib/search";
 import type { TerminalSettings, UiSettings, WindowSettings } from "../../types";
 
 const { t } = useI18n();
 const store = useSettingsStore();
+const update = useUpdateStore();
 const emit = defineEmits<{ close: [] }>();
 
 type EffectKind = "immediate" | "rebuild" | "restart";
@@ -85,7 +87,7 @@ const EFFECT_KEY: Record<EffectKind, string> = {
 // workspace, UI dead until restart). The Record<Group,...> typing below
 // makes a future missing entry a COMPILE error, and the heading falls back
 // to the raw group id instead of undefined.
-const GROUPS = ["ui", "terminal", "window", "hostTools", "machines", "performance", "disk"] as const;
+const GROUPS = ["ui", "terminal", "window", "hostTools", "machines", "performance", "disk", "about"] as const;
 type SettingsGroup = (typeof GROUPS)[number];
 const GROUP_KEY: Record<SettingsGroup, string> = {
   ui: "settings.group.ui",
@@ -95,6 +97,7 @@ const GROUP_KEY: Record<SettingsGroup, string> = {
   machines: "settings.group.machines",
   performance: "settings.group.performance",
   disk: "settings.group.disk",
+  about: "settings.group.about",
 };
 
 // --- P2-5 (手测裁决: VS Code 式左导航右内容 + 搜索) ---
@@ -309,6 +312,14 @@ async function onDockerRebuild() {
   const ok = await confirm(t("settings.docker.rebuildConfirm"));
   if (!ok) return;
   await store.runDockerRebuild();
+}
+
+/** A7: destructive-ish (app exits) — confirm before the silent install. */
+async function onInstallUpdate() {
+  const { confirm } = await import("@tauri-apps/plugin-dialog");
+  const ok = await confirm(t("settings.about.installConfirm"));
+  if (!ok) return;
+  await update.install();
 }
 
 async function onReset() {
@@ -598,6 +609,46 @@ async function reopenOnboarding() {
           <p v-if="store.dockerError" class="err-text">{{ store.dockerError }}</p>
           <p v-for="(line, i) in store.dockerLog" :key="i" class="note">{{ line }}</p>
           <p class="note">{{ t("settings.docker.rebuildNote") }}</p>
+        </template>
+
+        <!-- A7 (0.1.0, D-8 自研): about + self-update. -->
+        <template v-else-if="group === 'about'">
+          <p class="help">{{ t("settings.about.hint") }}</p>
+          <div class="field disk-row">
+            <span class="label">{{ t("settings.about.current") }}</span>
+            <span class="val">{{ update.info?.current ?? t("settings.about.unknown") }}</span>
+          </div>
+          <p v-if="update.error" class="err-text">{{ update.error }}</p>
+          <template v-if="update.info">
+            <div v-if="update.info.latest" class="field disk-row">
+              <span class="label">{{ t("settings.about.latest") }}</span>
+              <span class="val">{{ update.info.latest }}</span>
+            </div>
+            <p v-if="update.info.note" class="note">{{ update.info.note }}</p>
+            <p v-if="update.status === 'none'" class="note">{{ t("settings.about.upToDate") }}</p>
+            <template v-if="update.status === 'available' || update.status === 'downloading'">
+              <div class="field">
+                <button class="primary" :disabled="update.status === 'downloading'" @click="update.download()">
+                  {{ update.status === "downloading" ? t("settings.about.downloading") : t("settings.about.download") }}
+                </button>
+              </div>
+              <div v-if="update.status === 'downloading'" class="bar note">
+                {{ update.downloaded }} / {{ update.total || "?" }} bytes
+              </div>
+            </template>
+            <template v-if="update.status === 'ready'">
+              <p class="note">{{ t("settings.about.ready", { sha: update.staged?.sha256.slice(0, 16) ?? "" }) }}</p>
+              <div class="field">
+                <button class="danger" @click="onInstallUpdate">{{ t("settings.about.install") }}</button>
+              </div>
+            </template>
+          </template>
+          <div v-else class="field">
+            <button class="primary" :disabled="update.status === 'checking'" @click="update.check()">
+              {{ update.status === "checking" ? t("settings.about.checking") : t("settings.about.check") }}
+            </button>
+          </div>
+          <p class="note">{{ t("settings.about.sidecarNote") }}</p>
         </template>
       </template>
       </div>

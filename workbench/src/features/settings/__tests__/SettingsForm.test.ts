@@ -67,8 +67,8 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
 
-    // The nav lists all seven sections; the pane renders only the active
-    // one (VS Code-style left nav + right content — 手测裁决 2026-09-12).
+    // The nav lists all eight sections (A7 added 关于与更新); the pane
+    // renders only the active one (VS Code-style — 手测裁决 2026-09-12).
     const nav = wrapper.findAll(".nav-item").map((b) => b.text());
     expect(nav).toEqual([
       i18n.global.t("settings.group.ui"),
@@ -78,6 +78,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.machines"),
       i18n.global.t("settings.group.performance"),
       i18n.global.t("settings.group.disk"),
+      i18n.global.t("settings.group.about"),
     ]);
     expect(wrapper.findAll("h3.group").map((h) => h.text())).toEqual([
       i18n.global.t("settings.group.ui"),

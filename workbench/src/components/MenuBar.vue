@@ -22,6 +22,7 @@ import { useWorkspacesStore } from "../stores/workspaces";
 import { useSettingsStore } from "../stores/settings";
 import { useTeleportedZoom } from "../lib/useTeleportedZoom";
 import { useDoctorStore } from "../stores/doctor";
+import { useUpdateStore } from "../stores/update";
 import { openWorkspaceWindow } from "../lib/workspaceWindow";
 
 const { t } = useI18n();
@@ -172,6 +173,16 @@ async function openDocs(): Promise<void> {
   closeMenu();
   window.open("https://github.com/wangyuncepu/AISC#readme", "_blank", "noopener");
 }
+/** A7 (D-8 自研): menu-level quick check; the full flow lives in settings
+ * (关于与更新). A found update routes the user there. */
+async function checkForUpdates(): Promise<void> {
+  closeMenu();
+  const update = useUpdateStore();
+  const info = await update.check();
+  if (info?.updateAvailable) {
+    ws.openSettingsTab();
+  }
+}
 </script>
 
 <template>
@@ -302,6 +313,9 @@ async function openDocs(): Promise<void> {
           </li>
         </template>
         <template v-else>
+          <li role="menuitem" tabindex="0" @click="checkForUpdates">
+            {{ t("menubar.checkUpdate") }}
+          </li>
           <li role="menuitem" tabindex="0" @click="openAbout">
             {{ t("menubar.about") }}
           </li>
