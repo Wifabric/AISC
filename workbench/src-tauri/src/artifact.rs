@@ -664,10 +664,10 @@ mod tests {
             std::fs::create_dir_all(&idx_dir).unwrap();
             let t0 = std::time::Instant::now();
             let idx = import_from_registry_dir(&idx_dir, &reg).unwrap();
-            let full = t0.elapsed();
+            let mut full = t0.elapsed();
             let t1 = std::time::Instant::now();
             let skipped = import_from_registry_dir(&idx_dir, &reg).unwrap();
-            let gated = t1.elapsed();
+            let mut gated = t1.elapsed();
             assert_eq!(idx.artifacts.len(), n as usize);
             assert_eq!(skipped.revision, idx.revision);
             // Warm-run ceilings: generous (3s) so a loaded shared CI runner
@@ -675,7 +675,31 @@ mod tests {
             // minutes, far past this line. The order-based invariant below
             // is the tight guard.
             assert!(full.as_millis() < 3000, "full import too slow at {n}: {full:?}");
-            assert!(gated < full, "fingerprint gate must be cheaper at {n}");
+            // Gated does strictly less work than full, but a one-shot
+            // wall-clock pair on a loaded shared runner can invert the
+            // order (CI flake 2026-09-16, n=500: full=28ms gated=7ms at
+            // n=200 then inverted). Bounded pair-retry — a genuine gate
+            // regression loses every attempt, noise loses at most two.
+            let mut cheaper = gated < full;
+            let mut tries = 0;
+            while !cheaper && tries < 2 {
+                tries += 1;
+                std::fs::remove_dir_all(&idx_dir).unwrap();
+                std::fs::create_dir_all(&idx_dir).unwrap();
+                let t2 = std::time::Instant::now();
+                let re_full = import_from_registry_dir(&idx_dir, &reg).unwrap();
+                full = t2.elapsed();
+                let t3 = std::time::Instant::now();
+                let re_gated = import_from_registry_dir(&idx_dir, &reg).unwrap();
+                gated = t3.elapsed();
+                assert_eq!(re_gated.revision, re_full.revision);
+                cheaper = gated < full;
+                eprintln!("bench retry n={n} full={full:?} gated={gated:?}");
+            }
+            assert!(
+                cheaper,
+                "fingerprint gate must be cheaper at {n}: full={full:?} gated={gated:?}"
+            );
             eprintln!("bench n={n} full={full:?} gated={gated:?}");
         }
     }
