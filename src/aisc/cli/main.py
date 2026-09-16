@@ -524,6 +524,32 @@ def _build_parser() -> _AiscArgumentParser:
     mtcc.add_argument("--min-age-hours", type=int, default=24,
                       help="Only clear cache entries older than this (default 24)")
 
+    # --- bundle (0.1.0 A3, guide 3.3.3) ---
+    bp = sub.add_parser("bundle", help="Runtime bundle store (fetch from GitHub Releases)",
+                        allow_abbrev=False)
+    _add_global_args(bp, is_subparser=True)
+    bsub = bp.add_subparsers(dest="bundle_command", title="bundle commands",
+                             parser_class=_AiscArgumentParser)
+    bf = bsub.add_parser("fetch", help="Download+verify+install the bundle for a version",
+                         allow_abbrev=False)
+    _add_global_args(bf, is_subparser=True)
+    bf.add_argument("--version", default=None,
+                    help="Version to fetch (default: this CLI's version; exact match)")
+    bf.add_argument("--from-file", default=None,
+                    help="Offline path: install from a local release archive (requires --sha256)")
+    bf.add_argument("--sha256", default=None,
+                    help="Expected sha256 of --from-file (same strength as the online API digest)")
+    bf.add_argument("--allow-mismatch", action="store_true", default=False,
+                    help="Escape hatch: install even if the manifest gate rejects this CLI")
+    bl = bsub.add_parser("list", help="List installed bundles", allow_abbrev=False)
+    _add_global_args(bl, is_subparser=True)
+    brm = bsub.add_parser("remove", help="Remove an installed bundle (refuses the active one)",
+                          allow_abbrev=False)
+    _add_global_args(brm, is_subparser=True)
+    brm.add_argument("version", help="Bundle version to remove")
+    bpth = bsub.add_parser("path", help="Print the bundles directory", allow_abbrev=False)
+    _add_global_args(bpth, is_subparser=True)
+
     # --- runtime ---
     rtp = sub.add_parser("runtime", help="Runtime control plane (Workbench Phase 0)", allow_abbrev=False)
     _add_global_args(rtp, is_subparser=True)
@@ -1120,6 +1146,24 @@ def _cmd_build(
         raise CliError(message=str(exc), exit_code=1,
                        error_code="AISC_ERR_GENERAL") from exc
     if root is None:
+        # A3 (guide 3.3.4): the pip install form has no repo and no frozen
+        # bundle — its build needs `aisc bundle fetch` first. Keep the
+        # source/frozen wording intact (repo users still get their hint).
+        import aisc as _aisc_pkg
+
+        pip_form = (
+            not getattr(sys, "frozen", False)
+            and _aisc_pkg.__file__ is not None
+            and "site-packages" in str(Path(_aisc_pkg.__file__).resolve())
+        )
+        if pip_form:
+            raise CliError(
+                message="AISC root not found: a pip/pipx install ships no build "
+                        "resources. Run `aisc bundle fetch` to download this "
+                        "version's bundle, or point --aisc-root at an extracted "
+                        "bundle directory.",
+                exit_code=1, error_code="AISC_ERR_GENERAL",
+            )
         raise CliError(
             message="AISC root not found. Use --aisc-root to specify a path, "
                     "or run from within an AISC repository.",
@@ -1898,6 +1942,37 @@ def _cmd_maintenance(
     return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown maintenance subcommand: {sub}")]
 
 
+def _cmd_bundle(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc bundle`` subcommands. Supports --format json."""
+    from aisc.cli.commands.bundle import (
+        cmd_bundle_fetch,
+        cmd_bundle_list,
+        cmd_bundle_path,
+        cmd_bundle_remove,
+        print_bundle_text,
+    )
+
+    sub = args.bundle_command
+    if sub == "fetch":
+        data = cmd_bundle_fetch(version=args.version, from_file=args.from_file,
+                                sha256=args.sha256, allow_mismatch=args.allow_mismatch)
+    elif sub == "list":
+        data = cmd_bundle_list()
+    elif sub == "remove":
+        data = cmd_bundle_remove(args.version)
+    elif sub == "path":
+        data = cmd_bundle_path()
+    else:
+        return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown bundle subcommand: {sub}")]
+    if effective_format != "json":
+        print_bundle_text(sub, data)
+        return None, 0, []
+    return data, 0, []
+
+
 def _cmd_runtime(
     args: argparse.Namespace,
     effective_format: str,
@@ -2628,6 +2703,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_ps(args, effective_format)
         elif args.command == "maintenance":
             data, exit_code, errors = _cmd_maintenance(args, effective_format)
+        elif args.command == "bundle":
+            data, exit_code, errors = _cmd_bundle(args, effective_format)
         elif args.command == "runtime":
             data, exit_code, errors = _cmd_runtime(args, effective_format)
         elif args.command == "session":

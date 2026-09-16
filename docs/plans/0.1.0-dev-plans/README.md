@@ -9,7 +9,7 @@
 | 阶段 | 内容 | 状态 | 文档 |
 | --- | --- | --- | --- |
 | P0 开池前置 | 工作树存量分批提交 / 四件套 bump `0.1.0.dev0` / plans 目录建立与指向修正 / 2.1.11 收口卫生回填 | **门禁全绿，待并 develop（分支 2.1.12-p0-pool-open，6 提交）** | [p0-pool-open.md](p0-pool-open.md) |
-| A 链（P0） | **A1 ✅ / A2 VERSION 迁移 ✅（2026-09-16：14 触点 + 双形 marker 补指南盲点三处；pytest 1238 + packaging 207 + sdist 自包含 + CLI-A01 三腿 + sidecar 重建双版本字段实证）**；余 pip 批次三~五+ `aisc bundle fetch` 底座 + `aisc update`（sidecar 热换编排）+ 工具更新合一入口 + Workbench 自更新 + 0.1.0 final/PyPI 收口（Release 全量资产 + PyPI 首发） | 待做 | [a-pypi-and-update.md](a-pypi-and-update.md) |
+| A 链（P0） | **A1 ✅ / A2 ✅ / A3 bundle fetch 底座 ✅（2026-09-16：解析链六级 + manifest 运行时门禁 + fetch/list/remove/path + 降级文案；17 例 fake-transport 矩阵 + off-checkout 真轮全链实证 + pytest 1255）**；余 A4-A9+ `aisc bundle fetch` 底座 + `aisc update`（sidecar 热换编排）+ 工具更新合一入口 + Workbench 自更新 + 0.1.0 final/PyPI 收口（Release 全量资产 + PyPI 首发） | 待做 | [a-pypi-and-update.md](a-pypi-and-update.md) |
 | B 链（P0） | B0 主题切换残留 ✅ · B1 重建按钮 ✅ · B2 超时修正 ✅（均 2026-09-16）+ Docker 资源管理简化 UI（maintenance 产品化，待做） | B0-B2 已交付；B3 待做 | [b-docker-ui-and-rebuild.md](b-docker-ui-and-rebuild.md) |
 | C 链（P1 视余力） | provider 模板化调研（验证清单先行，结论后裁实施）+ codex computer use 调研（r0 形式 + 三路线对比 + 安全影响） | 待做 | [c-research.md](c-research.md) |
 | 收口 | devlog / 阶段表 / VERSION 四件套 final 冻结 / plans 归档 / v0.1.0 Release（三平台档案 + SHA256SUMS + NSIS + SBOM）+ PyPI 首发 | 待做 | — |

@@ -212,6 +212,7 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc usage overview` | 全局选项 | 跨工作区聚合用量 |
 | `aisc network subscription …` | `import/import-file/refresh/show/clear` | 代理订阅数据面（URL 与内容走 stdin） |
 | `aisc maintenance docker-scan/cleanup/rebuild` | `--context`, `--root`, `--tag` | Docker 资源归属扫描/清理/重建（卸载与升级同一服务） |
+| `aisc bundle fetch/list/remove/path` | `--version`, `--from-file`, `--sha256`, `--allow-mismatch` | pip 安装的构建资源管理：从 GitHub Releases 拉取同版本 bundle 到数据根（API digest 校验、fail-closed、离线 --from-file） |
 
 多容器寻址顺序：显式 `--name` -> 唯一匹配的 `--label` -> registry 默认目标 -> 唯一登记容器；无法消歧时列出候选并要求指定。
 

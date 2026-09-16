@@ -257,6 +257,66 @@ def _check_aisc_root(
     )
 
 
+def _check_bundle_store(root: Optional[Path]) -> CheckResult:
+    """Check 6b: the fetched-bundle store (pip installs' build resources).
+
+    PASS when the ACTIVE root is a repo/frozen bundle (the store is
+    irrelevant); PASS when it resolves from ``bundles/<ver>/``; WARN when a
+    store exists but nothing is compatible; WARN on pip forms with no store
+    at all (build needs ``aisc bundle fetch``)."""
+    import sys as _sys
+
+    from aisc import __version__
+
+    pip_form = (
+        not getattr(_sys, "frozen", False)
+        and __file__ is not None
+        and "site-packages" in str(Path(__file__).resolve())
+    )
+    try:
+        from aisc.application.data_root import shared_root
+
+        dr = shared_root()
+    except Exception:
+        dr = None
+    if dr is not None:
+        from aisc.application.resources import find_data_root_bundles
+
+        candidates, skipped = find_data_root_bundles(dr)
+        if candidates:
+            return CheckResult(
+                name="aisc-bundle",
+                status=CheckStatus.PASS,
+                message=f"bundle store: {candidates[0]}",
+            )
+        if skipped:
+            return CheckResult(
+                name="aisc-bundle",
+                status=CheckStatus.WARN,
+                message="bundle store present but no compatible bundle",
+                detail="; ".join(skipped[:3]),
+            )
+    if root is not None:
+        return CheckResult(
+            name="aisc-bundle",
+            status=CheckStatus.PASS,
+            message=f"root resolves without the bundle store ({root})",
+        )
+    if pip_form:
+        return CheckResult(
+            name="aisc-bundle",
+            status=CheckStatus.WARN,
+            message="pip install without build resources",
+            detail="run `aisc bundle fetch` to download this version's bundle "
+                   "(build/docker-rebuild need it)",
+        )
+    return CheckResult(
+        name="aisc-bundle",
+        status=CheckStatus.WARN,
+        message="no bundle store and no repo root",
+    )
+
+
 def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
     """Check 7: Verify key root files exist."""
     if root is None:
@@ -269,19 +329,20 @@ def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
         ]
 
     required = {
-        "VERSION": "VERSION",
-        "container/Dockerfile": "container/Dockerfile",
-        "config/versions.env": "config/versions.env",
+        # A2 dual-shape: repo checkouts carry it at src/aisc/VERSION.
+        "VERSION": ("VERSION", "src/aisc/VERSION"),
+        "container/Dockerfile": ("container/Dockerfile",),
+        "config/versions.env": ("config/versions.env",),
     }
     results: List[CheckResult] = []
-    for label, rel in required.items():
-        p = root / rel
-        if p.is_file():
+    for label, rels in required.items():
+        p = next((root / rel for rel in rels if (root / rel).is_file()), None)
+        if p is not None:
             results.append(
                 CheckResult(
                     name=f"root-file:{label}",
                     status=CheckStatus.PASS,
-                    message=f"{rel} exists",
+                    message=f"{rels[0]} exists",
                 )
             )
         else:
@@ -289,7 +350,7 @@ def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
                 CheckResult(
                     name=f"root-file:{label}",
                     status=CheckStatus.FAIL,
-                    message=f"{rel} not found",
+                    message=f"{rels[0]} not found",
                 )
             )
     return results
@@ -663,6 +724,11 @@ def run_doctor(
 
     # 6. aisc root — pass through root_error verbatim
     checks.append(_check_aisc_root(root, root_error=root_error))
+
+    # 6b. aisc-bundle store (0.1.0 A3, guide 3.3.4): append-only check —
+    # the pip install form has no repo, so the aisc-root WARN above is
+    # misleading there. This check names the fetch path explicitly.
+    checks.append(_check_bundle_store(root))
 
     # 7. root files
     checks.extend(_check_root_files(root))
