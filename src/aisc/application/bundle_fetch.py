@@ -671,6 +671,54 @@ class BundleFetcher:
                 removed.append(child.name)
         return removed
 
+    def download_archive(self, version: str, dest_dir: Path) -> Path:
+        """Resolve + stream-download the verified archive for *version*.
+
+        Shared by ``fetch`` (bundle store) and the A4 updater (needs the exe
+        too). Raises BundleFetchError fail-closed; returns the verified
+        archive path inside *dest_dir* (caller owns cleanup).
+        """
+        name, meta, _recent = self.resolve_asset(version)
+        digest = meta.get("digest", "").lower()
+        if not digest.startswith("sha256:"):
+            raise BundleFetchError(
+                BUNDLE_FETCH_ERROR_INTEGRITY,
+                f"release asset {name} has no API digest (refusing unverified download)")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        archive = dest_dir / name
+        expected = digest.split(":", 1)[1]
+        hasher = hashlib.sha256()
+
+        def sink(chunk: bytes) -> None:
+            hasher.update(chunk)
+            with open(archive, "ab") as f:
+                f.write(chunk)
+
+        archive.write_bytes(b"")  # truncate before streaming append
+        url = meta.get("browser_download_url") or meta.get("url")
+        self._download(url, {"Accept": "application/octet-stream"}, self._timeout, sink)
+        actual = hasher.hexdigest()
+        if actual != expected:
+            raise BundleFetchError(
+                BUNDLE_FETCH_ERROR_INTEGRITY,
+                f"download digest mismatch: API said {expected[:16]}..., got {actual[:16]}... "
+                f"(transport integrity check — re-run the fetch)")
+        return archive
+
+    def latest_final_version(self) -> Optional[str]:
+        """Highest FINAL X.Y.Z across release tags (D-17: prereleases and
+        dev tags never count — pip users must not be pointed at them)."""
+        best: Optional[Tuple[Tuple[int, int, int], str]] = None
+        for rel in self.list_release_assets():
+            tag = rel.tag or ""
+            v = tag[1:] if tag.startswith("v") else tag
+            if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+                continue
+            key = tuple(int(p) for p in v.split("."))
+            if best is None or key > best[0]:
+                best = (key, v)  # type: ignore[assignment]
+        return best[1] if best else None
+
     def fetch(
         self,
         data_root: Path,
@@ -722,31 +770,8 @@ class BundleFetcher:
                 parsed = _parse_archive_name(archive.name)
                 archive_version = parsed[0] if parsed else None
             else:
-                name, meta, _recent = self.resolve_asset(target_version)
-                digest = meta.get("digest", "").lower()
-                if not digest.startswith("sha256:"):
-                    raise BundleFetchError(
-                        BUNDLE_FETCH_ERROR_INTEGRITY,
-                        f"release asset {name} has no API digest (refusing unverified download)")
-                archive = tmp / name
-                expected = digest.split(":", 1)[1]
-                hasher = hashlib.sha256()
-
-                def sink(chunk: bytes) -> None:
-                    hasher.update(chunk)
-                    with open(archive, "ab") as f:
-                        f.write(chunk)
-
-                archive.write_bytes(b"")  # truncate before streaming append
-                url = meta.get("browser_download_url") or meta.get("url")
-                self._download(url, {"Accept": "application/octet-stream"}, self._timeout, sink)
-                actual = hasher.hexdigest()
-                if actual != expected:
-                    raise BundleFetchError(
-                        BUNDLE_FETCH_ERROR_INTEGRITY,
-                        f"download digest mismatch: API said {expected[:16]}..., got {actual[:16]}... "
-                        f"(transport integrity check — re-run the fetch)")
-                archive_version = _parse_archive_name(name)[0]
+                archive = self.download_archive(target_version, tmp)
+                archive_version = _parse_archive_name(archive.name)[0]
 
             if archive_version is not None and archive_version != target_version and not allow_mismatch:
                 raise BundleFetchError(

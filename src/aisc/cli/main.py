@@ -550,6 +550,21 @@ def _build_parser() -> _AiscArgumentParser:
     bpth = bsub.add_parser("path", help="Print the bundles directory", allow_abbrev=False)
     _add_global_args(bpth, is_subparser=True)
 
+    # --- update (0.1.0 A4, D-7) ---
+    up = sub.add_parser("update", help="Self-update the aisc CLI (frozen forms)",
+                        allow_abbrev=False)
+    _add_global_args(up, is_subparser=True)
+    up.add_argument("--check", action="store_true", default=False,
+                    help="Show the update plan without touching anything")
+    up.add_argument("--version", default=None,
+                    help="Target version (default: latest final release)")
+    up.add_argument("--from-file", default=None,
+                    help="Offline path: update from a local release archive (requires --sha256)")
+    up.add_argument("--sha256", default=None,
+                    help="Expected sha256 of --from-file")
+    up.add_argument("--rebuild", action="store_true", default=False,
+                    help="After replacing, run the installer-style no-cache image rebuild")
+
     # --- runtime ---
     rtp = sub.add_parser("runtime", help="Runtime control plane (Workbench Phase 0)", allow_abbrev=False)
     _add_global_args(rtp, is_subparser=True)
@@ -1973,6 +1988,26 @@ def _cmd_bundle(
     return data, 0, []
 
 
+def _cmd_update(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc update``. Supports --format json."""
+    from aisc.cli.commands.update import cmd_update, cmd_update_check, print_update_text
+
+    if args.check:
+        data = cmd_update_check(version=args.version)
+        print_update_text("check", data) if effective_format != "json" else None
+        return (data, 0, []) if effective_format == "json" else (None, 0, [])
+    data = cmd_update(version=args.version, from_file=args.from_file,
+                      sha256=args.sha256, rebuild=args.rebuild)
+    if effective_format != "json":
+        print_update_text("update", data)
+        return None, 0, []
+    exit_code = 0 if data.get("status") in ("updated", "up-to-date") else 1
+    return data, exit_code, []
+
+
 def _cmd_runtime(
     args: argparse.Namespace,
     effective_format: str,
@@ -2705,6 +2740,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_maintenance(args, effective_format)
         elif args.command == "bundle":
             data, exit_code, errors = _cmd_bundle(args, effective_format)
+        elif args.command == "update":
+            data, exit_code, errors = _cmd_update(args, effective_format)
         elif args.command == "runtime":
             data, exit_code, errors = _cmd_runtime(args, effective_format)
         elif args.command == "session":
