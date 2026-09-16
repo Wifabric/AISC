@@ -61,6 +61,20 @@
   1238/packaging 207/sdist 含 src/aisc/VERSION/CLI-A01 三腿/sidecar 重建
   cli_version=bundle_version=0.1.0.dev0。期间 CI 监控代理另修 artifact.rs
   基准 flake（gated<full 共享 runner 单发反转，有界 pair-retry，fbae598）。
+- **A3 bundle fetch 底座（分支 a3-bundle-fetch，2026-09-16）**：safe-extract/
+  verify 全套自 packaging/ 迁入 src/aisc（artifact.py 薄再导出，独立运行自举
+  sys.path）；manifest 运行时门禁 bundle_compatible（ADR-001 声称却从未实现的
+  校验，精确匹配 fail-closed）；解析链第 5 级 <data-root>/bundles/<ver>/
+  aisc-bundle（cwd-repo 之后、包祖先之前，不兼容跳过不报错）；BundleFetcher
+  流式下载 + API digest 校验 + 原子安装 + 幂等 + .tmp 清扫 + --from-file
+  （强制 --sha256 同强度）+ --version/--allow-mismatch；`aisc bundle
+  fetch/list/remove/path` 命令组（remove 拒删活动根）；pip 形态 build 降级
+  文案点名 bundle fetch；doctor 追加 aisc-bundle 独立检查项 + root-file 双形
+  （A2 尾巴）。验收：17 例 fake-transport 矩阵；off-checkout 真轮（wheel 装
+  隔离 venv）：version exit0/bundle=null → build exit1 含 fetch 指引 →
+  --from-file 装入 → bundle_version 翻转 0.1.0.dev0 → build --dry-run exit0；
+  pytest 1255。A2 的 CI 尾巴（前端 repoVersion 旧路径）由监控代理修复
+  （e4fecd8，ece3a60 全绿）。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
