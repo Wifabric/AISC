@@ -15,6 +15,9 @@ const mockIpc = vi.hoisted(() => ({
   saveSettings: vi.fn(),
   resetGuiSettings: vi.fn(),
   resolveLocale: vi.fn().mockResolvedValue("zh-CN"),
+  dockerScan: vi.fn(),
+  dockerCleanup: vi.fn(),
+  dockerRebuild: vi.fn(),
 }));
 
 vi.mock("../../lib/ipc", () => mockIpc);
@@ -167,5 +170,77 @@ describe("reset (A-G01-4 isolation)", () => {
     expect(await s.reset()).toBeNull();
     expect(s.saveState).toBe("error");
     expect(s.doc?.ui.theme).toBe("dark");
+  });
+});
+
+describe("docker admin panel (2.1.12 B3)", () => {
+  const scan = {
+    dockerAvailable: true,
+    dockerReason: "ok",
+    containers: {
+      owned: [{ id: "c1", name: "aisc-wb-1", image: "super-claude:latest", status: "Exited", tag: "", ownership: "owned", reason: "label" }],
+      legacy_owned: [],
+      unverified: [{ id: "c2", name: "aisc-lookalike", image: "x", status: "Up", tag: "", ownership: "unverified", reason: "repository-only" }],
+    },
+    images: { owned: [], legacy_owned: [], unverified: [] },
+    danglingOwned: [],
+    warnings: ["w-scan"],
+  };
+
+  it("loadDockerScan stores the report and surfaces warnings", async () => {
+    mockIpc.dockerScan.mockResolvedValue(scan);
+    const s = useSettingsStore();
+    await s.loadDockerScan();
+    expect(mockIpc.dockerScan).toHaveBeenCalledWith("upgrade");
+    expect(s.dockerReport?.dockerAvailable).toBe(true);
+    expect(s.dockerLog.some((l) => l.includes("w-scan"))).toBe(true);
+    expect(s.dockerError).toBeNull();
+  });
+
+  it("loadDockerScan failure lands in dockerError, report untouched", async () => {
+    mockIpc.dockerScan.mockRejectedValue({ message: "docker down" });
+    const s = useSettingsStore();
+    await s.loadDockerScan();
+    expect(s.dockerError).toBe("docker down");
+    expect(s.dockerReport).toBeNull();
+  });
+
+  it("runDockerCleanup logs the outcome then re-scans (uninstall context)", async () => {
+    mockIpc.dockerCleanup.mockResolvedValue({
+      containers: { removed: ["aisc-wb-1"], not_found: [], failed: ["stubborn"] },
+      images: { removed: ["super-claude:latest"], not_found: [], failed: [] },
+      skippedUnverified: ["aisc-lookalike"],
+      warnings: [],
+    });
+    mockIpc.dockerScan.mockResolvedValue(scan);
+    const s = useSettingsStore();
+    await s.runDockerCleanup();
+    expect(mockIpc.dockerCleanup).toHaveBeenCalledWith("uninstall");
+    expect(s.dockerLog.some((l) => l.includes("stubborn"))).toBe(true);
+    expect(s.dockerLog.some((l) => l.includes("跳过未验证"))).toBe(true);
+    expect(mockIpc.dockerScan).toHaveBeenCalledTimes(1); // the post-run re-scan
+  });
+
+  it("runDockerRebuild reports failure with the old image kept", async () => {
+    mockIpc.dockerRebuild.mockResolvedValue({
+      tag: "super-claude:latest", newImageId: "", imageChanged: false,
+      oldImageAction: "kept_referenced", failed: true, warnings: [], buildLogTail: "boom",
+    });
+    const s = useSettingsStore();
+    await s.runDockerRebuild();
+    expect(s.dockerRebuilding).toBe(false);
+    expect(s.dockerError).toContain("重建失败");
+    expect(s.dockerError).toContain("boom");
+  });
+
+  it("runDockerRebuild success logs the new image id", async () => {
+    mockIpc.dockerRebuild.mockResolvedValue({
+      tag: "super-claude:latest", newImageId: "sha256:abcdef0123456789", imageChanged: true,
+      oldImageAction: "removed", failed: false, warnings: [], buildLogTail: "",
+    });
+    const s = useSettingsStore();
+    await s.runDockerRebuild();
+    expect(s.dockerError).toBeNull();
+    expect(s.dockerLog.some((l) => l.includes("sha256:abcdef0123456789".slice(0, 19)))).toBe(true);
   });
 });

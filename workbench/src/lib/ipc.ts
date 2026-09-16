@@ -468,6 +468,69 @@ export const cacheUsage = () => invoke<CacheUsage>("cache_usage");
 export const cacheCleanup = (minAgeHours: number) =>
   invoke<CacheCleanupResult>("cache_cleanup", { minAgeHours });
 
+// --- B3 (2.1.12): docker resource admin (maintenance scan/cleanup/rebuild) ---
+
+/** One classified container/image row (aisc.docker-scan/v1 projection). */
+export interface DockerResource {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  tag: string;
+  ownership: string;
+  reason: string;
+}
+
+export interface ScanBuckets {
+  owned: DockerResource[];
+  legacy_owned: DockerResource[];
+  unverified: DockerResource[];
+}
+
+export interface DockerScanReport {
+  dockerAvailable: boolean;
+  dockerReason: string;
+  containers: ScanBuckets;
+  images: ScanBuckets;
+  danglingOwned: DockerResource[];
+  warnings: string[];
+}
+
+export interface CleanupOutcome {
+  removed: string[];
+  not_found: string[];
+  failed: string[];
+}
+
+export interface DockerCleanupReport {
+  containers: CleanupOutcome;
+  images: CleanupOutcome;
+  skippedUnverified: string[];
+  warnings: string[];
+}
+
+/** Build failure preserves the old image (failed=true is reportable, not fatal). */
+export interface DockerRebuildResult {
+  tag: string;
+  newImageId: string;
+  imageChanged: boolean;
+  oldImageAction: string;
+  failed: boolean;
+  warnings: string[];
+  buildLogTail: string;
+}
+
+/** Read-only ownership classification (preview before any cleanup). */
+export const dockerScan = (context: string) =>
+  invoke<DockerScanReport>("docker_scan", { context });
+
+/** Remove owned/legacy containers+images (CLI owns ordering + lock). */
+export const dockerCleanup = (context: string) =>
+  invoke<DockerCleanupReport>("docker_cleanup", { context });
+
+/** No-cache rebuild from the LOCAL bundle root (local machine only). */
+export const dockerRebuild = () => invoke<DockerRebuildResult>("docker_rebuild");
+
 // --- Stage 6 (REL-01): op-trace ring + redacted diagnostic bundle ---
 
 export const opTraces = () => invoke<OpTrace[]>("op_traces");

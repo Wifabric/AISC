@@ -178,6 +178,80 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
+  const dockerReport = ref<import("../lib/ipc").DockerScanReport | null>(null);
+  const dockerBusy = ref(false);
+  const dockerRebuilding = ref(false);
+  const dockerError = ref<string | null>(null);
+  const dockerLog = ref<string[]>([]);
+
+  function dockerLogLine(line: string): void {
+    dockerLog.value.push(line);
+    if (dockerLog.value.length > 20) dockerLog.value.splice(0, dockerLog.value.length - 20);
+  }
+
+  /** Read-only classification pass (upgrade context = the conservative
+   * default the CLI itself uses for evidence rules). */
+  async function loadDockerScan(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      dockerReport.value = await ipc.dockerScan("upgrade");
+      for (const w of dockerReport.value.warnings) dockerLogLine(`⚠ ${w}`);
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** Full clean (uninstall context: containers + images). The scan preview
+   * rides the card above; the CLI re-scans under the maintenance lock
+   * anyway (invariant: never trust a stale list). */
+  async function runDockerCleanup(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      const r = await ipc.dockerCleanup("uninstall");
+      dockerLogLine(
+        `容器: 清除 ${r.containers.removed.length}` +
+          (r.containers.failed.length ? ` · 失败 ${r.containers.failed.length}（${r.containers.failed.join(", ")}）` : "") +
+          (r.containers.not_found.length ? ` · 已不存在 ${r.containers.not_found.length}` : "")
+      );
+      dockerLogLine(
+        `镜像: 清除 ${r.images.removed.length}` +
+          (r.images.failed.length ? ` · 失败 ${r.images.failed.length}（${r.images.failed.join(", ")}）` : "")
+      );
+      if (r.skippedUnverified.length)
+        dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
+      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
+      dockerReport.value = await ipc.dockerScan("upgrade");
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** No-cache rebuild from the LOCAL bundle root (long op, 30+ min budget). */
+  async function runDockerRebuild(): Promise<void> {
+    dockerRebuilding.value = true;
+    dockerError.value = null;
+    try {
+      const r = await ipc.dockerRebuild();
+      if (r.failed) {
+        dockerError.value = `重建失败（旧镜像已保留）${r.buildLogTail ? "：" + r.buildLogTail : ""}`;
+      } else {
+        dockerLogLine(`镜像已重建: ${r.tag} → ${r.newImageId.slice(0, 19)}（旧镜像 ${r.oldImageAction}）`);
+      }
+      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerRebuilding.value = false;
+    }
+  }
+
   return {
     doc,
     // --- R4b: the drive target ---
@@ -211,6 +285,14 @@ export const useSettingsStore = defineStore("settings", () => {
     cacheLog,
     loadCacheUsage,
     runCacheCleanup,
+    dockerReport,
+    dockerBusy,
+    dockerRebuilding,
+    dockerError,
+    dockerLog,
+    loadDockerScan,
+    runDockerCleanup,
+    runDockerRebuild,
     readOnly,
     corrupted,
     dirty,
