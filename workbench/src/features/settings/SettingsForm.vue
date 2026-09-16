@@ -564,8 +564,8 @@ async function reopenOnboarding() {
           </template>
           <p v-else-if="!store.cacheError" class="note">{{ t("settings.disk.unavailable") }}</p>
           <div class="field">
-            <button :disabled="store.cacheBusy" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
-            <button class="primary" :disabled="store.cacheBusy" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
+            <button :disabled="store.cacheBusy" :title="t('settings.disk.refreshTip')" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
+            <button class="primary" :disabled="store.cacheBusy" :title="t('settings.disk.cleanupTip')" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
           </div>
           <p v-for="(line, i) in store.cacheLog" :key="i" class="note">{{ line }}</p>
 
@@ -575,9 +575,9 @@ async function reopenOnboarding() {
           <p class="group">{{ t("settings.docker.group") }}</p>
           <p class="help">{{ t("settings.docker.hint") }}</p>
           <div class="field">
-            <button :disabled="store.dockerBusy" @click="store.loadDockerScan()">{{ t("settings.docker.scan") }}</button>
-            <button class="danger" :disabled="store.dockerBusy" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
-            <button :disabled="store.dockerRebuilding" @click="onDockerRebuild">
+            <button :disabled="store.dockerBusy" :title="t('settings.docker.scanTip')" @click="store.loadDockerScan()">{{ t("settings.docker.scan") }}</button>
+            <button class="danger" :disabled="store.dockerBusy" :title="t('settings.docker.cleanupTip')" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
+            <button :disabled="store.dockerRebuilding" :title="t('settings.docker.rebuildTip')" @click="onDockerRebuild">
               {{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}
             </button>
           </div>
