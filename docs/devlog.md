@@ -75,6 +75,16 @@
   --from-file 装入 → bundle_version 翻转 0.1.0.dev0 → build --dry-run exit0；
   pytest 1255。A2 的 CI 尾巴（前端 repoVersion 旧路径）由监控代理修复
   （e4fecd8，ece3a60 全绿）。
+- **A4 aisc update（分支 a4-cli-update，2026-09-16）**：冻结形态自更新——
+  形态探测（frozen/pip/source）、check 计划（final-only 通道，pip/source 纯
+  本地应答不碰网）、Windows rename dance（运行中 exe 可改名不可覆盖：旧件
+  转为 .old-<ts> 回退副本；POSIX os.replace）、相邻 aisc-bundle 原子换、
+  .old 陈旧清扫、up-to-date no-op、离线 --from-file（强制 --sha256）、
+  --rebuild 经新 exe 链安装器式 docker-rebuild（顺带启动冒烟）。与 fetch
+  共享经校验下载路径（download_archive 抽出）。Workbench 侧免重启：本地
+  serve 池按 exe mtime 驱逐，下一条命令自动用新二进制（Rust 侧 drain_pool
+  编排归 A5/A7）。`aisc update [--check|--version|--from-file|--sha256|
+  --rebuild]` + README 表行；16 例矩阵，pytest 1271。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
