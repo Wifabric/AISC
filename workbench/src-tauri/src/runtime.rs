@@ -32,7 +32,10 @@ const RESTART_TIMEOUT: Duration = Duration::from_secs(120);
 const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
 const LIST_TIMEOUT: Duration = Duration::from_secs(30);
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(30);
-const BUILD_TIMEOUT: Duration = Duration::from_secs(600);
+/// 2.1.12 B2: 1800s — the UI's own expectation copy says a first build takes
+/// 10–20 minutes (base image pulls + dependency installs), and 600s killed
+/// real first builds into a misleading "cancelled" terminal state.
+const BUILD_TIMEOUT: Duration = Duration::from_secs(1800);
 /// svc-4: `aisc runtime services` budget (one docker inspect + one exec).
 const SERVICES_TIMEOUT: Duration = Duration::from_secs(45);
 /// Reconcile may stop+remove containers under the maintenance lock —

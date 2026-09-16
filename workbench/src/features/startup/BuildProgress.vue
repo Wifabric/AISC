@@ -136,7 +136,18 @@ watch(
         <button v-if="dockerError" class="primary" :disabled="store.dockerStarting" @click="store.startDockerAndRepreflight()">
           {{ store.dockerStarting ? t("summary.startingDocker") : t("summary.startDocker") }}
         </button>
-        <button class="primary" @click="store.backToSummaryFromBuild()">{{ t("build.backToSummary") }}</button>
+        <!-- B1 (2.1.12): one-click retry from the terminal state — the old
+             path was backToSummary -> preflight -> build button (three
+             steps). Same store.startBuild chain as the summary entry, same
+             failed tag. No building guard needed: this branch only renders
+             on terminal states (v-else of building), and a re-entry flips
+             the v-if before a second click can land. -->
+        <button
+          v-if="store.buildStatus === 'failed' || store.buildStatus === 'cancelled'"
+          class="primary"
+          @click="store.startBuild(store.buildTag)"
+        >{{ t("build.rebuild") }}</button>
+        <button @click="store.backToSummaryFromBuild()">{{ t("build.backToSummary") }}</button>
       </template>
     </div>
 
