@@ -23,8 +23,10 @@ def _read_version() -> str:
 
     candidates.extend(
         (
+            # A2: VERSION is package data — with_name always hits now; the
+            # repo-root candidate (parents[2]/VERSION) died with the move.
             Path(__file__).with_name("VERSION"),
-            Path(__file__).resolve().parents[2] / "VERSION",
+            # Legacy installs from the data-files era (<sys.prefix>/aisc/).
             Path(sys.prefix) / "aisc" / "VERSION",
             Path(sys.executable).resolve().parent / "aisc-bundle" / "VERSION",
         )

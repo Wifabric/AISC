@@ -17,7 +17,7 @@ import aisc
 
 class VersionSourceTests(unittest.TestCase):
     def test_package_version_matches_version_file(self) -> None:
-        expected = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        expected = (SRC / "aisc" / "VERSION").read_text(encoding="utf-8").strip()
         self.assertEqual(aisc.__version__, expected)
 
     def test_no_duplicate_project_version_in_versions_env(self) -> None:
@@ -28,12 +28,17 @@ class VersionSourceTests(unittest.TestCase):
 
     def test_package_init_has_no_hardcoded_release(self) -> None:
         package_init = (SRC / "aisc" / "__init__.py").read_text(encoding="utf-8")
-        current = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        current = (SRC / "aisc" / "VERSION").read_text(encoding="utf-8").strip()
         self.assertNotIn(current, package_init)
 
     def test_wheel_packages_canonical_version_file(self) -> None:
+        # A2: VERSION is package data inside src/aisc/ (guide 3.2) — the
+        # data-files form landed at <sys.prefix>/aisc/VERSION (outside
+        # site-packages; --user installs missed it entirely).
         pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('[tool.setuptools.data-files]\naisc = ["VERSION"]', pyproject)
+        self.assertIn('[tool.setuptools.package-data]\naisc = ["VERSION"]', pyproject)
+        self.assertTrue((SRC / "aisc" / "VERSION").is_file(), "src/aisc/VERSION must exist")
+        self.assertFalse((PROJECT_ROOT / "VERSION").exists(), "root VERSION must be gone")
 
 
 class DistNameFallbackTests(unittest.TestCase):

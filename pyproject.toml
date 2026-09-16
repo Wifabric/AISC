@@ -67,8 +67,13 @@ include-package-data = false
 where = ["src"]
 include = ["aisc", "aisc.*"]
 
-[tool.setuptools.data-files]
+# A2 (guide 3.2): VERSION rides as package data inside src/aisc/ — the
+# data-files form landed it at <sys.prefix>/aisc/VERSION (outside
+# site-packages; --user installs missed it, the probe needed a fallback).
+[tool.setuptools.package-data]
 aisc = ["VERSION"]
 
 [tool.setuptools.dynamic]
-version = { attr = "aisc.__version__" }
+# A2: file-based dynamic version — building must not import the package
+# (avoids --no-build-isolation drift against an already-installed copy).
+version = { file = "src/aisc/VERSION" }

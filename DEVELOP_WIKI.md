@@ -1,6 +1,6 @@
 # AISC 开发者手册
 
-> **开发基线：** `develop` 分支，项目版本 `v2.1.11.dev0`，状态 Alpha。本文以当前源码、脚本、测试和 `.github/workflows/`（tests / cli-sidecar / workbench-ci / nsis-installer / bundle-linux-macos / artifact）为准；用户安装与命令教程见 `README.md`。
+> **开发基线：** `develop` 分支，项目版本 `0.1.0.dev0`（0.x Alpha，0.1.0 周期起），状态 Alpha。本文以当前源码、脚本、测试和 `.github/workflows/`（tests / cli-sidecar / workbench-ci / nsis-installer / bundle-linux-macos / artifact）为准；用户安装与命令教程见 `README.md`。
 
 ## 1. 分支与发布角色
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Artifact 跨平台构建 |
 | `main` | 面向发布的稳定线；通过 PR 接收已验证变更 | 目标为 `main` 的 PR 触发 Artifact 构建 |
-| `v*` tag | 不可变发布标识，标签内容应与根 `VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
+| `v*` tag | 不可变发布标识，标签内容应与 `src/aisc/VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
 
 不要把三者混成同一种工作流：开发基于 `develop`，发布候选通过 PR 进入 `main`，发布 tag 指向已审核的发布提交。普通 push 到 `main` 不在当前 workflow 的分支触发列表中，也不会创建 Release；只有 `v*` tag 会进入 aggregate 和 release jobs。
 
@@ -31,7 +31,7 @@ src/aisc/（Python CLI）
   ▼
 workbench/src-tauri/binaries/aisc-<triple>[.exe]        Tauri sidecar（externalBin）
 
-container/ + config/ + vendor/ + VERSION
+container/ + config/ + vendor/ + src/aisc/VERSION
   │  python packaging/artifact.py stage --output workbench/src-tauri/nsis/bundle
   ▼
 workbench/src-tauri/nsis/bundle/aisc-bundle/            CLI bundle（随安装器分发）
@@ -302,10 +302,10 @@ aisc ps/status/stop/restart/shell/switch
 
 ### 4.4 AISC root 发现
 
-`src/aisc/application/resources.py` 要求 root 包含：
+`src/aisc/application/resources.py` 要求 root 包含（版本 marker 双形，0.1.0 A2 起）：
 
 ```text
-VERSION
+VERSION 或 src/aisc/VERSION    # repo 检出为后者；staged bundle/frozen 为前者
 container/Dockerfile
 config/versions.env
 ```
@@ -353,7 +353,7 @@ docker run --rm -it \
 
 ```text
 AISC/
-  VERSION                     项目版本唯一事实源
+  src/aisc/VERSION            项目版本唯一事实源（A2 起为包内 package-data）
   README.md                   用户手册
   DEVELOP_WIKI.md             本手册
   pyproject.toml              Python 包和 console script
@@ -557,15 +557,16 @@ PROXY_ENABLED=0|1
 
 ### 8.4 版本事实源
 
-项目版本只修改根 `VERSION`：
+项目版本只修改 `src/aisc/VERSION`（0.1.0 A2 起，自根 `VERSION` 迁入包内——data-files 形态会落在 site-packages 之外的 `<sys.prefix>/aisc/`，`--user` 安装直接 miss）：
 
-- `src/aisc/__init__.py` 在源码/editable 模式读取它。
-- setuptools 将 `VERSION` 作为 data-file 安装，包元数据仅作兜底。
-- PyInstaller 使用 `--add-data VERSION:.` 嵌入 frozen executable。
+- `src/aisc/__init__.py` 以 `Path(__file__).with_name("VERSION")` 读取（package-data 后为必然命中项）。
+- setuptools 以 `[tool.setuptools.package-data]` 安装进包内；动态版本 `{file = "src/aisc/VERSION"}`（构建期不 import 包）。
+- PyInstaller 使用 `--add-data src/aisc/VERSION:.` 嵌入 frozen executable（仍落 `_MEIPASS` 根）。
+- staged bundle 内部布局不变：bundle 根保留自己的 `VERSION`（已安装产物契约）。repo 根与 bundle 根靠双形 marker 识别（`resources.py`/`artifact.py`：`VERSION` 或 `src/aisc/VERSION` + `container/Dockerfile` + `config/versions.env`）。
 - `packaging/artifact.py` 用它命名产物、生成 bundle manifest 并执行一致性保护。
 - `packaging/ci_smoke.py` 比较 executable 的 `cli_version` 与期望版本。
 
-不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `VERSION`；Release Notes 文件名和 tag 从该值派生。
+不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `src/aisc/VERSION`；Release Notes 文件名和 tag 从该值派生。
 
 ### 8.5 外部依赖与可复现性
 

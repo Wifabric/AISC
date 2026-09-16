@@ -83,7 +83,8 @@ foreach ($Bundle in @(
             robocopy $Dir $DstDir /E $RoboQuiet | Out-Null
             if ($LASTEXITCODE -ge 8) { throw "robocopy copy failed for $Dir -> $DstDir (exit $LASTEXITCODE)" }
         }
-        Copy-Item -Force VERSION (Join-Path $Bundle "VERSION")
+        # A2: VERSION moved into the package; the BUNDLE layout keeps it at the bundle root.
+        Copy-Item -Force src\aisc\VERSION (Join-Path $Bundle "VERSION")
         Write-Host "== synced: $Bundle"
     }
 }

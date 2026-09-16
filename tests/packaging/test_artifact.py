@@ -448,7 +448,8 @@ class TestVersionGuard(unittest.TestCase):
     def setUp(self): self.td = Path(tempfile.mkdtemp(prefix="vg-"))
     def tearDown(self): shutil.rmtree(self.td, ignore_errors=True)
     def _mk(self, version):
-        r=self.td; (r/"VERSION").write_text(version+"\n"); (r/"container").mkdir(); (r/"container"/"Dockerfile").write_text("FROM node\n")
+        # A2: repo checkouts carry the version file at src/aisc/VERSION.
+        r=self.td; pv=r/"src"/"aisc"; pv.mkdir(parents=True); (pv/"VERSION").write_text(version+"\n"); (r/"container").mkdir(); (r/"container"/"Dockerfile").write_text("FROM node\n")
     def test_reads_canonical_version(self): self._mk("2.0.0-dev"); self.assertEqual(_art._assert_version_guard(self.td),"2.0.0-dev")
     def test_missing_version(self): self.assertRaises(SystemExit, _art._assert_version_guard, self.td)
     def test_no_hardcoded_package_version_required(self): self._mk("1.2.3-test"); self.assertEqual(_art._assert_version_guard(self.td),"1.2.3-test")
@@ -466,7 +467,8 @@ class TestStaging(unittest.TestCase):
     def setUp(self): self.td = Path(tempfile.mkdtemp(prefix="stg-"))
     def tearDown(self): shutil.rmtree(self.td, ignore_errors=True)
     def _cr(self,r):
-        (r/"VERSION").write_text("2.0.0-dev\n")
+        # A2: repo checkouts carry the version file at src/aisc/VERSION.
+        pv=r/"src"/"aisc"; pv.mkdir(parents=True); (pv/"VERSION").write_text("2.0.0-dev\n")
         for x in ["README.md","LICENSE",".dockerignore"]: (r/x).write_text("#T\n")
         cfg=r/"config"; cfg.mkdir(); (cfg/"versions.env").write_text("NODE_IMAGE=node:20-slim\n")
         c=r/"container"; c.mkdir(); (c/"Dockerfile").write_text("FROM node\nCOPY container/entrypoint.sh /\nCOPY container/_bundle/ /home/\nCOPY apps/ai-brief/ /home/\n"); (c/"entrypoint.sh").write_text("#!/bin/bash\necho ok\n")

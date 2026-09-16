@@ -23,18 +23,19 @@ from typing import Callable, Optional, List
 # Structure markers
 # ---------------------------------------------------------------------------
 
-_STRUCTURE_MARKERS: List[str] = [
-    "VERSION",
-    "container/Dockerfile",
-    "config/versions.env",
-]
+# A2 (guide 3.2): the VERSION marker is dual-shape — repo checkouts carry
+# src/aisc/VERSION (package-data since the migration), while staged bundles
+# and frozen builds keep VERSION at their root (the bundle layout is an
+# installed-artifact contract that must not move). The other two markers
+# are single-shape.
+_VERSION_MARKERS: List[str] = ["VERSION", "src/aisc/VERSION"]
+_STRUCTURE_MARKERS: List[str] = ["container/Dockerfile", "config/versions.env"]
 
 
 def _is_root(path: Path) -> bool:
-    for marker in _STRUCTURE_MARKERS:
-        if not (path / marker).is_file():
-            return False
-    return True
+    if not any((path / m).is_file() for m in _VERSION_MARKERS):
+        return False
+    return all((path / m).is_file() for m in _STRUCTURE_MARKERS)
 
 
 def _has_git(path: Path) -> bool:

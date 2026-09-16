@@ -19,7 +19,9 @@ a = Analysis(
     [str(REPO_ROOT / "src" / "aisc" / "cli" / "main.py")],
     pathex=[str(REPO_ROOT / "src")],
     binaries=[],
-    datas=[(str(REPO_ROOT / "VERSION"), ".")],
+    # A2: VERSION lives in the package tree; still lands at the _MEIPASS root
+    # so __init__'s frozen candidate is unchanged.
+    datas=[(str(REPO_ROOT / "src" / "aisc" / "VERSION"), ".")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
