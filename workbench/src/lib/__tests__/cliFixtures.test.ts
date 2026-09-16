@@ -30,10 +30,13 @@ function read(name: string): string {
 }
 
 /** The repo VERSION the CLI reports (mirrors the Python contract test: the
- * version fixture moves with every bump — read it, don't hardcode). */
+ * version fixture moves with every bump — read it, don't hardcode). A2
+ * dual-shape (mirrors packaging/artifact.py): repo checkouts carry it as
+ * package data at src/aisc/VERSION; staged bundles and legacy checkouts at
+ * the repo root. */
 function repoVersion(): string {
-  for (const root of [resolve(FIXTURES, "../.."), resolve(FIXTURES, "../../..")]) {
-    const p = resolve(root, "VERSION");
+  for (const rel of ["../../../src/aisc/VERSION", "../../../VERSION"]) {
+    const p = resolve(FIXTURES, rel);
     if (existsSync(p)) return readFileSync(p, "utf-8").trim();
   }
   throw new Error("VERSION not found relative to fixtures");
