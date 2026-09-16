@@ -171,7 +171,7 @@
 
 # V2.1.12-target（2026-09-16 开池，裁决 R1-R8 见 docs/plans/2.1.12-dev-plans/）
 - new features
-  - [ ] docker管理的简易映射（R1 裁决 = Docker 资源管理简化 UI：maintenance docker-scan/cleanup/cache-* 产品化）
+  - [x] docker管理的简易映射（R1 裁决 = Docker 资源管理简化 UI：maintenance scan/cleanup/rebuild 产品化入设置页 Docker 资源组，扫描前置门+悬浮提示；手测 PASS 2026-09-16）
   - [ ] cli update; workbench 热更新（R4：aisc update 热换 sidecar + Workbench 标准自更新）
   - [ ] cli作为pip包发布准备（R3：周期内完整首发 aisc-cli，蓝本 = docs/plans/2.1.12-dev-plans/pypi-release-guide.md）
 - fix
