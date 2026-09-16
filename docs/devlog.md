@@ -29,6 +29,13 @@
   重建失败沿 context-loss 降级语义 A-G06-2），新增
   `renderer_theme_remount` 遥测；terminalThemeSwitch.test.ts 两例钉住
   往返回收+调色板+repaint。
+- **B1/B2 重建按钮与超时修正（分支 2.1.12-b1-b2-rebuild，手测 PASS
+  2026-09-16）**：BuildProgress failed/cancelled 终态加「重新构建」（同
+  tag 复用 store.startBuild 链，返回摘要降为次按钮；v-else 窄化保证无
+  building 态误入，vue-tsc 强制）；BUILD_TIMEOUT 600s→1800s（UI 文案自述
+  初次构建 10-20 分钟，600s 会把真实首构建杀成「已取消」假象）。测试：
+  buildProgressRebuild.test.ts 三例 + runtimeBuild.test.ts 双终态回建
+  两例（vitest 488 全绿，cargo lib 308）。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 
