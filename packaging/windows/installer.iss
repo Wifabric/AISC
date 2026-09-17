@@ -280,7 +280,10 @@ end;
 
 procedure UpgradeDockerLifecycle();
 var
-  Helper, ScanText, ScanCmd, ScanFile: string;
+  Helper, ScanCmd, ScanFile: string;
+  // LoadStringFromFile's out-param is AnsiString (strict checks in newer
+  // Inno reject a plain String — run 35181140751 "Type mismatch").
+  ScanAnsi: AnsiString;
   ResultCode: Integer;
 begin
   OldImageId := '';
@@ -294,8 +297,8 @@ begin
           ResultCode) and (ResultCode = 0) then
   begin
     ScanFile := ExpandConstant('{tmp}\aisc-scan.txt');
-    if LoadStringFromFile(ScanFile, ScanText) then
-      OldImageId := ParseOldImageId(ScanText);
+    if LoadStringFromFile(ScanFile, ScanAnsi) then
+      OldImageId := ParseOldImageId(String(ScanAnsi));
   end;
   // Containers-only cleanup (the tagged image survives until rebuild).
   RunAisc(Helper, 'maintenance docker-cleanup --context upgrade --format json');
