@@ -6,7 +6,7 @@
 # 使用官方轻量级 Node 镜像；国内网络可通过 --build-arg NODE_IMAGE=... 替换拉取源
 # USE_CN_MIRROR=1 时自动使用国内镜像加速（docker.1ms.run）
 ARG USE_CN_MIRROR=1
-ARG NODE_IMAGE=node:20-slim
+ARG NODE_IMAGE=node:22-slim
 FROM ${NODE_IMAGE}
 
 # 是否使用国内镜像源（apt 清华 / npm 淘宝）。1=用（默认），0=用官方源。
@@ -22,13 +22,28 @@ ARG MIHOMO_VERSION=v1.19.27
 ARG GH_PROXY=
 
 # cc-switch-cli 版本（Claude/Codex provider 与 skills 的统一管理工具）
-ARG CC_SWITCH_VERSION=v5.9.0
+# Stage 8b (CS-01/CS-02): `aisc build` resolves the release on the HOST and
+# injects CC_SWITCH_RESOLVED_VERSION/RELEASE_COMMIT/ASSET_URL/ASSET_SHA256/
+# ASSET_NAME/BUILD_MANIFEST. The fallback below only serves MANUAL
+# `docker build` invocations (no checksum pin — non-reproducible by design).
+# PP r4 (2026-09-03): keep in lockstep with the resolver channel — a manual
+# `docker build` silently shipped 5.9.0 over 5.10.x once and the 5.9.0 binary
+# cannot even OPEN a db the desktop cc-switch has migrated (daemon dead,
+# provider add/switch/edit all refused). Asset names carry the version tag
+# since ~5.10 — the old pattern 404s.
+ARG CC_SWITCH_VERSION=v5.10.4
+ARG CC_SWITCH_RESOLVED_VERSION=
+ARG CC_SWITCH_RELEASE_COMMIT=
+ARG CC_SWITCH_ASSET_URL=
+ARG CC_SWITCH_ASSET_SHA256=
+ARG CC_SWITCH_ASSET_NAME=
+ARG CC_SWITCH_BUILD_MANIFEST=
 
-# Claude Code npm 版本（@anthropic-ai/claude-code）
-ARG CLAUDE_CODE_VERSION=latest  # TODO: pin to specific version
+# Claude Code npm 版本（@anthropic-ai/claude-code）——A5：随 versions.env 出厂 pin（node>=22）
+ARG CLAUDE_CODE_VERSION=2.1.273
 
-# Codex CLI npm 版本（@openai/codex）
-ARG CODEX_VERSION=latest  # TODO: pin to specific version
+# Codex CLI npm 版本（@openai/codex）——A5：随 versions.env 出厂 pin
+ARG CODEX_VERSION=0.154.0
 
 # Geodata 发布版本（MetaCubeX/meta-rules-dat release tag）
 ARG GEODATA_VERSION=latest  # TODO: pin to dated release tag
@@ -46,8 +61,26 @@ RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
 #   git/curl/tmux      — Claude Code 常用底层依赖
 #   iptables/iproute2  — Mihomo TUN auto-route 操纵 iptables 与路由表所必需
 #   ca-certificates    — mihomo/geodata 经 https 下载所需
-RUN apt-get update && apt-get install -y git curl tmux iptables iproute2 ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+#   neovim/ripgrep    — v2.1.8 T2 Bash 体验增强（编辑器/快速搜索）
+#   zsh 三件套         — Workbench 交互 shell + 幽灵文本 + 语法高亮（2.1.8 D-4）
+#   file               — yazi mime 探测硬依赖（缺失时所有预览永远 "Loading..."，
+#                        2026-08-30 PTY 装置实证；Debian slim 默认不带）
+#   procps             — ps/pgrep/pkill：容器内排障必需（entrypoint 进程判活
+#                        曾因缺 pgrep 误报，2026-08-19 实测）
+# T8d (2.1.9 D-9): apt 无重试 → 外层 3 次重试包住（瞬时抖动兜底；镜像源
+#   本身已由 USE_CN_MIRROR 选清华）。if 条件语境天然豁免 set -e。
+RUN set -eux; \
+    apt_ok=0; \
+    for apt_try in 1 2 3; do \
+        if apt-get update && apt-get install -y git curl tmux iptables iproute2 ca-certificates \
+                neovim ripgrep unzip procps file \
+                zsh zsh-autosuggestions zsh-syntax-highlighting; then \
+            apt_ok=1; break; \
+        fi; \
+        echo "⚠️  apt 第 ${apt_try} 次失败，重试..."; sleep 3; \
+    done; \
+    [ "$apt_ok" = "1" ] || { echo "❌ apt 安装失败（连续 3 次；可检查网络，或 --build-arg USE_CN_MIRROR=0 切官方源重试）"; exit 1; }; \
+    rm -rf /var/lib/apt/lists/*
 
 # ==========================================
 # 运行身份
@@ -110,8 +143,9 @@ RUN set -eux; \
             done; \
             [ "$ok" = "1" ] || echo "⚠️  geodata $f 下载失败（mihomo 仍可启动，GEO 规则可能受限）"; \
         fi; \
-    done; \
-    rm -rf /tmp/dl
+    done
+    # T8c (2.1.9 D-9): 这里原来的 rm -rf /tmp/dl 会删掉尚未消费的 npm/yazi
+    #   预置包——各段改为只删自己消费的文件，最终清场挪到 yazi 段。
 
 # ==========================================
 # 容器内 UTF-8 locale：解决 ls / 中文文件名八进制转义乱码 (no.5)
@@ -121,13 +155,46 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
 # 替换 NPM 源（按 USE_CN_MIRROR）并全局安装 Claude Code 和 Codex CLI
-# --no-cache + 版本校验：防止镜像源返回损坏 tarball 导致装出的二进制 segfault
-RUN if [ "$USE_CN_MIRROR" = "1" ]; then \
+# 版本校验：防止镜像源返回损坏 tarball 导致装出的二进制 segfault
+# T8c (2.1.9 D-9): npmmirror 单源无兜底 → ① downloads/ 预置 tgz 离线安装
+#   （scripts/stage-npm.sh 预下载主包+linux 伴生包——原生二进制在伴生包里，
+#   codex 平台包还是 npm alias，file: 清单按别名键装才能全离线；实测
+#   node:20-slim + file: 清单零 registry 通过）；② 外层重试 ×2 + 显式
+#   --fetch-retries（npm 内建默认仅 2 次且仅限单请求）。
+RUN set -eux; \
+    if [ "$USE_CN_MIRROR" = "1" ]; then \
         npm config set registry https://registry.npmmirror.com/ ; echo "npm: 淘宝镜像" ; \
-    else echo "npm: 官方源" ; fi \
-    && npm install -g --no-cache @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
-    && npm install -g --no-cache @openai/codex@${CODEX_VERSION} \
-    && claude --version \
+    else echo "npm: 官方源" ; fi ; \
+    npm_arch=""; \
+    case "$(dpkg --print-architecture)" in amd64) npm_arch=x64;; arm64|aarch64) npm_arch=arm64;; *) npm_arch=x64;; esac; \
+    claude_tgz="$(ls /tmp/dl/claude-code-[0-9]*.tgz 2>/dev/null | head -1 || true)"; \
+    claude_comp="$(ls /tmp/dl/claude-code-linux-${npm_arch}-*.tgz 2>/dev/null | head -1 || true)"; \
+    codex_tgz="$(ls /tmp/dl/codex-[0-9]*.tgz 2>/dev/null | head -1 || true)"; \
+    codex_comp="$(ls /tmp/dl/codex-linux-${npm_arch}-*.tgz 2>/dev/null | head -1 || true)"; \
+    if [ -n "$claude_tgz" ] && [ -n "$claude_comp" ] && [ -n "$codex_tgz" ] && [ -n "$codex_comp" ]; then \
+        echo "📦 使用本地预置 npm 包: $(basename "$claude_tgz") + $(basename "$claude_comp") + $(basename "$codex_tgz") + $(basename "$codex_comp")"; \
+        mkdir -p /opt/aisc/npm && cd /opt/aisc/npm; \
+        printf '{"name":"aisc-offline-npm","private":true,"dependencies":{"@anthropic-ai/claude-code":"file:%s","@anthropic-ai/claude-code-linux-%s":"file:%s","@openai/codex":"file:%s","@openai/codex-linux-%s":"file:%s"}}' \
+            "$claude_tgz" "$npm_arch" "$claude_comp" "$codex_tgz" "$npm_arch" "$codex_comp" \
+            > package.json; \
+        npm install --offline --no-audit --no-fund --loglevel=warn; \
+        ln -sf /opt/aisc/npm/node_modules/.bin/claude /usr/local/bin/claude; \
+        ln -sf /opt/aisc/npm/node_modules/.bin/codex /usr/local/bin/codex; \
+        rm -f "$claude_tgz" "$claude_comp" "$codex_tgz" "$codex_comp"; \
+        cd /; \
+    else \
+        npm_ok=0; \
+        for npm_try in 1 2; do \
+            if npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
+                    @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+                    @openai/codex@${CODEX_VERSION}; then \
+                npm_ok=1; break; \
+            fi; \
+            echo "⚠️  npm 安装第 ${npm_try} 次失败，重试..."; sleep 3; \
+        done; \
+        [ "$npm_ok" = "1" ] || { echo "❌ npm 安装失败（可运行 bash scripts/stage-npm.sh 预下载离线包到 container/downloads/ 后重建，或检查 npmmirror 可达性）"; exit 1; }; \
+    fi; \
+    claude --version \
     && codex --version
 
 # ==========================================
@@ -242,6 +309,39 @@ RUN mv /usr/local/bin/codex /usr/local/bin/codex-real
 COPY container/codex-wrapper /usr/local/bin/codex
 RUN chmod +x /usr/local/bin/codex
 
+# AISC session wrapper（Workbench S0.3）：docker exec 接入的容器内 session 数据面。
+# 从 /run/aisc/runtime-context.json 重建 scope 环境，以独立进程组启动受控 Agent，
+# 原子维护 /run/aisc/sessions/<id>.json (0600)，负责 wait/reap 与 terminate 清理。
+COPY container/aisc-session-wrapper /usr/local/bin/aisc-session-wrapper
+RUN chmod +x /usr/local/bin/aisc-session-wrapper
+
+# AISC provider inspector（Workbench S0.4）：docker exec 读取容器内 provider 配置，
+# 输出 secret-free 的 provider 状态（route_mode/auth_status），供 aisc provider current。
+COPY container/aisc-provider-inspect /usr/local/bin/aisc-provider-inspect
+RUN chmod +x /usr/local/bin/aisc-provider-inspect
+
+# AISC cc-switch provider adapter（Stage 8d）：aisc.cc-switch-provider/v1 数据面。
+# list=只读 SQLite 快照；add/edit/delete=官方非交互 CLI（secret 只走 stdin），
+# edit=switch-away→delete→re-add 舞步。stdout 全部经 redaction 后才出信封。
+COPY container/aisc-cc-provider /usr/local/bin/aisc-cc-provider
+# P3 热切换：模型映射 shim（15711/15712 → 15721/15722，见 entrypoint）
+COPY container/aisc-model-shim /usr/local/bin/aisc-model-shim
+RUN chmod +x /usr/local/bin/aisc-cc-provider /usr/local/bin/aisc-model-shim
+
+# AISC web 服务访问（svc-1，docs/plans/container-service-access.md）：
+#   aisc-web-gateway  容器内 0.0.0.0:45871，按 Host: p<port>.localhost 把字节流
+#                     双向转发到容器内 127.0.0.1:<port>（HTTP/WebSocket，不改写）；
+#   aisc-web-expose / aisc-web-unexpose / aisc-web-list
+#                     注册三件套，写 /run/aisc/web-services/<port>.json（0600 原子写）。
+#   共享注册逻辑在 container/lib/aisc_web_registry.py（随上面 lib/ COPY 一并装入）。
+#   （py_compile 可执行性冒烟在下方 Python 运行时段——此处 python3 尚未安装。）
+COPY container/aisc-web-gateway /usr/local/bin/aisc-web-gateway
+COPY container/aisc-web-expose /usr/local/bin/aisc-web-expose
+COPY container/aisc-web-unexpose /usr/local/bin/aisc-web-unexpose
+COPY container/aisc-web-list /usr/local/bin/aisc-web-list
+RUN chmod +x /usr/local/bin/aisc-web-gateway /usr/local/bin/aisc-web-expose \
+        /usr/local/bin/aisc-web-unexpose /usr/local/bin/aisc-web-list
+
 # 防御：若构建上下文来自 Windows（CRLF），脚本 shebang 会变成 "#!/bin/bash\r"，
 # 导致 "cannot execute: required file not found"。统一剥离 CR，确保镜像内脚本可执行。
 # 注意：只处理文本脚本，绝不能 sed claude-real/codex-real —— 那些是原生 ELF 二进制，
@@ -250,6 +350,15 @@ RUN sed -i 's/\r$//' \
         /usr/local/bin/entrypoint.sh \
         /usr/local/bin/claude \
         /usr/local/bin/codex \
+        /usr/local/bin/aisc-session-wrapper \
+        /usr/local/bin/aisc-provider-inspect \
+        /usr/local/bin/aisc-cc-provider \
+        /usr/local/bin/aisc-model-shim \
+        /usr/local/bin/aisc-web-gateway \
+        /usr/local/bin/aisc-web-expose \
+        /usr/local/bin/aisc-web-unexpose \
+        /usr/local/bin/aisc-web-list \
+        /usr/local/bin/lib/aisc_web_registry.py \
         /usr/local/bin/mihomo-build-config.js \
         /usr/local/bin/lib/env-inject.sh \
         /usr/local/bin/lib/writable.sh \
@@ -260,9 +369,33 @@ RUN sed -i 's/\r$//' \
 #   Claude Code 可直接用 python/pip。放靠后，避免使前面 npm/claude 重型层缓存失效。
 #   Debian 12 PEP 668 限制系统 pip install → 建默认 venv并挂 PATH 头。
 # ==========================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-venv python-is-python3 \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    apt_ok=0; \
+    for apt_try in 1 2 3; do \
+        if apt-get update && apt-get install -y --no-install-recommends \
+                python3 python3-pip python3-venv python-is-python3; then \
+            apt_ok=1; break; \
+        fi; \
+        echo "⚠️  apt(python) 第 ${apt_try} 次失败，重试..."; sleep 3; \
+    done; \
+    [ "$apt_ok" = "1" ] || { echo "❌ apt(python) 安装失败（连续 3 次）"; exit 1; }; \
+    rm -rf /var/lib/apt/lists/*
+
+# svc-1 可执行性冒烟：web gateway/注册三件套/共享注册库在此 py_compile
+#   （语法层校验；运行时行为由宿主测试与 Docker 集成测试覆盖）。
+RUN python3 -m py_compile /usr/local/bin/lib/aisc_web_registry.py \
+        /usr/local/bin/aisc-web-gateway /usr/local/bin/aisc-web-expose \
+        /usr/local/bin/aisc-web-unexpose /usr/local/bin/aisc-web-list
+
+# 2.1.9 T3b (R1): 容器侧 aisc 桥（仅 artifact record）。镜像不装完整 aisc
+#   （拒绝嵌套），但登记链路此前因此从未通过（探针定性，decisions D-2）。
+#   shim 与宿主 CLI 写同一 JSONL registry（挂载自 <data-root>/artifacts）。
+COPY container/lib/aisc_shim.py /usr/local/bin/lib/aisc_shim.py
+RUN sed -i 's/\r$//' /usr/local/bin/lib/aisc_shim.py \
+    && printf '#!/bin/sh\nexec python3 /usr/local/bin/lib/aisc_shim.py "$@"\n' \
+        > /usr/local/bin/aisc \
+    && chmod +x /usr/local/bin/aisc \
+    && python3 -m py_compile /usr/local/bin/lib/aisc_shim.py
 
 # 设置工作目录；宿主工作区挂载到 /root/app。
 WORKDIR /root/app
@@ -275,34 +408,98 @@ RUN git config --system core.autocrlf input
 # 默认 Python venv（root 可写，pip install 不受 PEP 668 限制）
 #   python/pip → venv（PATH 优先）；pip install 直达，无需 --break-system-packages。
 #   venv 在镜像内（--rm 容器每次重启重置为出厂；如需持久化包，加 requirements.txt + 启动安装）。
+# T8b (2.1.9 D-9): pip 升级曾直连 pypi.org——CN 网络下无镜像无重试的硬失败
+#   点。现 CN 走清华源；升级失败软放过（venv 自带 pip 足够，不值得毁构建）。
 RUN python3 -m venv /opt/aisc/venv \
-    && /opt/aisc/venv/bin/python -m pip install --upgrade pip --quiet
+    && if [ "$USE_CN_MIRROR" = "1" ]; then \
+           /opt/aisc/venv/bin/python -m pip install --upgrade pip --quiet \
+               -i https://pypi.tuna.tsinghua.edu.cn/simple \
+               || echo "⚠️  pip 升级失败，沿用内置版本"; \
+       else \
+           /opt/aisc/venv/bin/python -m pip install --upgrade pip --quiet \
+               || echo "⚠️  pip 升级失败，沿用内置版本"; \
+       fi
 ENV PATH="/opt/aisc/venv/bin:${PATH}"
 
 # ==========================================
 # cc-switch-cli（Rust 二进制）：Claude/Codex provider 与 skills 的唯一管理工具
-#   以 root 写入 /usr/local/bin。
+#   Stage 8b：resolver 注入 URL/SHA-256 时强校验（fail closed）；仅手动
+#   docker build（无 resolver 产物）走 tag 拼 URL 回退，无校验并显式警告。
 #   复用 mihomo 的 GH_PROXY 多镜像 fallback；musl 静态版兼容 glibc/musl。
 # ==========================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
-    base="https://github.com/saladday/cc-switch-cli/releases/download/${CC_SWITCH_VERSION}/cc-switch-cli-linux-${cs_arch}-musl.tar.gz"; \
-    if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
-    elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/"; \
-    else mirrors=""; fi; \
-    ok=0; \
-    for m in $mirrors ""; do \
-        u="${m}${base}"; echo "⬇️  cc-switch try: $u"; \
-        if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
-                --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
-    done; \
-    [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
+    if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
+        base="${CC_SWITCH_ASSET_URL}"; \
+        case "${CC_SWITCH_ASSET_NAME}" in \
+            *-linux-${cs_arch}-musl.tar.gz) ;; \
+            *) echo "❌ cc-switch asset ${CC_SWITCH_ASSET_NAME} does not match build arch ${cs_arch}"; exit 1 ;; \
+        esac; \
+        if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/"; \
+        else mirrors=""; fi; \
+        ok=0; \
+        for m in $mirrors ""; do \
+            u="${m}${base}"; echo "⬇️  cc-switch try: $u"; \
+            if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
+                    --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
+        done; \
+        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
+        echo "${CC_SWITCH_ASSET_SHA256}  /tmp/ccs.tar.gz" | sha256sum -c - || { echo "❌ cc-switch sha256 mismatch"; exit 1; }; \
+    else \
+        echo "⚠️  手动构建回退：无 resolver 校验（aisc build 才有 sha256 pin）"; \
+        base="https://github.com/SaladDay/cc-switch-cli/releases/download/${CC_SWITCH_VERSION}/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz"; \
+        if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/"; \
+        else mirrors=""; fi; \
+        ok=0; \
+        for m in $mirrors ""; do \
+            u="${m}${base}"; echo "⬇️  cc-switch try: $u"; \
+            if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
+                    --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
+        done; \
+        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
+    fi; \
     tar -xzf /tmp/ccs.tar.gz -C /tmp; \
     mv /tmp/cc-switch /usr/local/bin/cc-switch-real; \
     chmod +x /usr/local/bin/cc-switch-real; \
     rm -f /tmp/ccs.tar.gz; \
     /usr/local/bin/cc-switch-real --version
+
+# ==========================================
+# v2.1.8 T2: yazi 文件管理器（静态二进制，GitHub release，CN mirror fallback）
+# T8e (2.1.9 D-9): 对齐 mihomo 的 downloads/ 预置模式；本段是 /tmp/dl 的最后
+#   消费者，负责最终清场（geodata 段不再整删，见 T8c 注）。
+# ==========================================
+ARG YAZI_VERSION=25.2.26
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in amd64) yazi_arch=x86_64-unknown-linux-musl;; arm64|aarch64) yazi_arch=aarch64-unknown-linux-musl;; *) echo "unsupported arch $arch for yazi"; exit 1 ;; esac; \
+    yazi_preset="$(ls /tmp/dl/yazi-*.zip 2>/dev/null | head -1 || true)"; \
+    if [ -n "$yazi_preset" ]; then \
+        echo "📦 使用本地预置 yazi: $(basename "$yazi_preset")（期望 arch: ${yazi_arch}）"; \
+        cp "$yazi_preset" /tmp/yazi.zip; \
+        rm -f "$yazi_preset"; \
+    else \
+        yazi_base="https://github.com/sxyazi/yazi/releases/download/v${YAZI_VERSION}/yazi-${yazi_arch}.zip"; \
+        if [ "$USE_CN_MIRROR" = "1" ]; then yazi_mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ "; else yazi_mirrors=""; fi; \
+        ok=0; \
+        for m in $yazi_mirrors ""; do \
+            u="${m}${yazi_base}"; echo "⬇️  yazi try: $u"; \
+            if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
+                    --connect-timeout 8 --max-time 60 "$u" -o /tmp/yazi.zip; then ok=1; break; fi; \
+        done; \
+        [ "$ok" = "1" ] || { echo "❌ yazi 下载失败（可 bash scripts/stage-npm.sh 预下载 yazi 到 downloads/ 后重建，或 --build-arg GH_PROXY=<镜像前缀>）"; exit 1; }; \
+    fi; \
+    unzip -o /tmp/yazi.zip -d /tmp/yazi-extract; \
+    mv "/tmp/yazi-extract/yazi-${yazi_arch}/yazi" /usr/local/bin/yazi; \
+    chmod +x /usr/local/bin/yazi; \
+    rm -rf /tmp/yazi.zip /tmp/yazi-extract /tmp/dl; \
+    /usr/local/bin/yazi --version
+
+# （v2.1.8 曾内置 ble.sh；2.1.9 D-1 修订移除——attach 冻结 Workbench PTY 链，
+#  幽灵文本由 zsh 套件交付。诊断存档 docs/archive/2.1.8-dev-plans/decisions.md）
 
 COPY container/cc-switch-wrapper /usr/local/bin/cc-switch
 RUN sed -i 's/\r$//' /usr/local/bin/cc-switch \
@@ -310,6 +507,30 @@ RUN sed -i 's/\r$//' /usr/local/bin/cc-switch \
 
 COPY container/cc_switch_skills.py /usr/local/bin/lib/cc_switch_skills.py
 COPY container/lib/cc_switch_preset_providers.py /usr/local/bin/lib/cc_switch_preset_providers.py
+# Stage 8c (D8-06): the DeepSeek preset consumes this official-docs fixture
+# at runtime — models/endpoints/[1m] rules never live in code.
+COPY container/lib/deepseek-official-facts.json /usr/local/bin/lib/deepseek-official-facts.json
+# 复测第 2 轮（2026-08-21）：claude 的 provider switch 整文件替换 settings.json，
+# 每条 claude settings_config 都要带非 env 基模板（statusLine/enabledPlugins），
+# 否则切换即抹掉用户插件/状态栏。preset 模块在运行时读取本文件。
+COPY container/claude-settings.json /usr/local/bin/lib/aisc-claude-settings-base.json
+
+# v2.1.8 T1: optional agent instructions template (AGENTS.md). Entrypoint
+# copies to /root/AGENTS.md ONLY if the user doesn't have one; disable with
+# AISC_AGENT_INSTRUCTIONS=off.
+COPY container/agent-instructions.md /usr/local/share/aisc/agent-instructions.md
+
+# v2.1.8 T2: AISC-managed bashrc (recursion-guarded, HISTFILE, ble.sh behind
+# experiment gate, SQLite hook via Python helper) + the /root/.bashrc shim
+# that sources it (tmux sub-shell closure). The helper lives in lib/.
+COPY container/aisc-bashrc /usr/local/share/aisc/bashrc
+COPY container/aisc-zshrc /usr/local/share/aisc/zsh/.zshrc
+COPY container/lib/aisc_bash_history.py /usr/local/bin/lib/aisc_bash_history.py
+RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
+    && echo 'if [ -f /usr/local/share/aisc/bashrc ] && [[ $- == *i* ]]; then' >> /root/.bashrc \
+    && echo '    source /usr/local/share/aisc/bashrc' >> /root/.bashrc \
+    && echo 'fi' >> /root/.bashrc \
+    && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
 # cc-switch 离线 skills：元技能说明 + 已暂存插件中的实际 skill 内容。
 COPY container/cc-switch-skills/ /opt/aisc/skills/
@@ -328,6 +549,13 @@ RUN set -eux; \
         find . -type f -print0 | sort -z | xargs -0 sha256sum | \
         sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
     mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256
+# Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
+# image. Empty on manual builds (only the legacy version ARG is set).
+LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \
+      org.aisc.cc-switch.commit="${CC_SWITCH_RELEASE_COMMIT}" \
+      org.aisc.cc-switch.asset-sha256="${CC_SWITCH_ASSET_SHA256}" \
+      org.aisc.build-manifest="${CC_SWITCH_BUILD_MANIFEST}"
+
 # 设置入口点
 ENTRYPOINT ["entrypoint.sh"]
 

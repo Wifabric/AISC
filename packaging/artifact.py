@@ -16,6 +16,35 @@ import re, shutil, stat, struct, subprocess, sys, tarfile, tempfile, time, zipfi
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Set, Tuple
 
+# --- A3 (guide 3.3.3): the runtime-critical extraction/verification moved
+# into src/aisc (pip installs never see packaging/); this module re-exports
+# the original symbols so existing consumers (tests/packaging, CI scripts)
+# are untouched. Keep this file runnable standalone: bootstrap src/ first.
+_REPO_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_REPO_SRC) not in sys.path:
+    sys.path.insert(0, str(_REPO_SRC))
+from aisc.application.bundle_fetch import (  # noqa: E402
+    BUNDLE_FORBIDDEN_TOP,
+    BUNDLE_REQUIRED,
+    _audit_forbidden,
+    _check_containment,
+    _glob_module,
+    _normalised_key,
+    _norm_path,
+    _sha256_file,
+    _validate_archive_path,
+    _verify_dockerfile_sources,
+    _verify_vendor_checksums,
+    _write_manifest,
+    bundle_version,
+    safe_extract_archive,
+    safe_extract_tar,
+    safe_extract_zip,
+    validate_tar_members,
+    validate_zip_members,
+    verify_staged_bundle,
+)
+
 
 # ===========================================================================
 # Platform detection
@@ -38,9 +67,13 @@ ARCH_TAG = _detect_arch()
 # ===========================================================================
 
 def get_version(root: Path) -> str:
-    vf = root / "VERSION"
-    if not vf.is_file(): sys.exit(f"ERROR: VERSION not found at {vf}")
-    return vf.read_text(encoding="utf-8").strip().split("\n")[0].strip()
+    # A2 dual-shape: staged bundles/frozen roots carry VERSION at their
+    # root; repo checkouts carry it as package data at src/aisc/VERSION.
+    for rel in ("VERSION", "src/aisc/VERSION"):
+        vf = root / rel
+        if vf.is_file():
+            return vf.read_text(encoding="utf-8").strip().split("\n")[0].strip()
+    sys.exit(f"ERROR: VERSION not found at {root}")
 
 def _assert_version_guard(root: Path) -> str:
     """Return the sole project version source after validating it exists."""
@@ -52,6 +85,10 @@ def _assert_version_guard(root: Path) -> str:
 # ===========================================================================
 
 BUNDLE_REQUIRED = ["VERSION", "README.md", "LICENSE", ".dockerignore", "config/versions.env"]
+# A2: the staging SOURCE (repo root) no longer carries VERSION at its root
+# (package data now); the bundle OUTPUT still must. VERSION rides separately
+# via get_version() and is written below.
+STAGING_SOURCE_REQUIRED = ["README.md", "LICENSE", ".dockerignore", "config/versions.env"]
 BUNDLE_EXCLUDE_PATTERNS = [
     "__pycache__", "*.pyc", "*.pyo", ".pytest_cache", ".mypy_cache", ".ruff_cache",
     ".coverage", "coverage", "htmlcov", ".tox", ".git", ".github", ".gitignore",
@@ -142,7 +179,7 @@ def stage_bundle(root: Path, output_dir: Path, *, verify_version: bool = True) -
     br = output_dir / "aisc-bundle"
     if br.exists(): shutil.rmtree(br)
     br.mkdir(parents=True)
-    for fn in BUNDLE_REQUIRED:
+    for fn in STAGING_SOURCE_REQUIRED:
         if not (root / fn).is_file(): sys.exit(f"ERROR: required file missing: {fn}")
         _stage_file(root / fn, br, fn)
     _stage_file(root / "config" / "versions.env", br, "config/versions.env")
@@ -170,105 +207,6 @@ def stage_bundle(root: Path, output_dir: Path, *, verify_version: bool = True) -
     (br/"VERSION").write_text(pv+"\n", encoding="utf-8")
     return br
 
-def _write_manifest(path: Path, data: dict) -> None:
-    sv, vs = data.get("schema_version", 1), sorted(data.get("compatible_cli_versions", []))
-    path.write_text('{\n  "schema_version": '+json.dumps(sv)+',\n  "compatible_cli_versions": '+json.dumps(vs)+'\n}\n', encoding="utf-8", newline="")
-
-
-# ===========================================================================
-# Staging verification
-# ===========================================================================
-
-def verify_staged_bundle(bundle_root: Path) -> List[str]:
-    errors: List[str] = []
-    mp = bundle_root / "manifest.json"
-    if not mp.is_file(): return ["manifest.json missing from staged bundle"]
-    try:
-        mt = mp.read_text(encoding="utf-8")
-        if "\r" in mt: errors.append("manifest.json contains CR (must be LF)")
-        if not mt.endswith("\n"): errors.append("manifest.json does not end with newline")
-        m = json.loads(mt)
-    except json.JSONDecodeError as e: return [f"manifest.json is not valid JSON: {e}"]
-    if m.get("schema_version") != 1: errors.append(f"manifest.json schema_version={m.get('schema_version')}, expected 1")
-    compat = m.get("compatible_cli_versions")
-    if not isinstance(compat, list): errors.append("manifest.json compatible_cli_versions is not a list")
-    elif len(compat)==0: errors.append("manifest.json compatible_cli_versions is empty")
-    else:
-        pv = get_version(bundle_root); seen: Set[str] = set()
-        for v in compat:
-            if not isinstance(v,str): errors.append(f"manifest.json version not string: {v}")
-            elif v in seen: errors.append(f"manifest.json duplicate version: {v}")
-            seen.add(v)
-        if pv not in compat: errors.append(f"manifest.json allowlist missing current version {pv}")
-    for k in ("timestamp","platform","arch","checksums"):
-        if k in m: errors.append(f"manifest.json contains forbidden field: {k}")
-    for k in m:
-        if k not in ("schema_version","compatible_cli_versions"): errors.append(f"manifest.json contains unknown field: {k}")
-    for fn in BUNDLE_REQUIRED:
-        if not (bundle_root/fn).is_file(): errors.append(f"Required file missing: {fn}")
-    if not (bundle_root/"config"/"versions.env").is_file(): errors.append("config/versions.env missing")
-    df = bundle_root / "container" / "Dockerfile"
-    if df.is_file(): errors.extend(_verify_dockerfile_sources(df, bundle_root))
-    else: errors.append("container/Dockerfile missing")
-    errors.extend(_verify_vendor_checksums(bundle_root))
-    errors.extend(_audit_forbidden(bundle_root))
-    if not (bundle_root/"container"/"_bundle"/"plugins").exists(): errors.append("container/_bundle/plugins missing")
-    if not (bundle_root/"container"/"downloads").exists(): errors.append("container/downloads missing")
-    return errors
-
-def _audit_forbidden(bundle_root: Path) -> List[str]:
-    es = []
-    for dp, dns, fns in os.walk(str(bundle_root)):
-        rp = Path(dp).relative_to(bundle_root); rs = str(rp).replace("\\","/")
-        for dn in dns:
-            if dn=="__pycache__" or dn.startswith(".pytest_cache"): es.append(f"Forbidden dir: {rs}/{dn}")
-        for fn in fns:
-            fr = (rs+"/"+fn) if rs!="." else fn
-            if fn.endswith(".pyc"): es.append(f"Forbidden .pyc: {fr}")
-            if fn in (".env","api-keys",".git-credentials") and len(fr.split("/"))>1: es.append(f"Forbidden file: {fr}")
-    for fb in BUNDLE_FORBIDDEN_TOP:
-        if (bundle_root/fb).exists(): es.append(f"Forbidden top-level: {fb}")
-    return es
-
-def _verify_dockerfile_sources(df: Path, br: Path) -> List[str]:
-    es = []
-    for no, line in enumerate(df.read_text(encoding="utf-8").splitlines(),1):
-        s=line.strip()
-        if not s or s.startswith("#"): continue
-        if not s.upper().startswith("COPY"): continue
-        if s.startswith("COPY [") or s.startswith("COPY["): es.append(f"Dockerfile line {no}: JSON-form COPY not supported"); continue
-        if "--FROM" in s.upper(): es.append(f"Dockerfile line {no}: COPY --from not supported"); continue
-        parts=s.split()
-        if len(parts)<3: continue
-        cargs=[p for p in parts[1:] if not p.startswith("--")]
-        if len(cargs)<2: continue
-        for src in cargs[:-1]:
-            sp=src.lstrip("/")
-            if "*" in sp or "?" in sp:
-                if not _glob_module.glob(str(br/sp)): es.append(f"Dockerfile line {no}: COPY source glob not found: {sp}")
-            elif not (br/sp.rstrip("/")).exists(): es.append(f"Dockerfile line {no}: COPY source not found: {sp}")
-    return es
-
-def _verify_vendor_checksums(bundle_root: Path) -> List[str]:
-    es = []
-    cf = bundle_root/"vendor"/"checksums.txt"
-    if not cf.is_file(): return ["vendor/checksums.txt missing from bundle"]
-    for no, line in enumerate(cf.read_text(encoding="utf-8").splitlines(),1):
-        s=line.strip()
-        if not s or s.startswith("#"): continue
-        m = re.match(r'^([0-9a-fA-F]{64})\s+(.+)$', s)
-        if not m: es.append(f"vendor/checksums.txt line {no}: malformed: {s[:80]}"); continue
-        eh, rp = m.group(1).lower(), m.group(2).strip()
-        if rp.startswith("/") or ".." in rp.replace("\\","/").split("/"): es.append(f"vendor/checksums.txt line {no}: unsafe path: {rp}"); continue
-        target = (bundle_root/rp).resolve()
-        try: target.relative_to(bundle_root.resolve())
-        except ValueError: es.append(f"vendor/checksums.txt line {no}: path escapes bundle: {rp}"); continue
-        if not target.is_file(): es.append(f"vendor/checksums line {no}: file not found: {rp}"); continue
-        ah = hashlib.sha256(target.read_bytes()).hexdigest()
-        if ah!=eh: es.append(f"vendor/checksums line {no}: hash mismatch for {rp}: expected {eh[:16]}..., got {ah[:16]}...")
-    return es
-
-
 # ===========================================================================
 # Archive creation
 # ===========================================================================
@@ -278,12 +216,6 @@ def _file_mode_for_path(rel_path: str, is_top_exe: bool = False) -> int:
     name = rel_path.replace("\\","/").split("/")[-1]
     if name in _EXEC_SOURCE_NAMES or name.endswith(".sh"): return 0o755
     return 0o644
-
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path,"rb") as f:
-        for chunk in iter(lambda:f.read(65536),b""): h.update(chunk)
-    return h.hexdigest()
 
 def _write_sidecar(output_dir: Path, archive_basename: str, sha256: str) -> None:
     sc = output_dir / f"{archive_basename}.sha256"
@@ -400,7 +332,7 @@ def build_onefile(root: Path, output_dir: Path) -> Tuple[Path, str]:
                 sys.executable, "-m", "PyInstaller", "--onefile",
                 "--name", "aisc",
                 "--paths", str(root / "src"),
-                "--add-data", f"{root / 'VERSION'}:.",
+                "--add-data", f"{root / 'src' / 'aisc' / 'VERSION'}:.",
                 "--distpath", str(dd),
                 "--workpath", str(wd / "build"),
                 "--specpath", str(wd),
@@ -425,148 +357,6 @@ def build_onefile(root: Path, output_dir: Path) -> Tuple[Path, str]:
 # ===========================================================================
 # Safe archive extraction (PUBLIC)
 # ===========================================================================
-
-def _norm_path(p: str) -> str:
-    return re.sub(r'/+', '/', p.replace("\\","/")).strip("/")
-
-def _validate_archive_path(name: str) -> Optional[str]:
-    """Validate archive member path. Returns error or None."""
-    raw = name
-    if "\x00" in raw: return "NUL byte in path"
-    # Check raw (before any normalisation) for POSIX absolute, UNC, Windows drive
-    r = raw.lstrip()
-    if r.startswith("//") or r.startswith("\\\\"): return f"UNC path: {raw!r}"
-    if r.startswith("/"): return f"POSIX absolute path: {raw!r}"
-    if re.match(r'^[a-zA-Z]:[/\\\\]', r): return f"Windows drive path: {raw!r}"
-    n = _norm_path(raw)
-    if not n or n == ".": return f"empty or '.' path: {raw!r}"
-    parts = n.split("/")
-    if ".." in parts: return f"path escape (..): {raw!r}"
-    if "." in parts: return f"path with '.' segment: {raw!r}"
-    return None
-
-def _normalised_key(name: str) -> str:
-    """Casefolded normalised path for duplicate detection."""
-    return _norm_path(name).casefold()
-
-def validate_tar_members(tar: tarfile.TarFile) -> List[str]:
-    """Validate all tar members. Only REGTYPE/DIRTYPE allowed.
-    Rejects symlink, hardlink, FIFO, char/block device.
-    Checks for normalized+casefold duplicate targets.
-    """
-    errors = []; seen: Set[str] = set()
-    for m in tar.getmembers():
-        e = _validate_archive_path(m.name)
-        if e: errors.append(e); continue
-        if m.type not in (tarfile.REGTYPE, tarfile.DIRTYPE):
-            tname = {tarfile.SYMTYPE:"symlink", tarfile.LNKTYPE:"hardlink",
-                     tarfile.FIFOTYPE:"fifo", tarfile.CHRTYPE:"chardev",
-                     tarfile.BLKTYPE:"blockdev"}.get(m.type, f"type({m.type})")
-            errors.append(f"forbidden tar member type {tname}: {m.name}")
-            if m.linkname:
-                le = _validate_archive_path(m.linkname)
-                if le: errors.append(f"unsafe tar link target: {m.linkname} ({le})")
-            continue
-        nk = _normalised_key(m.name)
-        if nk in seen: errors.append(f"duplicate path in tar: {m.name}")
-        seen.add(nk)
-    return errors
-
-def validate_zip_members(zf: zipfile.ZipFile) -> List[str]:
-    """Validate zip members. Rejects unsafe paths, special file types,
-    Unix symlinks, casefold duplicates."""
-    errors = []; seen: Set[str] = set()
-    for zi in zf.infolist():
-        e = _validate_archive_path(zi.filename)
-        if e: errors.append(e); continue
-
-        # Full high 16 bits for S_IFMT
-        full_mode = (zi.external_attr >> 16) & 0xFFFF
-        if zi.create_system == 3 and full_mode != 0:
-            if stat.S_ISLNK(full_mode):
-                errors.append(f"zip contains Unix symlink: {zi.filename}")
-            elif not (stat.S_ISREG(full_mode) or stat.S_ISDIR(full_mode)):
-                ftype = "unknown"
-                if stat.S_ISFIFO(full_mode): ftype = "fifo"
-                elif stat.S_ISCHR(full_mode): ftype = "chardev"
-                elif stat.S_ISBLK(full_mode): ftype = "blockdev"
-                elif stat.S_ISSOCK(full_mode): ftype = "socket"
-                errors.append(f"zip contains forbidden file type {ftype}: {zi.filename}")
-            # is_dir flag and S_IFDIR must agree
-            if zi.is_dir() and not stat.S_ISDIR(full_mode):
-                errors.append(f"zip directory flag vs mode mismatch: {zi.filename}")
-            if stat.S_ISDIR(full_mode) and not zi.is_dir():
-                errors.append(f"zip mode says dir but not flagged as dir: {zi.filename}")
-        elif zi.create_system != 3 and full_mode != 0:
-            # Non-Unix: if it has mode bits, basic validation; otherwise allow (old zip compat)
-            if stat.S_ISLNK(full_mode): errors.append(f"zip contains symlink (non-Unix): {zi.filename}")
-
-        nk = _normalised_key(zi.filename)
-        if nk in seen: errors.append(f"duplicate path in zip: {zi.filename}")
-        seen.add(nk)
-    return errors
-
-def _check_containment(dest_dir: Path, target: Path) -> Optional[str]:
-    """Check target resolves inside dest_dir. Returns error or None."""
-    try:
-        target.resolve().relative_to(dest_dir.resolve())
-    except ValueError:
-        return f"extraction escapes dest: {target}"
-    return None
-
-def safe_extract_tar(tar: tarfile.TarFile, dest_dir: Path) -> List[str]:
-    errors = validate_tar_members(tar)
-    if errors: return errors
-    for m in tar.getmembers():
-        if m.type == tarfile.DIRTYPE: continue  # dirs created implicitly
-        target = dest_dir / m.name
-        ce = _check_containment(dest_dir, target)
-        if ce: errors.append(ce); continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with tar.extractfile(m) as src:
-            if src is None: errors.append(f"cannot read tar member: {m.name}"); continue
-            target.write_bytes(src.read())
-        target.chmod(m.mode & 0o777)
-    return errors
-
-def safe_extract_zip(zf: zipfile.ZipFile, dest_dir: Path) -> List[str]:
-    errors = validate_zip_members(zf)
-    if errors: return errors
-    for zi in zf.infolist():
-        if zi.is_dir(): continue  # dirs created implicitly
-        target = dest_dir / zi.filename
-        ce = _check_containment(dest_dir, target)
-        if ce: errors.append(ce); continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(zf.read(zi.filename))
-        mode = (zi.external_attr >> 16) & 0o777
-        target.chmod(mode if mode else 0o644)
-    return errors
-
-def safe_extract_archive(archive_path: Path, dest_dir: Path) -> List[str]:
-    """Public: safely extract archive to dest_dir.
-
-    If dest_dir does not exist, it is created.
-    If dest_dir exists, it MUST be a directory and MUST be empty
-    (no pre-existing symlinks, files, or subdirectories).
-    Validates all members before writing anything.
-    """
-    if dest_dir.exists():
-        if not dest_dir.is_dir():
-            return [f"dest exists but is not a directory: {dest_dir}"]
-        if any(dest_dir.iterdir()):
-            return [f"dest directory is not empty: {dest_dir}"]
-    else:
-        dest_dir.mkdir(parents=True, exist_ok=True)
-
-    is_zip = archive_path.suffix == ".zip"
-    if is_zip:
-        with zipfile.ZipFile(str(archive_path), "r") as zf:
-            return safe_extract_zip(zf, dest_dir)
-    else:
-        with tarfile.open(str(archive_path), "r:*") as tar:
-            return safe_extract_tar(tar, dest_dir)
-
 
 # ===========================================================================
 # Archive verification
@@ -768,11 +558,15 @@ def main() -> None:
 def _find_repo_root(explicit: Optional[str] = None) -> Path:
     if explicit:
         p = Path(explicit).resolve()
+        # A2: dual-shape version marker (repo: src/aisc/VERSION; legacy
+        # checkouts and staged bundles: root VERSION).
+        if (p/"src"/"aisc"/"VERSION").is_file() and (p/"container"/"Dockerfile").is_file(): return p
         if (p/"VERSION").is_file() and (p/"container"/"Dockerfile").is_file(): return p
         sys.exit(f"Not a valid AISC repo root: {explicit}")
     for start in [Path(__file__).resolve().parent.parent, Path.cwd()]:
         c = start
         while True:
+            if (c/"src"/"aisc"/"VERSION").is_file() and (c/"container"/"Dockerfile").is_file(): return c
             if (c/"VERSION").is_file() and (c/"container"/"Dockerfile").is_file(): return c
             parent = c.parent
             if parent == c: break

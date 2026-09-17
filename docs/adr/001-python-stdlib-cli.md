@@ -1,6 +1,6 @@
 # ADR 001: Python stdlib CLI 作为跨平台统一运行时
 
-> **状态**：已接受
+> **状态**：部分被取代——0.1.0 起分发与依赖立场见 [002-pypi-distribution.md](002-pypi-distribution.md)；本文的 stdlib-CLI 架构与 frozen 轨道仍有效
 > **日期**：2026-07-17
 > **决策者**：用户批准（来源：[PLAN-p3-unified-cli.md](../plans/PLAN-p3-unified-cli.md) §1.3 决策 D1/D2）
 

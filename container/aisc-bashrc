@@ -1,0 +1,91 @@
+# /usr/local/share/aisc/bashrc — AISC-managed bash initialization
+# v2.1.8 T2 (2.1.9 D-1 修订): HISTFILE persistence + SQLite history append
+# (via Python helper, parameterized — no shell SQL). Ctrl+R history search:
+# native bash incremental search (fzf fuzzy search cut per 2.1.8 D-3).
+# Ghost text/highlighting live in the zsh rcfile (2.1.8 D-4) — ble.sh was
+# REMOVED in 2.1.9 (its attach froze the Workbench PTY chain; diagnostics
+# archived in docs/archive/2.1.8-dev-plans/decisions.md D-1).
+#
+# Loaded by:
+#   - wrapper fallback: bash --rcfile /usr/local/share/aisc/bashrc
+#   - /root/.bashrc shim: source /usr/local/share/aisc/bashrc (tmux sub-shells)
+
+# 0. RECURSION GUARD: wrapper --rcfile and the /root/.bashrc shim
+#    cross-reference (rcfile sources ~/.bashrc → shim sources rcfile).
+#    NOT exported — tmux child shells must re-initialize fully.
+if [ "${AISC_BASHRC_LOADED:-0}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+AISC_BASHRC_LOADED=1   # shell-local; tmux panes get a fresh full init
+
+# 1. Source user/system rc if present (non-blocking)
+[ -f /etc/bash.bashrc ] && source /etc/bash.bashrc
+[ -f ~/.bashrc ] && source ~/.bashrc
+
+# 2. HISTFILE persistence (workspace-scoped via mounted runtime dir)
+if [ -n "$AISC_BASH_HISTORY_FILE" ]; then
+    export HISTFILE="$AISC_BASH_HISTORY_FILE"
+    export HISTSIZE=10000
+    export HISTCONTROL=ignoredups:erasedups
+    shopt -s histappend
+    # Append each command immediately: closing a tab kills bash with
+    # SIGTERM/SIGKILL, which skips the exit-time history write entirely —
+    # the file then stays frozen at stale content (observed 2026-08-30).
+    case ";${PROMPT_COMMAND};" in
+        *";history -a;"*) ;;
+        *) PROMPT_COMMAND="history -a${PROMPT_COMMAND:+;${PROMPT_COMMAND}}" ;;
+    esac
+fi
+
+# 5. SQLite history via Python helper — PERF P3a (D-13) batch spool:
+#    records buffer in-shell (zero spawns per command) and flush through ONE
+#    python spawn at 20 records / 60s / exit. SIGKILL, force-stop, or host
+#    crash can lose the in-shell buffer — this is an accepted loss window.
+#    python3 invocation at 20 records / 60s / shell exit. Escaping is pure
+#    parameter expansion (backslash first, then tab/newline/CR); the old
+#    per-command `append` + `history 1 | sed` cost one python AND one sed
+#    spawn per command. Fail-open throughout.
+if [ -n "$AISC_BASH_HISTORY_DB" ] && [ -n "$AISC_WORKSPACE_HASH" ]; then
+    _aisc_prev_cmd=""
+    _aisc_hist_spool=""
+    _aisc_hist_count=0
+    _aisc_hist_flushed=$SECONDS
+    _aisc_hist_flush() {
+        [ "$_aisc_hist_count" -eq 0 ] && return 0
+        printf '%s\n' "$_aisc_hist_spool" | \
+        AISC_HIST_DB="$AISC_BASH_HISTORY_DB" \
+        AISC_HIST_WS_HASH="$AISC_WORKSPACE_HASH" \
+        AISC_HIST_SESSION_ID="$AISC_TERMINAL_SESSION_ID" \
+        python3 /usr/local/bin/lib/aisc_bash_history.py flush 2>/dev/null
+        _aisc_hist_spool=""
+        _aisc_hist_count=0
+        _aisc_hist_flushed=$SECONDS
+        return 0
+    }
+    _aisc_log_history() {
+        local _aisc_exit=$?   # FIRST line: capture BEFORE anything
+        local hist_line cmd
+        hist_line="$(history 1)"          # builtin subshell only — no sed
+        read -r _aisc_num cmd <<< "$hist_line"   # strip "  N  " prefix
+        if [ -n "$cmd" ] && [ "$cmd" != "$_aisc_prev_cmd" ]; then
+            _aisc_prev_cmd="$cmd"
+            local esc="${cmd//\\/\\\\}"
+            esc="${esc//$'\t'/\\t}"; esc="${esc//$'\n'/\\n}"; esc="${esc//$'\r'/\\r}"
+            local cwd_e="${PWD//\\/\\\\}"
+            cwd_e="${cwd_e//$'\t'/\\t}"; cwd_e="${cwd_e//$'\n'/\\n}"; cwd_e="${cwd_e//$'\r'/\\r}"
+            _aisc_hist_spool="${_aisc_hist_spool:+$_aisc_hist_spool$'\n'}$_aisc_exit"$'\t'"$cwd_e"$'\t'"$esc"
+            _aisc_hist_count=$((_aisc_hist_count + 1))
+            if [ "$_aisc_hist_count" -ge 20 ] || [ "$((SECONDS - _aisc_hist_flushed))" -ge 60 ]; then
+                _aisc_hist_flush
+            fi
+        fi
+        return "$_aisc_exit"         # LAST: restore original code
+    }
+    trap '_aisc_hist_flush' EXIT
+    # Idempotent append: only add if not already present.
+    # (case-in patterns treat ';' as separator — use string match instead.)
+    # Note: string-form PROMPT_COMMAND only. Bash array form degrades gracefully.
+    if [[ ";${PROMPT_COMMAND};" != *"_aisc_log_history"* ]]; then
+        PROMPT_COMMAND="_aisc_log_history;${PROMPT_COMMAND}"
+    fi
+fi

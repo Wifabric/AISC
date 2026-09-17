@@ -1,0 +1,201 @@
+# P3 调研——Provider 热切换可行性（D-3 裁决：出结论文档，实施下轮）
+
+> 2026-09-12。代码证据：`container/aisc-cc-provider`（op_switch/
+> _ensure_route_serving/_restart_daemon），容器实况（ps：cc-switch-real
+> daemon + proxy serve ×2）。
+
+## 结论（先答）
+
+**provider↔provider 之间：真热切换架构上可行**——agent 的端点是容器内
+**本地代理路由**（claude 127.0.0.1:15721 / codex 15722），不是 provider
+直连。切换 provider 只是重指代理上游；运行中的会话 env 指向本地代理、
+**不随切换失效**。已运行会话的下一个请求就走新 provider。
+
+**两个不可热切/需接受的边界**：
+
+1. **官方直连行（official-direct）参与时不可热切**：切到官方直连会把
+   provider 直连 env 写回 live 文件并**拆掉代理路由**；反向则重写 live
+   文件为本地路由 stub。官方↔第三方切换期间，运行中的会话仍持旧 env
+   （直连或旧路由），**到会话结束才切**——这是 env 语义，无法绕过。
+2. **切换瞬间的 daemon 重启窗口**：op_switch 为保证代理 worker 状态
+   一致，现行实现是 stop→start（约 0.5-1s）。窗口内恰好**在途**的单个
+   请求会失败一次（SDK 重试通常吸收）；已建立但空闲的会话无感。
+
+## 证据链
+
+- 代理拓扑：容器内常驻 `cc-switch-real daemon` + 每 agent 一个
+  `proxy serve`（15721/15722）。usage 的 proxy_request_logs 证明请求
+  流经本地代理。
+- 切换语义（op_switch，2026-08-21 实测注释）：**先拆路由** → CLI switch
+  重写 live 文件 → provider 行胜出则 daemon 重启 + 重新 enable。
+  codex 的 worker 在 enable 时**捕获上游 token**（不透传客户端 bearer、
+  不逐请求读库）——daemon 重启是 token 轮换的保障，不纯是保守。
+- claude 路径：`proxy disable` 写回直连 env / `enable` 写回路由 stub——
+  官方直连与路由模式的 live 文件互斥，见边界 1。
+
+## 与现状的差距（用户问的「热切换」）
+
+| 能力 | 现状 | 差距 |
+| --- | --- | --- |
+| 新会话即时生效 | ✅ 已有（live 文件切换即写） | 无 |
+| 运行中会话：provider→provider | **事实上已热**（env 指本地代理，路由重指） | 仅 daemon 重启窗口的瞬断 |
+| 运行中会话：official↔provider | ❌ 到会话结束 | env 语义边界 |
+| 切换中模型映射 | 新会话读新 role_env；旧会话持旧模型名 | 新 provider 无该模型时报 4xx——热切换需配「模型映射兼容」提示 |
+
+## 若下轮实施（建议范围）
+
+1. **先实测「无重启切换」**：provider 行间切换不 stop/start daemon，只
+   `provider switch` + enable——若 cc-switch 的 worker 依 enable 重读
+   上游，则重启窗口可直接消掉（最可能一步到位）。
+2. UI 语义：切换弹层区分「热切（provider 间）」与「会话延续切换（含
+   官方直连）」两种文案；official 行标注「新会话生效」。
+3. 模型兼容预检：切换前比对当前激活模型在新 provider 的 known_models，
+   缺失时提示（数据已有，纯前端）。
+4. 回归锚点：在途请求重试、token 捕获、usage 捕获连续性。
+
+**Slurm/PBS 方案文档**：仍阻塞在用户提供实际工作流（提交节点形态/
+认证/常用作业操作）——2.1.11 封版前若未提供则顺延 2.1.12。
+## 追加调研——模型映射随切换实时变化（用户问 2026-09-12）
+
+**能解。** 全部流量已经流经本地代理（man-in-the-middle），请求体改写
+点天然存在；上游 cc-switch 代理**没有**请求时重写能力（容器实测
+`proxy config` 仅 listen addr/port；其「模型映射」= 切换时写 env），
+所以需要我们自加一层薄改写。
+
+**方案（shim 层，保住全部现有能力）**：
+
+```
+agent ── env 指向 ──▶ 127.0.0.1:15720 映射 shim ──▶ 15721 cc-switch 代理 ──▶ provider
+```
+
+- shim 只做一件事：按**当前 provider 的映射表**重写请求体 `model` 字段
+  （流式不影响——转发前改 body）；上游 token/路由/用量捕获全留在
+  cc-switch 代理，一行不动。
+- **按角色映射而非按名映射**（关键设计）：provider 行已携带
+  role_env（ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU/MODEL 槽位）+ 
+  model_catalog。会话发来的旧模型名 → 先在「历史 provider 的角色表」
+  里解析出槽位 → 再取当前 provider 该槽位的模型名发出。例：
+  deepseek-v4-flash（旧 opus 槽）→ zhipu 的 glm-4.6（新 opus 槽）。
+  解析不出角色的自定义名 → 原样透传（保守）。
+- 映射表缓存 + 失效：读 cc-switch db 现值；切换后由 adapter 通知失效
+  （op_switch 尾部加一次 shim 的 invalidate，或 shim watch db mtime）。
+- 代价：多一跳本地回环（<1ms）；agent env 的路由 stub 从 15721 改指
+  15720（改 adapter 的 enable 写入值）。
+
+**如实告知的边界**：
+
+1. 会话侧的**自我认知**不变：claude CLI 界面仍显示它启动时的模型名
+   （它是 env 读进内存的），但实际请求已按新 provider 走——显示名与
+   实际模型可能不一致，属显示层错位，功能无损。
+2. 上下文长度/计价假设随模型真实切换而变——重写后请求以新模型的
+   上下文窗口与计价运行，会话不感知。
+3. 官方直连行（proxy off）时 shim 不在路径上——该场景本就不热切，
+   一致。
+
+**实施量级**：容器内 Python asyncio 薄层（~200 行）+ adapter 路由 stub
+改端口 + 映射失效钩子 + 映射表解析测试。下轮与「无重启切换」同批。
+## 追加验证——CLI 原生热重载（用户问「改 settings.json 实时变化」）
+
+**两个 CLI 的 env/模型配置均无原生热重载**（2026-09-12 查证）：
+
+- **claude**：settings.json 的 hooks/permissions/keybindings/theme 热重载，
+  但 `env`（ANTHROPIC_BASE_URL/MODEL/TOKEN 所在）**改后需重启会话**——
+  官方 issue #42251（请求 env 热重载）与 #15858（配置热重载 RFC）仍
+  open。用户印象中的「改 settings.json 即生效」是前者那批键。
+- **codex**：config.toml 由 Rust 二进制启动时读入，无任何重载机制。
+
+**结论不变且更明确**：会话内的「实时变化」**只能**在传输层实现——
+本地代理换上游（已热）+ shim 重写 model 字段（下轮实施）。CLI 界面
+显示的模型名到会话结束都停留在启动值（两 CLI 同），属显示层错位；
+实际服务方与实际模型随切换即时变化。
+
+**Slurm/PBS 方案文档**：仍阻塞在用户提供实际工作流。
+
+## 手测 r3/r4 轮（2026-09-12 下午）——三个现场问题全部闭环
+
+**r3（r2 修复后）结果**：拓扑四端口各就各位（15721/15722=python3 shim、
+15701/15702=cc-switch-real worker），claude 侧热切正常。r4 修复三个残留：
+
+1. **拉取模型 401**（`https://api.deepseek.com/anthropic/models`）——根因
+   不在 URL 候选链（剥离 `/anthropic` 根后的 `/v1/models`、`/models` 实测
+   200，key 有效），而在 `_codex_provider_fields` 的 key 提取优先级：
+   官方 switch/enable 会把**当前 provider 的 live key 同步进每一行的
+   `auth.OPENAI_API_KEY`**（deepseek 行里躺着 zhipu 的 key）——拿别家 key
+   探测自然全线 401。修复：行自有 TOML `api_key` 优先（`PROXY_MANAGED`
+   标记跳过），auth 只兜底。这同时治了两个潜伏问题：眼睛按钮会 reveal
+   出错误 provider 的 key；编辑不重填 key 会把别家 key 烧进该行。
+2. **「问他是什么模型回复错乱」+ codex 侧不热**——live 配置目录
+   （/root/.codex、/root/.claude）在持久卷上**跨容器世代存活**：上一代
+   旧镜像容器把 codex config.toml 的 base_url 留在 15702 直连，本代该
+   agent 从未 switch → 没人治它 → 本代新会话也读到 15702 → 整代绕过
+   shim → 旧模型名直击新 provider。修复：entrypoint 在 shim 起来后调
+   新增的 `aisc-cc-provider shim-heal`（等待绑定 ≤3s，幂等，shim 不在
+   则指回直连端口，fail-open 语义不变）。
+3. **cc-switch 里多出的 default 卡片**——官方 CLI 在 live 配置与任何行
+   不匹配时会把切换前 live 配置**自动导入为 `default` 行**（我们容器里
+   的 live 配置是 mcp-only 引导存根 → 空卡片，created_at=NULL，实测取证）。
+   修复：`op_list` 前置 `_sweep_import_artifacts`——只清「非当前 + 无任何
+   provider 信号（无 model_provider/base_url/ANTHROPIC_BASE_URL）」的
+   default 行，真叫 default 的用户行与当前行永不清；只读预检后才开写
+   事务（op_list 是高频路径，不与 daemon 抢写锁）。
+
+**顺带发现（无需修）**：claude 侧官方代理自带「别名模式」——live env 写
+`claude-opus-4-8[1M]` 等稳定别名 + `*_NAME` 伴生字段，worker 按当前行翻译；
+shim 对别名（不在任何行 role_env 里）按「未映射」透传，两者叠加不冲突。
+codex 无别名机制，shim 是它唯一的热切路径。
+
+**测试**：key 优先级 2 例 + PROXY_MANAGED 跳过 + default 清扫 2 例
+（工件清/真行留）入 test_cc_switch_provider_adapter.py；全量 pytest 绿。
+
+## 手测 r5 轮（2026-09-12 晚）——Rust 边界剥字段三连案（98ba28e）
+
+**表象三连**：① codex「stream disconnected」（用户只改了模型映射）；
+② 编辑页映射不回显（/model 与 cc-switch 里都在）；③ 热切成功但用户
+不知道自己在用什么模型。
+
+**同一根因（①②）**：adapter 的 provider_view 一直发 role_env/
+known_models/api_format/model_catalog/notes 等字段，**Rust 边界结构体
+CcSwitchProvider 只收 8 个基础字段，其余全被 serde 静默剥掉**——
+- ② 编辑页拿到 undefined → 映射/目录空白；
+- ① 表单 api_format 拿不到真实值 → 按 codex 默认 openai_responses
+  回存 → zhipu（anthropic 线规）的 worker 路由把 /responses 直译到
+  anthropic 基座 → 上游 404 以 HTTP 200 + JSON 错误体返回 → codex
+  以为流开始、立即断流。**修复**：结构体补齐 8 个透传字段 + 目录条目
+  结构；活容器 meta.apiFormat 已改回 anthropic 并重挂路由（实测走
+  shim 流式 completed=True、回答文本完整）。
+
+**③（可见性）**：切换 toast 带实际模型（claude 主槽位/codex 行
+model）；当前卡片新增「实际模型」行。CLI 界面显示启动名是两 CLI 的
+显示层限制，工作台侧给出真值。
+
+**顺带**：vitest 全过仍 exit=1 的假绿（jsdom 无 scrollIntoView，
+CommandPalette 历史 unhandled rejection，stash 验证与本轮无关）——
+test-setup.ts 全局 stub 治理。
+
+**边界**：本轮 workbench 改动需重启 dev 应用生效；运行中的应用锁
+target exe，全量 cargo check 待关应用后补跑。
+
+## 手测 r6 轮（2026-09-12 夜）——codex 三方互切 401 与品牌图标
+
+**r6#1（401，api-key 不匹配）**：codex zhipu→deepseek 后请求带 zhipu key 打
+deepseek。实测证据链：live auth.json 在官方 `provider switch` 后**原样不动**
+（df1dfe 仍在）——无头官方 switch 从不写 auth.json；而 worker 只在 **enable
+时刻**从该文件捕获上游 token（此后不再读库）。因此三方→三方切换必然沿用
+上一个 provider 的 key → 401。r4 发现的「行 auth 段被 live 同步成当前
+provider key」是同一链条的前置污染源。
+
+**修复（adapter，三处）**：
+1. `_normalize_codex_row_auth`：switch 前把行自有 TOML key 钉进其 auth 段
+   （幂等，auth-only 行不动）；
+2. `_sync_codex_live_auth`：**disable 与 enable 之间**把行自有 key 写入 live
+   auth.json（worker 捕获即正确）；tokens 登录保留、占位符替换、无 key 行不动；
+3. fast path（重按当前行）与 edit-当前行路径同样 restage+重挂——历史脏状态
+   点一下即愈。
+活容器已手工修复并实测 deepseek 走 shim 正常应答。
+
+**r6#2（官方直连图标）**：DB 官方行 icon 字段存的是品牌标识
+（'anthropic' #D4915D / 'openai' #00A67E）；r5 边界修复后该字段到达前端，
+旧渲染把它当文本输出。ProviderCard 现按品牌 id 渲染内联 SVG
+（Claude 八辐星芒 / OpenAI 六瓣结），其余行维持字符回退。
+
+测试 +3（staging/normalize/fast-path 愈合）入 adapter 套件。

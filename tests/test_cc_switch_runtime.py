@@ -38,7 +38,11 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
 
         self.assertIn('CC_SWITCH_CONFIG_DIR="$TEMP_HOME/.cc-switch"', entrypoint)
-        self.assertIn('CC_SWITCH_CONFIG_DIR="/root/app/.cc-switch"', entrypoint)
+        # Stage 7: project scope mounts the data root at /root/.cc-switch
+        # (legacy /root/app layout stays as the old-host fallback).
+        self.assertIn('CC_SWITCH_CONFIG_DIR="$PROJECT_CC_SWITCH_DIR"', entrypoint)
+        self.assertIn('PROJECT_CC_SWITCH_DIR="/root/.cc-switch"', entrypoint)
+        self.assertIn('PROJECT_CC_SWITCH_DIR="/root/app/.cc-switch"', entrypoint)
         self.assertIn("export CC_SWITCH_CONFIG_DIR", entrypoint)
         self.assertNotIn("PROVIDERS_JSON", entrypoint)
         self.assertNotIn("providers.json", entrypoint)
@@ -60,8 +64,14 @@ class CcSwitchRuntimeTests(unittest.TestCase):
             entrypoint,
         )
         readiness_check = entrypoint.index('CC_SWITCH_DAEMON_READY=1', daemon_start)
-        proxy_enable = entrypoint.index("cc-switch proxy -a claude enable", daemon_start)
-        self.assertLess(readiness_check, proxy_enable)
+        # 复测第 2 轮（2026-08-21）：无条件 `proxy -a claude enable` 已被
+        # preset 模块的 --reconcile 对账取代（proxy 跟随当前 provider）。
+        reconcile = entrypoint.index(
+            "cc_switch_preset_providers.py", daemon_start
+        )
+        self.assertLess(readiness_check, reconcile)
+        self.assertIn("--reconcile", entrypoint)
+        self.assertNotIn("cc-switch proxy -a claude enable", entrypoint)
         self.assertIn('if [ "$CC_SWITCH_DAEMON_READY" = "1" ]; then', entrypoint)
 
     def test_entrypoint_menu_opens_cc_switch_management_tui(self):
@@ -103,10 +113,10 @@ class CcSwitchRuntimeTests(unittest.TestCase):
             if line.strip().startswith("cc-switch proxy -a codex enable")
         ]
         self.assertEqual([], codex_proxy_enable_commands)
-        self.assertIn(
-            "Codex 未自动启用 cc-switch 代理",
-            entrypoint,
-        )
+        # 两个 agent 的路由都由 --reconcile 按当前 provider 对账（复测第 2
+        # 轮）：不再有「Codex 未自动启用」的提示——真实 provider 当前时
+        # reconcile 会显式 enable。
+        self.assertIn("--reconcile", entrypoint)
 
     def test_entrypoint_registers_factory_skills_for_claude_and_codex(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
@@ -167,7 +177,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
 
         self.assertIn('export IS_SANDBOX="${IS_SANDBOX:-1}"', entrypoint)
-        self.assertIn('CC_SWITCH_CONFIG_DIR="/root/app/.cc-switch"', entrypoint)
+        self.assertIn('CC_SWITCH_CONFIG_DIR="$PROJECT_CC_SWITCH_DIR"', entrypoint)
         self.assertNotIn("chown -R", entrypoint)
         self.assertNotIn("cleanup_permissions", entrypoint)
 
@@ -207,7 +217,10 @@ class CcSwitchRuntimeTests(unittest.TestCase):
             "src/aisc/adapters/config_source.py",
             "src/aisc/adapters/secret_store.py",
             "src/aisc/application/provider_service.py",
-            "src/aisc/cli/commands/provider.py",
+            # Note: src/aisc/cli/commands/provider.py is intentionally NOT here --
+            # S0.4 re-adds it for `aisc provider current` (contract §七), a
+            # different, secret-free observability command. The legacy
+            # cs/secret_store infrastructure it guards is still covered below.
         )
         for relative_path in removed:
             self.assertFalse((ROOT / relative_path).exists(), relative_path)
@@ -381,13 +394,13 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
 
             claude_revision = PROVIDER_HELPER.preset_revision("claude")
             codex_revision = PROVIDER_HELPER.preset_revision("codex")
-            claude_added = PROVIDER_HELPER.add_preset_providers(
+            claude_added, _, _ = PROVIDER_HELPER.add_preset_providers(
                 config_dir, "claude", claude_revision, log
             )
             codex_required_before, _ = PROVIDER_HELPER.preset_required(
                 config_dir, "codex", codex_revision
             )
-            codex_added = PROVIDER_HELPER.add_preset_providers(
+            codex_added, _, _ = PROVIDER_HELPER.add_preset_providers(
                 config_dir, "codex", codex_revision, log
             )
 
@@ -414,11 +427,219 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
         claude_settings = [json.loads(raw) for app, raw, _ in rows if app == "claude"]
         codex_settings = [json.loads(raw) for app, raw, _ in rows if app == "codex"]
         self.assertTrue(all("env" in settings for settings in claude_settings))
-        self.assertTrue(all("auth" not in settings for settings in codex_settings))
+        # IDEA-4: codex rows MUST carry an auth object (upstream provider
+        # switch refuses rows without one).
+        self.assertTrue(all("auth" in settings for settings in codex_settings))
         self.assertTrue(
             all("wire_api = \"responses\"" in settings["config"]
                 for settings in codex_settings)
         )
+        self.assertTrue(
+            all("disable_response_storage" not in settings["config"]
+                for settings in codex_settings)
+        )
+
+    def test_claude_presets_point_at_anthropic_endpoints(self):
+        # DeepSeek/Zhipu/Kimi expose a dedicated /anthropic endpoint distinct
+        # from their OpenAI base_url; the claude preset must prefer it so
+        # Claude Code speaks the Messages API to the right URL.
+        expected = {
+            "deepseek": "https://api.deepseek.com/anthropic",
+            "zhipu": "https://open.bigmodel.cn/api/anthropic",
+            "kimi": "https://api.moonshot.cn/anthropic",
+        }
+        by_id = {p["id"]: p for p in PROVIDER_HELPER.PRESET_PROVIDERS}
+        for provider_id, anthropic_url in expected.items():
+            settings = PROVIDER_HELPER._settings_config("claude", by_id[provider_id])
+            self.assertEqual(settings["env"]["ANTHROPIC_BASE_URL"], anthropic_url)
+
+        # S9a: volcengine now HAS a documented anthropic endpoint; the
+        # claude side points at it like every other preset.
+        volc = by_id["volcengine-ark"]
+        settings = PROVIDER_HELPER._settings_config("claude", volc)
+        self.assertEqual(
+            settings["env"]["ANTHROPIC_BASE_URL"],
+            "https://ark.cn-beijing.volces.com/api/v3/anthropic",
+        )
+
+    def test_codex_presets_speak_responses_to_the_local_router(self):
+        # S9a (2026-08-29 ruling): every preset's codex upstream is the
+        # ANTHROPIC endpoint — codex still speaks Responses to the local
+        # router, which translates to Anthropic Messages upstream.
+        for provider in PROVIDER_HELPER.PRESET_PROVIDERS:
+            settings = PROVIDER_HELPER._settings_config("codex", provider)
+            self.assertIn('wire_api = "responses"', settings["config"])
+        deepseek = next(p for p in PROVIDER_HELPER.PRESET_PROVIDERS if p["id"] == "deepseek")
+        self.assertIn(
+            'base_url = "https://api.deepseek.com/anthropic"',
+            PROVIDER_HELPER._settings_config("codex", deepseek)["config"],
+        )
+        for provider in PROVIDER_HELPER.PRESET_PROVIDERS:
+            settings = PROVIDER_HELPER._settings_config("codex", provider)
+            self.assertNotIn("disable_response_storage", settings["config"])
+
+    def test_codex_claude_preset_is_removed(self):
+        ids = {p["id"] for p in PROVIDER_HELPER.PRESET_PROVIDERS}
+        self.assertNotIn("codex-claude", ids)
+        self.assertEqual(len(PROVIDER_HELPER.PRESET_PROVIDERS), 5)  # S8g: codesome
+
+    def _seed_provider(self, config_dir, agent, provider_id, name,
+                       settings_json, *, is_current=0, notes="",
+                       sort_index=0):
+        db = sqlite3.connect(config_dir / "cc-switch.db")
+        db.execute(
+            "INSERT INTO providers (id, app_type, name, settings_config, "
+            "website_url, category, created_at, sort_index, notes, icon, "
+            "icon_color, meta, is_current, in_failover_queue) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (provider_id, agent, name, settings_json, "https://example/v1",
+             "custom", 1, sort_index, notes, None, None, "{}", is_current, 0),
+        )
+        db.commit()
+        db.close()
+        return settings_json
+
+    def test_refresh_updates_model_and_endpoints_but_preserves_api_key(self):
+        # Simulate an existing user: deepseek with the OLD model + their key.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir)
+            self._create_v5_database(config_dir)
+            old_claude = self._seed_provider(
+                config_dir, "claude", "deepseek", "DeepSeek Old",
+                json.dumps({"env": {
+                    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/v1",
+                    "ANTHROPIC_MODEL": "deepseek-chat",
+                    "ANTHROPIC_API_KEY": "sk-user-claude-secret",
+                }}), is_current=1, notes="old",
+            )
+            old_codex = self._seed_provider(
+                config_dir, "codex", "deepseek", "DeepSeek Old",
+                json.dumps({"config": (
+                    'model_provider = "deepseek"\n'
+                    'model = "deepseek-chat"\n'
+                    '[model_providers.deepseek]\n'
+                    'name = "deepseek"\n'
+                    'base_url = "https://api.deepseek.com/v1"\n'
+                    'wire_api = "responses"\n'
+                    'api_key = "sk-user-codex-secret"\n'
+                ), "auth": {"token": "oauth-mirror"}}),
+                is_current=1, notes="old",
+            )
+
+            log = io.StringIO()
+            for agent in ("claude", "codex"):
+                added, refreshed, removed = PROVIDER_HELPER.add_preset_providers(
+                    config_dir, agent, PROVIDER_HELPER.preset_revision(agent), log
+                )
+                # deepseek existed -> refreshed (not re-added); the other three
+                # presets were missing -> added; nothing retired.
+                self.assertEqual(refreshed, 1)
+                self.assertEqual(removed, 0)
+                self.assertEqual(added, len(PROVIDER_HELPER.PRESET_PROVIDERS) - 1)
+
+            db = sqlite3.connect(config_dir / "cc-switch.db")
+            rows = {
+                r[1]: (r[2], r[3], r[4]) for r in db.execute(
+                    "SELECT id, app_type, settings_config, is_current, notes "
+                    "FROM providers WHERE id='deepseek' ORDER BY app_type"
+                )
+            }
+            db.close()
+
+            # Claude: new anthropic endpoint + new model, key preserved,
+            # is_current preserved.
+            claude_env = json.loads(rows["claude"][0])["env"]
+            self.assertEqual(
+                claude_env["ANTHROPIC_BASE_URL"],
+                "https://api.deepseek.com/anthropic",
+            )
+            self.assertEqual(claude_env["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
+            self.assertEqual(
+                claude_env["ANTHROPIC_API_KEY"], "sk-user-claude-secret"
+            )
+            self.assertEqual(rows["claude"][1], 1)
+            self.assertNotEqual(rows["claude"][2], "old")  # notes refreshed
+
+            # Codex: new model + anthropic base (S9a unified), api_key +
+            # auth mirror preserved, is_current preserved. The key also rides
+            # auth.OPENAI_API_KEY — the live channel auth.json is written from
+            # (2026-08-21 probe; without it a refresh silently reverts the row
+            # to the placeholder-401 shape).
+            codex_sc = json.loads(rows["codex"][0])
+            self.assertIn('model = "deepseek-v4-pro"', codex_sc["config"])
+            self.assertIn('wire_api = "responses"', codex_sc["config"])
+            self.assertIn(
+                'base_url = "https://api.deepseek.com/anthropic"',
+                codex_sc["config"],
+            )
+            self.assertIn(
+                'api_key = "sk-user-codex-secret"', codex_sc["config"]
+            )
+            self.assertEqual(
+                codex_sc["auth"],
+                {"token": "oauth-mirror",
+                 "OPENAI_API_KEY": "sk-user-codex-secret"},
+            )
+            self.assertEqual(rows["codex"][1], 1)
+
+    def test_refresh_removes_retired_codex_claude(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir)
+            self._create_v5_database(config_dir)
+            self._seed_provider(
+                config_dir, "claude", "codex-claude", "Codex Claude",
+                json.dumps({"env": {
+                    "ANTHROPIC_BASE_URL": "https://api.codex.so/v1",
+                    "ANTHROPIC_MODEL": "claude-opus-5",
+                }}), sort_index=1,
+            )
+
+            log = io.StringIO()
+            added, refreshed, removed = PROVIDER_HELPER.add_preset_providers(
+                config_dir, "claude", PROVIDER_HELPER.preset_revision("claude"), log
+            )
+            db = sqlite3.connect(config_dir / "cc-switch.db")
+            remaining = {
+                r[0] for r in db.execute(
+                    "SELECT id FROM providers WHERE app_type='claude'"
+                )
+            }
+            db.close()
+
+        self.assertEqual(removed, 1)
+        self.assertNotIn("codex-claude", remaining)
+        self.assertEqual(
+            remaining, {p["id"] for p in PROVIDER_HELPER.PRESET_PROVIDERS}
+        )
+
+    def test_refresh_keeps_repurposed_retired_id(self):
+        # A user who repurposed the codex-claude id with their own relay must
+        # not have it deleted (fingerprint no longer matches codex.so).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir)
+            self._create_v5_database(config_dir)
+            self._seed_provider(
+                config_dir, "claude", "codex-claude", "My Relay",
+                json.dumps({"env": {
+                    "ANTHROPIC_BASE_URL": "https://my-own-relay.example/v1",
+                }}), is_current=1, notes="mine",
+            )
+
+            log = io.StringIO()
+            _, _, removed = PROVIDER_HELPER.add_preset_providers(
+                config_dir, "claude", PROVIDER_HELPER.preset_revision("claude"), log
+            )
+            db = sqlite3.connect(config_dir / "cc-switch.db")
+            row = db.execute(
+                "SELECT is_current, notes FROM providers "
+                "WHERE id='codex-claude' AND app_type='claude'"
+            ).fetchone()
+            db.close()
+
+        self.assertEqual(removed, 0)
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], 1)
+        self.assertEqual(row[1], "mine")
 
     def test_incompatible_provider_schema_fails_without_marker(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -859,3 +1080,62 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "declined\n")
         approve.assert_called_once()
         synchronize.assert_not_called()
+
+
+class CcSwitchRevealTests(unittest.TestCase):
+    """2.1.11 P1: edit-time explicit key view — `list --reveal-id <id>`
+    emits the FULL api_key for that row only; every other row (and every
+    other snapshot) stays secret-free."""
+
+    @classmethod
+    def setUpClass(cls):
+        from importlib.machinery import SourceFileLoader
+        path = str(ROOT / "container" / "aisc-cc-provider")
+        spec = importlib.util.spec_from_file_location(
+            "aisc_cc_provider_adapter", path,
+            loader=SourceFileLoader("aisc_cc_provider_adapter", path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        cls.adapter = mod
+
+    @staticmethod
+    def _row(pid="acme", token="sk-test-1234567890"):
+        return {
+            "id": pid, "name": pid.title(), "is_current": False,
+            "settings": {"env": {"ANTHROPIC_AUTH_TOKEN": token,
+                                  "ANTHROPIC_BASE_URL": "https://api.example"}},
+        }
+
+    def test_reveal_emits_full_key_only_for_the_named_row(self):
+        view = self.adapter.provider_view("claude", self._row(), reveal=True)
+        self.assertEqual(view["api_key"], "sk-test-1234567890")
+        self.assertTrue(view["has_api_key"])
+        self.assertIn("****", view["api_key_mask"])  # mask still present
+
+    def test_default_view_stays_secret_free(self):
+        view = self.adapter.provider_view("claude", self._row())
+        self.assertNotIn("api_key", view)
+        self.assertIn("****", view["api_key_mask"])
+
+    def test_reveal_without_secret_emits_nothing(self):
+        row = self._row()
+        row["settings"]["env"].pop("ANTHROPIC_AUTH_TOKEN")
+        view = self.adapter.provider_view("claude", row, reveal=True)
+        self.assertNotIn("api_key", view)
+        self.assertFalse(view["has_api_key"])
+
+    def test_chain_carries_reveal_id(self):
+        """Source contract: host CLI parser → application argv → container
+        adapter argparse/dispatch all carry the reveal id."""
+        adapter_src = (ROOT / "container" / "aisc-cc-provider").read_text(encoding="utf-8")
+        self.assertIn('"--reveal-id"', adapter_src)
+        self.assertIn("op_list(args.agent, reveal_id=args.reveal_id)", adapter_src)
+
+        app_src = (ROOT / "src/aisc/application/cc_switch_provider.py").read_text(encoding="utf-8")
+        self.assertIn('argv.extend(["--reveal-id", reveal_id])', app_src)
+
+        cli_src = (ROOT / "src/aisc/cli/commands/cc_switch.py").read_text(encoding="utf-8")
+        self.assertIn('reveal_id=getattr(args, "reveal_id", None)', cli_src)
+
+        main_src = (ROOT / "src/aisc/cli/main.py").read_text(encoding="utf-8")
+        self.assertIn('"--reveal-id"', main_src)

@@ -275,6 +275,25 @@ do_install() {
     fi
     verify_bundle "${tmpdir}/aisc-bundle"
 
+    # docker-resource-lifecycle D: upgrade lifecycle. The STAGED (new)
+    # sidecar runs BEFORE the old installation is replaced — the old aisc
+    # may predate the maintenance commands. Capture the old default-image
+    # id, then stop AISC containers (upgrade context keeps the tagged
+    # image until the rebuild succeeds). Fresh installs skip entirely.
+    local was_upgrade=false old_image_id=""
+    if [ -x "${INSTALL_DIR}/${EXE_NAME}" ]; then
+        was_upgrade=true
+        info "Previous installation detected - running upgrade lifecycle..."
+        old_image_id="$( "${tmpdir}/${EXE_NAME}" maintenance docker-scan             --context upgrade --format text 2>/dev/null             | awk '$1=="image" && ($2=="owned" || $2=="legacy_owned") &&                    $4=="super-claude:latest" {print $3; exit}' || true )"
+        set +e
+        "${tmpdir}/${EXE_NAME}" maintenance docker-cleanup             --context upgrade --format json
+        rc=$?
+        set -e
+        if [ "$rc" -eq 3 ]; then
+            warn "Docker unreachable - AISC containers left as-is."
+        fi
+    fi
+
     # Staged replacement: remove old install, move staging into place
     if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then
         info "Removing previous installation at ${INSTALL_DIR} ..."
@@ -284,11 +303,38 @@ do_install() {
     mv "$tmpdir" "$INSTALL_DIR" || die "Failed to move staging to ${INSTALL_DIR}"
     trap - EXIT  # temp dir was moved successfully
 
+    # docker-resource-lifecycle D: no-cache rebuild with the old-ID
+    # handoff. Best-effort: a failure leaves the image pending with the
+    # manual command printed.
+    if [ "$was_upgrade" = true ]; then
+        info "Rebuilding workstation image (no cache; this can take minutes)..."
+        set +e
+        "${INSTALL_DIR}/${EXE_NAME}" maintenance docker-rebuild             --root "${INSTALL_DIR}/aisc-bundle"             --tag super-claude:latest --old-image-id "$old_image_id"             --format json
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            warn "Image rebuild did not complete (exit $rc)."
+            warn "Manual: aisc maintenance docker-rebuild --root ${INSTALL_DIR}/aisc-bundle --tag super-claude:latest"
+        else
+            info "Workstation image rebuilt."
+        fi
+    fi
+
     # Create symlink (or replace existing)
     local target="${INSTALL_DIR}/${EXE_NAME}"
     if [ -e "$BIN_LINK" ] || [ -L "$BIN_LINK" ]; then
-        info "Removing previous symlink: ${BIN_LINK}"
-        rm -f "$BIN_LINK" || warn "Failed to remove previous symlink"
+        # A8 (guide 3.5.5): never rm a link we don't own — pipx's shims
+        # (Linux) are symlinks into ~/.local/pipx/venvs/aisc-cli; an
+        # unconditional rm here silently uninstalled the pip channel.
+        # Ownership = the link resolves inside OUR install dir.
+        local link_real
+        link_real="$(readlink -f "$BIN_LINK" 2>/dev/null || true)"
+        if [ -n "$link_real" ] && [[ "$link_real" == "${INSTALL_DIR}"/* ]]; then
+            info "Removing previous symlink: ${BIN_LINK}"
+            rm -f "$BIN_LINK" || warn "Failed to remove previous symlink"
+        else
+            warn "Keeping foreign ~/${BIN_LINK#$HOME/} (resolves to ${link_real:-unknown}) — install yours, not the package manager's"
+        fi
     fi
 
     # Use relative symlink where possible

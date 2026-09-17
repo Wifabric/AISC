@@ -1,0 +1,140 @@
+# /usr/local/share/aisc/zsh/.zshrc — AISC-managed zsh initialization
+# v2.1.8 T2/D-4: the Workbench terminal's interactive shell (agent=bash).
+# Loaded via ZDOTDIR (set by aisc-session-wrapper). Falls back to bash +
+# /usr/local/share/aisc/bashrc when zsh or this file is absent (old images).
+#
+# Why zsh: ble.sh attach froze the Workbench terminal chain
+# (xterm.js ↔ conPTY ↔ docker pty; see decisions.md D-1/#50). zsh ZLE +
+# zsh-autosuggestions delivers the same fish-style ghost text without
+# aggressive terminal state manipulation, and survives the chain (2026-08-30
+# 手测).
+
+# 1. Source user rc if present (container-local; non-blocking)
+[ -f /root/.zshrc ] && source /root/.zshrc
+
+# 2. HISTFILE persistence (workspace-scoped; immediate append — closing a
+#    tab SIGTERMs the shell and zsh would otherwise write nothing; same
+#    failure the bashrc fixes with `history -a`)
+if [ -n "$AISC_ZSH_HISTORY_FILE" ]; then
+    HISTFILE="$AISC_ZSH_HISTORY_FILE"
+    HISTSIZE=10000
+    SAVEHIST=10000
+    setopt inc_append_history
+    setopt no_beep
+fi
+
+# 3. Prompt (zsh default `%m# ` is terse; bash-like layout with colors)
+PS1='%F{green}%n@%m%f:%F{blue}%~%f$ '
+
+# 4. Tab completion (commands/paths/flags); dump lives on the persistent
+#    runtime mount so each container start reuses it instead of rebuilding
+autoload -Uz compinit
+compinit -d "${AISC_BASH_HISTORY_DIR:-/tmp}/.zcompdump"
+
+# 5. fish-style ghost text (gray suggestion, → to accept) + syntax
+#    highlighting. syntax-highlighting must be sourced LAST — it wraps the
+#    ZLE widgets that autosuggestions installs.
+[ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+    source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+    source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# 6. SQLite history via the shared Python helper — PERF P3a (D-13) batch
+#    spool (parity with the bashrc hook; zero spawns per command, ONE
+#    python3 flush at 20 records / 60s / shell exit; pure parameter
+#    escaping). SIGKILL/force-stop/host crash can lose the in-shell buffer —
+#    an accepted loss window for the spawn reduction (normal exit flushes).
+#    expansion escaping; fail-open). preexec captures the command line
+#    (zsh hands it over directly — no history parsing), precmd the status.
+if [ -n "$AISC_BASH_HISTORY_DB" ] && [ -n "$AISC_WORKSPACE_HASH" ]; then
+    typeset -g _aisc_prev_cmd=""
+    typeset -g _aisc_last_cmd=""
+    typeset -g _aisc_hist_spool=""
+    typeset -g _aisc_hist_count=0
+    typeset -g _aisc_hist_flushed=$SECONDS
+    _aisc_hist_flush() {
+        [ "$_aisc_hist_count" -eq 0 ] && return 0
+        printf '%s\n' "$_aisc_hist_spool" | \
+        AISC_HIST_DB="$AISC_BASH_HISTORY_DB" \
+        AISC_HIST_WS_HASH="$AISC_WORKSPACE_HASH" \
+        AISC_HIST_SESSION_ID="$AISC_TERMINAL_SESSION_ID" \
+        python3 /usr/local/bin/lib/aisc_bash_history.py flush 2>/dev/null
+        _aisc_hist_spool=""
+        _aisc_hist_count=0
+        _aisc_hist_flushed=$SECONDS
+        return 0
+    }
+    _aisc_preexec() { _aisc_last_cmd="$1"; }
+    _aisc_precmd_log() {
+        local st=$?
+        [ -z "$_aisc_last_cmd" ] && return 0
+        if [ "$_aisc_last_cmd" = "$_aisc_prev_cmd" ]; then
+            return 0    # dup guard: prompt redraws / second precmd pass
+        fi
+        _aisc_prev_cmd="$_aisc_last_cmd"
+        local esc="${_aisc_last_cmd//\\/\\\\}"
+        esc="${esc//$'\t'/\\t}"; esc="${esc//$'\n'/\\n}"; esc="${esc//$'\r'/\\r}"
+        local cwd_e="${PWD//\\/\\\\}"
+        cwd_e="${cwd_e//$'\t'/\\t}"; cwd_e="${cwd_e//$'\n'/\\n}"; cwd_e="${cwd_e//$'\r'/\\r}"
+        _aisc_hist_spool="${_aisc_hist_spool:+$_aisc_hist_spool$'\n'}$st"$'\t'"$cwd_e"$'\t'"$esc"
+        _aisc_hist_count=$((_aisc_hist_count + 1))
+        if [ "$_aisc_hist_count" -ge 20 ] || [ "$((SECONDS - _aisc_hist_flushed))" -ge 60 ]; then
+            _aisc_hist_flush
+        fi
+        return 0
+    }
+    autoload -Uz add-zsh-hook
+    add-zsh-hook preexec _aisc_preexec
+    add-zsh-hook precmd _aisc_precmd_log
+    # exit flush via zshexit hook (keeps user EXIT traps intact);
+    # fallback trap for zsh versions without the hook
+    add-zsh-hook zshexit _aisc_hist_flush 2>/dev/null || trap '_aisc_hist_flush' EXIT
+fi
+
+# 7. Interactive tutorial `help` (2.1.9: parity with the bash path — bash
+#    imports BASH_FUNC_help%% from the session env, but zsh has NO env
+#    function import, so after the D-4 zsh switch `help` went missing here).
+#    Text SSOT: src/aisc/cli/tutorial.py::_TUTORIAL — pinned byte-for-byte
+#    by tests/test_tutorial_zsh.py; edit BOTH or neither. `help <cmd>`
+#    delegates to man (zsh has no help builtin).
+help() {
+    if (( $# == 0 )); then
+        cat <<'__AISC_TUTORIAL_EOF__'
+╔══════════════ AISC Workbench 教学 ══════════════
+║ 三、五分钟核心用法
+║
+║ [Claude Code]
+║   claude              开始交互对话
+║   claude -c           继续最近一次会话
+║   claude -p "问题"     单次提问，直接返回答案
+║   claude --resume     挑选历史会话恢复
+║   会话内: /help 命令列表 · /clear 清空 · /compact 压缩上下文
+║
+║ [Codex]
+║   codex               开始交互对话
+║   codex e "任务"      单次执行任务
+║   会话内: /help · /new 新会话 · Ctrl+C 中断
+║
+║ [Workbench]
+║   左侧栏  文件/变更/服务 三个页签（顶部可搜索）
+║   右上 ⓘ 运行时状态抽屉 · Ctrl+, 设置 · + 号新建页
+║   关闭工作区 = 自动清理临时容器（数据不丢）
+║
+║ 上手练习（复制即用）：
+║   1. claude --version    查看已安装的 Claude Code 版本
+║   2. codex --version     查看 Codex 版本
+║   3. 在 + ▾ 菜单打开 claude 页签，输入 /help 浏览命令
+║   4. 左侧切到「变更」页签，点分组标题收拢/展开
+║   配置好 Provider 后可试: claude -p "用一句话介绍自己"（调用 API，产生用量）
+║
+║ 再次查看本教学: help
+╚═══════════════════════════════════════════════
+__AISC_TUTORIAL_EOF__
+    else
+        if command -v man >/dev/null 2>&1; then
+            man "$@"
+        else
+            print -u2 "help: 本镜像未装 man；试试 ${1} --help，或直接输入 help 查看教学"
+        fi
+    fi
+}

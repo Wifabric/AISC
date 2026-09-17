@@ -1,0 +1,366 @@
+<script setup lang="ts">
+/**
+ * IDEA-2 (2d): the「网络与用量」panel — a workspace-layer sentinel pane
+ * (same slot as Settings). Two sections: the mihomo subscription (masked
+ * URL, usage bar / remaining / expiry from `subscription-userinfo`, refresh
+ * with the auto-recreate note) and per-provider token usage aggregated
+ * across ALL data-root workspaces (live for running containers, cached
+ * snapshots for stopped ones — D2). All ipc goes through the usage store
+ * (F-A01).
+ */
+import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { useUsageStore } from "../../stores/usage";
+import type { UsageModelRow, UsageWorkspaceEntry } from "../../types";
+import SubscriptionForm from "./SubscriptionForm.vue";
+
+const { t } = useI18n();
+const usage = useUsageStore();
+
+/** Locale short date (the i18n instance ships no datetimeFormats — G-09
+ * kept it messages-only, so format dates locally). */
+const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" });
+function fmtDate(isoOrEpoch: string | number): string {
+  const date = typeof isoOrEpoch === "number" ? new Date(isoOrEpoch * 1000) : new Date(isoOrEpoch);
+  return Number.isNaN(date.getTime()) ? String(isoOrEpoch) : dateFmt.format(date);
+}
+
+// --- subscription section ----------------------------------------------------
+
+/** Show the import form (not configured, or the user pressed 更换). */
+const replacing = ref(false);
+// 2d 手测 round 2: a successful import (form or wizard path) flips the
+// store's subscription immediately — switch back to the status view so the
+// state is visible without manual interaction.
+// 挂账① 手测: watching subConfigured alone misses the 更换 flow — an import
+// over an existing subscription keeps it true→true, so the watch never fires
+// and the form stays up. Key on fetched_at too: every successful op (import,
+// refresh) lands a new snapshot timestamp, which flips the view back.
+watch(
+  () => [usage.subConfigured, usage.subscription?.fetched_at] as const,
+  ([on]) => {
+    replacing.value = !on;
+  },
+  { immediate: true },
+);
+
+const usedBytes = computed(() => {
+  const u = usage.subscription?.userinfo;
+  return (u?.upload ?? 0) + (u?.download ?? 0);
+});
+const totalBytes = computed(() => usage.subscription?.userinfo?.total ?? 0);
+const usedPct = computed(() =>
+  totalBytes.value > 0 ? Math.min(100, (usedBytes.value * 100) / totalBytes.value) : null,
+);
+
+async function clearSubscription(): Promise<void> {
+  if (!(await confirm(t("usage.sub.clearConfirm")))) return;
+  const ok = await usage.clearSubscription();
+  if (ok) replacing.value = true;
+}
+
+// --- usage section (D2: all workspaces) ---------------------------------------
+
+const scopeOptions = computed(() => {
+  const list = [{ value: "all", label: t("usage.scope.all") }];
+  for (const w of usage.overview?.workspaces ?? []) {
+    const name = w.workspace_path.split(/[\\/]/).filter(Boolean).pop() ?? w.workspace_hash;
+    list.push({ value: w.workspace_path, label: name });
+  }
+  return list;
+});
+
+/** The rows the table shows: the filtered workspace's own rows when a single
+ * workspace is selected, else the cross-workspace totals. */
+const providerRows = computed(() => {
+  const ov = usage.overview;
+  if (!ov) return [];
+  if (usage.scope === "all") return ov.totals.providers;
+  const ws = ov.workspaces.find((w) => w.workspace_path === usage.scope);
+  return ws?.providers ?? [];
+});
+
+const visibleWorkspaces = computed<UsageWorkspaceEntry[]>(() =>
+  (usage.overview?.workspaces ?? []).filter(
+    (w) => usage.scope === "all" || w.workspace_path === usage.scope,
+  ),
+);
+
+/** PP r5③: per-model rows — the ACTUAL upstream model ids that flowed
+ * through the proxy (proxy_request_logs.model). The in-chat /model picker
+ * only shows logical tier names (Opus/Sonnet/…), so this table is the
+ * ground truth for "did my mapping take effect". The CLI's totals only
+ * aggregate providers; models arrive per-workspace and are merged here. */
+const modelRows = computed<UsageModelRow[]>(() => {
+  const ov = usage.overview;
+  if (!ov) return [];
+  if (usage.scope !== "all") {
+    const ws = ov.workspaces.find((w) => w.workspace_path === usage.scope);
+    return ws?.models ?? [];
+  }
+  const agg = new Map<string, UsageModelRow>();
+  for (const w of ov.workspaces) {
+    for (const r of w.models) {
+      const key = `${r.app}:${r.model}`;
+      const cur = agg.get(key)
+        ?? { app: r.app, model: r.model, requests: 0,
+             tokens_in: 0, tokens_out: 0, cost_estimate: 0 };
+      cur.requests += r.requests;
+      cur.tokens_in += r.tokens_in;
+      cur.tokens_out += r.tokens_out;
+      cur.cost_estimate = Math.round((cur.cost_estimate + r.cost_estimate) * 1e4) / 1e4;
+      agg.set(key, cur);
+    }
+  }
+  return [...agg.values()].sort((a, b) => b.requests - a.requests);
+});
+
+function successRate(ok: number, total: number): string {
+  return total > 0 ? `${Math.round((ok * 100) / total)}%` : "—";
+}
+function fmtBytes(n: number): string {
+  if (n >= 1024 ** 5) return `${(n / 1024 ** 5).toFixed(2)} PB`;
+  if (n >= 1024 ** 4) return `${(n / 1024 ** 4).toFixed(2)} TB`;
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+/** Token display honors the unit toggle (2d round 2): auto adapts by
+ * magnitude; k/M always divide; raw is the plain integer. */
+function fmtTokens(n: number): string {
+  switch (usage.tokenUnit) {
+    case "raw":
+      return `${n}`;
+    case "k":
+      return `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}k`;
+    case "M":
+      return `${(n / 1e6).toFixed(2)}M`;
+    default:
+      if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+      if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+      if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+      return `${n}`;
+  }
+}
+/** cc-switch normalizes costs to USD; CNY is a fixed-rate conversion
+ * (presented as an estimate — provider bills stay authoritative). */
+const FX_USD_CNY = 7.25;
+function fmtCost(usd: number): string {
+  return usage.currency === "CNY"
+    ? `¥${(usd * FX_USD_CNY).toFixed(4)}`
+    : `$${usd.toFixed(4)}`;
+}
+/** Requests flowed but the cost stayed 0 → the model never hit cc-switch's
+ * pricing table (or is genuinely free); surface it instead of a silently
+ * confident $0. */
+function unpriced(row: { requests: number; cost_estimate: number }): boolean {
+  return row.requests > 0 && row.cost_estimate === 0;
+}
+
+watch(
+  () => [usage.range, usage.scope],
+  () => void usage.fetchOverview(),
+);
+onMounted(() => void usage.fetchOverview());
+</script>
+
+<template>
+  <section class="usage-tab" :aria-label="t('usage.title')">
+    <div class="scroll">
+      <!-- ============ subscription ============ -->
+      <h2>{{ t("usage.sub.title") }}</h2>
+      <template v-if="usage.subConfigured && !replacing">
+        <dl class="sub-facts">
+          <div><dt>{{ t("usage.sub.url") }}</dt>
+            <dd>{{ usage.subscription?.url_masked ?? t("usage.sub.manualUrl") }}</dd></div>
+          <div><dt>{{ t("usage.sub.source") }}</dt><dd>{{ usage.subscription?.source }}</dd></div>
+          <div v-if="usage.subscription?.fetched_at"><dt>{{ t("usage.sub.updated") }}</dt>
+            <dd>{{ fmtDate(usage.subscription.fetched_at) }}</dd></div>
+        </dl>
+
+        <template v-if="usage.subscription?.userinfo">
+          <div v-if="usedPct !== null" class="bar"
+               role="img" :aria-label="t('usage.sub.usage', { pct: usedPct.toFixed(1) })">
+            <div class="bar-fill" :style="{ width: `${usedPct}%` }" />
+          </div>
+          <p class="sub-usage">
+            {{ t("usage.sub.usageLine", {
+              used: fmtBytes(usedBytes),
+              total: totalBytes > 0 ? fmtBytes(totalBytes) : t("usage.sub.unlimited"),
+              remaining: totalBytes > 0 ? fmtBytes(Math.max(0, totalBytes - usedBytes)) : "—",
+            }) }}
+            <span v-if="usage.subscription.userinfo.expire">
+              · {{ t("usage.sub.expire") }}: {{ fmtDate(usage.subscription.userinfo.expire) }}
+            </span>
+          </p>
+        </template>
+        <p v-else class="sub-usage dim">{{ t("usage.sub.noUsageInfo") }}</p>
+
+        <p v-if="usage.refreshedNote" class="note">{{ t("usage.sub.refreshNote") }}</p>
+        <p v-if="usage.subError" class="error" role="alert">{{ usage.subError.message }}</p>
+
+        <div class="actions">
+          <button
+            class="ui-button"
+            :disabled="usage.subBusy || usage.subscription?.source !== 'download'"
+            @click="usage.refreshSubscription()"
+          >{{ usage.subBusy ? t("usage.sub.refreshing") : t("usage.sub.refresh") }}</button>
+          <button class="ui-button" :disabled="usage.subBusy" @click="replacing = true">
+            {{ t("usage.sub.replace") }}
+          </button>
+          <button class="ui-button danger" :disabled="usage.subBusy" @click="clearSubscription()">
+            {{ t("usage.sub.clear") }}
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <p class="dim">{{ t("usage.sub.none") }}</p>
+        <SubscriptionForm />
+      </template>
+
+      <!-- ============ provider usage ============ -->
+      <h2>{{ t("usage.providers.title") }}</h2>
+      <div class="controls">
+        <label>
+          <span>{{ t("usage.rangeLabel") }}</span>
+          <select v-model="usage.range">
+            <option value="today">{{ t("usage.range.today") }}</option>
+            <option value="7d">{{ t("usage.range.7d") }}</option>
+            <option value="30d">{{ t("usage.range.30d") }}</option>
+          </select>
+        </label>
+        <label>
+          <span>{{ t("usage.scopeLabel") }}</span>
+          <select v-model="usage.scope">
+            <option v-for="o in scopeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+        </label>
+        <button class="ui-button sm toggle" :title="t('usage.unitHint')"
+                @click="usage.cycleTokenUnit()">
+          {{ t("usage.unitLabel") }}: {{ t(`usage.unit.${usage.tokenUnit}`) }}
+        </button>
+        <button class="ui-button sm toggle" :title="t('usage.currencyHint')"
+                @click="usage.toggleCurrency()">
+          {{ usage.currency === "USD" ? "$ USD" : "¥ CNY" }}
+        </button>
+        <button class="ui-button" :disabled="usage.loading" @click="usage.fetchOverview()">
+          {{ t("usage.reload") }}
+        </button>
+      </div>
+      <p v-if="usage.currency === 'CNY'" class="hint">{{ t("usage.cnyNote", { rate: FX_USD_CNY }) }}</p>
+
+      <p v-if="usage.loading" class="dim">{{ t("usage.loading") }}</p>
+      <p v-else-if="usage.usageError" class="error" role="alert">{{ usage.usageError }}</p>
+
+      <template v-else>
+        <table v-if="providerRows.length" class="usage-table">
+          <thead>
+            <tr>
+              <th>{{ t("usage.col.app") }}</th>
+              <th>{{ t("usage.col.provider") }}</th>
+              <th class="num">{{ t("usage.col.requests") }}</th>
+              <th class="num">{{ t("usage.col.successRate") }}</th>
+              <th class="num">{{ t("usage.col.tokens") }}</th>
+              <th class="num">{{ t("usage.col.cost") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in providerRows" :key="`${row.app}:${row.provider_id}`">
+              <td>{{ row.app }}</td>
+              <td>{{ row.provider_name }}</td>
+              <td class="num">{{ row.requests }}</td>
+              <td class="num">{{ successRate(row.success, row.requests) }}</td>
+              <td class="num">{{ fmtTokens(row.tokens_total) }}</td>
+              <td class="num" :class="{ unpriced: unpriced(row) }" :title="unpriced(row) ? t('usage.costUnknown') : ''">
+                {{ fmtCost(row.cost_estimate) }}<span v-if="unpriced(row)" class="q">?</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- P2-1 (A2): empty states carry an action (VS Code parity). -->
+        <div v-else class="dim usage-empty">
+          <p>{{ t("usage.empty") }}</p>
+          <button class="ui-button sm" :disabled="usage.loading" @click="usage.fetchOverview()">
+            {{ t("common.refresh") }}
+          </button>
+        </div>
+
+        <!-- PP r5③: per-model usage — the actual upstream model ids the
+             proxy forwarded (ground truth for mapping verification). -->
+        <h2>{{ t("usage.models.title") }}</h2>
+        <p class="hint">{{ t("usage.models.hint") }}</p>
+        <table v-if="modelRows.length" class="usage-table">
+          <thead>
+            <tr>
+              <th>{{ t("usage.col.app") }}</th>
+              <th>{{ t("usage.col.model") }}</th>
+              <th class="num">{{ t("usage.col.requests") }}</th>
+              <th class="num">{{ t("usage.col.tokensIn") }}</th>
+              <th class="num">{{ t("usage.col.tokensOut") }}</th>
+              <th class="num">{{ t("usage.col.cost") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in modelRows" :key="`${row.app}:${row.model}`">
+              <td>{{ row.app }}</td>
+              <td class="model-id">{{ row.model }}</td>
+              <td class="num">{{ row.requests }}</td>
+              <td class="num">{{ fmtTokens(row.tokens_in) }}</td>
+              <td class="num">{{ fmtTokens(row.tokens_out) }}</td>
+              <td class="num">{{ fmtCost(row.cost_estimate) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- P2-1 (A2): empty states carry an action (VS Code parity). -->
+        <div v-else class="dim usage-empty">
+          <p>{{ t("usage.empty") }}</p>
+          <button class="ui-button sm" :disabled="usage.loading" @click="usage.fetchOverview()">
+            {{ t("common.refresh") }}
+          </button>
+        </div>
+
+        <ul v-if="usage.scope === 'all'" class="ws-states">
+          <li v-for="w in visibleWorkspaces" :key="w.workspace_hash">
+            {{ w.workspace_path.split(/[\\/]/).filter(Boolean).pop() ?? w.workspace_hash }}
+            — {{ w.source === "live" ? t("usage.ws.live")
+                : w.source === "cache" ? t("usage.ws.cache") : t("usage.ws.none") }}
+          </li>
+        </ul>
+        <p class="hint">{{ t("usage.note") }}</p>
+      </template>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.usage-tab { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column;
+  background: var(--surface); }
+.scroll { flex: 1; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; }
+h2 { font-size: var(--font-lg); margin: var(--space-3) 0 2px; }
+.dim { color: var(--text-muted); font-size: var(--font-md); }
+.sub-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.sub-facts div { display: contents; }
+.sub-facts dt { color: var(--text-muted); font-size: var(--font-sm); }
+.sub-facts dd { margin: 0; font-size: 13px; word-break: break-all; }
+.bar { height: 8px; border-radius: var(--radius-full); background: var(--surface-3); overflow: hidden; max-width: 480px; }
+.bar-fill { height: 100%; background: var(--accent); transition: width var(--duration-slow) var(--ease); }
+.sub-usage { margin: 0; font-size: 13px; }
+.note { margin: 0; font-size: var(--font-sm); color: var(--warn); }
+.error { color: var(--error); font-size: var(--font-md); margin: 0; }
+.actions { display: flex; gap: 8px; }
+.controls { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+.controls label { display: flex; flex-direction: column; gap: 3px; font-size: var(--font-sm); color: var(--text-muted); }
+.usage-table { border-collapse: collapse; font-size: var(--font-md); max-width: 860px; }
+.usage-table th { color: var(--text-muted); font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.5px; }
+.usage-table th, .usage-table td { border-bottom: var(--border-w) solid var(--border); padding: var(--space-1) var(--space-2); text-align: left; }
+.usage-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.model-id { font-family: var(--font-mono); font-size: var(--font-sm); }
+.ws-states { margin: 0; padding-left: 18px; font-size: var(--font-sm); color: var(--text-muted); }
+.hint { font-size: var(--font-sm); color: var(--text-muted); margin: 0; max-width: 760px; }
+button.danger { color: var(--error-fg); }
+button.toggle { font-size: var(--font-sm); }
+td.unpriced { color: var(--warn); }
+td.unpriced .q { margin-left: 2px; cursor: help; font-weight: bold; }
+</style>

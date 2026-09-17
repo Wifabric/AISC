@@ -1,0 +1,305 @@
+/**
+ * Typed settings store (Step 3, 02 §三.4).
+ *
+ * The backend is the single source of truth: defaults live in Rust, unknown
+ * fields survive round-trips, invalid fields fall back per-field with issues.
+ * The store holds the loaded document, a last-saved snapshot for the dirty
+ * indicator (A-G01-5: in-memory values are never conflated with what is on
+ * disk), and save/reset with backend-side conflict replay.
+ */
+import { defineStore } from "pinia";
+import { computed, ref } from "vue";
+import * as ipc from "../lib/ipc";
+import { applyLocale } from "../i18n";
+import type { SaveOutcome, SettingsDocument, SettingsPatch, TargetInfo } from "../types";
+
+export type SaveState = "idle" | "saving" | "saved" | "error";
+
+function cloneDoc(d: SettingsDocument): SettingsDocument {
+  return JSON.parse(JSON.stringify(d)) as SettingsDocument;
+}
+
+export const useSettingsStore = defineStore("settings", () => {
+  const doc = ref<SettingsDocument | null>(null);
+  /** Last known disk state (after load/save/reset). `dirty` compares against it. */
+  const lastSaved = ref<SettingsDocument | null>(null);
+  const saveState = ref<SaveState>("idle");
+  // --- 2.1.10 R4b: the drive target (F-A01: components reach this only
+  // through this store, never lib/ipc directly). Refreshed once at store
+  // creation; switching rides target_set/target_clear.
+  const targetRef = ref<TargetInfo | null>(null);
+  const targetError = ref<string | null>(null);
+  void (async () => {
+    try {
+      targetRef.value = await ipc.targetGet();
+    } catch { /* surfaced on demand via switchTarget */ }
+  })();
+
+  const error = ref<string | null>(null);
+
+  const loaded = computed(() => doc.value !== null);
+  const readOnly = computed(() => doc.value?.readOnly ?? false);
+  const corrupted = computed(() => doc.value?.corrupted ?? false);
+
+  /** Any GUI field differs from the last saved/loaded disk state. */
+  const dirty = computed(() => {
+    if (!doc.value || !lastSaved.value) return false;
+    return (
+      JSON.stringify(doc.value.ui) !== JSON.stringify(lastSaved.value.ui) ||
+      JSON.stringify(doc.value.terminal) !== JSON.stringify(lastSaved.value.terminal) ||
+      JSON.stringify(doc.value.window) !== JSON.stringify(lastSaved.value.window) ||
+      JSON.stringify(doc.value.hostTools ?? []) !==
+        JSON.stringify(lastSaved.value.hostTools ?? []) ||
+      JSON.stringify(doc.value.remoteMachines ?? []) !==
+        JSON.stringify(lastSaved.value.remoteMachines ?? []) ||
+      JSON.stringify(doc.value.performance) !== JSON.stringify(lastSaved.value.performance)
+    );
+  });
+
+  function applyDoc(d: SettingsDocument): void {
+    doc.value = cloneDoc(d);
+    lastSaved.value = cloneDoc(d);
+    saveState.value = "idle";
+    error.value = null;
+  }
+
+  async function load(): Promise<void> {
+    try {
+      applyDoc(await ipc.loadSettings());
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+      saveState.value = "error";
+    }
+  }
+
+  /** Apply GUI edits to the working copy (not persisted until save()). */
+  function patch(p: SettingsPatch): void {
+    if (!doc.value) return;
+    if (p.ui) doc.value.ui = { ...doc.value.ui, ...p.ui };
+    if (p.terminal) doc.value.terminal = { ...doc.value.terminal, ...p.terminal };
+    if (p.window) doc.value.window = { ...doc.value.window, ...p.window };
+  }
+
+  /** Discard unsaved edits and return to the last saved/loaded state. */
+  function cancel(): void {
+    if (lastSaved.value) doc.value = cloneDoc(lastSaved.value);
+    saveState.value = "idle";
+    error.value = null;
+  }
+
+  /** G-09: language is immediate-effect - re-resolve the locale after a
+   * persisted language change (explicit value wins; auto re-runs the chain). */
+  async function applyLanguage(): Promise<void> {
+    applyLocale(await ipc.resolveLocale(doc.value?.ui.language ?? "auto"));
+  }
+
+  async function save(): Promise<SaveOutcome | null> {
+    if (!doc.value || saveState.value === "saving") return null;
+    saveState.value = "saving";
+    error.value = null;
+    try {
+      const outcome = await ipc.saveSettings(doc.value.revision, {
+        ui: doc.value.ui,
+        terminal: doc.value.terminal,
+        window: doc.value.window,
+        hostTools: doc.value.hostTools ?? [],
+        remoteMachines: doc.value.remoteMachines ?? [],
+        ...(doc.value.performance ? { performance: doc.value.performance } : {}),
+      });
+      doc.value.revision = outcome.revision;
+      doc.value.issues = outcome.issues;
+      lastSaved.value = cloneDoc(doc.value);
+      saveState.value = "saved";
+      await applyLanguage();
+      void ipc.logUiEvent?.("settings_save", "ok");
+      return outcome;
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+      saveState.value = "error";
+      void ipc.logUiEvent?.("settings_save", "error",
+        (e as { code?: string })?.code ?? undefined);
+      return null;
+    }
+  }
+
+  /** Reset GUI fields to defaults; aisc_cli_path/history/Runtime untouched.
+   * Reloads from the backend so defaults never live in the frontend. */
+  async function reset(): Promise<SaveOutcome | null> {
+    if (!doc.value || saveState.value === "saving") return null;
+    saveState.value = "saving";
+    error.value = null;
+    try {
+      const outcome = await ipc.resetGuiSettings(doc.value.revision);
+      applyDoc(await ipc.loadSettings());
+      await applyLanguage(); // language back to auto -> re-resolve
+      return outcome;
+    } catch (e) {
+      error.value = (e as { message?: string })?.message ?? String(e);
+      saveState.value = "error";
+      return null;
+    }
+  }
+
+  // --- O7 (D-11): docker disk & cache panel (settings card) ---
+  const cacheUsage = ref<import("../lib/ipc").CacheUsage | null>(null);
+  const cacheBusy = ref(false);
+  const cacheError = ref<string | null>(null);
+  const cacheLog = ref<string[]>([]);
+
+  async function loadCacheUsage(): Promise<void> {
+    cacheBusy.value = true;
+    cacheError.value = null;
+    try {
+      cacheUsage.value = await ipc.cacheUsage();
+    } catch (e) {
+      cacheError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      cacheBusy.value = false;
+    }
+  }
+
+  async function runCacheCleanup(minAgeHours: number): Promise<void> {
+    cacheBusy.value = true;
+    cacheError.value = null;
+    try {
+      const result = await ipc.cacheCleanup(minAgeHours);
+      for (const p of result.prunes) {
+        cacheLog.value.push(
+          `${p.kind}: ${p.reclaimed || (p.error ? "失败 " + p.error : "无回收")}`
+        );
+      }
+      for (const w of result.warnings) cacheLog.value.push(`⚠ ${w}`);
+      if (cacheLog.value.length > 20) cacheLog.value.splice(0, cacheLog.value.length - 20);
+      cacheUsage.value = { dockerAvailable: true, rows: result.rows_after };
+    } catch (e) {
+      cacheError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      cacheBusy.value = false;
+    }
+  }
+
+  // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
+  const dockerReport = ref<import("../lib/ipc").DockerScanReport | null>(null);
+  const dockerBusy = ref(false);
+  const dockerRebuilding = ref(false);
+  const dockerError = ref<string | null>(null);
+  const dockerLog = ref<string[]>([]);
+
+  function dockerLogLine(line: string): void {
+    dockerLog.value.push(line);
+    if (dockerLog.value.length > 20) dockerLog.value.splice(0, dockerLog.value.length - 20);
+  }
+
+  /** Read-only classification pass (upgrade context = the conservative
+   * default the CLI itself uses for evidence rules). */
+  async function loadDockerScan(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      dockerReport.value = await ipc.dockerScan("upgrade");
+      for (const w of dockerReport.value.warnings) dockerLogLine(`⚠ ${w}`);
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** Full clean (uninstall context: containers + images). The scan preview
+   * rides the card above; the CLI re-scans under the maintenance lock
+   * anyway (invariant: never trust a stale list). */
+  async function runDockerCleanup(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      const r = await ipc.dockerCleanup("uninstall");
+      dockerLogLine(
+        `容器: 清除 ${r.containers.removed.length}` +
+          (r.containers.failed.length ? ` · 失败 ${r.containers.failed.length}（${r.containers.failed.join(", ")}）` : "") +
+          (r.containers.not_found.length ? ` · 已不存在 ${r.containers.not_found.length}` : "")
+      );
+      dockerLogLine(
+        `镜像: 清除 ${r.images.removed.length}` +
+          (r.images.failed.length ? ` · 失败 ${r.images.failed.length}（${r.images.failed.join(", ")}）` : "")
+      );
+      if (r.skippedUnverified.length)
+        dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
+      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
+      dockerReport.value = await ipc.dockerScan("upgrade");
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** No-cache rebuild from the LOCAL bundle root (long op, 30+ min budget). */
+  async function runDockerRebuild(): Promise<void> {
+    dockerRebuilding.value = true;
+    dockerError.value = null;
+    try {
+      const r = await ipc.dockerRebuild();
+      if (r.failed) {
+        dockerError.value = `重建失败（旧镜像已保留）${r.buildLogTail ? "：" + r.buildLogTail : ""}`;
+      } else {
+        dockerLogLine(`镜像已重建: ${r.tag} → ${r.newImageId.slice(0, 19)}（旧镜像 ${r.oldImageAction}）`);
+      }
+      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
+    } catch (e) {
+      dockerError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      dockerRebuilding.value = false;
+    }
+  }
+
+  return {
+    doc,
+    // --- R4b: the drive target ---
+    target: computed((): TargetInfo | null => targetRef.value),
+    targetError,
+    async refreshTarget(): Promise<void> {
+      try {
+        targetRef.value = await ipc.targetGet();
+        targetError.value = null;
+      } catch (e) {
+        targetError.value = (e as { message?: string })?.message || String(e);
+      }
+    },
+    async switchTarget(name: string | null): Promise<void> {
+      try {
+        targetRef.value = name ? await ipc.targetSet(name) : await ipc.targetClear();
+        targetError.value = null;
+      } catch (e) {
+        targetError.value = (e as { message?: string; technical_detail?: string })
+          ?.technical_detail || (e as { message?: string })?.message || String(e);
+      }
+    },
+
+    lastSaved,
+    saveState,
+    error,
+    loaded,
+    cacheUsage,
+    cacheBusy,
+    cacheError,
+    cacheLog,
+    loadCacheUsage,
+    runCacheCleanup,
+    dockerReport,
+    dockerBusy,
+    dockerRebuilding,
+    dockerError,
+    dockerLog,
+    loadDockerScan,
+    runDockerCleanup,
+    runDockerRebuild,
+    readOnly,
+    corrupted,
+    dirty,
+    load,
+    patch,
+    cancel,
+    save,
+    reset,
+  };
+});

@@ -19,9 +19,90 @@ class CheckStatus:
     SKIP = "skip"
 
 
+class RuntimeErrorCode:
+    """Stable error codes for runtime operations.
+
+    Aligned with docs/rfc/aisc-cli-v1.md §4.1.
+    """
+    DOCKER_UNAVAILABLE = "AISC_ERR_DOCKER_UNAVAILABLE"
+    RUNTIME_CONFLICT = "AISC_ERR_RUNTIME_CONFLICT"
+    INVALID_RUNTIME_ID = "AISC_ERR_INVALID_RUNTIME_ID"
+    RUNTIME_OPERATION_FAILED = "AISC_ERR_RUNTIME_OPERATION_FAILED"
+    WORKSPACE_INVALID = "AISC_ERR_WORKSPACE_INVALID"
+    IMAGE_NOT_FOUND = "AISC_ERR_IMAGE_NOT_FOUND"
+    NETWORK_INVALID = "AISC_ERR_NETWORK_INVALID"
+    SCOPE_INVALID = "AISC_ERR_SCOPE_INVALID"
+    # Session-specific codes (S0.3)
+    SESSION_NOT_FOUND = "AISC_ERR_SESSION_NOT_FOUND"
+    SESSION_FAILED = "AISC_ERR_SESSION_FAILED"
+    RUNTIME_NOT_RUNNING = "AISC_ERR_RUNTIME_NOT_RUNNING"
+    INVALID_SESSION_ID = "AISC_ERR_INVALID_SESSION_ID"
+    INVALID_AGENT = "AISC_ERR_INVALID_AGENT"
+    # Provider status codes (S0.4)
+    PROVIDER_STATUS_FAILED = "AISC_ERR_PROVIDER_STATUS_FAILED"
+    # Agent Artifact codes (Stage 3, ART-02)
+    ARTIFACT_INVALID = "AISC_ERR_ARTIFACT_INVALID"
+    ARTIFACT_NOT_FOUND = "AISC_ERR_ARTIFACT_NOT_FOUND"
+    # Extended codes: STATE_LOCK_TIMEOUT is registered in RFC §4.1 (exit 17);
+    # the rest are extended codes not in the RFC exit-code table.
+    RUNTIME_NOT_FOUND = "AISC_ERR_RUNTIME_NOT_FOUND"
+    STATE_LOCK_TIMEOUT = "AISC_ERR_STATE_LOCK_TIMEOUT"
+    RUNTIME_UNHEALTHY = "AISC_ERR_RUNTIME_UNHEALTHY"
+    CONTAINER_NOT_FOUND = "AISC_ERR_CONTAINER_NOT_FOUND"
+    # Workspace lease / reconcile (runtime-lifecycle-ux Stage 1,
+    # 02-domain-contract.md §3 error codes)
+    ACTIVE_WORKSPACE_LEASE = "AISC_ERR_ACTIVE_WORKSPACE_LEASE"
+    RUNTIME_OWNER_UNKNOWN = "AISC_ERR_RUNTIME_OWNER_UNKNOWN"
+    RUNTIME_RECONCILE_FAILED = "AISC_ERR_RUNTIME_RECONCILE_FAILED"
+    RUNTIME_LEASE_CONFLICT = "AISC_ERR_RUNTIME_LEASE_CONFLICT"
+
+
+class RuntimeExitCode:
+    """Exit codes for runtime operations.
+
+    Uses RFC-compliant exit codes. New runtime-specific codes use 14+.
+    Aligned with docs/rfc/aisc-cli-v1.md §4.1.
+    """
+    SUCCESS = 0
+    GENERAL_ERROR = 1
+    USAGE_ERROR = 2
+    DOCKER_UNAVAILABLE = 3  # Reuses existing AISC_EXIT_DOCKER_UNAVAILABLE
+    # 4 = AISC_EXIT_BUILD_FAILED (reserved by RFC)
+    IMAGE_NOT_FOUND = 5  # AISC_EXIT_IMAGE_NOT_FOUND (reserved by RFC)
+    # 6 = AISC_EXIT_CONFIG_INVALID (reserved by RFC)
+    PERMISSION_DENIED = 9
+    # New runtime-specific exit codes (14+, registered in RFC)
+    RUNTIME_CONFLICT = 14           # AISC_EXIT_RUNTIME_CONFLICT
+    INVALID_RUNTIME_ID = 15         # AISC_EXIT_INVALID_RUNTIME_ID
+    RUNTIME_OPERATION_FAILED = 16   # AISC_EXIT_RUNTIME_OPERATION_FAILED
+    STATE_LOCK_TIMEOUT = 17         # AISC_EXIT_STATE_LOCK_TIMEOUT
+    # Session-specific exit codes (S0.3, registered in RFC §4.1)
+    SESSION_NOT_FOUND = 18          # AISC_EXIT_SESSION_NOT_FOUND
+    SESSION_FAILED = 19             # AISC_EXIT_SESSION_FAILED
+    RUNTIME_NOT_RUNNING = 20        # AISC_EXIT_RUNTIME_NOT_RUNNING
+    # Provider status exit code (S0.4)
+    PROVIDER_STATUS_FAILED = 21     # AISC_EXIT_PROVIDER_STATUS_FAILED
+    # Workspace lease / reconcile (runtime-lifecycle-ux Stage 1)
+    ACTIVE_WORKSPACE_LEASE = 22    # AISC_EXIT_ACTIVE_WORKSPACE_LEASE
+    RUNTIME_RECONCILE_FAILED = 23  # AISC_EXIT_RUNTIME_RECONCILE_FAILED
+
+
 # ---------------------------------------------------------------------------
 # Version info
 # ---------------------------------------------------------------------------
+
+# Workbench capability negotiation (05-cli-gui-contract.md §四).
+# Advertised by ``aisc version --format json`` so the Workbench gates UI on
+# what this CLI actually implements -- it must not guess from the version
+# string. Add a key here as each capability ships.
+WORKBENCH_CAPABILITIES = {
+    "runtime": "aisc.runtime/v1",               # S0.2
+    "session": "aisc.session/v1",               # S0.3
+    "providerStatus": "aisc.provider-status/v1",  # S0.4
+    "buildEvents": "aisc.build-events/v2",      # S0.5
+    "runtimeServices": "aisc.runtime-services/v1",  # svc-2 (web gateway)
+}
+
 
 @dataclass
 class VersionInfo:
@@ -36,9 +117,12 @@ class VersionInfo:
     declared_claude_version: Optional[str] = None
     image_version: Optional[str] = None
     contract_version: Optional[str] = None
+    # A8 (guide 3.5.5): text-mode provenance line only — NOT in to_dict
+    # (the JSON envelope keeps its 6 fixed keys + capabilities contract).
+    install_channel: Optional[str] = None
 
     def to_dict(self) -> dict:
-        """Return RFC-compliant dict with 6 fixed keys in order."""
+        """Return RFC-compliant dict with 6 fixed keys + Workbench capabilities."""
         return {
             "cli_version": self.cli_version,
             "bundle_version": self.bundle_version,
@@ -46,6 +130,7 @@ class VersionInfo:
             "image_version": self.image_version,
             "claude_version": self.declared_claude_version,
             "python_version": self.python_version,
+            "capabilities": WORKBENCH_CAPABILITIES,
         }
 
     def to_text(self) -> str:
@@ -53,6 +138,8 @@ class VersionInfo:
             f"AISC CLI version  : {self.cli_version}",
             f"Python version     : {self.python_version}",
         ]
+        if self.install_channel:
+            lines.append(f"Install channel    : {self.install_channel}")
         if self.bundle_version is not None:
             lines.append(f"Bundle version     : {self.bundle_version}")
         else:
@@ -65,6 +152,8 @@ class VersionInfo:
             lines.append(f"Claude Code version: {self.declared_claude_version}")
         else:
             lines.append("Claude Code version: (not found)")
+        if WORKBENCH_CAPABILITIES:
+            lines.append("Capabilities       : " + ", ".join(WORKBENCH_CAPABILITIES.keys()))
         return "\n".join(lines)
 
 
@@ -206,11 +295,16 @@ class ImageInspectResult:
     Only ``status == MISSING`` maps to AISC_EXIT_IMAGE_NOT_FOUND(5);
     other non-ok statuses map to DOCKER_UNAVAILABLE(3), PERMISSION_DENIED(9),
     or GENERAL(1) depending on the underlying cause.
+
+    ``image_id`` (容器随镜像同步更新, KI-4 挂账) carries the content-addressed
+    ``.Id`` on the EXISTS path — empty when unparseable or non-ok; existence
+    remains the primary question, the ID is opportunistic metadata.
     """
 
     status: str = ImageInspectStatus.ERROR  # one of ImageInspectStatus
     image: str = ""
     message: str = ""
+    image_id: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +322,25 @@ class BuildPlan:
     pull: bool = False
     build_arg_use_cn_mirror: str = "1"
     build_arg_node_image: str = "node:20-slim"
+    # A5 (D-9): forwarded tool pins — factory default under the data-root
+    # user overlay (D-27); "latest" keeps the pre-A5 behavior when the
+    # factory file carries no pin.
+    build_arg_claude_code_version: str = "latest"
+    build_arg_codex_version: str = "latest"
+    # T8a (2.1.9 D-9): fallback registry prefixes for the host-side pre-pull
+    # chain (versions.env NODE_IMAGE_MIRRORS). Each entry joins the bare
+    # node_image name; the first candidate is always build_arg_node_image.
+    node_image_mirrors: tuple = ()
     dry_run: bool = False
+    # Stage 8 (CS-01/CS-02): the resolver-pinned cc-switch release. Empty
+    # strings = manual/legacy `docker build` (Dockerfile ARG fallback path,
+    # documented as non-reproducible); `aisc build` always injects these.
+    cc_switch_version: str = ""
+    cc_switch_commit: str = ""
+    cc_switch_asset_url: str = ""
+    cc_switch_asset_sha256: str = ""
+    cc_switch_asset_name: str = ""
+    cc_switch_manifest: str = ""  # compact JSON for the org.aisc.build-manifest label
 
     @property
     def docker_argv(self) -> list:
@@ -238,9 +350,28 @@ class BuildPlan:
             argv.append("--no-cache")
         if self.pull:
             argv.append("--pull")
+        from aisc.domain.docker_ownership import image_labels, label_args
+
         argv.extend([
             "--build-arg", f"USE_CN_MIRROR={self.build_arg_use_cn_mirror}",
             "--build-arg", f"NODE_IMAGE={self.build_arg_node_image}",
+            "--build-arg", f"CLAUDE_CODE_VERSION={self.build_arg_claude_code_version}",
+            "--build-arg", f"CODEX_VERSION={self.build_arg_codex_version}",
+        ])
+        # docker-resource-lifecycle A2: provenance labels injected by the
+        # unified build argv (org.aisc.*; 02 §1.2 — never only host logs).
+        import aisc as _aisc
+        argv.extend(label_args(image_labels(getattr(_aisc, "__version__", "") or "dev")))
+        if self.cc_switch_version:
+            argv.extend([
+                "--build-arg", f"CC_SWITCH_RESOLVED_VERSION={self.cc_switch_version}",
+                "--build-arg", f"CC_SWITCH_RELEASE_COMMIT={self.cc_switch_commit}",
+                "--build-arg", f"CC_SWITCH_ASSET_URL={self.cc_switch_asset_url}",
+                "--build-arg", f"CC_SWITCH_ASSET_SHA256={self.cc_switch_asset_sha256}",
+                "--build-arg", f"CC_SWITCH_ASSET_NAME={self.cc_switch_asset_name}",
+                "--build-arg", f"CC_SWITCH_BUILD_MANIFEST={self.cc_switch_manifest}",
+            ])
+        argv.extend([
             "-f", self.dockerfile,
             "-t", self.tag,
             self.root,
@@ -262,6 +393,19 @@ class RunPlan:
     proxy_config: str = ""    # host path to .claude/mihomo/config.yaml (when network=proxy)
     label: str = ""           # optional container label for multi-container addressing
     keep_alive: bool = False  # --keep-alive: omit --rm, keep container after exit
+    # Stage 7 (DATA-01): data-root workspaces/<hash>/ dir; when set (and the
+    # run is project-scoped) the agent config dirs mount from here instead
+    # of being copied into the workspace.
+    agent_state_root: str = ""
+    # svc-5 (web gateway): loopback host port publishing the container-side
+    # gateway (45871/tcp); 0 would mean "no gateway" but plan_run always
+    # allocates one — one-shot `aisc run` containers get the same capability
+    # as managed runtimes.
+    web_gateway_host_port: int = 0
+    # runtime-lifecycle-ux 3a: host-side persistent toolchain dir (project
+    # scope one-shots get the same capability as managed runtimes); empty =
+    # no toolchain mount (temporary mode -> container-side /tmp layout).
+    toolchain_root: str = ""
 
     @property
     def docker_argv(self) -> list:
@@ -273,6 +417,8 @@ class RunPlan:
         - network=proxy     → adds NET_ADMIN, TUN device, mihomo config mount
         - keep_alive=False  → includes ``--rm`` (default: remove on exit)
         - keep_alive=True   → omits ``--rm`` (persist after exit)
+        - agent_state_root  → project-scope mounts: claude/codex/cc-switch
+                          config + daemon runtime state from the data root
         - Runs as the image default user (root) so bind-mounted WSL2 files remain writable
         """
         argv = ["run"]
@@ -281,16 +427,38 @@ class RunPlan:
         if not self.keep_alive:
             argv.append("--rm")
 
-        # For keep_alive mode, use -d (detached) instead of -it to prevent container exit on client disconnect
-        if self.keep_alive and self.interactive and not self.non_interactive:
+        # F2-C: keep-alive runs are DETACHED, period — `aisc run` activates a
+        # workspace and exits; the interactive surface is `aisc shell`/agents.
+        if self.keep_alive:
             argv.append("-d")
         elif self.interactive and not self.non_interactive:
             argv.append("-it")
+        from aisc.domain.docker_ownership import label_args, one_shot_labels
+
         argv.extend([
             "-e", "TERM=xterm-256color",
+            # F2-C: detached activations ride the entrypoint's IDLE mode
+            # (exec sleep infinity) — the image default CMD exits without a
+            # TTY, so a bare `docker run -d` died within a second.
+            "-e", "AISC_RUNTIME_MODE=idle",
             "--name", self.name,
+            # runtime-lifecycle A2 / docker-ownership A0: labels prove
+            # ownership for the maintenance classifier (kind=one-shot).
+            *label_args(one_shot_labels()),
             "-v", f"{self.workspace}:/root/app",
         ])
+        if self.agent_state_root:
+            base = self.agent_state_root.rstrip("/\\")
+            argv.extend([
+                "-v", f"{base}/claude:/root/.claude",
+                "-v", f"{base}/codex:/root/.codex",
+                "-v", f"{base}/cc-switch:/root/.cc-switch",
+                "-v", f"{base}/runtime:/root/.local/state/cc-switch",
+            ])
+            if self.toolchain_root:
+                from aisc.domain.toolchain import TOOLCHAIN_MOUNT_TARGET
+
+                argv.extend(["-v", f"{self.toolchain_root}:{TOOLCHAIN_MOUNT_TARGET}"])
         if self.non_interactive:
             argv.extend([
                 "-e", "AISC_NON_INTERACTIVE=1",
@@ -305,5 +473,202 @@ class RunPlan:
                 argv.extend([
                     "-v", f"{self.proxy_config}:/etc/mihomo/config.yaml:ro",
                 ])
+        if self.web_gateway_host_port:
+            # svc-5: loopback publish of the in-container web gateway.
+            from aisc.domain.web_services import WEB_GATEWAY_CONTAINER_PORT
+
+            argv.extend([
+                "--publish",
+                f"127.0.0.1:{self.web_gateway_host_port}:{WEB_GATEWAY_CONTAINER_PORT}/tcp",
+            ])
         argv.append(self.image)
         return argv
+
+
+# ---------------------------------------------------------------------------
+# Runtime snapshot — structured runtime state
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RuntimeSnapshot:
+    """Structured runtime state matching lifecycle contract.
+
+    Combines registry metadata with live Docker state.
+    See docs/gui-planning/03-lifecycle-contract.md for state machine.
+    """
+    runtime_id: str = ""           # UUID v4 (provided by Workbench)
+    state: str = "unknown"         # unknown, not_found, starting, running, stopping, stopped, removing
+    workspace: str = ""            # canonical absolute path
+    image: str = ""                # image:tag
+    network: str = "direct"        # direct, proxy
+    scope: str = "project"         # project, temporary
+    owner: str = ""                # who created this runtime (e.g., "workbench")
+    config_fingerprint: str = ""   # sha256:<hash> of canonical config
+    container_name: str = ""       # Docker container name (for legacy compat)
+    container_id: str = ""         # Docker container ID (from inspect)
+    label: str = ""                # optional user label
+
+    # Registry reconciliation
+    registry_state: str = "unknown"  # registered, missing, unknown
+
+    # Timestamps
+    created_at: str = ""           # ISO timestamp or numeric (backward compat)
+    started_at: str = ""           # ISO timestamp from Docker
+    observed_at: str = ""          # ISO timestamp when this snapshot was taken
+
+    # Staleness indicator
+    stale: bool = False            # True if observation is potentially outdated
+
+    # svc-2 (web gateway): loopback gateway reachability per
+    # aisc.runtime-services/v1; None = not observed (list path / old CLI) —
+    # consumers treat absent as unavailable, never as a parse failure.
+    web_access: Optional[Dict[str, Any]] = None
+
+    # runtime-lifecycle-ux 3a: scope-derived dependency policy
+    # (persistent_toolchain | ephemeral_toolchain; "" on legacy records) and
+    # the host-side toolchain health summary. Both advisory — never gates.
+    dependency_policy: str = ""
+    toolchain: Optional[Dict[str, Any]] = None
+
+    # Last operation error (None if last operation succeeded)
+    last_operation_error: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dict matching CLI contract."""
+        result = {
+            "runtime_id": self.runtime_id,
+            "state": self.state,
+            "config": {
+                "workspace": self.workspace,
+                "image": self.image,
+                "network": self.network,
+                "scope": self.scope,
+            },
+            "owner": self.owner,
+            "config_fingerprint": self.config_fingerprint,
+            "container_name": self.container_name,
+            "container_id": self.container_id,
+            "registry_state": self.registry_state,
+            "observed_at": self.observed_at,
+            "stale": self.stale,
+        }
+
+        # Optional fields
+        if self.label:
+            result["label"] = self.label
+        if self.created_at:
+            result["created_at"] = self.created_at
+        if self.started_at:
+            result["started_at"] = self.started_at
+        if self.web_access is not None:
+            result["web_access"] = self.web_access
+        if self.dependency_policy:
+            result["dependency_policy"] = self.dependency_policy
+        if self.toolchain is not None:
+            result["toolchain"] = self.toolchain
+        if self.last_operation_error:
+            result["last_operation_error"] = self.last_operation_error
+
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Session constants and models (S0.3)
+# ---------------------------------------------------------------------------
+
+class SessionAgent:
+    """Controlled agent enum for ``aisc session open``."""
+    CLAUDE = "claude"
+    CODEX = "codex"
+    BASH = "bash"
+    CC_SWITCH = "cc-switch"
+
+    ALL = (CLAUDE, CODEX, BASH, CC_SWITCH)
+
+
+class SessionState:
+    """Session lifecycle states per 03-lifecycle-contract.md §5.1."""
+    STARTING = "starting"
+    RUNNING = "running"
+    CLOSING = "closing"
+    EXITED = "exited"
+    FAILED = "failed"
+    DISCONNECTED = "disconnected"
+
+
+class SessionExitReason:
+    """Reasons for session termination per 03-lifecycle-contract.md §5.1."""
+    PROCESS_EXIT = "process_exit"
+    USER_CLOSE = "user_close"
+    RUNTIME_STOP = "runtime_stop"
+    TRANSPORT_ERROR = "transport_error"
+    WORKBENCH_CRASH_CLEANUP = "workbench_crash_cleanup"
+
+
+@dataclass
+class SessionRecord:
+    """Session metadata stored in-container at ``/run/aisc/sessions/<id>.json``.
+
+    Per contract 6.1: 0600, atomic write, no argv/env/output. Used only
+    for diagnostics and crash cleanup; never claims PTY recoverability.
+    """
+
+    schema_version: str = "aisc.session/v1"
+    runtime_id: str = ""
+    session_id: str = ""
+    agent: str = ""
+    state: str = SessionState.STARTING
+    pid: Optional[int] = None
+    pgid: Optional[int] = None
+    start_ticks: Optional[int] = None
+    started_at: str = ""
+    finished_at: str = ""
+    exit_code: Optional[int] = None
+    reason: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "runtime_id": self.runtime_id,
+            "session_id": self.session_id,
+            "agent": self.agent,
+            "state": self.state,
+            "pid": self.pid,
+            "pgid": self.pgid,
+            "start_ticks": self.start_ticks,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "exit_code": self.exit_code,
+            "reason": self.reason,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Provider status model (S0.4)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ProviderStatus:
+    """Observable provider status for one agent (05-cli-gui-contract.md §七).
+
+    Secret-free: only routing/auth metadata, never keys/tokens/cookies.
+    """
+
+    runtime_id: str
+    agent: str
+    provider_id: str
+    provider_name: str
+    route_mode: str
+    auth_status: str
+    observed_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "runtime_id": self.runtime_id,
+            "agent": self.agent,
+            "provider_id": self.provider_id,
+            "provider_name": self.provider_name,
+            "route_mode": self.route_mode,
+            "auth_status": self.auth_status,
+            "observed_at": self.observed_at,
+        }

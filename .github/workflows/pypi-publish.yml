@@ -1,0 +1,161 @@
+name: PyPI publish
+
+# 0.1.0 A6 (guide 3.4.1; decisions D-2/D-26): dispatch-only — the input is
+# an EXISTING v* tag; the job checks that ref out and builds there. Never
+# auto-triggered by tag push (CLI-D08: PyPI is an external action needing
+# explicit human dispatch). Trusted Publishing (OIDC) — no API tokens.
+# Environments: `testpypi` (no reviewer) and `pypi` (Required reviewers) —
+# the human approval point sits between the two publish stages.
+# Final-only gate for the real index: dev/rc tags stop at TestPyPI (dev
+# iteration needs per-upload version bumps — same-name files are refused
+# forever, D-26).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to publish (must equal the tree's VERSION)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build + guards
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+
+      - name: Tag/version guard (guide 3.4.2)
+        run: '[ "v$(cat src/aisc/VERSION)" = "${{ inputs.tag }}" ] || { echo "tag ${{ inputs.tag }} != v$(cat src/aisc/VERSION)"; exit 1; }'
+
+      - name: Version consistency (VERSION == tauri.conf normalized == notes exist)
+        run: python scripts/check-version-sync.py --tag "${{ inputs.tag }}"
+
+      - name: Build wheel + sdist
+        run: python -m build
+
+      - name: twine check
+        run: twine check dist/*
+
+      - name: Artifact must stay thin (negative guard, guide 3.4.4)
+        run: |
+          mkdir -p scan/wheel scan/sdist
+          python -m zipfile -e dist/*.whl scan/wheel/
+          tar -xzf dist/*.tar.gz -C scan/sdist/
+          BAD=$(find scan -type d \( -name packaging -o -name tests -o -name vendor -o -name container -o -name _bundle \) -print -quit)
+          [ -z "$BAD" ] || { echo "forbidden payload in artifact: $BAD"; exit 1; }
+          ! grep -riq "mihomo\|geoip.metadb" scan/wheel/*/RECORD 2>/dev/null || { echo "binary payload leaked into the wheel"; exit 1; }
+
+      - name: Secret scan of the artifacts themselves
+        run: |
+          docker run --rm -v "$PWD/scan:/src" zricethezav/gitleaks:latest detect --source /src --no-git --exit-code 1
+
+      - name: pip-audit the built wheel (Critical/High block)
+        run: |
+          pip install pip-audit
+          # First-release policy: any known vulnerability in the dependency
+          # set blocks the publish; records-only once a triage process exists.
+          pip-audit --no-deps ./dist/*.whl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Version (for the verify step)
+        run: echo "AISC_VERSION=$(cat src/aisc/VERSION)" >> "$GITHUB_ENV"
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          attestations: true
+      - name: Verify installability from TestPyPI
+        run: |
+          pip install pipx
+          python scripts/verify-pypi-install.py \
+            --index-url https://test.pypi.org/simple \
+            --extra-index-url https://pypi.org/simple/ \
+            "$AISC_VERSION"
+
+  publish-pypi:
+    name: Publish to PyPI (final only)
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    # No workflow-level regex gate (GitHub `if` has no =~): the environment
+    # approval above is the human gate, the first step below the mechanical
+    # final-only gate. Dev tags die there without consuming the approval.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Final-only gate (dev/rc never reach the real index)
+        run: |
+          V=$(cat src/aisc/VERSION)
+          TAG="${{ inputs.tag }}"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*)
+              case "$TAG" in
+                *-dev*|*.dev*|*-rc*|*.rc*) echo "prerelease tag: $TAG — TestPyPI only"; exit 1 ;;
+              esac
+              [ "v$V" = "$TAG" ] || { echo "tag $TAG != v$V"; exit 1; } ;;
+            *) echo "not a final tag: $TAG"; exit 1 ;;
+          esac
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+      - name: Verify installability from PyPI
+        run: |
+          pip install pipx
+          python scripts/verify-pypi-install.py \
+            --index-url https://pypi.org/simple \
+            "v$(cat src/aisc/VERSION)"
+      - name: Generate + attach SBOM to the release (guide 3.4.1)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip install .
+          python scripts/verify-sbom.py --venv-python "$(which python)" \
+            --output "aisc-sbom.json" || true
+          gh release upload "${{ inputs.tag }}" aisc-sbom.json --clobber

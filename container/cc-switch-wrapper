@@ -1,13 +1,27 @@
 #!/bin/bash
-# cc-switch 用 HOME 推导 skills 目标。项目态使用挂载后的 /root/app；
-# 临时态改用 /tmp/aisc-home，避免写入宿主工作区。
+# cc-switch 用 HOME 推导 skills/daemon-state 目标。
+#   临时态 → /tmp/aisc-home（容器退出即重置）；
+#   项目态（Stage 7）→ /root：skills/daemon 状态落在挂载到 /root/.claude、
+#     /root/.codex、/root/.local/state/cc-switch 的 data root 卷；
+#   旧版宿主（未挂载 /root/.claude，配置仍在 /root/app）→ /root/app。
+# 判据用 /proc/mounts 挂载检测，而非 CLAUDE_CONFIG_DIR 的字面值——对
+# 新旧宿主的任意 CONFIG_DIR 拼写都成立。
 set -e
 
 if [ "${CLAUDE_CONFIG_DIR:-}" = "/tmp/aisc-home/.claude" ] || \
    [ "${CODEX_HOME:-}" = "/tmp/aisc-home/.codex" ]; then
     export HOME="/tmp/aisc-home"
+elif grep -qs " /root/.claude " /proc/mounts; then
+    export HOME="/root"
 else
     export HOME="/root/app"
+fi
+
+# 2.1.9 O9-反馈 #5a (2026-09-02): 清屏（含回滚缓冲）——bash/zsh 手动唤起
+# TUI 时清屏；Workbench cc-switch 页签直启（AISC_AGENT=cc-switch）不受
+# 影响（详见 claude-wrapper 同段注释）。
+if [ -t 1 ] && [ "${AISC_AGENT:-manual}" != "cc-switch" ]; then
+    clear 2>/dev/null || printf '\033[H\033[2J\033[3J'
 fi
 
 exec cc-switch-real "$@"

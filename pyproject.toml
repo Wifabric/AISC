@@ -1,37 +1,82 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# setuptools>=77: SPDX string license + license-files need the modern
+# metadata projection (setuptools 84 warns the TOML-table form dies
+# 2027-02-18; guide 3.1 item 2).
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aisc"
+# Distribution name is aisc-cli (PyPI: `aisc` is a dormant third-party
+# package since 2019); the import package and console script stay `aisc`
+# (guide D-1 / decisions D-2 — do not over-rename).
+name = "aisc-cli"
 dynamic = ["version"]
 description = "AISC CLI — Super Claude workstation management"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "AISC contributors" }]
+keywords = ["ai", "claude", "docker", "workstation", "cli", "container"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    # No License classifier: mutually exclusive with the SPDX license
+    # expression above (guide 3.1 item 2).
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+    # 3.14 dropped: the tests matrix only goes to 3.13 and 3.14 hosts have
+    # a known streaming-test hang (guide 3.1 item 4); re-add when green.
 ]
+
+# G-02 (2026-08-10): docker SDK powers interactive sessions so the exec pty
+# can be resized via exec_resize (docker CLI exec ptys are frozen at spawn).
+# A1 (2026-09-16): requests is imported directly for exception
+# classification — riding docker's transitive pin was a borrowed guarantee;
+# docker gets a major ceiling (an 8.x break should not hit end users
+# unannounced). watchdog/argcomplete stay hard deps (frozen-track
+# downgrade path, guide 3.1 item 5).
+dependencies = [
+    "docker>=7.1,<8",
+    "requests>=2.26",
+    "watchdog>=4",
+    "argcomplete>=3",
+]
+
+[project.urls]
+Homepage = "https://github.com/wangyuncepu/AISC"
+Source = "https://github.com/wangyuncepu/AISC"
+Releases = "https://github.com/wangyuncepu/AISC/releases"
+"Bug Tracker" = "https://github.com/wangyuncepu/AISC/issues"
+Security = "https://github.com/wangyuncepu/AISC/security/advisories/new"
 
 [project.scripts]
 aisc = "aisc.cli.main:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "PyInstaller>=6"]
+# build>=1: tests/packaging/test_wheel_guards.py shells out to `python -m
+# build` — the wheel guards must run wherever the dev suite runs (CI's
+# `pip install -e ".[dev]"` pre-pytest), not only in the clean-room step.
+dev = ["pytest>=8", "PyInstaller>=6", "PyYAML>=6", "build>=1"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 include-package-data = false
 
-[tool.setuptools.data-files]
+# Explicit discovery: only the `aisc` package tree from src/. Guards against
+# accidental namespace drift or stray top-level packages sneaking into the sdist.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aisc", "aisc.*"]
+
+# A2 (guide 3.2): VERSION rides as package data inside src/aisc/ — the
+# data-files form landed it at <sys.prefix>/aisc/VERSION (outside
+# site-packages; --user installs missed it, the probe needed a fallback).
+[tool.setuptools.package-data]
 aisc = ["VERSION"]
 
 [tool.setuptools.dynamic]
-version = { attr = "aisc.__version__" }
+# A2: file-based dynamic version — building must not import the package
+# (avoids --no-build-isolation drift against an already-installed copy).
+version = { file = "src/aisc/VERSION" }

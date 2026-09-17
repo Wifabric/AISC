@@ -22,14 +22,18 @@ from aisc.application.resources import locate_aisc_root, _RootSourceError
 
 
 def _read_version_file(root: Path) -> Optional[str]:
-    """Read the first non-empty line of ``VERSION`` in *root*."""
-    version_file = root / "VERSION"
-    if not version_file.is_file():
-        return None
-    text = version_file.read_text(encoding="utf-8").strip()
-    if not text:
-        return None
-    return text
+    """Read the first non-empty line of the root's VERSION file.
+
+    A2 dual-shape: repo checkouts carry it at ``src/aisc/VERSION``; staged
+    bundles and frozen roots keep ``VERSION`` at their root."""
+    for rel in ("VERSION", "src/aisc/VERSION"):
+        version_file = root / rel
+        if not version_file.is_file():
+            continue
+        text = version_file.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    return None
 
 
 def _parse_versions_env(root: Path) -> dict:
@@ -99,6 +103,8 @@ def gather_version_info(
         env = _parse_versions_env(root)
         declared_claude_version = env.get("CLAUDE_CODE_VERSION")
 
+    # A8 (guide 3.5.5): text-mode provenance line; JSON contract unchanged.
+    channel = _install_channel(root)
     # Always return 6 fixed keys per RFC; unknown → None
     return VersionInfo(
         cli_version=__version__,
@@ -107,4 +113,21 @@ def gather_version_info(
         declared_claude_version=declared_claude_version,
         image_version=None,
         contract_version=None,
+        install_channel=channel,
     )
+
+
+def _install_channel(root: Optional[Path]) -> str:
+    """Human-readable install provenance for the text `aisc version`."""
+    import sys as _sys
+
+    frozen = getattr(_sys, "frozen", False)
+    if frozen:
+        return f"frozen ({_sys.executable})"
+    if "site-packages" in str(Path(__file__).resolve()):
+        return "pip/pipx (site-packages)"
+    if root is not None:
+        if root.name == "aisc-bundle" and "bundles" in root.parts:
+            return f"bundle fetch ({root})"
+        return f"source ({root})"
+    return "unknown"

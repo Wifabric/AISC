@@ -20,12 +20,15 @@ source /usr/local/bin/lib/writable.sh
 # ==========================================
 # 路径模型（全程以 root 运行，宿主工作区挂载为 /root/app）
 #   .claude = Claude CLI 原生完整目录（skills/plugins/projects/todos/statsig…，软件本体）
-#             出厂模板在 /opt/aisc/factory；项目模式复制到 /root/app/.claude
-#             临时模式复制到 /tmp/aisc-home/.claude
-#   .codex  = Codex CLI 配置目录（类似 .claude 结构）
-#             项目模式使用 /root/app/.codex；临时模式使用 /tmp/aisc-home/.codex
-#   .cc-switch = cc-switch 运行时目录（数据库、设置、备份及 skills SSOT）
-#             项目模式放 /root/app/.cc-switch；临时模式放 /tmp/aisc-home/.cc-switch
+#             出厂模板在 /opt/aisc/factory。
+#             临时模式复制到 /tmp/aisc-home/.claude（容器退出即重置）。
+#             项目模式（Stage 7, DATA-01）使用宿主 data root 挂载到
+#             /root/.claude（旧版宿主未挂载时回退 /root/app/.claude，
+#             保持新旧混用可运行）。
+#   .codex  = Codex CLI 配置目录（类似 .claude 结构），同上。
+#   .cc-switch = cc-switch 运行时目录（数据库、设置、备份及 skills SSOT），
+#             项目模式挂载在 /root/.cc-switch；daemon 运行态挂载在
+#             /root/.local/state/cc-switch。
 # ==========================================
 FACTORY_HOME="/opt/aisc/factory"
 FACTORY_CLAUDE_DIR="$FACTORY_HOME/.claude"
@@ -33,8 +36,23 @@ FACTORY_CODEX_DIR="$FACTORY_HOME/.codex"
 TEMP_HOME="/tmp/aisc-home"
 TEMP_CLAUDE_DIR="$TEMP_HOME/.claude"
 TEMP_CODEX_DIR="$TEMP_HOME/.codex"
-PROJECT_CLAUDE_DIR="/root/app/.claude"
-PROJECT_CODEX_DIR="/root/app/.codex"
+# 项目态目录：宿主把 data root 的 workspaces/<hash>/{claude,codex,cc-switch}
+# 挂到 /root 下；未挂载（旧版宿主）则回退到工作区内的旧位置。
+if grep -qs " /root/.claude " /proc/mounts; then
+    PROJECT_CLAUDE_DIR="/root/.claude"
+else
+    PROJECT_CLAUDE_DIR="/root/app/.claude"
+fi
+if grep -qs " /root/.codex " /proc/mounts; then
+    PROJECT_CODEX_DIR="/root/.codex"
+else
+    PROJECT_CODEX_DIR="/root/app/.codex"
+fi
+if grep -qs " /root/.cc-switch " /proc/mounts; then
+    PROJECT_CC_SWITCH_DIR="/root/.cc-switch"
+else
+    PROJECT_CC_SWITCH_DIR="/root/app/.cc-switch"
+fi
 
 echo -e "\n🚀 [AISC] AI 工作站初始化中..."
 
@@ -80,7 +98,7 @@ if [ "$SCOPE" = "global" ] || [ "$SCOPE" = "temp" ] || [ "$SCOPE" = "temporary" 
 else
     CLAUDE_CONFIG_DIR="$PROJECT_CLAUDE_DIR"
     CODEX_CONFIG_DIR="$PROJECT_CODEX_DIR"
-    CC_SWITCH_CONFIG_DIR="/root/app/.cc-switch"
+    CC_SWITCH_CONFIG_DIR="$PROJECT_CC_SWITCH_DIR"
     echo "📁 作用域: 项目 (project) → Claude: $CLAUDE_CONFIG_DIR, Codex: $CODEX_CONFIG_DIR"
 
     # 项目 .claude 初始化（保持原有逻辑）
@@ -126,7 +144,34 @@ else
     FV_PRJ="$PROJECT_CLAUDE_DIR/.factory-version"
     if [ -f "$FV_IMG" ] && [ "$(cat "$FV_IMG" 2>/dev/null)" != "$(cat "$FV_PRJ" 2>/dev/null)" ]; then
         echo "⚠️  镜像出厂配置已更新（skills/插件/命令等）。"
-        echo "    可删除旧出厂副本后重启容器，或使用 cc-switch skills sync 同步 skills。"
+        # O8 (D-11, 2026-09-02): 出厂资产增量同步取代"仅提示"。语义：
+        # - 仅同步工厂产物目录（.claude 的 skills/plugins/commands、.codex
+        #   的 skills）；出厂资产以工厂新版为准（工厂更新覆盖旧出厂文件）。
+        # - `cp -ru` = 只写 新增/mtime 更新 的文件；用户自建文件（工厂没有
+        #   的路径）永不触碰；任何现有文件都不删除。
+        # - .claude/.codex 顶层的用户态文件（settings.json/CLAUDE.md 等）
+        #   绝不在同步范围（跳过门哲学保持）。
+        for _sub in skills plugins commands; do
+            if [ -d "$FACTORY_CLAUDE_DIR/$_sub" ]; then
+                mkdir -p "$PROJECT_CLAUDE_DIR/$_sub"
+                cp -ru "$FACTORY_CLAUDE_DIR/$_sub/." "$PROJECT_CLAUDE_DIR/$_sub/" 2>/dev/null || true
+            fi
+        done
+        if [ -d "$FACTORY_CODEX_DIR/skills" ]; then
+            mkdir -p "$PROJECT_CODEX_DIR/skills"
+            cp -ru "$FACTORY_CODEX_DIR/skills/." "$PROJECT_CODEX_DIR/skills/" 2>/dev/null || true
+        fi
+        # FV 推进：写后读回校验 + 一次重试。启动早期的挂载窗口（紧随
+        # 大量 cp -ru 之后）曾出现覆盖写静默失败（cp 与裸 cat 均命中；
+        # exec 上下文同命令成功——Docker Desktop FUSE 层时序问题）。
+        # 失败后果良性：FV 不前进 → 下次启动重跑幂等同步（多 ~4s），
+        # 用户文件零风险；重试一次几乎总能写穿。
+        cat "$FV_IMG" > "$FV_PRJ" 2>/dev/null || true
+        if [ "$(cat "$FV_PRJ" 2>/dev/null)" != "$(cat "$FV_IMG" 2>/dev/null)" ]; then
+            sleep 0.5
+            cat "$FV_IMG" > "$FV_PRJ" 2>/dev/null || true
+        fi
+        echo "    ✅ 出厂 skills/plugins/commands 已增量同步（用户自建文件保持不变）。"
     fi
 
     # 项目 .codex 初始化：从镜像内置完整出厂目录复制（类似 .claude 逻辑）
@@ -168,6 +213,84 @@ export CLAUDE_CONFIG_DIR
 export CODEX_CONFIG_DIR
 export CODEX_HOME="$CODEX_CONFIG_DIR"
 export CC_SWITCH_CONFIG_DIR
+
+# --- runtime-lifecycle-ux 3a: 持久/临时 toolchain --------------------------------
+# project 模式：宿主 toolchain 目录挂载在 /opt/aisc/toolchain（跨容器保留）。
+# temporary 模式：容器内等价布局 /tmp/aisc-toolchain（随容器消亡）。
+# 两种模式注入完全一致的用户级包管理器路径：
+#   npm -g      → $TC/npm-global（持久）
+#   pip --user  → $TC/python（PYTHONUSERBASE；不强制 PIP_USER——会破坏 venv）
+#   cargo install → $TC/cargo
+if [ -d /opt/aisc/toolchain ]; then
+    TC="/opt/aisc/toolchain"
+else
+    TC="/tmp/aisc-toolchain"
+    mkdir -p "$TC/bin" "$TC/npm-global" "$TC/python" "$TC/cargo" "$TC/cache"
+fi
+export PATH="$TC/bin:$TC/npm-global/bin:$TC/cargo/bin:$PATH"
+export NPM_CONFIG_PREFIX="$TC/npm-global"
+export PYTHONUSERBASE="$TC/python"
+export CARGO_HOME="$TC/cargo"
+
+# 轻量环境基线（02 §8.3）：容器侧事实合并进 environment.json（首次写入）；
+# 与既有基线的关键版本不符 → 只写 warning 文件（inspect 侧显示为非阻断提
+# 示），绝不阻断、不自动删除（D-RUNTIME-11）。
+if [ -w "$TC" ]; then
+    python3 - "$TC" "$AISC_IMAGE_ID" <<'PYTC' 2>/dev/null || true
+import json, os, platform, subprocess, sys
+tc, image_id = sys.argv[1], os.environ.get("AISC_IMAGE_ID", "")
+def probe(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return ""
+facts = {
+    "os": "linux",
+    "arch": platform.machine(),
+    "glibc": probe(["ldd", "--version"]).splitlines()[0] if probe(["ldd", "--version"]) else "",
+    "node": probe(["node", "--version"]),
+    "python": platform.python_version(),
+    "image_id": image_id,
+}
+marker_path = os.path.join(sys.argv[1], "environment.json")
+baseline = {}
+if os.path.exists(marker_path):
+    try:
+        baseline = json.load(open(marker_path, encoding="utf-8"))
+    except Exception:
+        baseline = {}
+known = baseline.get("container") or {}
+changed = any(facts.get(k) and known.get(k) != facts[k] for k in ("glibc", "node", "python"))
+if not baseline:
+    baseline = {"schema": "aisc.toolchain-environment/v1", "schema_version": 1}
+if not known:
+    baseline["container"] = facts
+    tmp = marker_path + ".tmp"
+    open(tmp, "w", encoding="utf-8").write(json.dumps(baseline, indent=2) + "\n")
+    os.replace(tmp, marker_path)
+elif changed:
+    open(os.path.join(sys.argv[1], "toolchain-incompatible.txt"), "w", encoding="utf-8").write(
+        "toolchain baseline differs from this image; reinstall tools if they misbehave\n"
+        f"baseline={json.dumps(known)}\ncurrent={json.dumps(facts)}\n"
+    )
+PYTC
+fi
+
+# Claude 用户态 .claude.json 持久化（2026-08-25，auto-mode 排障）：
+# Claude Code 把 onboarding/特性开关缓存等用户态写在 $HOME/.claude.json；
+# 项目态只挂载 CLAUDE_CONFIG_DIR（/root/.claude），HOME 不落盘 —— 容器重建
+# 后用户态丢失（升级流程还会把它挪进 backups/ 不恢复），每次首会话回退
+# manual、auto-mode 不出现。缺文件时先从配置目录备份自愈，再把 HOME 文件
+# 链到配置目录内，写穿即持久。
+CLAUDE_HOME_JSON="/root/.claude.json"
+CFG_JSON="$CLAUDE_CONFIG_DIR/.claude.json"
+if [ ! -e "$CLAUDE_HOME_JSON" ]; then
+    if [ ! -e "$CFG_JSON" ] && ls "$CLAUDE_CONFIG_DIR"/backups/.claude.json.backup.* >/dev/null 2>&1; then
+        cp "$(ls "$CLAUDE_CONFIG_DIR"/backups/.claude.json.backup.* | tail -1)" "$CFG_JSON"
+        echo "ℹ️  已从备份恢复 Claude 用户态 (.claude.json)"
+    fi
+    [ -e "$CFG_JSON" ] && ln -s "$CFG_JSON" "$CLAUDE_HOME_JSON"
+fi
 
 # cc-switch 与 CLI 配置目录确保可写。
 ensure_writable "$CC_SWITCH_CONFIG_DIR"
@@ -220,9 +343,11 @@ done
 SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
-    MODEL=$(node -e "try{process.stdout.write(require('$SETTINGS_FILE').env?.ANTHROPIC_MODEL||'')}catch(e){}" 2>/dev/null)
-    BASE_URL=$(node -e "try{process.stdout.write(require('$SETTINGS_FILE').env?.ANTHROPIC_BASE_URL||'')}catch(e){}" 2>/dev/null)
-    AUTH=$(node -e "try{const e=require('$SETTINGS_FILE').env;process.stdout.write(e.ANTHROPIC_API_KEY||e.ANTHROPIC_AUTH_TOKEN?'yes':'no')}catch(e){process.stdout.write('no')}" 2>/dev/null)
+    # PERF P3b (D-13): was THREE `node -e` spawns reading the same file —
+    # one invocation prints all three lines; parse order preserves the old
+    # catch-behaviors (model/base empty, auth 'no' on parse failure).
+    _env_summary="$(node -e "try{const e=require('$SETTINGS_FILE').env||{};console.log((e.ANTHROPIC_MODEL||'')+'\n'+(e.ANTHROPIC_BASE_URL||'')+'\n'+((e.ANTHROPIC_API_KEY||e.ANTHROPIC_AUTH_TOKEN)?'yes':'no'))}catch(e){console.log('\n\nno')}" 2>/dev/null)"
+    { read -r MODEL; read -r BASE_URL; read -r AUTH; } <<< "$_env_summary"
 
     # 将 settings.json 的 env 块真正注入当前 shell，供 claude 进程继承。
     # 空值必须 unset，避免 ANTHROPIC_API_KEY="" 覆盖 ANTHROPIC_AUTH_TOKEN。
@@ -237,25 +362,60 @@ fi
 # 3.1. 启动 cc-switch 默认后台服务
 #   使用 cc-switch 自带的 detach 模式，避免 shell 后台任务与 proxy enable
 #   同时争抢 pidfile/socket。必须确认 daemon 可达并初始化 Codex provider；
-#   启动时只自动启用 Claude 路由，Codex 路由保持按需手动启用。
+#   启动末尾做一次状态对账（--reconcile）：proxy 路由跟随当前 provider
+#   （不变量：真实三方 provider ⟺ 路由 on，官方直连 ⟺ off）。
 # ==========================================
 CC_SWITCH_DAEMON_LOG="/tmp/cc-switch-daemon.log"
 CC_SWITCH_CODEX_INIT_LOG="/tmp/cc-switch-codex-init.log"
 CC_SWITCH_SKILLS_LOG="/tmp/cc-switch-skills-init.log"
 if command -v cc-switch >/dev/null 2>&1; then
+    # P3 热切换拓扑（手测 r2）：daemon worker 默认绑 15721/15722——那两个
+    # 端口属于 model-shim（存量会话的内存 env 指向那里）。daemon 启动
+    # 【前】把 worker 端口持久化挪到 15701/15702（幂等；失败静默=按旧直连
+    # 拓扑工作，shim 起不来但不冲突）。必须先于 daemon start：worker 端口
+    # 在 daemon 启动时生效。
+    cc-switch proxy -a claude config --listen-port 15701 >/dev/null 2>&1 || true
+    cc-switch proxy -a codex config --listen-port 15702 >/dev/null 2>&1 || true
     CC_SWITCH_DAEMON_READY=0
     if cc-switch daemon start --detach >"$CC_SWITCH_DAEMON_LOG" 2>&1; then
-        # Windows bind mount 上首次初始化 SQLite 可能较慢，最多等待 10 秒。
-        for _attempt in $(seq 1 40); do
-            _daemon_status="$(cc-switch daemon status 2>&1 || true)"
-            case "$_daemon_status" in
-                "cc-switch daemon"*)
-                    CC_SWITCH_DAEMON_READY=1
-                    break
-                    ;;
-            esac
-            sleep 0.25
+        # PERF P9 (D-13): was 40 × (cc-switch CLI spawn + 0.25s sleep) =
+        # up to 10s of pure spawn churn on slow disks. Fast path: poll the
+        # daemon PROCESS with kill -0 (zero spawns), exponential backoff
+        # 0.25/0.5/1/2s; every 4th sample still asks the daemon itself —
+        # alive-but-hung is only detectable via the real status (and the
+        # final readiness call below always confirms via real status).
+        _daemon_n=0
+        _daemon_delay=0.25
+        for _attempt in $(seq 1 12); do
+            _daemon_n=$((_daemon_n + 1))
+            if [ $((_daemon_n % 4)) -eq 0 ]; then
+                _daemon_status="$(cc-switch daemon status 2>&1 || true)"
+                case "$_daemon_status" in
+                    "cc-switch daemon"*) CC_SWITCH_DAEMON_READY=1; break ;;
+                esac
+            elif pgrep -x cc-switch-real >/dev/null 2>&1; then
+                # process alive: let it settle one backoff step, then ask
+                # for real at the 4th sample (loop continues).
+                :
+            else
+                # process gone: no point polling a dead binary
+                sleep 0.25
+                continue
+            fi
+            sleep "$_daemon_delay"
+            _daemon_delay=$(awk "BEGIN{d=$_daemon_delay*2; if(d>2)d=2; print d}")
         done
+        # Final confirm ALWAYS via the real daemon status (kill -0 cannot
+        # prove readiness — hung-but-alive must not pass the gate).
+        if [ "$CC_SWITCH_DAEMON_READY" != "1" ]; then
+            for _attempt in 1 2 3; do
+                _daemon_status="$(cc-switch daemon status 2>&1 || true)"
+                case "$_daemon_status" in
+                    "cc-switch daemon"*) CC_SWITCH_DAEMON_READY=1; break ;;
+                esac
+                sleep 0.5
+            done
+        fi
     fi
 
     if [ "$CC_SWITCH_DAEMON_READY" = "1" ]; then
@@ -279,10 +439,13 @@ if command -v cc-switch >/dev/null 2>&1; then
             fi
         fi
 
-        # cc-switch 的 skills 路径以 HOME 为根：项目态同步到挂载的 /root，
-        # 临时态同步到 /tmp/aisc-home，不污染宿主工作区。
+        # cc-switch 的 skills 路径以 HOME 为根：项目态用 /root（skills 落在
+        # 挂载的 /root/.claude、/root/.codex，持久到宿主 data root），
+        # 临时态同步到 /tmp/aisc-home。旧宿主回退布局时保持 /root/app。
         if [ "$SCOPE" = "global" ] || [ "$SCOPE" = "temp" ] || [ "$SCOPE" = "temporary" ]; then
             CC_SWITCH_SKILLS_HOME="$TEMP_HOME"
+        elif [ "$PROJECT_CLAUDE_DIR" = "/root/.claude" ]; then
+            CC_SWITCH_SKILLS_HOME="/root"
         else
             CC_SWITCH_SKILLS_HOME="/root/app"
         fi
@@ -315,56 +478,129 @@ if command -v cc-switch >/dev/null 2>&1; then
         fi
 
         # 预配置常见 AI 供应商 provider（不包含 API Key）
-        # Claude agent
+        # PERF P9 (D-13): --agent all = ONE python3 spawn for both agents
+        # (was two full interpreter+import chains back to back).
+        # Aggregate is sequential best-effort: a later failure leaves earlier
+        # agents applied; the next startup retries the idempotent refresh.
         CC_SWITCH_PRESET_LOG="/tmp/cc-switch-preset-providers.log"
         if CC_SWITCH_PRESET_RESULT="$(
             python3 /usr/local/bin/lib/cc_switch_preset_providers.py \
                 --config-dir "$CC_SWITCH_CONFIG_DIR" \
-                --agent claude \
+                --agent all \
                 --log "$CC_SWITCH_PRESET_LOG" \
                 --mode "${AISC_PRESET_PROVIDERS:-auto}"
         )"; then
             case "$CC_SWITCH_PRESET_RESULT" in
                 added)
-                    echo "✅ cc-switch 已为 Claude 预配置 DeepSeek、Codex Claude、火山引擎、智谱、Kimi"
+                    echo "✅ cc-switch 已为 Claude/Codex 预配置 DeepSeek、火山引擎、智谱、Kimi"
+                    ;;
+                refreshed)
+                    echo "✅ cc-switch 已为 Claude/Codex 刷新预置 provider（已保留你的 API Key 与当前选择）"
                     ;;
                 current)
-                    echo "ℹ️  cc-switch Claude 预设 provider 已配置，跳过。"
+                    echo "ℹ️  cc-switch Claude/Codex 预设 provider 已是最新，跳过。"
                     ;;
                 off)
                     echo "ℹ️  AISC_PRESET_PROVIDERS=off，已跳过 provider 预配置。"
                     ;;
             esac
         else
-            echo "⚠️  cc-switch Claude provider 预配置失败；日志: $CC_SWITCH_PRESET_LOG" >&2
+            echo "⚠️  cc-switch provider 预配置失败；日志: $CC_SWITCH_PRESET_LOG" >&2
         fi
 
-        # Codex agent
-        CC_SWITCH_PRESET_CODEX_LOG="/tmp/cc-switch-preset-providers-codex.log"
-        if CC_SWITCH_PRESET_CODEX_RESULT="$(
+        # 复测第 2 轮（2026-08-21）：provider 页的选择拥有两个 agent 的
+        # proxy 路由。启动时对账一次（best-effort）：旧镜像无条件 enable
+        # 的 claude 路由、cc-switch import 的 pristine "default" 行，在
+        # 存量卷上自愈；官方行缺失时补建。
+        CC_SWITCH_RECONCILE_LOG="/tmp/cc-switch-reconcile.log"
+        if CC_SWITCH_RECONCILE_RESULT="$(
             python3 /usr/local/bin/lib/cc_switch_preset_providers.py \
                 --config-dir "$CC_SWITCH_CONFIG_DIR" \
-                --agent codex \
-                --log "$CC_SWITCH_PRESET_CODEX_LOG" \
-                --mode "${AISC_PRESET_PROVIDERS:-auto}"
+                --log "$CC_SWITCH_RECONCILE_LOG" \
+                --reconcile
         )"; then
-            case "$CC_SWITCH_PRESET_CODEX_RESULT" in
-                added)
-                    echo "✅ cc-switch 已为 Codex 预配置 DeepSeek、Codex Claude、火山引擎、智谱、Kimi"
+            case "$CC_SWITCH_RECONCILE_RESULT" in
+                reconciled)
+                    echo "✅ cc-switch 已对齐代理路由与 provider 状态（$CC_SWITCH_RECONCILE_LOG）"
                     ;;
                 current)
-                    echo "ℹ️  cc-switch Codex 预设 provider 已配置，跳过。"
-                    ;;
-                off)
-                    # 已在 Claude agent 部分输出
+                    echo "ℹ️  cc-switch 代理路由与 provider 状态已对齐，跳过。"
                     ;;
             esac
         else
-            echo "⚠️  cc-switch Codex provider 预配置失败；日志: $CC_SWITCH_PRESET_CODEX_LOG" >&2
+            echo "⚠️  cc-switch 状态对账失败；日志: $CC_SWITCH_RECONCILE_LOG" >&2
         fi
 
-        cc-switch proxy -a claude enable >/dev/null 2>&1 || true
-        echo "ℹ️  Codex 未自动启用 cc-switch 代理；需要时可手动运行 cc-switch proxy -a codex enable。"
+        # S9d: regenerate the codex model catalog for the CURRENT provider.
+        # The daemon/preset refresh rewrites config.toml WITHOUT our
+        # model_catalog_json key — without this, a workspace restart loses
+        # the /model list until the next manual provider switch.
+        python3 /usr/local/bin/aisc-cc-provider catalog-sync 2>/dev/null || true
+
+        # O5 (opt-batch, D-11, 2026-09-02): cc-switch daemon 健康巡检。容器
+        # PID1=sleep infinity、daemon 无自带 watchdog、docker 无 restart 策略
+        # ——8G 低配机上 daemon 被 OOM 杀后 proxy 路由静默躺平，直到容器重启
+        # （8G 笔记本"proxy 全 off"的根因链）。每 60s 探测一次 daemon；失联则
+        # 重启（含陈旧 pidfile 清理）并重跑一次 reconcile（幂等收敛：路由跟随
+        # current provider，不动用户选择），全过程写 /tmp/cc-switch-patrol.log。
+        # AISC_CC_SWITCH_PATROL=off 可关闭。
+        # PERF P3c (D-13): 4/5 轮用 pgrep 进程活性快检（毫秒级；进程名
+        # cc-switch-real 实证于 throwaway 容器探测——无 pidfile 可用），
+        # 每 5 轮仍真询 daemon status 捕捉 alive-but-hung。O5 恢复语义不变，
+        # 最坏发现延迟 60s→~5min（低配机上 60/h→~12/h 的 CLI spawn 减半换）。
+        if [ "${AISC_CC_SWITCH_PATROL:-on}" != "off" ]; then
+            (
+                CC_SWITCH_PATROL_LOG="/tmp/cc-switch-patrol.log"
+                _patrol_stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+                _patrol_n=0
+                while true; do
+                    sleep 60
+                    _patrol_n=$((_patrol_n + 1))
+                    if [ $((_patrol_n % 5)) -ne 0 ] \
+                       && pgrep -x cc-switch-real >/dev/null 2>&1; then
+                        continue
+                    fi
+                    _patrol_status="$(cc-switch daemon status 2>&1 || true)"
+                    case "$_patrol_status" in
+                        "cc-switch daemon"*) continue ;;
+                    esac
+                    echo "[$(_patrol_stamp)] daemon unhealthy: ${_patrol_status:-<no output>}" \
+                        >>"$CC_SWITCH_PATROL_LOG"
+                    # 陈旧 pidfile 可能让 start 拒绝——先 stop 清理再启动。
+                    cc-switch daemon stop >>"$CC_SWITCH_PATROL_LOG" 2>&1 || true
+                    if cc-switch daemon start --detach >>"$CC_SWITCH_PATROL_LOG" 2>&1; then
+                        for _p in $(seq 1 20); do
+                            _patrol_status="$(cc-switch daemon status 2>&1 || true)"
+                            case "$_patrol_status" in
+                                "cc-switch daemon"*) break ;;
+                            esac
+                            sleep 0.25
+                        done
+                        # 幂等对账：enable/disable 均幂等（live-probed 2026-08-21），
+                        # 路由重新跟随 current provider。
+                        python3 /usr/local/bin/lib/cc_switch_preset_providers.py \
+                            --config-dir "$CC_SWITCH_CONFIG_DIR" \
+                            --log "$CC_SWITCH_PATROL_LOG" \
+                            --reconcile >/dev/null 2>&1 || true
+                        echo "[$(_patrol_stamp)] daemon recovered + reconciled" \
+                            >>"$CC_SWITCH_PATROL_LOG"
+                    else
+                        echo "[$(_patrol_stamp)] daemon restart FAILED" \
+                            >>"$CC_SWITCH_PATROL_LOG"
+                    fi
+                done
+            ) &
+        fi
+
+        # v2.1.8 T1: seed /root/AGENTS.md from the image template if the
+        # user hasn't created one (opt-out: AISC_AGENT_INSTRUCTIONS=off).
+        # NEVER overwrite an existing AGENTS.md.
+        if [ "${AISC_AGENT_INSTRUCTIONS:-}" != "off" ] \
+            && [ ! -f /root/AGENTS.md ] \
+            && [ -f /usr/local/share/aisc/agent-instructions.md ]; then
+            cp /usr/local/share/aisc/agent-instructions.md /root/AGENTS.md
+            echo "ℹ️  已创建默认 AGENTS.md（如需自定义请直接编辑；AISC_AGENT_INSTRUCTIONS=off 可禁用）"
+        fi
     else
         echo "⚠️  cc-switch 后台服务启动失败；启动日志: $CC_SWITCH_DAEMON_LOG" >&2
         [ ! -s "$CC_SWITCH_DAEMON_LOG" ] || sed -n '1,20p' "$CC_SWITCH_DAEMON_LOG" >&2
@@ -392,12 +628,29 @@ if [ -f /etc/mihomo/config.yaml ]; then
     # 原始订阅 → mihomo 配置（格式自动转换 + TUN/DNS 强制注入）到可写副本。
     # 支持 yaml / base64 订阅 / URI 直链 / JSON(SIP008)；失败仅告警不阻断，便于进 bash 排障。
     if node /usr/local/bin/mihomo-build-config.js /etc/mihomo/config.yaml "$MIHOMO_CFG"; then
-        # 后台启动 mihomo（root）
-        bash -c "mihomo -d '$MIHOMO_DATA_DIR' -f '$MIHOMO_CFG' > '$MIHOMO_DATA_DIR/mihomo.log' 2>&1" &
-        # 等待 TUN 接管路由 + url-test 初选节点（节点多时需几秒）
-        sleep 4
-        # 健康探测：经代理能否到达 api.anthropic.com（不带 -f：401/404 等任何 HTTP 响应都算可达，只看连接是否成功）
-        if curl -sS --max-time 10 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+        # 后台启动 mihomo（root）。exec 让 $! 直接就是 mihomo 的 PID——
+        # 容器没有 procps（无 pgrep/ps），存活检查只能靠 kill -0（2026-08-19
+        # 实测：旧版用 pgrep 判活，命令不存在导致探测失败时永远误报
+        # 「mihomo 进程已退出」，实际进程健在且代理正常）。
+        bash -c "exec mihomo -d '$MIHOMO_DATA_DIR' -f '$MIHOMO_CFG' > '$MIHOMO_DATA_DIR/mihomo.log' 2>&1" &
+        MIHOMO_PID=$!
+        # 健康探测（带重试）：url-test 初选节点 + MMDB 加载需要数秒，机场的
+        # 信息假节点（"剩余流量/官网地址"等）也可能拖慢首个可用节点选定；
+        # 探测 3 轮 × 4s，进程退出则提前收手。
+        probe_ok=0
+        # O8 (D-11): 3x(3s+8s) worst case — was 3x(4s+10s); a healthy proxy
+        # answers on the first round either way, only the failing tail shrinks.
+        for _ in 1 2 3; do
+            sleep 3
+            if curl -sS --max-time 8 -o /dev/null https://api.anthropic.com 2>/dev/null; then
+                probe_ok=1
+                break
+            fi
+            if ! kill -0 "$MIHOMO_PID" 2>/dev/null; then
+                break
+            fi
+        done
+        if [ "$probe_ok" = 1 ]; then
             echo "✅ Mihomo TUN 已就绪，代理连通: api.anthropic.com 可达"
 
             # 验证 Codex 官方访问（OpenAI API）
@@ -415,9 +668,9 @@ if [ -f /etc/mihomo/config.yaml ]; then
                 fi
             fi
         else
-            # curl 失败：区分 mihomo 进程是否存活，给出更准确的排障提示
-            if pgrep -f 'mihomo -d' >/dev/null 2>&1; then
-                echo "⚠️  mihomo 运行中但代理暂未通（可能仍在 url-test 初选节点，或节点异常）。可继续；若 claude 连不上请查 $MIHOMO_DATA_DIR/mihomo.log"
+            # 进程存活判定用 PID（容器无 pgrep）
+            if kill -0 "$MIHOMO_PID" 2>/dev/null; then
+                echo "⚠️  mihomo 运行中但代理暂未通（可能 url-test 未选出可用节点，或节点异常）。可继续；若 claude 连不上请查 $MIHOMO_DATA_DIR/mihomo.log"
             else
                 echo "❌ mihomo 进程已退出，请查日志: $MIHOMO_DATA_DIR/mihomo.log"
             fi
@@ -481,11 +734,169 @@ case "${AI_BRIEF_ON_START,,}" in
 esac
 
 # ==========================================
+# 3.7 容器内 Web 服务网关（svc-1，docs/plans/container-service-access.md）
+#   aisc-web-gateway 监听 0.0.0.0:45871，按 Host: p<port>.localhost 把请求
+#   双向字节转发到容器内 127.0.0.1:<port>；只转发已注册端口
+#   （/run/aisc/web-services/*.json，由 aisc-web-expose 注册）。
+#   宿主经 Docker loopback publish（runtime start / aisc run 注入）访问。
+#   idle 与交互模式一律启动；失败只告警不阻断 —— runtime ready 以
+#   runtime-context.json 为准，gateway 崩溃不许让 runtime 假报或漏报 ready。
+#   无 python3 的极端镜像跳过（与 cc-switch 守护同门槛）。
+# ==========================================
+if command -v aisc-web-gateway >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    mkdir -p /run/aisc/web-services
+    chmod 700 /run/aisc/web-services 2>/dev/null || true
+    bash -c "exec aisc-web-gateway >/tmp/aisc-web-gateway.log 2>&1" &
+    AISC_WEB_GW_PID=$!
+    sleep 0.3
+    if kill -0 "$AISC_WEB_GW_PID" 2>/dev/null; then
+        echo "✅ AISC Web 网关已启动 (容器端口 45871；Agent 注册服务用: aisc-web-expose <端口>)"
+    else
+        echo "⚠️  AISC Web 网关启动失败；日志: /tmp/aisc-web-gateway.log" >&2
+    fi
+fi
+
+# ==========================================
+# AISC 模型映射 shim（P3 热切换，2026-09-12）：agent 流量 → shim(15721/15722)
+# → cc-switch 代理(15701/15702)。shim 占据历史端口 1572x——运行中会话的内存
+# env 指向那里；worker 由 entrypoint/adapter 挪到 1570x（daemon 启动前）。
+# shim 按「当前 provider 的角色映射表」重写请求体 model 字段——切换 provider
+# 后，运行中会话的下一个请求即走新模型。
+# 失败只告警不阻断：shim 死亡时 adapter 的挂钩会把 live 文件指回直连代理
+# （fail-open），agent 连通性永远优先于映射。
+# ==========================================
+if command -v aisc-model-shim >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    for _agent in claude codex; do
+        AISC_SHIM_AGENT="$_agent" bash -c "exec aisc-model-shim >/tmp/aisc-model-shim-${_agent}.log 2>&1" &
+    done
+    sleep 0.3
+    if ! pgrep -f "aisc-model-shim" >/dev/null 2>&1; then
+        echo "⚠️  AISC 模型映射 shim 启动失败；日志: /tmp/aisc-model-shim-*.log（provider 切换将退化为非热切）" >&2
+    fi
+    # 手测 r4#3：跨代自愈——live 配置目录是持久卷，上一代容器（旧镜像/该 agent
+    # 从未切换过）可能把 base_url 留在 1570x 直连端口，本代会话就绕过 shim。
+    # 等 shim 绑定后把两个 live 存根都指到 shim（幂等，shim 不在则指回直连）。
+    aisc-cc-provider shim-heal >/dev/null 2>&1 || true
+fi
+
+# ==========================================
+# 3.7b F2 host-tools MCP 注册（宿主 Workbench 经 AISC_HOST_MCP_URL 下发）
+#   - claude: /root/app/.mcp.json 项目级 mcpServers.aisc-host（读-合并-写）
+#   - codex:  config.toml [mcp_servers.aisc-host] 行级 splice（幂等重写）
+#   - env 缺失 = 功能关闭：移除旧注册（上一进程的 token 已轮换，留着只会 401）
+#   - 绝不写 settings.json（provider switch 整文件替换）
+#   - 失败只告警，不阻断启动
+# ==========================================
+if command -v python3 >/dev/null 2>&1; then
+    python3 /usr/local/bin/lib/register_host_mcp.py || \
+        echo "⚠️  host-tools MCP 注册失败（容器继续启动）" >&2
+fi
+
+# ==========================================
 # 4. 智能引导：CLI 选择
 # ==========================================
 # 支持直接启动 codex
 if [ "$1" = "codex" ]; then
     exec codex "$@"
+fi
+
+# ==========================================
+# 3.8 Idle runtime 模式（Workbench `aisc runtime start` 创建的 detached 容器）
+#    完成作用域/cc-switch/目录初始化后，原子写入不含密钥的
+#    /run/aisc/runtime-context.json，再以 sleep infinity 保活 PID 1，
+#    供 `aisc session open` 通过 docker exec 接入。
+#    不启动交互菜单 / claude / codex；context 文件不写任何 key/token/cookie。
+# ==========================================
+if [ "${AISC_RUNTIME_MODE:-}" = "idle" ]; then
+    mkdir -p /run/aisc
+    export SCOPE
+    # Write runtime-context.json via python3 so interpolated paths (which may
+    # contain " or \) cannot break JSON. Quoted heredoc -> no shell expansion;
+    # values come from env. File is secret-free (no key/token/cookie).
+    python3 - <<'PYEOF'
+import json, os, datetime
+ctx = {
+    "schema_version": "aisc.runtime-context/v1",
+    "runtime_id": os.environ.get("AISC_RUNTIME_ID", ""),
+    "scope": os.environ.get("SCOPE", ""),
+    "workspace_mount": "/root/app",
+    "claude_config_dir": os.environ.get("CLAUDE_CONFIG_DIR", ""),
+    "codex_config_dir": os.environ.get("CODEX_CONFIG_DIR", ""),
+    "cc_switch_config_dir": os.environ.get("CC_SWITCH_CONFIG_DIR", ""),
+    "ready_time": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+tmp = "/run/aisc/.runtime-context.tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(ctx, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, "/run/aisc/runtime-context.json")
+PYEOF
+    echo "✅ AISC runtime idle 模式就绪 (runtime_id=${AISC_RUNTIME_ID:-}, scope=${SCOPE})"
+
+    # v2.1.8 T2: bash history paths — reuse the existing runtime mount
+    # (workspaces/<hash>/runtime → /root/.local/state/cc-switch). The
+    # directory name is legacy; its role now includes bash runtime data.
+    AISC_BASH_HISTORY_DIR="/root/.local/state/cc-switch"
+    export AISC_BASH_HISTORY_DIR
+    export AISC_BASH_HISTORY_FILE="${AISC_BASH_HISTORY_DIR}/.bash_history"
+    export AISC_BASH_HISTORY_DB="${AISC_BASH_HISTORY_DIR}/bash_history.db"
+    # v2.1.8 T2/D-4: zsh is the Workbench interactive shell; separate file
+    # (zsh metadata lines are not bash-readable on write-back).
+    export AISC_ZSH_HISTORY_FILE="${AISC_BASH_HISTORY_DIR}/.zsh_history"
+    # Also expose into the runtime context for host-side tooling.
+    python3 -c "
+import json
+p = '/run/aisc/runtime-context.json'
+ctx = json.load(open(p))
+ctx['bash_history_file'] = '${AISC_BASH_HISTORY_FILE}'
+ctx['bash_history_db'] = '${AISC_BASH_HISTORY_DB}'
+ctx['zsh_history_file'] = '${AISC_ZSH_HISTORY_FILE}'
+json.dump(ctx, open(p, 'w'), indent=2, ensure_ascii=False)
+" 2>/dev/null || true
+
+    # Retention: trim to the most recent N rows (best-effort).
+    if [ -n "$AISC_BASH_HISTORY_DB" ] && [ -f "$AISC_BASH_HISTORY_DB" ]; then
+        AISC_HIST_DB="$AISC_BASH_HISTORY_DB" \
+            python3 /usr/local/bin/lib/aisc_bash_history.py retain 2>/dev/null || true
+    fi
+
+    # 2.1.9 T3b 补丁（#3）：存量工作区的 agent 指令面停在首次建区时的工厂副本
+    # ——工厂后来加的登记节与 env 缺省技能从未同步进去，agent 自登记因此从未
+    # 触发。每次启动幂等回填：
+    #   a) artifact 技能完全 AISC 所有 → 直接以工厂版覆盖
+    #   b) CLAUDE.md / AGENTS.md 仅在标记块缺失时追加登记节（不动用户其余内容）
+    for _sk_dir in "$CLAUDE_CONFIG_DIR/skills/artifact" "$CODEX_CONFIG_DIR/skills/artifact"; do
+        if [ -d "$_sk_dir" ] && [ -f /opt/aisc/factory/.claude/skills/artifact/SKILL.md ]; then
+            cp /opt/aisc/factory/.claude/skills/artifact/SKILL.md "$_sk_dir/SKILL.md"
+        fi
+    done
+    _reg_mark=">>> aisc artifact-register >>>"
+    _reg_block='## Deliverable registration (变更页归因)
+
+Your session env carries `AISC_AGENT`, `AISC_TERMINAL_SESSION_ID` and
+`AISC_RUNTIME_ID`; `aisc artifact record` reads them as defaults. When a
+task produces files the user will want to open, register each one as you
+finish:
+
+```sh
+aisc artifact record --path <relative/path> --kind deliverable --action created --label "<short label>"
+```
+
+See the `artifact` skill for the full classification table and when NOT
+to register. Unregistered files still show in the Changes panel, but
+without your name on them.'
+    for _instr in "$CLAUDE_CONFIG_DIR/CLAUDE.md" "$CODEX_CONFIG_DIR/AGENTS.md" "/root/AGENTS.md"; do
+        if [ ! -f "$_instr" ]; then
+            continue
+        fi
+        if ! grep -qF "$_reg_mark" "$_instr" 2>/dev/null; then
+            printf '\n# %s\n%s\n# <<< aisc artifact-register <<<\n' \
+                "$_reg_mark" "$_reg_block" >> "$_instr"
+        fi
+    done
+
+    exec sleep infinity
 fi
 
 # ==========================================

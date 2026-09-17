@@ -46,10 +46,16 @@ def build_envelope(
     errors:
         List of error objects.  ``None`` is treated as ``[]``.
     run_id:
-        UUID v4.  Auto-generated when not provided.
+        UUID v4.  Auto-generated when not provided. Falls back to the
+        ``AISC_RUN_ID`` env var (lifecycle-logging P1: the Workbench injects
+        its operation id so app-side op events, the envelope and the log
+        timeline share one id).
     timestamp:
         ISO 8601 UTC string.  Auto-generated when not provided.
     """
+    import os
+
+    effective_run_id = run_id or os.environ.get("AISC_RUN_ID") or str(uuid.uuid4())
     return {
         "meta": {
             "protocol": PROTOCOL,
@@ -57,7 +63,7 @@ def build_envelope(
             "exit_code": exit_code,
             "timestamp": timestamp or _utc_now(),
             "version": version,
-            "run_id": run_id or str(uuid.uuid4()),
+            "run_id": effective_run_id,
         },
         "data": data,
         "errors": errors if errors is not None else [],
@@ -70,8 +76,15 @@ def build_error(code: str, message: str, hint: Optional[str] = None) -> Dict[str
 
 
 def emit_json(envelope: Dict[str, Any]) -> None:
-    """Write *envelope* as JSON to stdout."""
-    print(json.dumps(envelope, ensure_ascii=False))
+    """Write *envelope* as JSON to stdout.
+
+    ``ensure_ascii=True`` keeps the stream pure ASCII: on locale-encoded
+    stdout (GBK on zh-CN Windows, cp1252 on en-US) any non-ASCII payload
+    would raise UnicodeEncodeError and kill the CLI mid-protocol (observed:
+    buildkit emoji in build.output). JSON escapes are semantically identical
+    to the consumer (serde_json).
+    """
+    print(json.dumps(envelope, ensure_ascii=True), flush=True)
 
 
 def emit_json_usage_error(
@@ -214,7 +227,9 @@ class JsonlEmitter:
         }
         if terminal:
             self._terminated = True
-        print(json.dumps(event, ensure_ascii=False))
+        # ensure_ascii=True: see emit_json - locale stdout (GBK) cannot
+        # encode buildkit's non-ASCII output and would crash mid-stream.
+        print(json.dumps(event, ensure_ascii=True), flush=True)
 
     def emit_terminal(self, terminal_type: str, exit_code: int,
                       extra_data: Optional[Dict[str, Any]] = None) -> None:

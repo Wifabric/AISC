@@ -18,7 +18,7 @@ class ReleaseNotesContractTests(unittest.TestCase):
         )
 
     def test_current_version_has_release_notes(self) -> None:
-        version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        version = (PROJECT_ROOT / "src" / "aisc" / "VERSION").read_text(encoding="utf-8").strip()
         release_notes = PROJECT_ROOT / "docs" / "releases" / f"v{version}.md"
 
         self.assertTrue(

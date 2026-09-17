@@ -2,7 +2,1447 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
-## v2.1.4 (2026-07-24) — Codex 官方登录直连与安全的 Skills 同步
+# v0.1.0-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
+
+> 规划入口：`docs/plans/0.1.0-dev-plans/`（README 阶段表 + decisions.md
+> D-1~D-27 + 四条分链计划；执行蓝本 `pypi-release-guide.md` 同目录）。
+> 版本策略（D-1）：开池即四件套 bump `0.1.0.dev0`——打破「开发期保持
+> 上一版 dev0」惯例，动因是 TestPyPI dev 迭代要求 dev 版元数据 + 每次
+> 上传须推 dot tag（D-26）。2.1.11 final 显式跳过（v2.1.11-dev Preview
+> 即其最终产物）；周期末出 0.1.0 final + PyPI 首发同 tag。
+
+- **P0 开池前置批（分支 2.1.12-p0-pool-open，五批提交）**：①docs（wiki
+  §2 裸机环境重写 + todo R1-R8 补注 + 指南迁入 plans + check-docs 排除
+  archive/completed——既有红，归档史实文档引用旧路径属正常）②scripts
+  （dev-env 双脚本 + local-gates 短 TEMP + 删游离 containers.json 并
+  ignore）③workbench（远程机器表头 + 密钥认证提示；顺手移除 KI-1 临时
+  复现测试 `diag_engine_reachable_true_with_running_docker`——自注释即
+  「根因后移除」，断言本机 Docker 在跑，引擎未启动即红）④tests（Windows
+  裸机修复）⑤四件套 bump 0.1.0.dev0 + plans 入库 + plans/README 指向
+  修正 + 2.1.11 收口卫生回填（本条与下条）。
+- **B0 主题切换残留修复（分支 2.1.12-b0-theme-residue，手测 PASS
+  2026-09-16）**：v2.1.11 bug——切 dark→light 后切换前的终端输出留深色
+  带（暗字+旧深底），新写入正常。根因：addon-webgl 0.19 的字形图集/
+  行脏标记不随 `options.theme` 重绘既有 cell，`refresh()` 够不着（DOM
+  渲染器无恙，Step 17 验收即此路径）。修法：`effectiveTheme` watch 在
+  webgl 活动时 dispose+重建 addon（图集按新主题重建；session/PTY 不动；
+  重建失败沿 context-loss 降级语义 A-G06-2），新增
+  `renderer_theme_remount` 遥测；terminalThemeSwitch.test.ts 两例钉住
+  往返回收+调色板+repaint。
+- **B1/B2 重建按钮与超时修正（分支 2.1.12-b1-b2-rebuild，手测 PASS
+  2026-09-16）**：BuildProgress failed/cancelled 终态加「重新构建」（同
+  tag 复用 store.startBuild 链，返回摘要降为次按钮；v-else 窄化保证无
+  building 态误入，vue-tsc 强制）；BUILD_TIMEOUT 600s→1800s（UI 文案自述
+  初次构建 10-20 分钟，600s 会把真实首构建杀成「已取消」假象）。测试：
+  buildProgressRebuild.test.ts 三例 + runtimeBuild.test.ts 双终态回建
+  两例（vitest 488 全绿，cargo lib 308）。
+- **B3 Docker 资源管理 UI（分支 2.1.12-b3-docker-ui，手测 PASS 2026-09-16）**：
+  设置页磁盘与缓存卡扩展「Docker 资源」组——docker_admin.rs 三命令（scan
+  预览 / cleanup uninstall 语境 / rebuild 本机 bundle 根，CLI maintenance
+  契约零改动，Rust 仅传输+envelope 校验沿 cache.rs 模式）；扫描前置门
+  （未扫描禁用清理/重建，预览即确认依据——用户裁决）+ 五按钮悬浮提示
+  （清理 vs 重建语义上浮）；store 5 例 + Rust 6 例 + 组件门测 1 例
+  （vitest 494 / cargo lib 314）。
+- **版本策略切换 0.x + A1 元数据与改名（分支 a1-pypi-metadata，2026-09-16）**：
+  D-4 裁决推翻指南 D-3——0.x 是比 2.x+契约页更强的 Alpha 信号；pip 渠道
+  全新（aisc-cli 无存量）、NSIS/便携覆盖安装不比版本，四件套切
+  0.1.0.dev0，周期目录更名 0.1.0-dev-plans，final tag v0.1.0。A1：pyproject
+  name=aisc-cli（包名/命令名不动）+ SPDX license/license-files/setuptools
+  >=77 + requests 显式 + docker<8 上界 + 删 3.14 classifier + DIST_NAME
+  常量与 fallback 改查 aisc-cli（防休眠同名包污染）+ 双脚本字面量同步 +
+  fallback 单测。验收：build 零 license 告警；CLI-A01 三腿 PASS；pytest
+  1238。D-6 sdist 不含 tests 同场确认。
+- **A2 VERSION 迁移为 package-data（分支 a2-version-migration，2026-09-16）**：
+  `git mv VERSION src/aisc/VERSION` + package-data + 动态版本 file 化。落地中
+  补了指南 14 触点表的三个盲点——版本 marker 双形（repo=src/aisc/VERSION、
+  bundle/frozen=根 VERSION，三处根识别与 get_version/_read_version_file 全
+  部双形）、staging 输入校验与 bundle 输出必清单拆分、version.py 的
+  bundle_version 读者（envelope deep-equal 夹具当场抓获）。验收：pytest
+  1238/packaging 207/sdist 含 src/aisc/VERSION/CLI-A01 三腿/sidecar 重建
+  cli_version=bundle_version=0.1.0.dev0。期间 CI 监控代理另修 artifact.rs
+  基准 flake（gated<full 共享 runner 单发反转，有界 pair-retry，fbae598）。
+- **A3 bundle fetch 底座（分支 a3-bundle-fetch，2026-09-16）**：safe-extract/
+  verify 全套自 packaging/ 迁入 src/aisc（artifact.py 薄再导出，独立运行自举
+  sys.path）；manifest 运行时门禁 bundle_compatible（ADR-001 声称却从未实现的
+  校验，精确匹配 fail-closed）；解析链第 5 级 <data-root>/bundles/<ver>/
+  aisc-bundle（cwd-repo 之后、包祖先之前，不兼容跳过不报错）；BundleFetcher
+  流式下载 + API digest 校验 + 原子安装 + 幂等 + .tmp 清扫 + --from-file
+  （强制 --sha256 同强度）+ --version/--allow-mismatch；`aisc bundle
+  fetch/list/remove/path` 命令组（remove 拒删活动根）；pip 形态 build 降级
+  文案点名 bundle fetch；doctor 追加 aisc-bundle 独立检查项 + root-file 双形
+  （A2 尾巴）。验收：17 例 fake-transport 矩阵；off-checkout 真轮（wheel 装
+  隔离 venv）：version exit0/bundle=null → build exit1 含 fetch 指引 →
+  --from-file 装入 → bundle_version 翻转 0.1.0.dev0 → build --dry-run exit0；
+  pytest 1255。A2 的 CI 尾巴（前端 repoVersion 旧路径）由监控代理修复
+  （e4fecd8，ece3a60 全绿）。
+- **A4 aisc update（分支 a4-cli-update，2026-09-16）**：冻结形态自更新——
+  形态探测（frozen/pip/source）、check 计划（final-only 通道，pip/source 纯
+  本地应答不碰网）、Windows rename dance（运行中 exe 可改名不可覆盖：旧件
+  转为 .old-<ts> 回退副本；POSIX os.replace）、相邻 aisc-bundle 原子换、
+  .old 陈旧清扫、up-to-date no-op、离线 --from-file（强制 --sha256）、
+  --rebuild 经新 exe 链安装器式 docker-rebuild（顺带启动冒烟）。与 fetch
+  共享经校验下载路径（download_archive 抽出）。Workbench 侧免重启：本地
+  serve 池按 exe mtime 驱逐，下一条命令自动用新二进制（Rust 侧 drain_pool
+  编排归 A5/A7）。`aisc update [--check|--version|--from-file|--sha256|
+  --rebuild]` + README 表行；16 例矩阵，pytest 1271。
+- **A5 工具更新合一入口（分支 a5-tool-pins，2026-09-16）**：D-27 裁决落 A——
+  双层真值：出厂层（root config/versions.env，只读随 bundle 走）+ 用户层
+  （<数据根>/config/versions.env，--pin-tool 唯一落点，更新/升级/fetch 结构性
+  不碰；r4 静默降级不可再现）。CLAUDE_CODE/CODEX_VERSION 以 build args 进
+  构建管线（D-9 消费化）；--check 附三工具对照（npmmirror，断网降级 null）。
+  D-10 评估门触发：claude-code 2.1.273 要求 node>=22——基底升 node:22-slim
+  （1ms.run 镜像预拉实证）；cc-switch 三处漂移以 resolver 缓存最新 stable
+  v5.10.4 统一收口；vendor checksums 行刷（1515/1515 verified）。10 例新测 +
+  pytest 1281；真轮：--pin-tool 落盘、--check 报 user 来源、dry-run argv 携
+  node:22-slim+双 pin。
+- **A6 pypi-publish 流水线（2026-09-16/17，92ef953）**：dispatch-only OIDC 双
+  environment（pypi 带 Required reviewers 人工门）+ final-only 正则门 + 制品
+  薄形负向守卫 + gitleaks 制品终扫 + pip-audit + SBOM 附 Release；artifact.yml
+  release 段第二道 tag==VERSION guard；check-version-sync.py 四件套机械校验；
+  verify-pypi-install.py（真实 index 装机验证+传播重试）；verify-cli-install 增
+  off-checkout 腿（临时目录+AISC_ROOT 剥离：version null-bundle/doctor 降级/
+  build 报 bundle fetch 指引）与 twine 内建。D-26 接受（devN 逐次 bump+dot tag
+  链）、D-25=B（不发中段预览，A7 用本地假素材）。教训：main 合并权限误触——
+  用户裁定 Claude 仅可自主「阶段分支→develop」，main 一律显式批准（已入记忆）。
+- **A7 Workbench 自更新（分支 a7-workbench-selfupdate，2026-09-17）**：D-8 裁
+  「自研」——check（Releases API，final-only，dash 归一比较）/流式下载（sha256
+  sidecar 先验后落，失配即弃）/update://progress 事件/silent NSIS（installer.nsi
+  原生 ${Silent} 分支）detached 启动后 app.exit，安装器自带 PATH 接管与 Docker
+  升级链（不引 tauri-plugin-updater 的全部理由落地）。UI：帮助菜单「检查更新」
+  + 设置页「关于与更新」组（下载进度/就绪态/确认后安装）；sidecar 更新指引指
+  aisc update（免重启）。cargo 318 / vitest 500 / vue-tsc 净。
+- **A8 文档与渠道治理（分支 a8-docs-channels，2026-09-17）**：README pip/pipx
+  安装节（pipx 首选政策+三须知+陷阱 FAQ+卸载 SOP 顺序+升级/卸载表行+数据根链
+  补 bundles/<ver> 级+doctor 代装披露+多渠道混淆排障行）；ADR 目录复活——001
+  自 git 历史取回并标注部分被取代，002 三轨分发新写（路线 B 否决含 exec-bit
+  非论据标记、六级解析链、依赖立场修订、fetch 信任模型、发布纪律、0.x 立场）；
+  DEVELOP_WIKI §1 分支表自动化实况（7 workflow）、§4.5 run argv 修正至 svc-5
+  形态、§11.2 pre-tag 门现代化 + 新 5b PyPI 步骤、文档地图补双 ADR；release
+  notes 模板加「安装与获取」节。渠道共存代码：`aisc version` 文本输出加
+  Install channel 行（JSON 契约不动）；doctor 加 channel-confusion（多 PATH
+  命中 WARN，只列路径不执行）与 platform-support（py3-none-any 装非支持组合
+  WARN）检查；install.sh/uninstall.sh pipx shim 归属判定守卫（外链解析不在
+  安装目录内即警告不删）。pytest 1295 / check-docs 39。
+
+# v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
+
+> 规划入口：`docs/plans/2.1.11-dev-plans/`（README 阶段表 + decisions.md）。
+> VERSION 冻结前保持 2.1.10.dev0。P1 收官记录见
+> `p1-manual-test.md`（r1-r8 全 PASS）；S2 传输统一见 D-5。
+> 封版与发布补记（2026-09-16 补录）：封版提交 0db2b13（四件套冻结 +
+> plans 归档，2026-09-12），dash tag `v2.1.11-dev` 打于该提交，GitHub
+> Pre-release「AISC v2.1.11-dev Preview」当日发布（资产 NSIS setup.exe
+> + sha256.txt，沿 2.1.9 先例取 NSIS lane 产物手工附上）。2026-09-16
+> 裁决：2.1.11 final 不再单独发，该 Preview 即 2.1.11 最终对外产物
+> （0.1.0 D-1）。
+
+- **P1-1 provider API key 显隐（六层链 + 四轮修复）**：编辑已配置
+  provider 的 key 字段占位态「已配置——留空保存不变」+ 眼睛按钮按需
+  取回明文（ProviderEditPage → ccSwitchUi.revealKey → Rust
+  `reveal_id` → CLI `list --reveal-id` → 容器 adapter 命中行附全文，
+  其余行与所有快照恒掩码；SQLite WAL 宿主直读不可靠故走容器 adapter）。
+  手测八轮揪出三层真凶：①输入框宽度 r2-r4 三连修，终局
+  `.field > span.key-row`（0,2,1）压过标签规则的 `width:90px;
+  flex:none`（0,1,1）；②眼睛无声无息 = Rust `CcSwitchProvider` 缺
+  `api_key` 字段 serde 静默剥明文（`8c7c860`——教训：端到端验证必须
+  穿透到消费端，此前只验到 CLI 层）；③17:00 两次瞬时失败 = 容器内
+  cc-switch daemon WAL checkpoint 锁 `mode=ro` 连接——`read_snapshot`
+  改 `mode=rw+query_only`（可参与恢复、语句级写保护不变）+ 三次退避
+  （`42a5dc5`）。失败可见化三件套（r5 `af16a15`）：store 不吞错 +
+  banner 渲染 technical_detail 第二行 + 取回中脉冲。
+- **P1-2 spool 回放顶部空白根治**（`5916605`）：linearize 过滤器
+  剥离屏幕编排序列——加载更早输出后顶部不再出现大片空白。
+- **P1-3 忘记/清除记录生命周期治理**（`6034a53`）：勾选清理（默认勾，
+  绝不碰工作区用户文件）+ 先导出 zip（Tauri save dialog）。
+- **r4 增补·搬迁工作区 recent 守门**（`edd534c`）：Enter 快捷键绕过
+  禁用按钮直启 → docker `-v` 静默重建旧路径为空目录。`startEnabled`
+  判定提升进 workspaceRuntime store，按钮/Enter/store action 三处同源。
+- **r6 增补·serve 闸门放行 envelope 子命令**（`682b7a4`）：远程
+  provider 全不可用真凶——`_SERVE_CLI_DENY` 按顶层命令一刀切拒绝
+  `cc-switch`（设计意图拦裸 TUI，误伤 workbench 驱动的六个 envelope
+  子命令）。allowlist 化（default-deny 不变）+ 测试以「报错文案是否
+  含 cannot run over serve」钉住闸门内外。远端交付：CLI 包 rsync 到
+  NAS + 镜像重建（NAS docker daemon 死代理 `127.0.0.1:7897` 拦拉取，
+  本机 `docker save|load` 推 node:20-slim + legacy builder 绕过）。
+- **r7 增补·本地 provider 切驻留 serve（传输统一 step 1，`e1c9df5`）**：
+  用户实测远程 provider 比本地快且全生效——远程 D-10 驻留 serve op
+  进程内分发，本地逐次 spawn 冷启 aisc.exe（PyInstaller 解压+解释器+
+  Defender ~0.5-1s 启动税）。两步走裁决（decisions.md D-5）：step 1
+  仅 provider 操作切池化 serve（ServePool 扩 `local:<path>` 键 +
+  `cli_op_target` 双侧统一分发 + `run_serve_op_target` trace/log 对齐
+  包装）；实测冷 534ms / 热 10ms（原 ~1.4s）。配套：spawn 补 KI-6
+  docker PATH（本地 serve 的 docker exec 子进程依赖）；
+  `drain_pool` 挂 RunEvent::Exit（statics 不 Drop——测试实证不排水
+  会孤儿化 aisc.exe 子进程）；门控测试两连 op 共享一会话 + 显式排水。
+  **step 2（全部命令迁移 + banner 版本配对驱逐 + --events 通道裁决）
+  独立分支下轮**。
+- **r8·build-cli 前置检测**（`1a91850`）：现场教训——CLI 源码改动
+  （serve.py 闸门）只同步远程包未重建本地 sidecar，r7 新路由跑旧闸门
+  复现远程同款报错；且运行中 Workbench 驻留 serve 锁
+  target\debug\aisc.exe，构建 Copy-Item 半途失败留半同步态。前置检测：
+  发现运行中 aisc.exe 即拒绝构建。
+- **Shell 重设计 W1（浮窗化，分支并入 p2-ui-palette 收口 `e8372f7`）**：
+  rail 底部 ⚙ 设置 + 📊 数据看板（VS Code activity bar 底部位）；
+  FloatingPane 浮窗宿主（scrim+固定占地+内部滚动+Esc/背板/×，随
+  ui.font_scale 缩放）；设置/网络用量从工作区条哨兵 tab 降为浮窗，
+  工作区在其下持续渲染；工作区条哨兵 chips/×/▾ 菜单全套退役。
+- **Shell 重设计 W2+W3（菜单栏 + 一窗一工作区，分支 shell-w2-menubar，
+  `e6cab9f..4b2ebd4` 十二提交，手测 r1-r11 PASS）**：
+  **W2**：内嵌菜单条 操作/编辑/帮助（裁决 a/b——「操作」四条目：新建
+  窗口/从文件夹打开/最近/远程机器；下拉 teleport + useTeleportedZoom
+  共享 composable，teleport 逃逸 zoom 三连坑根治）；全局状态标签随
+  工作区条退役移入菜单栏右端。**W3（裁决 c）**：lib/workspaceWindow
+  WebviewWindow 工厂（?workspace=/?machine= 带参启动、继承开窗者尺
+  寸、capabilities 扩 ws-*）；boot 参数直达工作区（consumeBootParams，
+  工作区层等 settle 才揭+fade，无 picker 闪帧）；退出分叉——子窗
+  closeWindowScoped 作用域收尾（关本窗会话→stop→remove→自毁；hide
+  走 Rust 直呼，G-07「close pending 期间 JS hide IPC 失效」坑复现后
+  暴露 hide_window 命令），主窗原流；**WorkspaceBar 整文件退役**、
+  Ctrl+PgDn/Alt+1..9 跨工作区快捷键随裁决退役。**按窗隔离驱动
+  target（r3 架构刀）**：WindowTargets(label→机器)+resolve_target_for，
+  target_get/set/clear 按调用窗注入；远程/本地窗口并开互不干扰——
+  根治「点远程关本地」（全局 target 下本地轮询被改道远程注册表，
+  reconcile 回收『消失』容器）。**最近列表**：VS Code 二级悬浮
+  （本地/远程分类徽章、双行条目）；失效路径治理三入口同体验
+  （InvalidPathDialog 浮层化——openLauncher 劫持曾让无条可回的
+  已开工作区孤儿化，r11 根治）。门禁：cargo 净 / vitest 480。
+- **环境性事故两起（C:→D: 搬迁余震）**：editable install 仍指 C 盘
+  旧仓库（6 测 ModuleNotFoundError）→ 重装指向 D 盘；`target/debug`
+  构建脚本产物全带 C: 绝对路径（tauri permissions 读取失败，cargo
+  指纹不含路径不重跑）→ 清 target 重编，手工保住 aisc.exe/aisc-bundle
+  两工件归位。
+
+- **S2 传输统一（D-5 step 2，分支 unify-serve-step2，`b434083`+`b903036`）**：
+  `run_control_target`/`run_control_input_target` Local 臂整体翻到池化驻留
+  serve——一处覆盖 28 调用点零调用面改动，本地/远程同池同闸门同驱逐
+  语义；r7 特例入口折叠删除。**版本配对驱逐**：池条目记 spawn 时 exe
+  mtime，变化即驱逐重建（dev 重建/build-cli 自动换新）。`--events` argv
+  兜底回落逐次 spawn（唯一生产用户 build 本走独立 runner）。手测两轮
+  揪出三个跨层真凶：①serve `_frame` ensure_ascii=False 在 zh-CN Windows
+  按 GBK 写 CJK 帧（doctor「Not Linux —」触发），Rust 严格 UTF-8 reader
+  首字节撕裂会话——单发命令无害纯因 envelope 层 ensure_ascii=True，
+  serve 是漏网；修 `_frame` 全 ASCII 逃义（新旧互通）+ cmd_serve stdio
+  reconfigure utf-8 + spawn PYTHONUTF8 次级防线（app 级 #61 只靠继承，
+  cargo test 无启动钩子正是取证入口）。②cli op 外层 envelope
+  meta.command 写成 op 名，doctor.rs/cache.rs 校验内层名——「unexpected
+  command: cli」本地远程同病（远程 D-10 时代即存在无人触发）；修
+  `_run_op` 对 cli op 透传 argv[0]（传输不改写命令身份），pytest 钉
+  version/doctor/ps 三例。③测试 panic 路径漏排水 → 进程被未排水 serve
+  管道拖住假挂 678s；门控测试体进 tokio::spawn + drain_pool 必达。
+  远程交付：NAS 包两次 rsync（闸门修复午后/透传+UTF-8 晚间——踩坑
+  促成 todo「远程 CLI 版本配对/自动同步」）。手测 PASS：本地全命令/
+  doctor/远程 provider+诊断/build 流/PTY。门禁：pytest 1220 / cargo
+  lib 308 / 门控 3 测 8.5s 零孤儿 / vitest 471。
+
+- **P2-1..P2-3 反馈语法与 Shell 骨架（`5f90c23..9eead71` 三批并入）**：
+  全局 Toast 原语（底部居中 / progress 形态 / 随 UI 字号缩放）+ 空态
+  全带 CTA；topbar 整行退役（status 右移工作区条、窗口标题承继身份）；
+  rail 图标化常驻 activity bar + Ctrl+B。
+- **P2-4 命令面板 + P2-5 设置页重构（`ec657ea..76b168f`）**：Ctrl+Shift+P
+  注册表驱动命令面板（二级拆分子步骤、teleport 逃逸 zoom 与浮窗同源
+  共治）；设置页 VS Code 式左导航右内容 + 搜索（手测揪出
+  docker_available 蛇形序列化——调用返回序列化不吃参数 rename——/
+  死设置项退役 / 焦点环负偏移防越界三案）。
+- **P3 Provider 模型热切换（分支 p3-model-shim，`dbf8b55..07261c0` 十八
+  提交，手测 r1-r10 PASS，merge `07c131b`）**：调研定论——两 CLI env
+  均无原生热重载（claude 仅 hooks/权限/键位/主题热载），会话内实时变化
+  **只能走传输层**；provider 间路由本已热（本地代理换上游）。实施：
+  容器内 `aisc-model-shim`（占 1572x 历史端口——运行中会话内存 env 指向
+  那里；按当前 provider 角色表重写请求体 model 字段，fail-open）+ worker
+  挪 1570x（entrypoint 拓扑先于 daemon）+ 跨代 `shim-heal`。手测十轮连破
+  五案：①fetch-models 401（行 auth 段被官方 live 同步成当前 provider key
+  ——行自有 TOML key 优先 + PROXY_MANAGED 跳过；同治 reveal 错 key 与编辑
+  烧错 key）；②default 幽灵卡片（官方 CLI 自动导入 mcp-only 引导存根，
+  created_at=NULL 取证——op_list 前置只读预检清扫）；③codex 整代绕过
+  shim（持久卷跨代 1570x 残留——entrypoint 启动自愈）；④「stream
+  disconnected」（Rust 边界 CcSwitchProvider 剥掉 api_format 等八字段——
+  编辑按 codex 默认值回存把 anthropic 行改成 responses 线规→上游 404 以
+  HTTP 200+JSON 错误体返回——结构体补齐透传 + CcSwitchCatalogEntry）；
+  ⑤三方互切 401（worker 仅在 enable 时刻从 live auth.json 捕获 token 而
+  无头官方 switch 从不写它——disable/enable 之间同步行 key + 行 auth 段
+  归一 + fast-path/edit 路径同治）。可见性：切换 toast 与当前卡片带
+  「实际模型」；官方直连品牌 SVG；映射表四盒对齐（border-box 无全局
+  重置三连坑收官 r7-r10）。手测文化沉淀：容器排障五诀入库记忆。
+- **v2.1.11.dev0 封版（2026-09-12）**：四件套冻结（VERSION /
+  tauri 2.1.11-dev / envelope fixture 三处 / notes
+  `docs/releases/v2.1.11.dev0.md`——主题「传输统一收口 · Shell 对标
+  VS Code · Provider 模型热切换」）+ plans 归档
+  `docs/archive/2.1.11-dev-plans/`。周期总账：P1 八轮（key 显隐六层链/
+  spool 空白/生命周期治理/recent 守门/serve 闸门/传输统一两步）+ Shell
+  W1-W3 + P2-1..5 + P3 r1-r10。门禁：pytest **1235** / vitest **481**
+  （假绿治理：jsdom scrollIntoView stub）/ cargo lib 309。遗留：Slurm/PBS
+  调研阻塞用户工作流输入（顺延下周期）。
+
+
+# v2.1.10-dev (2026-09-07 ~) — F1 剥离封存 · CLI 远程化（分支 develop）
+
+> 规划入口：`docs/plans/2.1.10-dev-plans/`（README 阶段表 + decisions.md D-1..D-6 +
+> r0-vscode-remote-and-hpc.md + f1-strip-plan.md）。周期主题：VS Code Remote 式
+> CLI 远程化（D-4 全特性本周期交付；D-5 文件面=远端 FS API 远端权威模型）。
+> VERSION 冻结前保持 2.1.9.dev0。
+
+- **R0 调研（D-1..D-5）**：VS Code 三路线对照（Remote-SSH stdio 拆分式为模仿
+  对象——server 按需 bootstrap + commit 配对 + ssh 进程 stdio 隧道零额外端口）；
+  Slurm/PBS HPC 实况三模式（Yale/Anthropic/Harvard/Aalto 等中心实践：agent 跑
+  计算分配、tunnel sbatch 托管、集群无 Docker）；AISC 耦合面代码盘点——关键
+  发现：**数据面已是子进程 stdio 流**（`open_session`→`spawn_pipe_session(pin, argv)`，
+  命令面 8 模块 ~38 spawn 点全 envelope stdio），远程化=把 pin 换成
+  `ssh <alias> aisc ...`，协议零改动。差距 G1-G7（resize 文件通道/P4 直连失效/
+  文件面/网关端口/serve 模式/机器页/远端 bootstrap）。结论：可行且比 VS Code
+  当年轻（无扩展生态负担，caps 即配对机制）。
+- **S0 F1 SSH 工作区剥离封存（D-6）**：用户裁决 mutagen 同步方案为错误尝试，
+  周期首任务剥离。Rust 删 `sync.rs` 1577 行（10 个 IPC command）+ lib/settings/
+  workspace/watcher 接触点 + tauri.conf externalBin/resources 两键；TS 删 ipc F1
+  块/类型/stores 动作/Picker SSH 表单/RuntimeSidebar 同步面板/SettingsForm ssh
+  节 + i18n 双语 ~58 键；构建链删 3 条 workflow 的 mutagen staging +
+  `tools/stage-mutagen.sh` + .gitignore host-bin；Python 侧唯一触点 =
+  data_root overlap guard 的 `sync-workspaces` 豁免（死代码削弱防线，摘除，
+  测试改写为 fail-closed 断言）。封存载体 = tag `v2.1.9-dev` + 归档设计文档
+  （2.1.9-dev-plans/decisions.md 已盖印）。门禁：cargo 286+33 绿 / vitest 439
+  绿 / vue-tsc build 绿 / pytest 1188 绿（Docker 集成除外——环境性，干净树
+  同样跳过）。用户数据处置清单见 f1-strip-plan.md §3，待逐项确认。
+- **S0 手测 PASS + 数据清理（2026-09-07）**：Windows 侧 dev 手测确认无 F1
+  残留 UI/报错；用户逐项授权后清理 4 项残留——数据根 `sync-workspaces/`
+  （2.1 GB，7 个影子工作区）与 `mutagen/`（87 MB 托管二进制）删除、
+  `~/.ssh/config` 受管段（BEGIN/END AISC 标注段）删除（备份留存）、
+  settings.json `ssh_profiles` 键移除。S0 收口。
+- **S0 合并 `a8f73eb`（`--no-ff`，四 lane CI 绿）**：NSIS 11m26s / Bundle
+  7m35s / cli-sidecar 2m2s / Workbench CI 1m50s 全绿；本地分支已删，
+  远程 `origin/s0-f1-strip` 待用户示意删除（权限分类器拦 push --delete）。
+- **R2 会话面（D-8，2026-09-07 夜，分支 r2-remote-sessions）**：
+  **R2a**（`d9fc99c`）docker_gateway 流化——socket 原语提模块级 +
+  `InteractiveStreamHandle`（字节面/resize/kill/EOF 驱动 wait_exit 含 #61
+  容忍）+ open_interactive 重组装（194 既有测试锚定零回归；AISC_EXEC_POLL
+  legacy 逃生门按 P2 计划退役）；application/session 提取
+  `build_session_exec`；serve 协议 v1.1——`session.open` op + pty.* 帧族
+  （base64）+ ServeRuntime 帧写锁 + PTY 注册表。**R2b**（`5945c5a`）Rust
+  ServeSession 全双工重构（常驻读任务分发 result→oneshot、pty.*→sid 路由，
+  单连接多路复用；shutdown &self）+ `spawn_serve_pty_session` 产出与 pipe
+  模式同形 PtySession——**G1 根治：resize 走 pty.resize 帧无本地文件**
+  （P6b 第二通道顺带清偿）。**R2c-lite**（`153475c`）target.rs（RemoteMachine
+  配置 + ActiveTarget 状态 + target_get/set/clear IPC）+ session.rs 双路径
+  分流（Local pipe 模式 bit 级不变）+ serve session.open 双 executor 修复
+  （解析走 RealDockerExecutor、PTY 流走 SDK gateway——gateway 无
+  run_captured 曾致 NOT_FOUND）。
+  **e2e 实证（WSL 真容器）**：ready→session.open→pty.input 回显→resize
+  （bash 重绘 100 列实证）→pty.output 帧→exit 帧，五环全通；「命令执行
+  输出」一环时序待手测轮排查（见阶段表）。门禁：cargo 295 / vitest 439 /
+  vue-tsc / pytest 1201 全绿。**续批**：runtime 16 点 target 路由 + lease
+  直写降级 + docker_api G2 禁用。
+- **R2 续批（2026-09-07 深夜）**：①**全仓 target 路由**——runtime/lease/
+  cache/conversation/doctor/subscription 六模块 41 个调用点批量迁移
+  `resolve_target` + `run_control_target/_input_target`，`run_build_stream`
+  增 target 版（Local spawn bit 级不变）；②**G2 降级**——`runtime_poll_light`
+  在 Remote target 时显式 Err（前端回退 CLI 轮询，即 P6a 审查 R1 语义）；
+  lease P5b 直写心跳在 Remote 时禁用（远端 lease 文件不在本机数据根，
+  恒走 CLI beat）；③**e2e 完整闭环 PASS**——此前「命令输出缺失」证伪为
+  诊断脚本自身 readline 无超时死等；带 select 超时的复测全绿：PS1 渲染
+  流回 + `echo` 命令回显**与执行输出**（双 MARKER 实证）+ kill 干净收尾。
+  门禁：cargo 295 / vitest 439 / vue-tsc / pytest 1201 全绿。
+- **R3 远端 FS 面（D-9，2026-09-08，分支 r3-remote-fs）**：D-5 远端权威模型
+  落地。**R3a**（`9633d97`）serve fs.* op 族（v1.2）：root 相对路径语义 +
+  服务端 containment（绝对路径/.. 越界拒绝）+ ignore 与本地等价 +
+  分页对齐 LIST_PAGE + write 原子替换 + watchdog watcher（100ms 防抖批量 →
+  预留 event 帧 fs.change，change 类型与本地 notify 分类对齐；优雅退出
+  150ms 宽限 flush）。坑：observer.schedule 须传 handler 实例（传类 =
+  dispatch 未绑定，事件全丢）。**R3b-e**（`76c07f1`）Rust：ServePool（每
+  target 池化 serve 连接）+ fs_op + 事件订阅扇出；workspace 读写面/open
+  （下载临时副本+系统 opener——「本地软件打开」D-9 语义）/watcher（
+  RemoteWatcher 复用同一 debounce_loop——批处理/忽略/sticky-created 共享
+  非复制）/canonical_workspace_for（Remote 门=fs.list 探活，R2 演示时
+  本地绕行的根除）全分流，本地路径 bit 级不变。
+  **三层自动化全 PASS**：Python 12 用例；Rust 真 SSH fs 集成 0.79s（中文
+  往返/containment/根删除拒绝）；**CDP UI 面**（真实 Windows Workbench：
+  远程树 23 条目 ignore 等价/懒展开/VERSION 预览/create_file/**watcher
+  全链**——ssh 触发远端真文件变化 → 前端 workspace://changed 事件）。
+  门禁：cargo 295 / vitest 439 / pytest 1213。重跑手册
+  scripts/README-r2-tests.md（含 R3 节）。
+- **R4 远程收官 + FIX-1（2026-09-08，分支 r4-machine-ui）**：**R4a**
+  （`ccc1ccd`）svc 网关端口转发——ensure_gateway_tunnel 按需建
+  `ssh -L 127.0.0.1:P:127.0.0.1:P -N` 同端口隧道（canonical URL 零改动），
+  TCP 探活后交 opener；(target,port) 注册表复用；target 切换/清空全量
+  拆除（旧机隧道不得遮蔽新机同端口）；真 SSH e2e PASS（建立/探通/幂等
+  复用/拆除；自演环境端口空间重合两断言按语义调整）。**R4b**（`90bd18a`）
+  机器管理页——SettingsForm「远程机器」组（remoteMachines 增删改 + Rust
+  patch 链）+ WorkspacePicker 驱动切换条（本机/machines 下拉 + 远程徽章）；
+  F-A01 契约：target 状态/动作全走 settings store（layerContract 测试抓
+  住组件直连 ipc 后迁回 store——契约测试又一次立功）；CDP UI 自动化
+  FULL PASS（切换条渲染/切 remote/远程树 23 条目/回 local）。
+  **FIX-1**：历史对话 agent 图标辨识度——纯文字 badge 改 ✳/◈ 双色
+  字形（claude 暖金/codex 冷蓝 + 底色块）。**FIX-3（面板拖动折叠）留
+  下一轮**（resize 敏感区，需用户在场手测迭代）；**FIX-2（CLI 命令优化）
+  待与用户深入讨论**。
+- **FIX-2 F2-A/B 远程体验补全（2026-09-09，分支 fix2-a-serve-cli，D-10 落地）**：
+  **F2-A 控制面迁 serve**：Python 通用 `cli` op——argv 进程内复用 one-shot
+  CLI 分派、stdout 捕获解析 envelope（帧通道走缓存 stdout 句柄不受重绑
+  影响）、denylist 拦交互/流式/自引用、--format json 强制、stdin 载荷 +
+  AISC_RUN_ID 穿线；协议 v1.2→v1.3（serve_protocol 字段 1→3 跳变=无兼容
+  承诺，ready 帧加 home）；Rust run_control_target/_input_target Remote
+  分支全走 serve::cli_op（传输级失败逐出缓存会话重拉一次），ServePool
+  迁进程级 global_pool()（trace ring 静态先例，lib.rs manage 摘除 9 调用
+  点跟迁）。**实测 nas：281ms/op（per-op ssh）→ 27ms/op（serve 帧）=10 倍**；
+  硬门真机实证（旧远端 → "serve protocol mismatch client 3 remote 1 —
+  upgrade"，action=UpgradeCli）。**F2-B 远端浏览器**：remote_browse 走
+  ServePool fs.list 钉根 $HOME（v1.3 home），normalize_under_root 段归一化
+  + containment；弹层两轮手测打磨——资源管理器心智（单击选中/双击进入/
+  选定提交）、只列目录+隐藏 dotfile（◌/● 切换可显示）、跨页去重（v-for
+  按 name key 碰撞防御）、S5 matcher 抽 lib/search.ts 共享做模糊搜索、
+  固定高度内滚。**顺手三修**：①HNS 幽灵占——Docker Desktop 运行态对
+  47000-47999 整段产生 netstat/excludedportrange 双不可见的预留，纯
+  bind 全 10048 而 docker publish 正常（HTTP 200 实证），#3 的
+  wsl --shutdown/管理员保留配方两版实测均救不回纯 bind——分配器加
+  connect-probe 降级（无监听者=可发布，docker 分配器为冲突权威），
+  52 个 runtime 测试红全塌；②Windows 测试双死锁：#[tokio::test] 默认
+  current-thread 在 Windows 死锁于 tokio::process 子进程 stdio（多线程
+  flavor 即通，产品走 tauri 多线程无恙；09-07 PTY 集成当时在 WSL/Linux
+  跑所以单线程无事——跨平台盲区再现）+ ServeSession 无 Drop 兜底杀
+  （全局池会话超出测试二进制寿命时 orphan reaper 挂住 runtime 永不退出；
+  evict-retry 也会漏孤儿 ssh——真产品泄漏）；③RemoteWatcher 泵三处
+  Err→return：D-10 后会话 evict/重建属正常运维，一次瞬断即永久退场
+  （文件只剩手动刷新）——attach 循环有界退避重连+重挂 fs.watch。
+  用户手测 PASS（远程操作体感显著改善；浏览器两轮反馈全清）。
+  挂账：bash 偶发冻结（PTY 独立连接已排除 F2-A 连带，待复现取证）。
+  门禁：pytest 1188 / vitest 443 / cargo 306 / 真 SSH 集成（cli op 往返
+  +remote_browse 四断言 0.81s）全绿。
+- **F2-C 手测两轮收官（2026-09-09，分支 fix2-c-run-decouple，`a516aef..39a7fc3` 十二提）**：
+  **r1（nas 真机）**：#1 `aisc ps` split-brain——run 注册在 workspace
+  state dir 而 ps 仍读 locate_aisc_root(cwd) 锚定的另一份注册表，run 后
+  ps 恒空；改机器级扫描（workspaces 的 registry_entries/docker_states
+  公开化复用，缺席=gone、docker 不可达全 ? 不猜、active 标 * 置顶）。
+  #2 同工作区重复 run 堆容器——用户先裁决替换（`710022b`）再修订幂等
+  复用（`b9c4baa`）：live 提示复用不重建（含进入方式与重建指引）、
+  dead 清尸重建、docker 探活失败不下判断直走建流；GUI（lease 单例）
+  与 --label 槽位永不触碰。#3 detached run 残留 "Container finished."
+  前台文案。#4 tab 补全——argcomplete 接入（optional import，依赖缺席
+  只损失补全）。#5 help 中文化——用户裁决改**随系统 locale**：parser
+  英文 help 为唯一事实源，zh locale 输出层 patch argparse（`9dd703b`；
+  `1044fe1` 补组标题构建期求值——安装须在 _build_parser 前）。
+  **r2（全流程真机 + 用户裁决批 A-K）**：#1 stop --all 批量 dict 误入
+  单停文案 KeyError 栈崩（json 模式无恙的测试盲区）。#2 stop --name
+  工作区外一律撞数据根守卫——resolve_target 无条件把 cwd 解析成
+  workspace，--name 名字即地址，cwd 解析失败降级空注册表放行
+  （`8719f4a`）。**裁决批**（`365fdea`）：A label 注册 set_default=False
+  ——旁路不抢裸 `aisc claude` 主入口；B ps 星标=default 指针容器（非
+  同 workspace 全标）；C 异名系列=改名意图清尸重建（_name_series 剥
+  hash 段，别名与容器名保持一个故事）；D-K 文案/提示批（批量停止摘要
+  别名优先、workspaces 星标、runs 提示补别名键、ps 孤儿清理指引、
+  八处错误中文化、shell `--` 透传对齐 agent 糖、无目标报错温和化）。
+  **收尾两提**（`125ef53`/`39a7fc3`）：回归暴露 shell/status/restart/
+  switch/provider-set-key 无参仍走 cwd 锚定——「无参走 active」抽
+  _active_registry_root 六点统一接线；workspaces label 旁路行 [label]
+  标注防与主行混淆。**用户手感轮 PASS**（REPL/TUI/shell 透传/新语义
+  体感全过）。门禁：pytest 1198→**1212** / 72 skip（手测轮 +14 测）；
+  nas wheel 全程同步部署，CLI 日志（cli_exit 计时/退出码）定位「用户
+  自 stop 后再 stop 报错」一段乌龙全靠它还原。
+- **v2.1.10.dev0 封版（2026-09-10）**：四件套冻结（VERSION / tauri
+  2.1.10-dev / envelope fixture / notes `docs/releases/v2.1.10.dev0.md`
+  ——主题「CLI 远程化 + 工作区体验补全」）+ plans 归档
+  `docs/archive/2.1.10-dev-plans/`。周期总账：R1-R4（serve 通道/远程
+  会话/远端 FS/机器管理+网关转发）+ FIX-1/2/3 全批 + UI 审查落盘
+  （2.1.11 输入）。tag `v2.1.10-dev` → Draft release（NSIS + sha256，
+  发布按钮在用户）。
+- **FIX-3 手测 PASS 收口（2026-09-10，用户验收「无明显 bug」）**：A-D
+  十条全过。手测期间环境性拦截一起：起工作区报「No free host port in
+  47000..47999」（2026-09-10 复发，现场实证空闲口 connect 被吞非 RST、
+  错误时为 bind 全挡+connect 全应答的 loopback 拦截变象——双探针同时
+  说谎）。`e4b8c92` 根治：全应答态不再硬失败，盲选首个 exclude 外候选
+  交 Docker 权威裁决（真冲突 docker run -p 大声失败、publish-retry 双侧
+  start_hint+1 换口吸收）；GatewayPortError 收窄为 exclude 占满全段唯一
+  死局。pytest 1213；sidecar 四处重建同步。至此 2.1.10 三大件
+  （R1-R4/FIX-2/FIX-3）全收官，剩 VERSION 四件套冻结 + release。
+- **FIX-3 面板拖动折叠实施（2026-09-09 夜，分支 fix3-panel-resize，`e6078c7..603e84a` 四提，待手测）**：
+  用户裁决：折叠=VS Code 式窄条（40px rail + » 展开）；tab 行拖动=
+  TabBar↔终端分界线。**三能力全复刻先例**：拖动=PaneTree pointer 模式
+  （window move/up + role=separator + 键盘微调 + 显式 focus +
+  touch-action:none）；折叠动画=token Transition；持久化=localStorage
+  模块态（theme.ts 先例；WorkspaceView 按 runtime id keyed 重挂故状态
+  必须模块级——`lib/panelLayout.ts`：explorerWidth 240..600/
+  explorerCollapsed/tabbarHeight 40..120(null=自然高)）。**审计四修正**
+  （Plan agent 实证）：①App.vue 三条 compact scoped 规则（explorer/
+  status/sidebar）**出生即死**（data-v 永不匹配子组件元素）——删除，
+  响应式诉求迁 WorkspaceView 自有 scoped（App 新传 :tier）；②TabBar
+  下限 40 非防 32（自然高 39，overflow-x:auto 下溢出即竖向滚动条）；
+  ③折叠必须同步内联 minWidth（240 地板会把 40px rail 顶回）；④拖动期
+  禁 width transition（把手永久滞后指针），.anim 只挂折叠/展开路径。
+  **zoom 免疫**：增量式 newW=clamp(startW+ΔclientX/appScale)，scale=
+  innerWidth/.app offsetWidth（placeMenu 同式；勿用 ui.font_scale——
+  被窗口尺寸钳制）；零 rect 读取双引擎免疫。终端侧零改动——150ms
+  settle-once/veil/sendResize 串行化护栏直接受益，fitDiag 浮层为手测
+  振荡信号。TabBar border-bottom 移除由分界线接管（防 7px 双线）。
+  门禁：vitest 452→**462**（lib +9、源码契约 +10——jsdom 无布局按
+  paneCloseHit 范式钉死 width/minWidth 同步/compact 让位/v-show 保活/
+  拖动瞬跳/aria/增量公式/i18n 双键）。手测清单落盘
+  fix3-manual-test.md（A-D 十条）；PASS 后推 develop。
+- **FIX-2 F2-C run 解耦（2026-09-09，分支 fix2-c-run-decouple，`9025044`）**：
+  `aisc run <路径>` 即 detached 激活（`docker run -d` 不 `--rm`、registry
+  default 指针、激活摘要），`aisc claude`/`aisc codex` 顶层糖（活跃工作区
+  容器内 exec、`--workspace` 覆盖、`--` 后参数透传），`aisc stop` 显式
+  stop+remove（`--all` 只清 CLI-owned，workbench 拥有者不碰），`aisc runs`
+  历史 + `aisc run --resume <序号|路径>` 快照恢复（数据根 config/
+  cli-runs.json，绝对路径 + 配置快照，独立于 Workbench history）。**附
+  2026-09-09 addendum**：①别名 alias——`--name` 即工作区别名（默认
+  `super-claude-station`=未命名），record 落 alias、resume 按别名（最强键
+  同名覆盖）、`aisc runs` 显示 `@别名`；②`aisc workspaces` 机器级视图——
+  扫数据根全工作区 registry join 别名 + docker 状态，`--stop` 批量清
+  运行中 CLI 工作区。**修 9025044 三缺陷**：`_resolve_by_workspace` 误按
+  list 迭代 `list_containers`（实际 name→meta dict）+ 用错 locate_aisc_root
+  （应 workspace_state_dir）→ `aisc claude --workspace` 必崩；`cmd_stop_all`
+  同 list/dict 错位（registry.json 旧文件名残留）；激活文案 emoji 双重
+  转义成字面 `\U...`。
+  门禁：pytest 1198（含 F2-C 新测 +10）/ 72 skip；真容器 e2e 待手测。
+- **R4 手测三轮收官（2026-09-08/09，批次 field-fixes-r4-1/2/3/4 全合入）**：
+  R4 面全验收 + 远程链**真机首验**（nas = Debian 13/zsh 真远程机，非 WSL
+  自演）。修复账：一轮 #1/#4/#5（`27adac6` 会话列表容错/远程浏览禁用/
+  title 防护）；二轮 #1/#5（`31b50f1` recent 机器感知 + path_exists 按
+  target 探活 + 跨机自动切换）；#3（`0cc241d` GatewayPortError WSL2/HNS
+  指引）；r4-3（`c54579b` 图标带名 + 切换去硬编码）；**r4-4 本批三修**：
+  **#7 ssh 远端参数 shell 转义**——ssh 把 host 后 token 拼成一条命令串由
+  远端登录 shell 二次解析，host-mcp URL 的 `?` 在 zsh 当通配符直接
+  "no matches found"（bash 无匹配原样透传——WSL 门禁全绿、nas 一击即中；
+  zsh 是第一只真测试机）。shell_quote 惰性字符集裸传保持 argv 形状字节
+  稳定、其余 POSIX 单引号包裹；spawn_pieces 收敛到 spawn_argv 单一构造点
+  （双实现正是漂移温床）；同批：Remote target 跳过 --host-mcp-url 注入
+  （URL 指本机回环，远端容器内 host.docker.internal 解析到远端主机——
+  不可达噪音，远端容器按 whitelist-off 语义运行）+ 修 develop 既有
+  Windows 红测（SYS_SSH 绝对路径钉死后断言没跟，Linux 门禁绿掩盖——
+  cfg 盲区再现）。**#8 normalizePath 保留远端 POSIX 形态**——G-07 本地
+  规约在 Windows 无差别翻斜杠，远端工作区入 history 即 `\home\…`：徽章/
+  自动切换双失效 + 本机探活误报「已移动或删除」；sameWorkspace 远端比对
+  改大小写敏感（远端是 Linux fs）。**#9 未出生工作区不留 history**——
+  launcher 槽本身是 workspace 实例（出生通道），失败路径照进 recent；
+  doSave 过滤当前 launcher id，晋升实例保留 id 出生后补记。环境侧工程：
+  nas 装 CLI（本地 wheel + scp + `~/.zshenv`——zsh 非交互 ssh 不读
+  .zshrc）+ `docker save|ssh docker load` 运 super-claude 镜像。
+  **D3 HNS 数据点**：47000-47999 整段被 Windows HNS 动态保留（netsh
+  excludedportrange 实证；容器 HostConfig.PortBindings 在而
+  NetworkSettings.Ports 空 = 静默死），wsl --shutdown + 重启 Docker
+  Desktop + 关闭重开工作区后恢复——**分配时 bind-probe 防不住**（用户态
+  bind 可过、Docker 的 HNS 绑定静默死）。PASS 面：A1/A3/B3/B4/C3/C4/
+  D1/D2/D3/F1；A2/A4/E1-E3 未测（可选）。backlog：预检失败页缺「清除
+  记录」入口 / HNS 活映射校验（启动后验 NetworkSettings，死绑定→#3 指引
+  或换口重建）/ 远端 bootstrap G7（pip 装的 CLI 无 bundle，`aisc build`
+  裸远端不可用，镜像靠 save|load 运输）/ command-not-found 报错直说远端
+  未装 CLI / recent 不记机器归属（多机时跨机点击切错机风险）。
+  手测清单 `docs/plans/2.1.10-dev-plans/r4-manual-test-round3.md`。
+  门禁：cargo（lib 305 + 集成 30）/ vitest 441 / vue-tsc 全绿。
+- **R2 手测自动化（2026-09-07 深夜，用户授权全代测）**：三层替代人工——
+  ①**Rust 真 SSH 集成**（`tests/serve_ssh.rs`，AISC_TEST_SSH/RUNTIME_ID 门控）：
+  0.62s 全环 PASS（PS1/命令执行输出/G1 resize/kill-exit）；排查两坑：readline
+  逐字着色打散回显（断言改连续 marker 行）、kill 后 waiter 在 EOF-but-Running
+  settle 死循环（`InteractiveStreamHandle.wait_exit` 观察 kill 快退——kill 语义
+  =断流、exec 容器内继续）。②**真容器 e2e**：serve PTY 命令执行输出双 MARKER
+  实证。③**UI 面 CDP 自动化**（`scripts/r2-ui-cdp-test.py`，WebView2
+  remote-debugging-port 9223 + vite `/@id/` 动态 import invoke/Channel）：
+  **真实 Windows Workbench 进程内** target_set(wsl) → open_session(Remote:
+  Windows→ssh→WSL serve→Docker) state=running → PtyEvent 流经 Channel 到前端
+  → write_session 命令执行输出确认 → resize_session → close/exit 事件 →
+  target_clear，**FULL PASS**。途中根治一产品 bug：**Windows GUI 进程 PATH
+  可能解析到 Git msys ssh**——`CliTarget::Remote` 在 Windows 固定用
+  `C:\Windows\System32\OpenSSH\ssh.exe` 绝对路径。xterm 像素渲染未自动化
+  （组件逻辑 vitest 覆盖）。重跑手册 `scripts/README-r2-tests.md`。
+- **R1 serve 通道 + 传输抽象（D-7，2026-09-07）**：双通道模型落地——低频
+  控制面 per-op ssh / 流式面 serve 长驻。三件：
+  **R1a** `aisc serve --stdio`（Python，`7112e18`）：帧协议 v1（ready 横幅
+  serve_protocol+cli_version 配对握手 → 请求/响应单帧承载 envelope →
+  log/event 帧类型预留）；op 直调 application 层（version/doctor/ps，doctor
+  exit_code 保真）；坏帧/未知 op 回错误帧进程不死；EOF/SIGINT/SIGTERM 优雅
+  退出；stdio 无 token（D-7：SSH 即认证，TCP 模式须重新裁决）。9 用例。
+  **R1b** `CliTarget` 抽象（`02a663f`）：`run_control_target/_input_target`
+  新入口；`run_control_inner` 参数化（Local 原样 / Remote=ssh
+  -p/-i/BatchMode=yes/ConnectTimeout=15 host aisc argv）；旧签名 wrapper
+  保留，41 调用点零改动零行为变化；KI-6 PATH 注入仅 Local；4 个 argv 形状
+  单测。
+  **R1c** Rust serve 客户端（`540a6b2`）：`ServeSession`（spawn_local/
+  spawn_ssh 复用 spawn_pieces）；握手硬门 serve_protocol==1、cli_version
+  记录展示（AISC 兼容面=envelope 协议+caps，与 VS Code commit 等值配对
+  设计源不同）；id 关联 + 陈旧帧跳过 + log/event 透明略过；shutdown EOF
+  优雅 + 3s 宽限。线级函数流泛型 duplex 可测（6 单测）+ AISC_TEST_CLI 真进程
+  腿（venv aisc 三 op 往返 4s 跨语言实证）。坑：duplex 对端互通——client 读
+  自己写的帧永久阻塞（首轮测试卡死源）。
+  本地门：cargo 297 / vitest 439 / pytest 1197 全绿。**A5 手测 PASS（双条）**：
+  ①本地直连（用户执行，version+ps 双帧干净往返）；②真 SSH 链路——WSL 内
+  一次性 sshd :2222（22 被 Windows 侧占用反射进 WSL，bind 失败，换口绕开）+
+  BatchMode 公钥认证，serve 帧协议跨机端到端（ready+version/doctor envelope）。
+  坑入库：WSL 内 ss 无监听者但 bind 22 报 already-in-use = Windows 端口占用
+  投射（phantom 端口坑近亲）。
+
+# v2.1.9-dev (2026-08-20 ~) — 四挂账清偿 · nairong 根因链 · 构建韧性 · 优化批次（分支 develop）
+
+> 规划入口：`docs/plans/2.1.9-dev-plans/`（README 阶段表 + decisions.md D-1..D-13 +
+> opt-batch-spec.md + f1-f2-design.md + provider-parity-design.md + f1-f2-field-fixes.md +
+> **perf-batch-spec.md**）。VERSION 冻结前保持 2.1.8.dev0。
+
+- **T1-T6（四挂账统一清偿）**：#53 隔离测试钉第二 tempdir；#50 ble.sh 移除（vendor +
+  门控 + D-1 修订）；#3 归因全量修复（R1 容器登记桥 / R2 env 兜底 / R3 呈现层按 D-6
+  降级）；#28 VM 闪烁主攻（fit 遥测 + 振荡自诊断浮层 + sticky cell 冷却）；T5 全矩阵
+  回归收口；T6 变更页朴素化（归因呈现降级，D-6）。
+- **nairong #61 三轮根因链（hotfix）**：bash 零输出退出 → HOTFIX1（fit 方向，证伪回滚）
+  → HOTFIX2（传输异常捕获 + stderr 可见性——本轮回溯发现了真凶）→ HOTFIX3 **根因**：
+  zh-CN 下 docker-py `from_env()` 读 docker context `meta.json` 不带 encoding → GBK
+  UnicodeDecodeError → sidecar 崩溃 exit 1 零输出。三层修复：`docker.from_env` 安全
+  工厂（任意异常回退 npipe 默认端点，docker_.py + docker_gateway.py 双侧）、pty.rs
+  stderr 改 piped 并作为 Output 事件入流（真实 TTY 交错语义）、session 生命周期落
+  时间线（session_exit info/error）。`lib.rs` `ensure_sidecar_utf8()`（PYTHONUTF8=1）
+  进程级兜底。用户 VM 中文用户名路径复现 PASS 确认（2026-09-01 前）。
+- **T7（D-8）**：zsh 换默认 shell 后 help 教学引导缺失 → aisc-zshrc §7 help() 以
+  `__AISC_TUTORIAL_EOF__` heredoc 逐字节复刻 tutorial.py `_TUTORIAL`（SSOT 防漂移测试
+  三连：zshrc help 存在 / heredoc==_TUTORIAL / bash env 回退）。
+- **T8（D-9）构建网络韧性硬化**：Dockerfile 全动作审查出 CN 网络五个无兜底点。修复：
+  apt 重试×3 循环、pip 清华源兜底、npm 三坑落地（`npm i -g file.tgz` 同名平台包冲突 /
+  `npm cache add`+`--offline`=ENOTCACHED 无 packument / 终局=file: manifest + alias key
+  装进 /opt/aisc/npm + symlink——**离线重装实证通过**）、yazi 预设经 ghproxy 链、
+  geodata 下载清理；宿主侧 `stage-npm.sh`（PY 探针绕 WindowsApps stub、多架构、
+  `npm:` alias spec 解析、skip-if-current）+ `_ensure_base_image` 镜像链预拉
+  （本地命中跳过 → 三镜像链 600s → tag 本地名，失败给 registry-mirrors 三段指引）。
+  中毒链演练 + 离线全量重装验证。CI Windows Docker 冷启动竞态 → 就绪门（30×10s，
+  `b4dd1e8` 后四 lane 稳定绿）。
+- **F1/F2 设计定稿（D-10，未实施）**：F2 宿主工具 MCP（streamable-http + 白名单 +
+  只读筛，streamable-http 是 Rust 侧第一个本地监听服务；P0 通道 PoC 待实测）先于
+  F1 SSH 双向同步（mutagen，影子目录=真工作区→身份链 11 触点零改动）。裁决表 +
+  安全模型 + 待决问题五项全档 `f1-f2-design.md`。用户裁定：**优化批次优先于新功能**。
+- **优化批次规格冻结（D-11）**：三路只读探针（前端流/渲染/分屏 · provider 链/daemon ·
+  性能旋钮/缓存/冷启动）+ 用户五条报障 + 五点裁决 → `opt-batch-spec.md` O1-O9 合并
+  规格 + §G 八条实施红线。关键实证：分屏 × 与滚动条 z11 同 stacking context 6px 重叠带、
+  渲染路径零遥测、外层 30s < 内层串行舞步可超 30s、daemon 无 watchdog 被 OOM 即静默躺平、
+  build cache 6.7GB 无 UI 入口、冷启动 70s 中全量复制占 29s。
+- **O1（`ee62b07`）分屏 × z 序修复**：`.pane-close` right 4→18px 让出 xterm 滚动条带 +
+  z 2→--z-overlay(20) 恒可点；截断角标 right 10→48px 错位。几何契约钉进
+  paneCloseHit.test.ts（源码契约扫描 + 真挂载点击双范式——jsdom 无布局，几何断言沿
+  tokens.test.ts 源码扫描范式）。
+- **O3（`e664208`）渲染路径三态遥测**：mountWebgl 成功/构造失败/context-loss 经 store
+  choke point `logRendererEvent` 落共享时间线（组件不直接 import logUiEvent，沿
+  logTerminalResizeError 层契约）；事件带 WEBGL_debug_renderer_info 摘要 + 软渲染判定
+  （SwiftShader/llvmpipe 低配信号）；fit 遥测行补 renderer 字段。
+- **O9（`7fd6111`）取消懒布局**：用户直接下令。重开工作区全量恢复——initTabs 删 lazy
+  分支 + wakeDormantTab、activateTab 删唤醒路径、TabSessionState 删 "dormant" 枚举、
+  TabBar/i18n 双语同步收缩；layoutLazyRestore.test.ts 改写 layoutRestore.test.ts
+  （全量恢复语义：每 tab 立即开 session、重激活不双开）。
+- **O2（`8ca2423`）输出截断 → 磁盘 spool**：用户裁决"难道就非截断不可吗"的终局答案。
+  Rust：PtyEvent::Output 带全局 raw offset（stdout/stderr 双泵共享 SpoolWriter 互斥
+  推进）；`<数据根>/sessions/<sid>.spool` 追加写（unix 0600），写失败降级内存-only +
+  一次性时间线事件；offset/committed 分离防半写错位回放；新 ipc `session_read_spool`
+  （≤2MiB/页）；spool 随 entry 生命周期删除（ack/close/TTL sweep）+ 启动清扫 24h 残留。
+  TS：streamBuffer offsets 平行数组（headOffset 锚点）；常驻截断角标改"加载更早"按钮
+  （活会话限定）——clear + spool 段 64KiB 分块 + 窗口全量重放，consumed 重置到 cursor
+  活流无缝续接；eof/失败禁用。三不变式（streamCursor 单调/每帧单响应式替换/服务端阻塞
+  背压）全保持。**顺手修存量 bug**：session.rs `snapshot_serializes_camel_case` 缺
+  闭合 `}` 致其后 5 个测试被吞成嵌套函数从未运行（复活首跑即暴露
+  shutdown_request 的 JSON 转义存量错，一并修复）。
+- **本地门（每项独立 commit 前）**：vitest 422 / vue-tsc 干净 / cargo 262+25 集成 /
+  pytest 全量绿。O5-O8 待实施；外部证据待收：8G 笔记本 doctor 导出（O5）、长对话
+  恢复复现样本（独立 bug）。
+- **手测反馈批次（`1775fe2`，2026-09-02 八条反馈）**：O1（×可点 + Ctrl+Shift+W）、
+  O3（renderer_mount 33 次落时间线，Intel Arc D3D11 硬渲）手测 PASS；三项行为修正：
+  **O9 r2**（用户裁决升级——重开工作区不恢复布局，恒全新默认单 bash tab，r1 全量
+  恢复被否）；**#4** 新建 agent 分屏"加载动画"感 = B-05 首帧 resize veil（全新 term
+  无 stale grid 可盖 → 删首帧 veil，re-show 保留）；**#5c** narrowTui 去 bash 豁免
+  （bash 内嵌 claude/codex TUI 同样乱码，<60 列一律 overlay）。诊断定性三条：#5b
+  "分屏后长间隔自动重绘"= claude 自身 TUI 空闲点重绘（上游行为）；#6"反复输出"
+  图中为 Claude Code 后台 agent 正常进度块（各仅一次）；日志实证 O6 铁证——
+  aisc.log 单文件 `cli_exit` 555 / `op` 540（轮询链海量 spawn）。待用户裁决：
+  #5a bash 内唤起 agent 的 scrollback 混看（语义/产品题）、#8 变更页"⇄ 移动"
+  类型标签去留。
+- **两项用户裁决落地（`49dc539`）**：**#8 误报根治**（用户指认该文件实为 claude
+  新生成）——agent 原子写 = 写临时文件 → rename 成正式名，notify 的 From(temp)
+  半边被 is_temp_file 过滤吞掉、孤儿 To 被判 renamed → 新文件误标"⇄ 移动"；
+  TempRenameTracker 让 1s 窗内配对的 To 判 created（真 mv 语义不变，watcher
+  +3 单测）。**#5a 滚动回看指示器**（裁决：不唤起清屏）——视口位于活尾部之上
+  时左上角 chip"已上滚 N 行（正在查看历史输出）"+ 一键回到底部，挂
+  .xterm-viewport 原生 scroll 事件。本地门：vitest 421 / vue-tsc / cargo 265。
+- **第二轮手测反馈（`fa66d6a` + `00c67ab`）**：**#1b codex 新文件误标"修改"**——
+  codex 写新文件 = Create → Modify(Data) 事件对，ChangeBatcher 裸 last-write-wins
+  让 modified 覆盖 created；改批次内类型格合并（出生粘性/删除终态/rename 高于写，
+  watcher +2 单测）。**#5a 裁决反转**（指示器实测未生效——xterm 6 的滚动节点
+  已不是 .xterm-viewport，且用户判定不必要）→ 撤 scrollback-chip，改为三
+  wrapper（claude/codex/cc-switch）手动唤起即 clear（含 E3 回滚区）；判据
+  AISC_AGENT——agent 页签直启（session wrapper 注入自身名）不清屏，bash 会话
+  （继承 bash）与外部手动（未注入）清屏。vendor-refresh 重校验 1513 files。
+  **镜像重建 + 手测 PASS（2026-09-02）**：cls 生效、codex 新文件正确显示
+  ＋新建；期间揪出暂存失同步问题——target/debug/aisc-bundle 的 wrapper 三副本
+  STALE（首次"没效果"的根因），同步后重建 `super-claude:latest` 并容器内验证。
+  **13 commit 推送 + 四 lane CI 全绿**（Workbench/CLI sidecar/Bundle/NSIS）。
+- **O5（`8027de7`）cc-switch daemon 60s 健康巡检自愈**：entrypoint 后台循环
+  （探测 status → 失联则 stop 清 pidfile → start --detach → 就绪等待 → 重跑
+  reconcile 幂等收敛），日志 /tmp/cc-switch-patrol.log，AISC_CC_SWITCH_PATROL=off
+  可关。探针快照校对（§G.8）：spec 中"real 判定依赖 base_url 可解析"实证不
+  成立（实际只查 env/TOML 键存在）——判定保持现状。**容器内注入验证 PASS**：
+  kill -9 daemon → Connection refused → 巡检 60s 窗内恢复新 daemon 进程 +
+  reconcile 执行（裸容器 current=official 正确 disable）。8G 笔记本实机复验
+  待外部证据（doctor 导出）。
+- **O4（`dd2ff9b`）provider 切换链重构**：改前基线（op 遥测）n=10 p50=1455ms
+  p95=9700ms 双峰。容器侧四刀——① codex 在线 /models 抓取（每候选 6s×2 串联）
+  移出切换主路径：静态 catalog 同步落盘（零网络）+ `_spawn_catalog_refresh`
+  后台 spawn `catalog-sync --live` 异步合并；② 幂等快路径单次 TCP 探测；
+  ③ `_recover_route` 盲睡 1.0s → daemon 就绪轮询；④ `_real_run_cli/_raw`
+  per-hop duration trace（/tmp/aisc-provider-trace.log）。超时对齐：网络移出后
+  内层最坏 ≈11s+恢复余量 < Rust 30s，外层不动。前端 busyOp 语义化（fetch
+  只读解禁全面板）+ 切换中实时计时横幅（无流式事件下的诚实进度）。
+  **A/B 实测（同容器同 db）**：挂起端点直调旧 `_live_fetch_catalog_ids` =
+  **12074ms**（每候选 6s 超时串联，p95 9.7s 场景完美复现）；新主路径
+  **稳态 110-115ms / 冷启 486-747ms，网络恒 0**（结构性移除）；同环境旧版
+  稳态 128-463ms。本地门：adapter 69（+3 新测：主路径零网络/spawn 静默/
+  单探）/ pytest 1084 / vitest 421 / vue-tsc 干净。镜像已重建（O5+O4 叠加），
+  与 O5 合并交用户手测。
+- **第三轮手测（2026-09-02 晚）**：用户报切换/取消代理依旧 ~10s。日志取证
+  `op cc-switch 8330/9275ms`（14:01Z）确凿；但容器内新代码 A/B 实测主路径
+  110-180ms（exec 链 177ms + provider list 45ms），结论——**用户容器锁定旧
+  镜像**（O4 镜像 21:0x 重建，runtime 容器是 19:4x cls 版启动的，未 remove+
+  start 吃不到新 provider）→ 指引用户重建容器复测。**产品缺陷记 backlog**：
+  镜像更新对已存在容器不可见（启动时比对 image id 提示重建，归 O8/后续）。
+  fetch-models 成功反馈落地（`009b3f2`，绿色 hint.ok + i18n 双语）——此前
+  仅失败有提示。O5 用户采纳注入验证免测。
+- **O4 r2（`2294348`）舞步重排根治 8-9s 切换**：用户复测"重启 npm run dev
+  依旧 ~8s"（重启前端不换容器，且——更关键——慢的根因根本不在镜像新旧）。
+  全链自建 runtime 复现 8.5s → 二分法排除（key 网络验证/PID1 全 env/subprocess
+  形态/provider 进程上下文/连打锁竞争逐一 320ms）→ **完整舞步复刻实锤**：
+  上游 cc-switch 5.10.4 在 proxy disable 紧跟 provider switch 时，switch 的
+  daemon 交互阻塞 ~6.5s（disable 触发 worker teardown，switch 等超时回退）。
+  绕法 = 舞步重排 switch → disable → enable（§G.7 只绕不改；token 捕获
+  不变量与全部失败恢复路径保持）。**端到端 4 轮：8.5s → 2.2s**，路由终态
+  健康。O4 r1 的容器侧优化（catalog 移出/单探/轮询/trace）全部保留——trace
+  正是这次根因定位的功臣。镜像重建中。
+- **推送事故与修复（2026-09-02 深夜）**：13 commit 推送后三条 lane（Bundle/
+  Workbench/NSIS）类型失败——dd2ff9b 提交 O4 时**漏 add ccSwitchUi.ts**，
+  busyOp 定义留在本地而引用随 009b3f2 入库；本地 vue-tsc 因工作区文件齐全
+  一直干净遮住了缺口。补提交（`35043e7`）+ 教训记入 commit message：commit
+  前核对 staged 清单覆盖 message 声称的全部文件。
+- **O6（`96a7ff0` + doctor 提交）轮询自适应退避 + WSL 内存引导**：纯函数
+  pollBackoff 状态机（单次慢刷新 >1.5s 升档 5s→10s→20s，连续 3 次快 <1s
+  降一档，快机恒 5s 零变化；失败也计时——超时是最强慢信号）+ useRuntimePolling
+  接线 + 5 单测；doctor 新增 wsl-memory 检查（Windows ≤8GB 且 .wslconfig 无
+  memory 上限 → WARN + 建议片段，advisory 永不阻断；ctypes GlobalMemoryStatusEx
+  无新依赖；8 单测含大小写/节外行/平台注入）。**O6b 记 backlog**：lease 心跳
+  每 15s spawn 完整 aisc.exe 只为文件 mtime 续期（lease.rs 文档实证）——Rust
+  直写可根治（每工作区每小时省 240 次进程 spawn），跨 Python 域契约需单独
+  实施与契约测试。
+- **O7（`f67d9e0`）build cache 清理产品化**：application 层 cache_usage +
+  docker_cache_cleanup（builder prune + dangling 镜像，均 --filter until=；
+  不变量钉死：绝不 system prune、绝不 -a、<1h 拒绝）+ maintenance 新子命令；
+  Rust cache.rs（doctor.rs 同模式 envelope 校验）；设置页新"磁盘与缓存"组
+  （df 四行摘要 + 刷新 + 确认一键清理 24h + 清理日志），settings store 层
+  契约。真机 df 冒烟 ✓（本机 Images 2.6GB/Build Cache 6.7GB 4.1GB 可回收）。
+  sidecar 重建（PyInstaller）+ 三处同步（binaries/target debug/bundle）。
+  单测：pytest 8 + cargo 5；vitest 426。O7b doctor 阈值检查项记 backlog
+  （df 已在卡片可见，阈值提示收益小）。
+- **O8（`f1d95be` + 两补丁）冷启动两刀 + 实证基线修正**：本机实测首启
+  22.6s（含全量复制）/ 二次冷启动 **1.9s**——spec 的 70s 分解（复制 29s/
+  daemon 10s/mihomo 12s）是慢速 bind mount + proxy 首启的极端场景，跳过门
+  与 daemon 就绪轮询本已达标（快照漂移记录，daemon 等待无需改）。两刀：
+  ① factory-version 变化从"仅提示"升级为出厂资产增量同步（cp -ru 只写
+  新增/更新，范围限 skills/plugins/commands；用户自建不删不动；顶层用户态
+  绝不触碰）+ FV 推进写后校验重试；② mihomo 探测 3x(4s+10s)→3x(3s+8s)。
+  **容器内终验 PASS**：假 FV → restart → FV 前进至镜像版 + USER-OWNED 文件
+  保留；二次冷启动 1.86s 无回归。验证插曲：诊断中发现前几轮"FV 写失败"
+  实为验证 exec 早于 entrypoint 写入（grep 匹配旧日志提前放行）——时间线
+  错觉非真故障；diag 铁证 cat 写 rc=0 且读回相等。**至此 opt-batch O1-O9
+  全部完成。**
+
+# Stage 7 (2026-08-17) — Windows Data Root（AISC Next Follow-up，分支 stage-7-windows-data-root）
+
+> 规划入口：`docs/plans/aisc-next-followup/stage-7-windows-data-root/`。把初始化/运行产生的配置、状态、runtime、日志、缓存、artifact、诊断和迁移文件统一收纳到 `%LOCALAPPDATA%\AISC\data`，workspace 只留用户文件；提供旧布局迁移。证据台账：`stage-7-windows-data-root/acceptance.md`。
+> **总门 PASS（2026-08-17）**：A-DATA01..05 真机全过 + 用户 Workbench 手测确认。
+
+- **7a contract**：`aisc.data-root/v1` 纯域契约 + 只读 `DataRootResolver`（Python SSOT
+  `src/aisc/{domain,application}/data_root.py`，Rust mirror `workbench/src-tauri/src/data_root.rs`）：
+  平台默认根（Win `%LOCALAPPDATA%\AISC\data`，跨平台 XDG）、`AISC_DATA_ROOT` override
+  校验（绝对路径/无空白/与 workspace 双向不重叠，fail closed）、reparse segment 拒绝、
+  `sha256-v1` 全量 workspace hash（目录名冒号→连字符，Windows 合法）、契约布局目录映射；
+  Python/Rust 共享向量 fixture `tests/fixtures/data-root/hash-vectors.json`（CJK/emoji/UNC）。
+  未接线——现行为不变（接线在 7e）。本地门：pytest 17+8 subtests / cargo data_root 8 /
+  全量 572 OK + 181+7×3。
+- **7b storage**：`adapters/data_root_store.py` 统一存储 API：幂等 `prepare` 契约骨架、
+  跨进程 fail-closed `file_lock`（msvcrt/fcntl，error_code 可参数化以便 7e 保留
+  STATE_LOCK_TIMEOUT 语义）、rel 路径校验（artifacts validator）、原子 UTF-8 写
+  （同目录 temp + fsync + replace）、损坏隔离 `*.corrupt`、写前 reparse 链复检（TOCTOU
+  防御）；稳定错误码下沉 domain。未改现有 writer（7e）。本地门：store 12 passed
+  （含子进程持锁超时用例）/ 全量 584 OK。
+- **7c legacy-scan**：`domain/data_migration.py`（known-owned allowlist + 瞬态集 +
+  目标映射 + `aisc.data-migration/v1` manifest，from_dict 对错误
+  schema/version/state/classification fail closed）+ `application/legacy_scan.py`
+  只读 walker：owned/unknown 计算 sha256、冲突按 hash 比较（同字节仍 owned、异字节
+  conflict）、无 AISC 初始化标记的同名目录判 foreign（只报告不迁移）、symlink/junction
+  不穿透、AF_UNIX socket（reparse tag）计瞬态。真实 workspace 实扫 **3127 owned /
+  8 transient / 0 unknown / 0 conflict**，实扫反哺 allowlist（补
+  `.claude/{.claude.json,.factory-version}` 与 daemon.sock 处理）。执行/回滚在 7d。
+  本地门：legacy 11 passed + 18 subtests / 全量 595 OK。
+- **7d migration**：`application/data_migration.py` 两阶段执行器（staging 复制 + SHA-256
+  校验 → 同卷原子 `os.replace` 提交；manifest `migrations/<ws>.json` 先落 prepared、
+  逐条推进、崩溃可 resume；取消保留可恢复 manifest；全迁移命名空间写只读
+  `.aisc-migrated` 重定向标记；rollback 只删 manifest 内且 hash 未变的目标、恢复
+  quarantine、清标记；unknown 仅在显式 `--quarantine-unknown` 下 copy→verify→删源）+
+  CLI `aisc data-root doctor|migrate --dry-run|--apply|rollback`（冲突/未同意 unknown/
+  空间不足/源变更均稳定错误码非零退出）。真实 workspace dry-run：3127 文件/~62MB、
+  零冲突零 unknown。本地门：executor 13 + CLI 5 passed / 全量 613 OK。
+- **7e wiring**：五步接线——(1) registry/state 适配器改「root=state 目录」，
+  `workspace_state_dir` 边界 + legacy 首用收养 + `_resolve_root` 消除 stop/ps 与 run
+  的注册表双轨；(2) config workspace 层 canonical 优先 + legacy 回退；(3) artifact
+  注册表统一到 `<data-root>/artifacts`（Python/Rust 双侧 legacy 读回退）；
+  (4) Workbench `config_dir`→`app_state_dir`（Roaming 收养/回退）+ 诊断包 `dataRoot`；
+  (5) 容器 project 态四个 data-root 挂载（entrypoint 挂载优先、旧宿主回退
+  `/root/app`），宿主预建目标、fail closed；DATA-01 回归门（挂载 argv + workspace
+  零新增）。修测试封闭性：7 模块注入 hermetic data root（此前真实 LOCALAPPDATA 被
+  写入）。本地门：全量 620 OK / cargo 183+7×3 / workspaces 污染 0。
+- **7f gate（真机）**：A-DATA01..05 全 PASS——fresh workspace 经 CLI+60 并发注册+**真实
+  容器跑**（super-claude:latest + 新 entrypoint/wrapper bind-mount + 四 data-root 挂载）
+  保持零新增，data root 收全量（claude 2171/codex 479/cc-switch 479+db+daemon 态）；
+  用户实际 legacy workspace 副本 3127 文件迁移/幂等/回滚全链路；并发 60 写入零丢失；
+  CJK/emoji/空格/359 字符长路径迁移 PASS、junction 拒绝。**根因修复**：镜像内旧
+  cc-switch wrapper 硬编码 `HOME=/root/app` 回写 workspace → 改 `/proc/mounts` 挂载
+  检测推导 HOME（`586aa24`，含显式 `--apply` flag）。发布前提：release 镜像重建烧入
+  新 entrypoint+wrapper。本地全量门：Python 621 / cargo 183+7×3 / vitest 213 /
+  vue-tsc 干净。
+- **7f 手测期间的三个连环修复**：① 泄漏测试写进真实 `%LOCALAPPDATA%\AISC\data\config`
+  的垃圾 onboarding 文件触发 `UnsupportedSchema` 死锁向导 → 无 schema_version 的文件
+  按损坏隔离+空态（`5899a8c`）；② `+` 新建 tab 菜单被 tabbar 滚动容器裁剪（Stage 6
+  UX-02 回归，非 Stage 7）→ Teleport + zoom 补偿（`aa10cd0`）；③ 镜像重建后仍污染 →
+  覆盖桥挂了陈旧 `target/debug/aisc-bundle` 暂存把新镜像降级 → **移除覆盖桥、镜像为
+  容器脚本唯一事实源**（`aa7ca34`），并用真实 sidecar 完整流程（start→session→stop）
+  对新镜像复验全净。**用户手测 PASS 确认（2026-08-17）**。
+- **启动序列**：followup 计划入库（`5ec13bb`）；`aisc-next` 整体归档
+  `docs/archive/completed/aisc-next`（`e0af206`）；实测 fresh 初始化 workspace 清单
+  （`.aisc/.claude/.codex/.cc-switch/.local`，~3130 文件/~69MB）入 02-domain-contract。
+
+# Stage 6 (2026-08-16) — UI / a11y / 可观测性 / 发布收口（AISC Next，分支 stage-6-ui-release-convergence）
+
+> 规划入口：`docs/plans/aisc-next/stage-6-ui-release-convergence/`。在新增工作流稳定后统一
+> 视觉/响应式/a11y/诊断并完成跨阶段发布门。证据台账：`stage-6-ui-release-convergence/acceptance.md`。
+> **此为上一步之后的 aisc-next 七阶段收尾阶段。**
+
+- **6a KI-1 查因**：`engine_reachable` 改经 Docker Desktop 自带 CLI 路径（ProgramFiles/
+  LOCALAPPDATA `resources\bin`）解析，回退 PATH；失败返回 redacted `engineDetail`，
+  向导就地显示"引擎探测详情"（不再静默 starting）。
+- **6b tokens（UX-01）**：`--space-*/--font-*/--radius-*/--shadow-*/--z-*/--duration-*`
+  设计 token 集 + 状态色；全组件精确迁移（零视觉变化）；`tokens.test.ts` 门禁。
+- **6c responsive（UX-02）**：Compact<640/Standard/Wide>1100 按有效 box 宽度
+  （viewport/zoom）；`data-tier` 驱动 compact 规则；TabBar 横向滚动。
+- **6d a11y（UX-03）**：`useDialogA11y` focus trap + opener restore；全局
+  prefers-reduced-motion + xterm smooth-scroll 归零；右键菜单 Menu/Shift+F10 键盘开启。
+- **6e i18n（UX-04/05）**：顶栏 status + sidebar sessionState 裸 enum → i18n 映射；
+  CSS zoom rem 迁移 **NO-GO**（D6-09，保留 zoom）。
+- **6f observability（REL-01）**：有界 op 耗时环（run_control/env/start_docker 喂入）+
+  `op_traces`；`diagnostic_bundle` allowlist 脱敏包（导出前展示清单）；DoctorDialog 最近
+  操作 + 导出按钮。
+- **6g migration（REL-03）**：settings/onboarding/artifact previous-version fixture
+  测试；history v1→v2 已有覆盖；unsupported schema fail-closed。
+- **遗留**：KI-1（Docker ready 检测，待用户最终确认探测详情）、KI-2（初始化引导界面需
+  重新手测，暂不处理）、ISO-1（离线安装包做 ISO，未实现）——见 `aisc-next/todo.md`。
+- **本地门**：pytest 508 / cargo 194 / vitest 213 / vue-tsc 干净；CI 对 `e8cb233`（`--no-ff`
+  合并）全绿（Workbench CI / Bundle Linux·macOS / NSIS）。
+
+# Stage 5 (2026-08-16) — Installer 与首次启动引导（AISC Next，分支 stage-5-onboarding-installer）
+
+> 规划入口：`docs/plans/aisc-next/stage-5-onboarding-installer/`。专业、简洁、失败可恢复的首次使用体验：NSIS 安装器 + schema 版本化的 Tauri 首次向导（环境/工作区/Agent/可选网络/Runtime/完成）。证据台账：`stage-5-onboarding-installer/acceptance.md`。
+
+- **5a onboarding state（ONB-01）**：`onboarding.json`（status/current/completed/skipped/last_error_code/source）跨进程锁 + atomic replace；corrupt 隔离、高版本 fail-closed、升级保留完成态。
+- **5b NSIS handoff（INS-01）**：安装器只做文件/PATH/sidecar/WebView2/Docker 引导，写非敏感 handoff（`InstallerSource/InstalledVersion/FirstRun/DockerHint`），不配置 workspace/provider/runtime。
+- **5c 环境就绪（ONB-02）**：CLI / Docker installed / Engine ready 分离；Docker 缺失时向导一键 winget 安装（await 完成 + 真实错误 + `CREATE_NO_WINDOW`）；WebView2 三根注册表探测；`env_readiness`/`env_poll_engine`。
+- **5d workspace/agent（ONB-03/04）**：新建/选择/最近恢复 + Agent readiness 语义映射（不暴露 secret）。
+- **5e 网络（ONB-05）**：direct/host proxy/container TUN + 显式确认 + skip/revoke。
+- **5f runtime（ONB-06）**：preflight/冲突审查/可恢复。
+- **5g 完成 + 重开（ONB-07/08）**：完成进入工作区；Settings 可重开向导；handoff 非事实（Workbench 二次验证）。
+- **两轮手测修复**：`3383dbb`（第 1 轮：Docker 安装 UX/WebView2 检测/首启竞态）+ `641bc67`/`bae03fc`（第 2 轮：欢迎页配置读取恢复、CLI 全发现、实时轮询、**离线安装包**（内置 Docker Desktop 安装器，mihomo 式）、**Windows toast**（安装完成/引擎就绪））。
+- **遗留 KI-1**：向导环境步骤仍可能无法实时识别 Docker ready（引擎可达却显示 starting）→ 记录 `aisc-next/todo.md`，Stage 6 优先查因（已加探测详情诊断）。
+- **本地门**：pytest 508 / vitest 205 / cargo 186 全绿；CI 对 develop `4c0d60a`/`bae03fc` 全绿（Workbench CI / Bundle / NSIS）。
+
+# Stage 4 (2026-08-16) — Python DockerGateway（AISC Next，分支 stage-4-docker-gateway）
+
+> 规划入口：`docs/plans/aisc-next/stage-4-docker-gateway/`。在不改变 Python 控制面所有权的前提下统一 Docker 结果、错误与 backend，逐步减少 subprocess 文本解析。证据台账：`stage-4-docker-gateway/acceptance.md`。
+
+- **4a 契约（DG-01/02）**：`DockerGateway` runtime Protocol + `domain/gateway.py` operation envelope（operation_id/backend/exit_code/duration/stable error/cleanup/timed_out）+ 8 个类型化结果；`DockerExecutor = DockerGateway` 兼容别名（D4-02）；`create_docker_gateway('auto'|'sdk'|'cli')` 工厂。
+- **4b/4c query+lifecycle SDK 化（DG-03/07）**：Fake docker-py client（recording + fault injection）驱动 `SdkGateway` 的 preflight/inspect/list/start/stop/remove/wait；`wait_container` 修复 `requests.ReadTimeout`（非 `DockerException`）逃逸 → 稳定 `DOCKER_ERR_TIMEOUT`；remove 已不存在容器幂等。
+- **4d interactive（DG-04）**：`open_interactive` 从委托改为自持完整 SDK 生命周期（exec_create→start→AISC_RESIZE_FILE 初始+轮询 resize→原始流→inspect→join 收尾），无资源泄漏。
+- **4e Build 基准 + NO-GO（DG-05）**：`scripts/bench/build-bench.py` 真实 daemon 离线基准——CLI p50 578/p95 1192/max 1260 vs SDK p50 92/p95 1844/max 2039；SDK 中位数优势来自缓存层复用、尾部更差 → **Build 保持 CLI backend**（决策文档 `build-benchmark-decision.md`）。
+- **4f release gates（DG-06/08）**：auto/sdk/cli flag 可回滚、application 不感知 backend（backend 仅存诊断 envelope）；全库回归 508 passed；D4-08 未满足（无三平台实机 + 未删除重复实现）前保留 CLI backend，30 处 `RealDockerExecutor` 调用点零改动。
+- **本地门**：pytest 508 / vitest 176 / cargo 170 全绿；CI 对 `989f297`（`--no-ff` 合并）全绿（Workbench CI / Bundle / NSIS / cli-sidecar）。
+
+# Stage 3 (2026-08-15 ~ 2026-08-16) — Workspace Explorer 与 Agent Artifact（AISC Next，分支 stage-3-workspace-artifacts）
+
+> 规划入口：`docs/plans/aisc-next/stage-3-workspace-artifacts/`。让用户能浏览当前工作区，并可靠发现、打开、Reveal、复制 Agent 交付物路径。证据台账：`stage-3-workspace-artifacts/acceptance.md`。
+
+- **3a `aisc.artifact/v1`（ART-01/02）**：Python domain schema + `aisc artifact record/list/inspect/clear-session`；session-scoped JSONL registry 在宿主数据目录（`%LOCALAPPDATA%/aisc/artifacts`），不污染 workspace（A-ART04）；relative/create/modify/delete/rename/missing/duplicate 矩阵。
+- **3b Rust 索引与 containment（ART-05/06）**：`artifact.rs` versioned index（revision/lock/atomic replace/corrupt isolation）、`workspace.rs` canonical containment（symlink/junction/UNC/case 越界拒绝）、preview budget 与 secret redaction；IPC `workspace_list/open/preview/reveal/copy`。
+- **3c lazy 树 + Artifact 面板（WX-01/02/04）**：懒加载树（分页 200、dirs-first、ignore 默认集）、文件动作、Artifacts 面板按 Deliverable/Source change/Generated/Unattributed 分组。
+- **3d watcher（WX-03）**：notify 递归 watch + debounce/coalesce/overflow→bounded rescan；只报告 unattributed 投影，不伪造 Agent provenance。
+- **3e Artifact Skill（ART-03）**：内置 Skill 约束分类、登记、最终人类可读清单；明确"不是事实数据库"；Agent 只提交 workspace-relative path。
+- **3f 键盘/APG（WX-05）**：递归可见树 + Arrow/Home/End/Enter/Space/Shift+F10 roving 键盘。
+- **手测修复轮**：
+  - `c390b1a` watcher 噪音忽略（任意层级 node_modules/target）、实时树、文件夹右键、初始化竞态、Skill 相对路径。
+  - `dce222a` overlay drawer（不挤压终端）、artifact_refresh 修复（面板长期为空）、分页计算修正、watcher 携带 kind、容器绝对路径归一化、Tauri 剪贴板右键。
+  - `8b4c9f1` **右键菜单在 `ui.font_scale≠1`（CSS zoom）下移出视口的根因修复**（除以 live .app zoom）；`.claude/.codex/.cc-switch/.local/tmp` 默认排除 + `ui.explorer_ignore` 设置贯穿 Rust listing/watcher/前端；临时文件（`foo.tmp.1234`/`file~`/`.swp` 等）三层过滤；空目录不进产物面板；同名 basename（created+modified / 不同路径 / manifest×unattributed）显示相对路径；产物行去按钮（单击预览/双击打开/右键菜单）。
+- **本地门**：pytest 463 / vitest 176 / cargo 170 全绿；Windows 实机手测 PASS（右键/排除/临时文件/同名路径）。
+- **注意**：容器内不安装 `aisc`（拒绝嵌套）；容器侧靠 watcher 的 unattributed 投影兜底，manifest 事实来源是宿主侧 `aisc artifact record`。
+
+# Stage 1 (2026-08-14) — Frontend Data Plane（AISC Next，分支 stage-1-frontend-data-plane）
+
+> 规划入口：`docs/plans/aisc-next/stage-1-frontend-data-plane/`。将前端从单体协调器拆为可测投影，建立有界高频终端数据面。
+
+- **S1.1 分层（F-01）**：`domain/__tests__/layerContract` 依赖边界契约（组件禁引 runtime/provider/docker/history/settings IPC）；App.vue 收紧为按名 import。
+- **S1.2 PTY 数据面（F-02）**：pty spawn 失败返回结构化错误且无 child 泄漏；writer 通道硬上限 bounded（cargo lib 114）。
+- **S1.3 输出批处理（F-03）**：`domain/streamBuffer`（appendWithBudget，4 MiB/4096 chunk 预算，截断终态）+ 非响应式 pending 队列 + rAF 批量 flush（单次数组替换）；Terminal 显示“输出已截断”提示。
+- **S1.4 生命周期（F-04）**：openPane channel 事件按 sessionId 归属校验，reopen 后旧 channel 迟到事件丢弃。
+- **S1.5 状态投影（F-05）**：runtimeFreshness 测试（迟到低 seq 丢弃、stale 保留快照、fresh 恢复）。
+- **S1.6 a11y（F-06）**：TabBar 嵌套 button 修复（tab 容器 + 单一 role=tab 激活按钮 + 独立关闭/重开按钮）+ 3 结构测试。
+- **S1.7 基准（F-07）**：10 MiB 输出 fixture 吞吐（本机 8ms < 2s 硬门）、字节/chunk 预算、逐字节计数完整。
+- **S1.8 harness（F-08）**：Fake Channel 驱动 store 的 channel→pending→rAF→paneStreams 链路 + sessionId guard（runtimeStream）。
+- **本地门**：vitest 148 / pytest 428 / cargo lib 114 全绿。ConPTY/soak 手测与 CI 实跑待用户（B-A10/B-A11/B-A12）。
+
+# Stage 0 (2026-08-14) — Baseline Gates（AISC Next，分支 stage-0-baseline-gates）
+
+> 规划入口：`docs/plans/aisc-next/`。本阶段固定可重复基线、契约 fixture、CI 触发、资源预算和 redaction 门禁，不交付终端新功能。
+
+- **S0.1 基线清单（B-01）**：`scripts/baseline/`（probe/manifest/run_baseline）——确定性 BaselineManifest（仅 `generated_at` 可变）、fixture SHA-256、`--strict` fail-closed 不覆盖上次 PASS；`tests/test_baseline.py` 10 通过。Windows 11 手测 `complete`（python/node/npm/rustc/cargo/docker/git 全绿）；WSL fail-closed 验证（缺关键工具 exit 1、无 latest.json）。
+- **S0.2 契约 fixture（B-02）**：`tests/fixtures/cli/` 7 个 `aisc.cli/v1` 共享 fixture（envelope 正例/错误/JSONL/unknown/unsupported/错误码清单），Python(9)/Rust(7)/TS(6) 三端消费同一文件。
+- **S0.3 CI 门禁（B-03）**：workbench-ci cli job 增加 Unix baseline `--strict` + artifact 上传；path filters 覆盖 `scripts/baseline`、`tests/fixtures`、契约测试；`test_workflow_contract.py` 9 通过。
+- **S0.4 资源基线（B-04）**：`scripts/soak/soak.py`（p50/p95/max + hard deadline，可注入 runner）与 8 个测试；Rust `read_capped` truncation + 控制面预算冻结（stdout 8MB / stderr 64KB）。
+- **S0.5 redaction（B-05）**：`tests/fixtures/redaction/denylist.txt` denylist 矩阵（Rust 不泄漏 + marker 存在）；redact 新增 `Bearer <jwt>` OAuth 形状；Python 冒烟断言 CLI 输出无 secret。
+- **本地门**：pytest 428 / vitest 128 / cargo lib 112 全绿。CI 实跑与 merge 待用户确认（B-A11/B-A12）。
+
+# v2.1.5-dev (2026-08-09 ~ 2026-08-10) — GUI Fine-Tune：G-01..G-18 全部完成
+
+> **阶段总结（2026-08-09 ~ 2026-08-10）**：GUI Fine-Tune 18 个目标（G-01..G-18）全部完成并合并回 develop。覆盖：契约/测试基础设施（A-INFRA）、sidecar 入 PATH、停止/关闭/退出性能、typed settings、i18n、动态多 tab、终端渲染升级、设置页交付、侧边栏分层 + Provider 引导、Resize 根因修复、窗口记忆、终端基础 + 右键菜单、一键诊断、构建通知、动态标题、托盘、Tab 内分屏、明暗主题。
+> 每步均按 06-implementation-plan 拆子步骤 → 验收清单（A-*）→ 自动化 + 手动测试 → 汇报；CI 全绿；已知遗留（分屏键盘导航等）记录于 `docs/todo.md`。
+
+## Step 0 验收清单（契约与测试基础设施 A-INFRA-1..5，分支 step-0-*）
+
+> 规范入口：`docs/archive/completed/gui-fine-tune-planning/`（00-06 + decisions）。Step 0 按 06-implementation-plan §0.1-0.4 执行。
+
+### Step 0 实施（2026-08-09，提交 32811b1/c0f6ede/056194a/f020460/efcfc5e/49ddd2a）
+
+- **Canonical workspace 链（A-INFRA-3）**：`open_session` 在 spawn 前 canonicalize（Rust 唯一生产者），`SessionEntry` 保存 canonical 值，open/terminate argv 均带 `--workspace`；失败映射 `AISC_ERR_WORKSPACE_INVALID`；store 从 `config.workspace` 回写 canonical 值并作为 history key。
+- **SessionRegistry 所有权（A-INFRA-2）**：spawn 前 `Reserved` 原子插入、重复 ID 前置拒绝、spawn/注册失败 kill+reap 回滚、并发 close 共享 completion（`plan_close` 单元测试覆盖 Gone/Terminal/Run/Wait）、自然退出幂等 `ack_session_exit`、终端条目 60s TTL + 每 Runtime 32 条上限惰性清扫、`generation` 单调计数。
+- **`shutdown_workbench` 协调器（03 §4.3 骨架）**：拒绝新 Session → 并发 bounded close（Reserved/Running/Closing 全接管）→ force-reap 遗留 → flush settings → `ShutdownReport`；App.vue 仅当 `unreaped_session_ids` 为空才 destroy，否则显示可恢复错误。预算收紧属 Step 2（G-07）。
+- **安全原子替换（A-INFRA-5）**：新 `storage::atomic_replace`（tmp+fsync+`target→backup`→`tmp→target`→失败恢复 backup，禁 delete-first），settings/history 共用；history 四层（root/workspace/layout/tab）serde-flatten unknown fields round-trip，save 合并时深合并 on-disk unknown 字段与省略字段。
+- **前端测试设施（§0.2）**：vitest + @vue/test-utils + jsdom，`npm test`/`test:watch`；新纯模块 `tabLayout.ts`。
+- **逐 TabRecord 恢复（A-INFRA-1）**：`tabsFromRecords` 保留重复 Session type 与顺序 + saved→new tab_id 映射；旧 `.find(agent)` 去重缺陷以 7 条 vitest 固定为回归门。
+- **CI（A-INFRA-4）**：新 `workbench-ci.yml`（push/PR：npm ci/build/test + cargo test + pytest）；bundle-linux-macos/nsis-installer 补前端/package path filters；bundle 产物在非 checkout cwd 验证 sidecar 权限/架构/`version --format json`/aisc-bundle 资源；`tests/test_workflow_contract.py` 静态断言 path filters（PyYAML 加入 dev extras）。
+- **本地验证（Windows 11 + Docker Desktop 29.6.2 + aisc 2.1.5-dev + super-claude:latest runtime）**：Rust 76 单测 + cli_runner 7（含真实 aisc negotiate）+ pty_supervisor 4（含真实容器内 `aisc session open`，3× 稳定）+ vitest 7 + 契约测试 6 全绿；`npm run build` 通过。
+- **测试环境修复**：`pty_supervisor` 模拟终端应答 `ESC[6n` 光标查询（bash/msys sh 启动即查询并阻塞），`SH` 环境变量提供 sh 绝对路径（ConPTY 后端不做 PATH 解析），real-aisc 截止 20s（冷容器 docker exec 延迟）。本地验证需 `PATH` 前置 `/tmp/pyshim`（python3 桩，Store 版 python3 不可用）。
+- **手动测试（2026-08-09，Windows 11 + Docker Desktop 29.6.2 + aisc 2.1.5-dev，`npm run tauri dev`）**：启动/negotiate/picker ✅；选工作区 preflight→summary ✅；Start 后会话 opening→running ✅；`echo hello` 回显 ✅；tab 切换回来历史消失 → 修复（xterm 重新显示不重绘，`refresh(0, rows-1)` + 隐藏时跳过 fit）后恢复 ✅；× 关闭会话 → exited ✅；↔ 重开 ✅；关窗确认 → 关闭 ✅；任务管理器无 aisc/python/docker exec 残留 ✅（Docker Desktop 保持运行，符合退出保留 Runtime 语义）；`%APPDATA%\cn.aisc.workbench\` settings.json + history.json 存在 ✅。
+- **CI（2026-08-09）**：Workbench CI 三 job 全绿（frontend npm build+vitest 7/7 / rust cargo test / cli pytest 427 过 1 修复）；Bundle Linux/macOS 全绿（含非 checkout cwd sidecar 权限/架构/version/resource 验证）；NSIS installer 全绿；cli-sidecar 全绿。修复项：vitest 4.1 forks worker 在 Node 20 失败 → CI 用 Node 22；rust job 补 GTK/webkit 系统依赖；tauri-build 需 externalBin/resource 存在 → 测试 job stage 占位；`docs/releases/v2.1.5-dev.md` 缺失 → 补发布说明。
+- **Step 0 结论**：A-INFRA-1..5 门禁证据齐（A-INFRA-2 的 100× reopen 集成测试随 Step 2 registry 预算重构补齐，已确认）。
+
+## Step 1 验收清单（G-18 sidecar 入用户 PATH，分支 step-1-g18-path）
+
+> 规范：05-cli-gui-contract.md §五（PATH 安全算法）、06 §二；门禁 A-G18-1..4。
+
+- [ ] **1a-1** PATH helper：目录项规范化（trim/去引号/尾斜杠/大小写）、冲突探测（展开 %VAR% 后查 `\aisc.exe`，跳过空项/UNC）、`WM_SETTINGCHANGE("Environment")` 广播。
+- [ ] **1a-2** 安装：只改 `HKCU\Environment\Path` 单目录项；`$INSTDIR` 已存在不重复追加；marker `PathEntryOwned=1` + `PathEntry="$INSTDIR"`；首个命中非 `$INSTDIR` 时不覆盖不追加（交互提示/静默日志）；安装目录变化且旧 marker owned 时先移除旧精确项。
+- [ ] **1a-3** 卸载：仅当 marker owned 且 marker 路径规范化相等才删除精确项；`/UPDATE` 跳过 ownership 清理；不删其他目录/其他 aisc。
+- [ ] **1a-4** 注册表类型：原 REG_EXPAND_SZ 保留；`%VAR%` 不无故展开。
+- [ ] **1a-5** 身份：`tauri.conf.json bundle.publisher=aisc`；Rust 常量 MANUFACTURER/PRODUCT_NAME + 一致性测试（解析 tauri.conf.json 与常量断言）。
+- [ ] **1b-1** 移除 CheckPython/CheckWinget/PageDepsCheck/Section Dependencies 及 DEP_* 文案；保留 Docker 检测/启动链（finish 页启动 Docker 属宿主集成，保留）。
+- [x] **1c-1** nsis-installer.yml smoke：从新 PowerShell 进程经 PATH 执行 `aisc version --format json`；重复安装 entry 恰好一次；卸载后 PATH 逐项相等。（smoke 已重写覆盖冲突/EXPAND_SZ/新进程解析/卸载保留，待 CI 验证）
+- [x] **1c-2** 手动测试（Windows 11 实机，2026-08-09）：静默安装 → 新 PowerShell `Get-Command aisc` = `$INSTDIR\aisc.exe` ✅ + `aisc version` exit 0 ✅；重复安装 entry 恰好 1 ✅；类型 ExpandString 保留 ✅；静默卸载 owned entry 精确删除、其它条目不动 ✅。冲突场景（sentinel aisc）由 CI smoke 覆盖。
+- [x] 模板 rebase 记录：模板来源 Tauri 2.11.5（tauri-bundler installer.nsi），结构 diff = 默认模板 + G-18 PATH + S4.2 保留逻辑，无其他偏离。
+- **实机验证发现并修复 3 个真实 bug**（提交 40678d9）：(1) `CharLowerBuffW(w .r3)` 输出-only 导致输入丢失 → normalize 返回空 → 安装误判"已在 PATH"；(2) `PathRead` 用 System::Call `.r1-.r5` 破坏调用方寄存器 → 卸载 RemovePathEntryExact 比较全失败；(3) 测试方法坑：`cmd /c` 对 GUI 卸载器异步返回，需 `Start-Process -Wait`。附带修复：`\a` 序列经 handlebars 渲染变 bell（调试路径避开）。
+- **CI 冒烟抓出并修复 4 个问题**（05ca3b0/983cd6e + smoke 修复 3e37abc/f04164c/056bd2b/988dd4e）：(1) PathNormalizeDir 只保护 $1/$2，CharLowerBuffW 用 $3 破坏扫描循环 → 冲突探测永远不命中（sentinel 场景 INSTDIR 被追加）；(2) smoke 的 `Count-InstDirEntries $x -ne 1` 被 PowerShell 解析为函数参数 → 断言恒真；(3) `RegQueryValueExW` 带大小指针(NULL 数据) 返回 ERROR_MORE_DATA → PathType 恒 1 → WriteRegStr 展开 `%USERPROFILE%`；(4) smoke 用 GetEnvironmentVariable（自动展开 EXPAND_SZ）匹配字面 `%USERPROFILE%` → 恒失败，改 DoNotExpandEnvironmentNames 读原始值；另接受 runner 系统 PATH 已有 pip aisc 的真实遮蔽语义（05 §5.2.5 不覆盖）。
+- **Step 1 结论（2026-08-09）**：NSIS installer / Workbench CI / Bundle Linux-macOS 三 workflow 全绿；本地实机安装/重复安装/卸载/冲突全链 PASS。A-G18-1..4 证据齐。
+
+### 补记：安装器 Docker Desktop 宿主集成（分支 step-18-docker-installer，2026-08-10）
+
+用户反馈 G-18 移除依赖检测页后，安装器启动 Workbench 前不再处理 Docker。补上三分支宿主集成（`workbench/src-tauri/nsis/installer.nsi`）：
+
+- **`Section Docker`**（INSTFILES 页，`Section Install` 之后）：交互式 GUI 安装（`${Silent}` / `$PassiveMode` guard）检测 Docker 缺失时用 winget 安装 `Docker.DockerDesktop`；winget 输出经随安装器打包的 `wg-transcode.ps1`（`bundle.resources`）把 UTF-8 流式转码为系统 ANSI 代码页，Details 面板实时显示可读进度（winget 非 TTY 无百分比条，仅文本状态行；转码避免 zh-CN 下 mojibake——2026-08-10 用户反馈"winget 日志乱码"后修复）；`$DockerWingetExit` 先存再 `CheckDocker`（修复旧 `Section Dependencies` 中 $0 被 clobber 的 latent bug）。失败不中止安装，由 Workbench 首次启动 preflight 报告真实引擎状态。
+- **`RunFinishApp` 重写**：`CheckDocker` → 已装则 `StartDockerDesktop`（`FindProcessCurrentUser` + `FindProcess` 判运行，0=运行；未运行则 `ExecShell open` 静默启动）→ 未装则 MessageBox 询问打开 Docker 下载页（仍启动 Workbench）；然后 `RunAsUser` 启动 Workbench。
+- **`.onInstSuccess` `/R` 路径**：silent/passive 自动启动前 `Call CheckDocker` + `StartDockerDesktop`（CI 不传 `/R`，无 Docker runner 上 no-op 无 MessageBox）。
+- **新增**：`CheckDocker`（exe 存在 + 卸载注册表 InstallLocation 回退，`800715c` 逐字恢复）/ `CheckWinget`（`where winget`）/ `StartDockerDesktop`；`DOCKER_INSTALLING/INSTALL_OK/INSTALL_FAIL/NO_WINGET/MISSING_LAUNCH` 中英文 LangString。
+- **silent/passive 安全**：`Section Docker` 被 `${Silent}`/`$PassiveMode` guard，CI smoke（`/S` 安装/升级/卸载）永不触发 winget；README/CI workflow 头部注释同步，防后人"简化"掉 guard。
+- **验证**：`npm run tauri build -- --bundles nsis` 全绿，渲染 installer.nsi 含全部新符号；`check-deps-test.nsi` 更新为 `CheckDocker`+`CheckWinget`（去掉已删的 `CheckPython`），makensis 编译 + `/S` 实跑：本机 `docker_installed=0`（Docker Desktop 当前未安装）、`winget_installed=1` ✅。手测矩阵 a–g 待用户实机（见计划）。
+
+## Step 2 验收清单（G-07 停止/关闭/退出性能，分支 step-2-g07-perf）
+
+> 规范：03-lifecycle-contract.md §4.2/§4.3、06-implementation-plan §0.5；门禁 A-G07-1..4。目标：终止 Runtime / 关窗退出 / 会话回收三条路径的感知延迟与预算。
+
+- [x] **2a-1** CLI `runtime stop --grace`（1..600 校验，超时=grace）：`stop_runtime` → `executor.stop_container(timeout=grace)`；`session terminate` grace 校验（有限 0..600），超时 grace+1.0；transport 预算 15s。测试：`test_runtime_lifecycle.py`（grace 传递/非法值）+ `test_session_commands.py`（terminate 超时）。
+- [x] **2b-1** Rust 预算：TERMINATE_TIMEOUT 5s / CLOSE_WAIT 4s / CLOSE_FORCE_WAIT 2s；`session_open_argv` 带 `--workspace` + `--grace 3`；`runtime_stop_argv` 带 `--grace 3`；reopen 25 周期孤儿泄漏测试（A-INFRA-2 补全，`reopen_25_cycles_leaves_no_orphan_sessions`）。
+- [x] **2c-1** `shutdown_workbench` 协调器（03 §4.3）：共享 6s graceful 窗口并发 close → 共享 2s force-reap → flush settings → `ShutdownReport`（graceful/force/timed_out/unreaped/flush_errors）；`stopRuntime` 分段式（400ms race 并发 close → stop → inspect 确认 stopped/not_found）。
+- [x] **2c-2** 性能证据（`perf_runtime_stop_with_eight_sessions`，2026-08-09 实机）：0 会话 stop ~3.47s，8 会话 stop 0.73s（grace 3 快速路径），reopen 25 周期 ~1s/cycle 无孤儿。
+- [x] **2d-1** 手动测试（Windows 11 实机，2026-08-09/10）：终止 Runtime 2-3 会话快速结束 ✅（首次失败 `unrecognized arguments: --grace 3` = 陈旧 sidecar，重建 + 双拷贝后修复，sidecar 同步要求记入 memory）；关窗瞬间隐藏 + 后台清理 + 进程 ~10s 内退出 + 容器保留 ✅；恢复布局回归 ✅。
+- **手测发现并修复 4 个真实 bug**：
+  - (1) 恢复布局消失（路径匹配脆弱 + 空 tabs 覆盖）：`restorableLayout` 精确字符串匹配，重输路径（正斜杠/尾斜杠/大小写）即失配 → 新增 `normalizePath/sameWorkspace`（win: `/`→`\`、去尾分隔符、大小写不敏感；posix: 去尾 `/`、区分大小写），恢复查找与 history key 统一归一化；`buildPatch` 空 tabs 时保留已有布局（stop/start reset 清空数组，单 tab 关闭不清空）——preflight 的 scheduleSave 不再抹掉磁盘布局（f210eca）。
+  - (2) 关窗等待慢（前端 `await hide()` 挂起）：确认后 handler 死在 `await getCurrentWindow().hide()`（close-request 挂起期间该 Tauri 版本 hide IPC 不返回）→ shutdown 从未调用、窗口永不关、无日志（c9033a5：hide 与 shutdown 全部 fire-and-forget + 失败兜底 destroy；82a9bdd：改 Rust 侧 `app.get_webview_window("main").hide()` 直接 win32 隐藏——前端 hide IPC 在 close-request 挂起时不可靠）。stale/fresh 交替为原生确认框 focus/blur 触发轮询 markStale→tick 的正常现象，非 bug。
+- **Step 2 结论（2026-08-10）**：CLI grace 链 + Rust 预算 + 分段 stop + 后台关闭全链 PASS；cargo session 19 绿 / vitest 9 绿（4 新增路径归一化）/ npm build 零错。A-G07-1..4 证据齐。
+
+## Step 3 验收清单（typed settings 基础设施，分支 step-3-typed-settings）
+
+> 规范：02-startup-flow.md §三.4（字段/默认/边界）+ §九（保存协议）；门禁 A-G01-1。
+
+- [x] **3a-1** Rust typed settings：`ui/terminal/window` 三区全字段边界校验（语言/字号/主题/字体/行高/字距/回滚/渲染器/平滑滚动/窗口记忆/关闭行为/geometry schema），字段级非法回退 + validation issue，默认值只在 Rust。
+- [x] **3a-2** 保存协议：独立 settings.lock + expected-revision 冲突 replay（≤3，Rust 侧）；unknown 字段（顶层/嵌套）深合并保留（A-INFRA-5）；pin 写复用锁不破坏 GUI 字段；corrupt 隔离 `.corrupt` 仅 reset 写默认；高版本 schema 只读拒写。命令 `load_settings/save_settings/reset_gui_settings`（reset 保 pin + unknown）。
+- [x] **3b-1** 设置对话框骨架：键盘可达 modal（Esc/初始焦点/Tab）、每字段 label/错误/生效标记（即时/重建 Terminal/下次启动）、脏标记「未保存更改」（内存≠磁盘，A-G01-5）、保存失败可重试、readOnly/corrupt 警告条；重置从后端重载默认（前端无第二份默认）。
+- [x] **3c-1** 手动测试（2026-08-09/10）：打开/编辑/保存/重启保持、非法值字段报错、corrupt 隔离、重置保 pin 均通过（字号实时生效属 Step 6/7 接线，已在手测中澄清范围）。
+- **Step 3 结论（2026-08-10）**：cargo 13 新测试 + vitest 9 新测试全绿；A-G01-1 证据齐。
+
+## Step 4 验收清单（G-09 UI i18n，分支 step-3-typed-settings）
+
+> 规范：02 §三.1/§三.2/§三.3、06 §五；门禁 A-G09-1..4。
+
+- [x] **4a-1** Rust locale 解析（`locale.rs`）：显式 `ui.language` > 安装器（`HKCU\Software\aisc\AISC Workbench\Installer Language`，1033→en-US/2052→zh-CN，字符串或 DWORD）> 系统（sys-locale）> zh-CN；`resolve_locale` 命令异步不阻塞 CLI 协商。6 纯函数矩阵测试。
+- [x] **4b-1** vue-i18n 接入：zh-CN/en-US 全量字典（key 集完全一致，parity/空值/占位符/缺失 key 报错测试，A-G09-2）；启动并行解析应用；设置改语言保存后即时切换（A-G09-3）。
+- [x] **4c-1** 全前端硬编码扫描替换（12 文件）：blocked/picker/summary/build/conflict/ready/error/侧栏/tab/设置/终端欢迎与 Session error/exit 辅助文本入字典（A-G09-4 原始 PTY 字节不动）；allowlist：raw 代码、路径、技术 token（id/ctr/image/network/scope/route/auth）、稳定错误码、后端错误消息。
+- [x] **4c-2** 手动测试（2026-08-10）：en-US 切换全局即时生效 ✅；重启保持 ✅；auto 回中文 ✅；侧栏区标签本地化（手测反馈补 8 键）✅；终端欢迎/退出文本随语言 ✅。字号实时生效澄清为 Step 6/7 接线范围。
+- **sidecar staging 二次事故（2026-08-10）**：`--grace 3` 复发。根因：tauri externalBin staging 源 `workbench/src-tauri/binaries/` 是旧 CLI，每次 cargo build 自动覆盖 `target/debug/aisc.exe`（pin 目标）。修复：重建 sidecar 同步 binaries/ + target/debug + 安装目录；同步清单记入 memory。
+- **Step 4 结论（2026-08-10）**：cargo 6 新 + vitest 14 新测试全绿；A-G09-1..4 证据齐。
+
+## Step 5 验收清单（G-08 动态多 tab，分支 step-5-g08-tabs）
+
+> 规范：06 §六、02 §2.3；门禁 A-G08-1/2/3/6/7/8（pane 树相关 A-G08-4/5 属 G-17 分屏）。
+
+- [x] **5a-1** Store 动态化：固定四 tab → `createTab(agent)` 动态数组（重复类型允许，A-INFRA-1）；每 Runtime 8 叶上限（A-G08-8，第 9 拒绝）；`removeTab`（× 移除整个 tab，运行中会话 best-effort 关闭，active 落右邻→左邻→空态，A-G08-6）；Start 仅开 1 Bash（A-G08-1）；LaunchSummary 移除初始 Agent 选择；Ctrl/Cmd+1..9 动态映射（10+ 用 tablist 方向键）；history 保存超 8 截断 + warning（A-G08-3）。
+- [x] **5b-1** TabBar UI：`+` 弹出菜单（4 agent，aria-haspopup/expanded，方向键/Enter/Esc/点击外部关闭，键盘可达）；空态「新建标签」焦点目标；× = removeTab；「重开」保留。
+- [x] **5c-1** Provider guide 最小流程（A-G08-2）：+ 选 claude/codex → 按 type 去重 Provider query → `not_configured` → guide 态（不调 open_session，无 PTY）+ GuidePane（重试：配置后即开会话；「打开 cc-switch」激活或创建）；bash/cc-switch 立即开。login_required（如 codex 默认 OpenAI Official 路由）直接开会话终端内登录 —— 2026-08-10 用户决策保留数据驱动，代码 TODO + todo.md 双记录。
+- [x] **5d-1** 手动测试（2026-08-10）：Start 单 Bash、+ 多开/重复类型、guide 流程、× 移除与邻位、Ctrl+1..9、空态、8 上限、恢复布局（重复类型）、停止/退出无残留，全部通过。
+- **Step 5 结论（2026-08-10）**：vitest 32 绿（9 新增 runtimeTabs）；A-G08-1/2/3/6/7/8 证据齐。
+
+## Step 6 验收清单（G-06 终端渲染升级，分支 step-6-g06-render）
+
+> 规范：06 §七、03 A-G06-1..5。
+
+- [x] **6a-1** WebGL 渲染：`@xterm/addon-webgl`；renderer 枚举（auto|default|webgl）作为 Workbench 加载/释放策略（`resolveRenderer` 纯函数），不写入 term.options；构造 try/catch + context loss dispose 回落 DOM renderer（A-G06-1/2）。
+- [x] **6a-2** 设置驱动：Terminal 创建读 typed settings（字体栈/字号/行高/字距/回滚/平滑滚动，默认值只在 Rust，未加载时用 xterm 原生默认）；即时选项（字号/行高/字距/回滚/平滑滚动）deep-watch 实时生效（对话框编辑即预览、取消即回滚）；renderer/font_family 变化原地重建视图——session_id/PTY/channel 不动，旧实例与 addons dispose 无泄漏（A-G06-3）。
+- [x] **6a-3** 主题 token：暗色 palette（VS Code 默认）集中到 TERMINAL_THEME；正文/selection 对比度 ≥4.5:1（WCAG AA 断言测试，A-G06-5）。
+- [x] **6a-4** 固定输出基准（A-G06-4）：仓库内确定性 10 MiB UTF-8/ANSI 混合 fixture（SHA-256 pin `0d1a8564...`），4 KiB chunks 连续写入；DOM 解析路径 0.01s total / max chunk 0.1ms（jsdom 无法跑 WebGL，WebGL 耗时以实机手测为准，未设虚假 FPS）。
+- [x] **6b-1** 手动测试（2026-08-10）：终端字号 14/行高 1.2/平滑滚动生效；设置字号即时变大、取消回滚；renderer 切 webgl 重建视图会话不重开；配色/字体 fallback 目视正常；WebGL 无黑屏。全部通过。
+- **Step 6 结论（2026-08-10）**：vitest 38 绿（renderer 6 + 基准 1 新增）；A-G06-1..5 证据齐。UI 字体缩放（ui.font_scale）接线归 Step 7（G-01）。
+
+## Step 7 验收清单（G-01 设置页交付，分支 step-7-g01-settings）
+
+> 规范：06 §八、02 A-G01-1..5。Step 3 已交付对话框骨架/校验/Reset 隔离/保存失败恢复（A-G01-1/2/4/5）；本步补齐生效边界（A-G01-3）与 UI scale。
+
+- [x] **7a-1** `ui.font_scale` 接线：CSS zoom 作用于 UI chrome（顶栏/picker/摘要/侧栏/tab/对话框），终端区反缩放保持 1:1（终端文字由 terminal.font_size 管辖）；即时生效 + 对话框编辑预览/取消回滚。
+- [x] **7a-2** 手测修复 2 个真实 bug：(1) zoom 影响布局——100vh 根被缩成 80vh，侧栏按钮/终端区脱离底边 → 盒子尺寸补偿 `calc(100vh/scale) × calc(100vw/scale)` + body 背景对齐；(2) 小窗口 1.5 缩放裁剪 → 有效缩放按窗口自适应 `min(用户值, 1.5, w/800, h/600)`（800×600 默认窗口为设计基线），resize 实时更新，设置值保留仅应用值收敛。
+- [x] **7a-3** 生效边界完备性（A-G01-3）：语言/UI scale/字号/行高/字距/回滚/平滑滚动即时；renderer/font_family 仅重建 Terminal 视图不重开 Session（Step 6）；Reset 只恢复 GUI 设置（Step 3）。
+- [x] **7b-1** 手动测试（2026-08-10）：1.25/1.5/0.8 各档布局正常、与终端字号独立并存、保存重启保持、取消回滚、小窗口自适应无裁剪。全部通过。
+- **Step 7 结论（2026-08-10）**：vitest 38 绿 / build 零错；A-G01-1..5 证据齐。
+
+## Step 8 验收清单（G-05 侧边栏分层 + G-12 Provider 引导，分支 step-8-sidebar-guide）
+
+> 规范：04-observability.md（分层/ticker/引导规则）、06 §九；门禁 A-G05-1..4、A-G12-1/2。
+
+- [x] **8a-1** 去 1 秒 ticker：观察时间按 snapshot 缓存、详情展开/手动刷新才重算；语义视图 key（runtime/provider/sessions）——key 不变 DOM 子树不动（A-G05-1，12s 零突变测试）。
+- [x] **8a-2** 分层 UI：用户层（工作区/运行状态含 stale「上次已知」样式/Provider 名（无伪造 model）/Auth 标签+未配置行动/会话计数可点激活）+ 开发者详情折叠（原生 details：全部原始字段 + 复制，A-G05-3 字段清单测试）；刷新按钮「刷新中」仅手动点击显示（轮询不翻转，用户反馈修复）。
+- [x] **8a-3** G-12 banner 移到 tab 顶部（非侧栏）：not_configured/login_required/unknown 分文案；动作重试/打开 cc-switch/官方账号登录（进 TUI）；provider 配置后 banner 转「已配置 + 启动会话」；unknown 不误报未配置（A-G12-1/2）。
+- [x] **8a-4** 行为变更（04 §三 规则表）：login_required/unknown 也进引导态（取代 2026-08-10 的 login_required 直开决定）；恢复布局路径同样过 provider gate（A-G08-3 修复：未配置 codex 不再直进 TUI）。
+- [x] **8b-1** 手测修复：guide tab 无 ×（canClose 加 guide）；引导文案不随 UI scale（反缩放只包 xterm 本体）；新建 tab 需点击才能输入（activeTabId watcher 统一聚焦 + guide→starting 迁移聚焦）。
+- [x] **8c-1** 手动测试（2026-08-10）：侧栏分层/详情/复制/双语、banner 三动作、cc-switch 配置后启动会话、官方登录进 TUI 可直输、恢复布局 gate、外部 stop stale 样式。全部通过。
+- **Step 8 结论（2026-08-10）**：vitest 44 绿（sidebar 5 + restore-gate 1 新增）；A-G05-1..4、A-G12-1/2 证据齐。
+
+## Step 9 验收清单（G-02 Resize 根因定位与修复，分支 step-9-resize）
+
+> 规范：06 §十（先诊断后修改）、05 A-G02-1..4。
+
+- [x] **9a-1** 诊断链路测试（A-G02-1/2）：`resize_chain_stty_probe_three_sizes_20_reps` — 80×24/120×40/60×20 × 20 次，容器内 `stty size` 探针。
+- [x] **9a-2** 根因记录（A-G02-2，提交 62cb985）：`docker exec -it` 的 exec pty 创建时定尺寸，docker CLI 无 resize 命令 → ConPTY resize 到不了容器（stty 恒为 spawn 尺寸）。
+- [x] **9a-3** CLI 修复（A-G02-3）：交互会话改走 Docker SDK（`open_interactive`：exec_create(tty) + exec_start(socket) + 尺寸 watcher → `exec_resize`）；docker-py 成为首个运行时依赖。Windows 特有问题三连：os.read 在两种 console 模式都丢 CR/LF（cooked 等 Enter 吃 CR、raw 丢终止符）→ 改 `ReadConsoleInputW` 读 KEY_EVENT（Enter 自带 CR），resize 风暴期控制台 API 瞬断重试 ~1s；`os.get_terminal_size` 对输入句柄失败 → stdout `GetConsoleScreenBufferInfo`；exec 初始 0×0 → watcher 首轮即 resize。
+- [x] **9a-4** 端到端（A-G02-4）：外部探针（`stty size < /proc/<agent-pid>/fd/0`，与会话 stdin 解耦——ConPTY 在 resize 风暴下周期性丢输入事件属平台限制，已在测试注释记录）3 尺寸 × 20 次全过；输入路径单测 echo 验证。
+- [x] **9a-5** TUI 输出编码修复（SDK 切换回归，2026-08-10 手测暴露）：cc-switch TUI 全屏乱码（`鈹?` = GBK 解 UTF-8 的 `─`，`E2 94 80` 中 `80` 作 GBK lead byte 还吞掉后续 `ESC` -> ANSI 转义也断）。根因：SDK 路径 drain 线程 `os.write(1, chunk)` 写容器 UTF-8 裸字节到 ConPTY，而 zh-CN Windows ConPTY 输出代码页默认 GBK（CP936）；`pty.rs` reader 读 raw bytes -> base64 -> 前端，无编码转换，乱码发生在 ConPTY 内部。`entrypoint.py` `_configure_frozen_io()` 只管 Python 文本模式 `print()`，管不到 `os.write` 裸字节。**第一版修复** `SetConsoleOutputCP(65001)` 手测仍乱码--ConPTY 不可靠地尊重运行时代码页变更。**最终修复**：drain 线程 Windows 改用 `WriteConsoleW`（直接写 Unicode WCHAR，完全绕过代码页）+ 增量 UTF-8 解码器（`codecs.getincrementaldecoder`，处理跨 recv chunk 的多字节序列拆分）+ `GetConsoleMode` 检测非 console 句柄时回退 `os.write`；`SetConsoleOutputCP(65001)` 保留作 baseline。输入路径不受影响（`ReadConsoleInputW` 返回 Unicode WCHAR，与代码页无关）。sidecar 重建 + 三处同步（dist/binaries/target/debug）。
+- [x] **9b-1** 手动测试（通过，2026-08-10）：cc-switch TUI 连续 20 次 resize 无残留旧区域、光标可见；应用内窗口拖拽 resize 终端跟随；cc-switch/任意 TUI 无乱码（9a-6 管道方案）。用户确认"体验上基本没有问题，20 次 resize 没发现明显问题"。
+- [x] **9a-6** 管道方案（ConPTY 彻底绕过，2026-08-10 手测通过）：9a-5 的 `WriteConsoleW`/转码/`SetConsoleMode` 路径虽修好编码，但 ConPTY 层引入多个不可调和问题：(1) `WriteConsoleW` 用 Unicode 宽度表，zh-CN 下 box-drawing = 2 列 -> 错位；(2) `ENABLE_PROCESSED_OUTPUT` 设了才能认 ESC（VT 序列），但会把 `\n` 翻译成 `\r\n` -> 错位；清了则 VT 碎裂；(3) ConPTY 固定 GBK codepage，`SetConsoleOutputCP(65001)` 被忽略；(4) `os.write`+GBK 转码丢失非 GBK 字符（emoji -> `?`）；(5) ConPTY 从屏幕缓冲区重新生成 VT -> 可见从上到下刷新；(6) console 模型开销 -> 响应慢。**根治**：`spawn_pipe_session`（pty.rs）用 `std::process::Command` + `Stdio::piped()` 替代 ConPTY；`PtySession` 结构改为支持 pipe 模式（`master: Option`、`kill_fn` 闭包、`resize_file: Option<PathBuf>`）；resize 通过临时文件传递（Rust 写 `<cols> <rows>` -> `AISC_RESIZE_FILE` env var -> sidecar 100ms 轮询 -> `exec_resize`）。docker_.py `open_interactive` 从 ~200 行 console API 简化为 ~90 行裸 `os.read`/`os.write`，删除全部 console 代码（WriteConsoleW、SetConsoleOutputCP、SetConsoleMode、transcoding、ReadConsoleInputW、GetConsoleScreenBufferInfo、`terminal_size()`、`_forward_console_input()`）。数据流：容器 UTF-8/VT -> SDK socket -> sidecar `os.write` -> pipe -> Rust base64 -> xterm.js，零 console 处理。手测：显示正常、无乱码/`?`、无错位、方向键可用、响应快、无可见刷新。Rust 91 + Python 53 绿。
+- **Step 9 结论（2026-08-10）**：python 绿 + Rust 91 绿；A-G02-1..4 证据齐 + 9a-5 编码修复 + 9a-6 管道方案（手测通过）；9b-1 手测通过（20 次 resize 无明显问题）。**Step 9 完成。**
+
+## Step 10 验收清单（G-10 窗口尺寸/位置记忆，分支 step-10-geometry）
+
+> 规范：06 §十一、02 §A-G10-1..5。
+
+- [x] **10a-1** Rust 命令（A-G10-1/2/3）：`window.rs` 新模块：`restore_window_geometry`（启动时读 `window.geometry`，clamp 到显示器至少 64×64 可见、最小 800×600，应用位置/尺寸/最大化）+ `capture_window_geometry`（写当前 logical 位置/尺寸/最大化到 settings，`save_with_replay` 冲突安全；跳过 fullscreen/minimized）。physical->logical 转换 via scale_factor。离屏检测回退 OS 默认。
+- [x] **10a-2** 生命周期接线（A-G10-5）：`lib.rs` setup hook 启动时调 restore（窗口显示前）；`App.vue` 窗口 resize 后 300ms 防抖调 capture；关闭前 `onCloseRequested` 中 `shutdownWorkbench` 之前 flush。
+- [x] **10b-1** 手动测试（通过，2026-08-10）：NSIS 安装器实测--移动/调整窗口大小 -> 关闭 -> 重开 -> 位置/尺寸恢复；最大化 -> 关闭 -> 重开 -> 恢复最大化；`remember_geometry=false` 不记忆。用户确认"没有问题，测试通过"。
+- **Step 10 结论（2026-08-10）**：Rust 91 绿 + vue-tsc + vite build 零错误；settings schema（`window.geometry`）Step 3 已定义，Step 10 只加命令 + 生命周期钩子。**Step 10 完成。**
+
+## Step 11 验收清单（G-03 终端基础体验 + G-11 右键菜单，分支 step-11-terminal）
+
+> 规范：06 §十二、03 §七 A-G03-1..4 / A-G11-1..4。
+
+- [x] **11a-1** 搜索（A-G03-1/A-G11-2）：`@xterm/addon-search` 每 pane 独立加载/dispose；Ctrl/Cmd+F + 右键入口打开搜索条；上下结果、大小写切换、无结果提示、Esc 关闭；tab 切换不串查询。按键经 `attachCustomKeyEventHandler` 拦截（容器 DOM keydown 被 xterm 内部 textarea 吞掉不触发，2026-08-10 手测修复）。
+- [x] **11a-2** 剪贴板（A-G03-2/A-G11-3）：npm + Rust `tauri-plugin-clipboard-manager`，仅 `read-text`/`write-text` capability；侧边栏 ID 复制迁移到同一插件通道（弃用 `navigator.clipboard`）；权限错误显示可恢复错误。
+- [x] **11a-3** 右键菜单（A-G11-1）：复制/粘贴/搜索/清屏；无 selection 时复制禁用、session 结束后粘贴禁用；菜单关闭焦点回终端。快捷键 Ctrl/Cmd+Shift+C/V 与右键一致；粘贴走 `term.paste` -> `writeSession`（1 MiB 上限，A-G11-4）。
+- [x] **11a-4** 滚动（A-G03-3）：scrollback 5000 默认；向上查看历史不强制跳底，回底恢复 follow；PageUp/PageDown/Home/End 原生可用。
+- [x] **11a-5** 终端填满（手测修复，2026-08-10）：`.terminal-area` 加 `display: flex`（term-wrap flex:1 拉伸）；恢复 counter-zoom 防实时缩放闪烁（移除后 canvas re-fit 闪烁，已回滚恢复）。默认缩放终端填满。
+- [x] **11a-6** 设置滑块（用户反馈，2026-08-10）：`ui.font_scale`/`terminal.font_size`/`line_height`/`letter_spacing`/`scrollback`/`smooth_scroll_duration` 改滑块（限定区间 min/max/step 取自 Rust schema），内联显示当前值；`v-model.number` 修复滑块数字不更新 + 保存失败（range v-model 产生字符串 -> `.toFixed` 崩溃 + serde 拒收）。
+- [x] **11b-1** 手动测试（通过，2026-08-10）：用户确认"可以接受"，余留细节问题之后调整。
+- **Step 11 结论（2026-08-10）**：vue-tsc + 44 vitest + cargo build 全绿；搜索/剪贴板/右键/滚动/填满/滑块全部手测通过。**Step 11 完成。**
+
+## Step 12 验收清单（G-13 一键诊断，分支 step-12-doctor）
+
+> 规范：06 §十三、02 §五（F-4）、05 §六（Doctor 契约）、01 R-10。
+
+- [x] **12a-1** Rust doctor 模块（A-G13-2 前半）：`doctor_argv()` 纯函数（`doctor --format json`）；`DoctorCheck/DoctorSummary/DoctorReport` serde 类型；Tauri `run_doctor` command 复用 `run_control`（30s timeout / 8 MiB stdout cap / stderr redaction / exit-code 校验），并额外校验 `meta.command == doctor`。成功/CLI error/timeout/stdout overflow/无效 envelope 均有稳定映射（失败保留原错误事实，A-G13-1）。
+- [x] **12a-2** 解析健壮性（A-G13-4）：`data.host.checks/summary` 类型合法；`data.container=null` 省略、未来结构存在不导致 host 解析失败；未知 check 字段忽略；每个 check 的 `detail/hint` 经 `redact()` 脱敏。
+- [x] **12b-1** Frontend 通道：`DoctorCheck/DoctorSummary/DoctorReport` TS 类型 + `ipc.runDoctor`。
+- [x] **12b-2** Doctor store：`idle/running/done/error`；在途时重复 `run()` 不启动第二个 doctor（A-G13-3）；不触碰 runtime/settings store（关闭/重开不改变 startup state）。
+- [x] **12b-3** UI：`DoctorDialog.vue` 展示 `checks`/`summary`/`hint`（不渲染原始 stdout/stderr）；blocked/error/ready（sidebar 开发者详情）三个入口触发同一 command；在途按钮禁用；失败显示结构化 Workbench error + 重试。
+- [x] **12c-1** i18n：zh-CN/en-US 文案齐全 + key-parity 测试。
+- [x] **12c-2** 自动化：Rust 单测 101（含 10 doctor）+ cli_runner 7 + pty_supervisor 7 + vitest 49 全绿；vue-tsc + cargo build 通过。
+- [x] **12b-4** 手动测试（通过，2026-08-10）：用户确认 1-6 全过——ready 详情入口弹诊断自动运行、check 状态/summary/hint 展示正常；连点运行按钮只跑一次（在途禁用）；退出 Docker Desktop 后 docker check 显示失败 + hint、页面不卡、可重试；关闭后 startup 状态不变。
+- **Step 12 结论（2026-08-10）**：Rust 101 + cli_runner 7 + pty_supervisor 7 + vitest 49 + vue-tsc + cargo build 全绿；手测 1-6 通过。**Step 12 完成。**
+
+## Step 13 验收清单（G-14 构建最终耗时与通知，分支 step-13-build-notify）
+
+> 规范：06 §十四、02 §七（F-6）、01 R-11。
+
+- [x] **13a-1** 依赖与插件（06 §十四）：npm `@tauri-apps/plugin-notification` + Rust `tauri-plugin-notification`，`.plugin(init())`；capability 仅 `notification:allow-is-permission-granted`/`allow-request-permission`/`allow-notify` + `core:window:allow-is-focused`/`allow-is-minimized`。
+- [x] **13b-1** store 计时（A-G14-1/4）：`buildStartedAt/buildFinishedAt/buildDurationMs` 入 store；`startBuild` stamp started；首次 Promise settle 冻结 finished/duration 一次；cancelled 同样冻结；离开再返回显示冻结值不增长。
+- [x] **13b-2** 单一终态（A-G14-2）：terminal 结果仅由 `buildImage()` Promise settle 写入（Channel 只流 build.output）；单调 op 计数 guard，被取代 build 的迟到 settle 忽略（duration/状态/通知不重复）。
+- [x] **13b-3** 通知（A-G14-1/3）：仅窗口后台（失焦或最小化）且 complete/failed 通知一次；cancelled 不通知；前台 0 条。权限每 launch 至多请求一次；denied/unavailable/勿扰静默降级不改变 build 事实。
+- [x] **13b-4** BuildProgress 显示：building 时活计时（tick 停止于 settle，A-G14-4），settle 后显示冻结耗时；终态耗时始终显示。
+- [x] **13c-1** i18n：notification.title/buildComplete/buildFailed zh-CN/en-US + key-parity。
+- [x] **13c-2** 自动化：vitest 59（+10 build/notify，含 A-G14-2 乱序/被取代、A-G14-1 前台 0 条/后台恰好 1 条、A-G14-3 权限降级不循环）；Rust 101 + cli_runner 7 + pty_supervisor 7 + vue-tsc + cargo build 全绿。
+- [x] **13b-5** 手动测试（通过，2026-08-10）：后台 build 完成收到恰好 1 条系统通知；前台 build 0 条；终态耗时冻结不增长；权限拒绝降级、cancelled 不通知。
+- [x] **13d-1** 手测中发现并修复的 bug：① 镜像缺失时若 action=reuse（工作区有匹配 runtime），构建按钮被 `imageMissing` 隐藏 → 死路；改为 `imageNotFound`（fail + `AISC_ERR_IMAGE_NOT_FOUND`，与 action 无关）驱动按钮与提示。② stale registry 记录（container 被手动删除）被 preflight 判为 reuse → session open 打不存在 container → RUNTIME_NOT_FOUND 死循环；CLI `_get_container_state` 区分 `not_found`，matching 分支对 stale 记录报 conflict（resolve_conflict → ConflictManager），ConflictManager 对 not_found 状态补「移除」按钮。均带 vitest/Python 测试锁定（vitest 65、Python 392）。
+- **Step 13 结论（2026-08-10）**：vitest 65 + Python 392 + Rust 101/cli_runner 7/pty_supervisor 7 + vue-tsc + cargo build 全绿；G-14 手测 1-6 通过；手测暴露的镜像缺失按钮、stale runtime 两个 bug 已修复并验证。**Step 13 完成。**
+
+## Step 14 验收清单（G-15 动态窗口标题，分支 step-14-dynamic-title）
+
+> 规范：06 §十五、02 §六（F-5）、01 R-12。
+
+- [x] **14a-1** 标题纯函数（A-G15-2）：`computeWindowTitle` 优先级——活动 tab 有 Session type → `<workspace> · <Session type> · AISC Workbench`；有 workspace 无 session → `<workspace> · AISC Workbench`；无 workspace → `AISC Workbench`；idle tab（空 tree）不残留旧 type。
+- [x] **14a-2** basename（A-G15-1）：跨 `/` 与 `\`、去尾分隔符、drive root 保留。
+- [x] **14a-3** 截断（A-G15-3）：workspace basename >40 grapheme 保留首尾各 18 + `…`；`Intl.Segmenter` grapheme 级，CJK/emoji/组合字符不截断 cluster。
+- [x] **14a-4** 接线：App.vue watch 活动上下文（workspace + activeTab + session state）→ `getCurrentWindow().setTitle()`；无轮询；setTitle 失败仅 console.warn 不影响主流程。仅新增 `core:window:allow-set-title` capability。
+- [x] **14a-5** 自动化：vitest 75（+10 title，含 basename/优先级/grapheme 截断）+ vue-tsc + cargo build + Rust 101/7/7 全绿。
+- [x] **14b-1** 手动测试（通过，2026-08-10）：无 workspace → `AISC Workbench`；选 workspace → `test · AISC Workbench`；开 Bash → `test · Bash · AISC Workbench`；切 Claude/Codex tab 标题跟随；关全部 tab 回落 `test · AISC Workbench`。
+- **Step 14 结论（2026-08-10）**：vitest 75 + Rust 101/cli_runner 7/pty_supervisor 7 + vue-tsc + cargo build 全绿；手测通过。**Step 14 完成。**
+
+## Step 15 验收清单（G-16 可选最小化到托盘，分支 step-15-tray）
+
+> 规范：06 §十六、03 §A-G16-1..5、01 R-13。
+
+- [x] **15a-1** Rust tray（A-G16-1）：tauri 启用 `tray-icon` feature；`tray.rs` 用 `TrayIconBuilder` 创建「显示/退出」菜单并持有 owner（`TrayState`）；左键不弹菜单。
+- [x] **15a-2** CloseRequested 拦截（A-G16-1/4）：`.on_window_event` 对主窗口 CloseRequested 一律 `prevent_close`；`effective_close_behavior`=minimize-to-tray 且 tray 可用 → hide；否则 quit（前端确认 + shutdown）。tray 初始化失败/平台不支持 → `tray_available=false` → 运行态回退 quit，最后窗口不会被隐藏。
+- [x] **15a-3** tray 菜单（A-G16-3）：显示 → `show+set_focus`；退出 → emit `exit-requested` → 前端复用同一 confirm + `shutdown_workbench`（同一 ShutdownReport）；取消确认保持隐藏前状态。
+- [x] **15b-1** Frontend：`ipc.trayAvailable()` 一次查询；onCloseRequested 分支——tray 模式且 tray 可用 → return（Rust 已 hide，Session 连续运行）；否则 runExitFlow。`listen("exit-requested")` 触发同一 runExitFlow。
+- [x] **15b-2** 设置：`window.close_behavior` 已有（Step 7）持久化；即时生效（Rust 关闭时重读 settings）；Reset 恢复 quit（settings 默认）。
+- [x] **15b-3** 自动化：vue-tsc + vitest 75 + Rust 101/cli_runner 7/pty_supervisor 7 + cargo build（tray-icon）全绿。
+- [x] **15b-4** 手动测试（通过，2026-08-10，安装版）：默认 quit 正常退出；minimize-to-tray 关窗仅隐藏无确认框、session 连续；托盘「显示」恢复窗口+焦点；托盘「退出」同确认 + shutdown；托盘图标退出后立即消失；重启后 tray 值保持。
+- [x] **15c-1** 手测发现并修复的 bug：① Tauri command 命名不匹配（fn `tray_available_command` → invoke 名 `tray_available_command`，前端调 `tray_available` → reject → trayAvailable=false → 关窗仍走 quit 流程弹确认）；helper 改名 `tray_live`、command 改名 `tray_available`。② 托盘退出后图标残留整个清理期（~12s）；新增 `tray_remove`（`set_visible(false)`），确认通过后立即隐藏图标，清理后台透明运行。③ 设置对话框小窗口下 head/foot 滚出视野，「已保存」不可见；head/foot 粘性固定。
+- **Step 15 结论（2026-08-10）**：vue-tsc + vitest 75 + Rust 101/7/7 + cargo build（tray-icon）全绿；安装版手测通过；3 个手测暴露问题已修复。**Step 15 完成。**
+
+## Step 16 验收清单（G-17 Tab 内分屏，分支 step-16-panes）
+
+> 规范：06 §十七、03 §六（G-17 分屏模型）、01 R-14。P3，最大步骤，拆 6 子阶段。
+
+- [x] **16a-1** PaneTree 纯模块（schema 冻结，03 §6.1/6.3）：`SplitNode/PaneLeaf/PaneNode` tagged union；`singleLeaf/splitLeaf/removeLeaf/setRatioBySplitKey/leafCount/depth/firstLeaf/listPaneIds/validateTree`；MAX_DEPTH=4、MAX_LEAVES=8、ratio clamp 0.10..0.90；关闭压缩、split 拒绝（深/满）时 tree 不变。
+- [x] **16a-2** 纯模块 vitest：嵌套 split、关闭压缩、ratio clamp、深度/叶数上限拒绝、非法 tree 校验、round-trip。
+- [x] **16b-1** history schema v2（A-G17-3）：Rust `schema_version=2`，TabRecord 增 `split_layout`（version/active_pane_id/root tagged union）；v1→v2 锁内原子迁移（旧 tab 转单叶、保留 tab ID/顺序/active），迁移失败保留 v1 原文件；旧版本拒写 v2；v2 round-trip + 损坏/过深/重复 ID 降级。
+- [x] **16c-1** store 迁移（A-G17-2/5/6）：tab 持有 PaneTree + `active_pane_id`；open/close/reopen/Exit reducer 按 pane；资源原子计数（opening/running/closing ≤8）；provider polling/sidebar/title/generation 经 active pane；last-pane 关闭 → dormant 单叶保留 tab。
+- [x] **16d-1** 分屏渲染与交互（A-G17-1/4/5）：PaneTree.vue 递归 CSS grid + divider；split 动作（水平/垂直）校验容量；divider 指针拖拽 + 键盘 0.05 步长；每叶独立 Terminal/Session/ResizeObserver；点击 pane 激活。
+- [x] **16d-2** 自动化：paneTree 17 + paneRuntime 12 + 全量 vitest 104 + vue-tsc 全绿；Rust 105（16b history）+ cli_runner 7 + pty_supervisor 7。
+- [x] **16e-1** 手动测试：嵌套 split、关闭压缩、拖拽 resize、tab+pane、第 9 个拒绝、重启恢复、runtime stop/退出全回收（2026-08-10 用户确认"暂时算通过，之后再改"）。
+- **Step 16 结论（2026-08-10）**：自动化全绿 + 手测通过。**Step 16 完成。** 遗留：分屏键盘导航（Ctrl+Shift+hjkl/方向键）在 WebView2 无效、其他小问题，见 `docs/todo.md`。
+
+## Step 17 验收清单（G-04 明暗主题切换，分支 step-17-theme）
+
+> 规范：06 §十八、02 §三.5；门禁 A-G04-1..4。
+
+- [x] **17a-1** 主题基础设施（A-G04-1/2）：`theme.ts` 纯模块——`ThemeMode`（system/dark/light）→ `resolveTheme` → `effectiveTheme` reactive；`applyTheme` 写 DOM `data-theme` + `color-scheme` + localStorage 渲染缓存；`systemDark()`/`createSystemListener`（单实例 + unsubscribe）；`index.html` 首帧前内联脚本读缓存设 `data-theme`（无暗/亮闪屏）。
+- [x] **17a-2** 语义 token：`styles.css` `:root`（dark 默认）+ `:root[data-theme="light"]` 覆盖；`--bg/--surface/--text/--muted/--border/--accent/--success/--warn/--error/--selection/--focus` 全套 token；`color-scheme` 跟随。
+- [x] **17b-1** 全量 token 收敛：13 个组件 CSS 全部 `var(--*)`（LaunchSummary/PreflightGate/StartProgress/BuildProgress/ConflictManager/SettingsDialog/DoctorDialog/RuntimeSidebar/TabBar/Terminal/PaneTree/GuidePane）；App chrome token 化。
+- [x] **17c-1** xterm 明暗（A-G04-3）：`TERMINAL_THEME`/`LIGHT_TERMINAL_THEME` + `terminalTheme(effectiveTheme)`；Terminal.vue watch `effectiveTheme` 原地更新 `term.options.theme` + `term.refresh(0, rows-1)`，不重建 Session/PTY。
+- [x] **17c-2** 设置接线：SettingsDialog theme 字段 `effect: "immediate"`；`ui.theme` 持久化、重启保持。
+- [x] **17d-1** 自动化：`theme.test.ts`（resolveTheme/applyTheme/cache/system 解析/createSystemListener 单例+清理/token 对比度 WCAG AA fixture）；settings.rs theme 校验；全量 vitest 122 + Rust + vue-tsc + cargo build 全绿。
+- [x] **17d-2** 手动测试（通过，2026-08-10）：深/浅色切换即时生效、xterm 跟随、重启保持、对比度达标；用户确认"一切正常"。
+- **Step 17 结论（2026-08-10）**：vitest 122 + Rust 全绿 + 手测通过。**Step 17 完成。G-01..G-18 全部 18 个目标完成。**
+
+# v2.3.0-dev (2026-08-06 ~ 2026-08-09) - Workbench Phase 1 + Phase 2（S2.1/S2.2.a/S2.2.b/S2.3.a/S2.3.b/S2.4.a/S2.4.b）+ Phase 3（S3.1/S3.2/S3.3）+ Phase 4（S4.1.a/S4.1.b）+ S4.2 发布门（CI+文档）
+
+### S4.2 发布门（2026-08-09，06-implementation-plan.md §七 S4.2）
+
+- **三平台契约 smoke**：`tests.yml` matrix 加 `macos-latest`（原 ubuntu+windows），3.11/3.12/3.13 × 3 OS。验证待 GitHub Actions dispatch。
+- **Linux/macOS bundle CI**：新增 `.github/workflows/bundle-linux-macos.yml`——ubuntu 产 deb、macos 产 DMG，各自从源码构建 sidecar + stage aisc-bundle + `tauri build --bundles`，产物上传 artifact。验证待 CI。
+- **Windows 覆盖升级/卸载安全冒烟**：`nsis-installer.yml` 冒烟扩展——静默装后放置 `%APPDATA%\cn.aisc.workbench\` 与 workspace `.aisc/` 数据标记 → 同版本覆盖重装（silent 走 uninstall+reinstall 维护流程）→ 断言标记存活 + bundle 在 → 静默卸载 → 断言 app 文件与卸载注册表键清除、**数据标记保留**。验证待 CI。
+- **回滚文档**：新增 `docs/releases/rollback.md`——数据保留边界（app_config_dir/工作区不受卸载影响）、降级路径（allow_downgrades=false 需先卸载）、CLI 协商顺序（`--aisc-cli` > pin > sidecar > PATH > 平台已知位置，对应 `cli.rs` `enumerate_candidates`）、pin 清理方法、回滚验证清单。
+- 范围外 blocked：Windows 代码签名（无证书）、macOS 公证（无账号/机），正式 Preview 发布在签名/公证前不进行。计划见 `docs/plans/PLAN-workbench-s4.2-release-gates.md`。
+- **CI 验证（2026-08-09）全绿**：Tests 9/9（3 OS × 3 Python，macOS runner 新接入）；Bundle Linux/macOS 产出 deb + DMG；NSIS 冒烟 SMOKE/UPGRADE/UNINSTALL 三阶段 PASSED（升级重装与卸载均保留 `%APPDATA%\cn.aisc.workbench\` 与 workspace 数据标记）。macOS runner 暴露 2 个平台假设并修复：(1) `test_session_wrapper.py` /proc start-ticks 测试 macOS 无 /proc → 拆 `linux_only` guard（POSIX 部分保留 `posix_only`）；(2) `test_runtime_preflight_no_side_effects.py` 无 docker CLI 时 docker 存在性断言 FileNotFoundError → try/except 容错跳过。
+
+### 变更
+
+#### Windows 实机测试修复（S4.1.b 实测反馈，docs/问题.txt）
+
+- **问题 1（装完 Docker 不引导启动）**：NSIS Finish 页 RUN 改 `RunFinishApp`——`$DepsDockerWasMissing`（Deps 页检测到 Docker 缺失时置 1）时先 `ExecShell` 启动 Docker Desktop（首次运行用户确认 license），再启动 Workbench。
+- **问题 2（Docker 未启动时 preflight 识别不到）**：`start_docker` Tauri 命令（Windows 启动 `%LOCALAPPDATA%\Docker\Docker Desktop\Docker Desktop.exe`，macOS Docker.app；Linux 返回可操作错误）+ 前端「启动 Docker」按钮——summary docker gate fail 时显示，点击后启动 Docker Desktop 并每 2s 轮询 preflight 直到 docker check pass（90s 超时提示手动打开）。`AISC_ERR_DOCKER_UNAVAILABLE` action 从 Retry 改 `StartDocker`。
+- **问题 3（所有操作弹 Windows Terminal 闪现）**：`cli.rs` `run_control`/`run_build_stream` spawn 加 `creation_flags(0x08000000)`（CREATE_NO_WINDOW，`#[cfg(windows)]` 门控——tokio `creation_flags` 仅 Windows 存在）。PTY session 不动（交互终端）。
+- **问题 4（构建镜像直接失败）**：build 失败错误码 `AISC_ERR_DOCKER_UNAVAILABLE` 时 BuildProgress 显示「启动 Docker」按钮 + 明确文案（引擎未运行无法构建），启动后回摘要重试。
+- **问题 5（winget 装 Docker → Finish 页勾选打开 Workbench → 摘要页检测不到 Docker、「启动 Docker」也无效，重开才正常；TODO 20260806 line 76）**：A+C 方案落地——**A** 摘要页 docker gate 红时**自动**触发 `startDockerAndRepreflight`（`runtime.ts` `runPreflight` summary 分支；每 3s 重跑 preflight，上限 120s，`dockerStarting` 防重入；按钮保留为手动兜底），期间文案「Docker 引擎启动中，正在自动重试检测…」；**C** CLI docker 解析兜底（`docker_.py` `_resolve_path`：`shutil.which` 失败时回退 `C:\Program Files\Docker\Docker\resources\bin\docker.exe` + `%LOCALAPPDATA%\...`，消除安装器拉起 Workbench 继承旧 PATH 的坑）。验证：python unittest 35 绿（新增 4 个 `_resolve_path` fallback 用例）+ `vue-tsc`/`vite build` 零错误。**2026-08-09 实机复测通过**（用户确认：其余问题基本通过，无明显异常）。另确认：已安装时选择「卸载」→ 卸载完成后继续进入新安装向导 = tauri-bundler 2.9.4 默认模板 maintenance-mode 行为（卸载后继续安装流程），非 bug，经用户确认保持现状（A 方案）。
+- **问题 6（复测新发现）**：(1) **空目录误报「工作区已有不兼容 Runtime」**——`runtime.py` `recommended_action` 原先任何 check 失败都置 `resolve_conflict`（含镜像缺失），全新安装没镜像就误报冲突；改为仅 `runtime_conflict` check 失败才置 `resolve_conflict`，其他 gate 失败保持 `start`（UI 按 gate 显示对应按钮/文案）。验证：unittest 29 绿（新增 image-missing→start、真冲突→resolve_conflict 两个回归用例）+ 实机 exe 空目录 preflight 实测 `action: start`。(2) **构建镜像失败 `docker-credential-desktop: executable file not found in %PATH%`**——CLI 靠兜底绝对路径找到 docker.exe，但子进程 PATH 仍是安装器继承的旧环境，credential helper 解析不到；`docker_.py` 新增 `_subprocess_env()`：所有 docker 子进程（preflight/inspect/run_*/streaming_captured 共 6 处）PATH 头部插入 resolved docker 目录。验证：unittest 29 绿 + 全量 435 绿（61 跳过）。
+- 验证：cargo 70 绿；npm build 零错误；NSIS 模板改动（`RunFinishApp`）由 CI Windows runner 重新编译验证通过；复测清单见 `docs/platform-windows.md`「实机修复复测」（待用户 Windows 复测确认）。
+
+#### S4.1.b Windows NSIS 定制安装器（06-implementation-plan.md §六 S4.1）
+
+- **定制 NSIS 模板**：`workbench/src-tauri/nsis/installer.nsi`（tauri-bundler 2.9.4 默认模板复制 + S4.1.b 扩展；Handlebars 模板由 bundler 渲染）。`tauri.conf.json` 加 `bundle.windows.nsis.template`（installMode currentUser、languages English）+ `webviewInstallMode {type: downloadBootstrapper}`（WebView2 由 Tauri 原生 section 自动处理）。
+- **Environment Check 页**（`PageDepsCheck`，StartMenu 页后 INSTFILES 前）：nsDialogs 检测 Docker Desktop（`%LOCALAPPDATA%\Docker\Docker Desktop\Docker Desktop.exe` + HKLM 注册表兜底）、Python 3（`HKLM/HKCU \SOFTWARE\[WOW6432Node\]Python\PythonCore`）、winget（`where winget`）、WebView2（仅提示，由安装器处理）。按钮：**Install missing dependencies** / **Skip** / **Start Docker Desktop**（Docker 已装时）/ **Open Microsoft Store**（winget 缺失时，App Installer 9NBLGGH4NNS1）。
+- **`Section Dependencies`**（EarlyChecks 后、WebView2 前）：用户选择安装时经 winget 安装 Docker Desktop（`Docker.DockerDesktop`）+ Python 3.12（`Python.Python.3.12`），`--accept-source-agreements --accept-package-agreements`，UAC 提权 = 用户授权环节（非静默）。安装失败不阻断（DetailPrint 提示手动装），Workbench 首启 preflight 兜底报缺。winget 缺失时跳过 + 提示 Store 引导。
+- **`nsis/README.md`**：模板来源（tauri-bundler 2.9.4）+ 升级维护说明（diff 默认模板重放 3 处 S4.1.b 扩展，防模板漂移）。
+- **CI**：`.github/workflows/nsis-installer.yml`（新）--windows-2022 runner：setup-python + PyInstaller 构建 CLI sidecar -> 移入 `workbench/src-tauri/binaries/aisc-x86_64-pc-windows-msvc.exe`（externalBin 命名）-> setup-node + npm ci -> `npm run tauri build -- --bundles nsis`（tauri 自动下载 NSIS 3.11 + nsis_tauri_utils 插件，零手动 NSIS 配置）-> 产物 `*-setup.exe` upload-artifact。触发：workflow_dispatch + push develop/main paths（tauri.conf/nsis/workflow/src.aisc/packaging）。
+- **`docs/platform-windows.md`**（新）：Windows 平台依赖表 + 安装器行为说明 + 实机验证清单（06 §七 S4.1「Windows 检查 WebView2/Docker Desktop」文档要求）。
+- 验证：cargo 70 绿（tauri.conf schema 校验通过，`webviewInstallMode` 是 internally-tagged enum 需 `{type: ...}` 形状）；npm build 零错误；**CI Windows runner 全链路验证通过**（`.github/workflows/nsis-installer.yml` dispatch：PyInstaller sidecar → `tauri build --bundles nsis` → makensis 编译定制模板零错误 → `AISC Workbench_2.1.5-dev_x64-setup.exe` 10.9MB artifact 下载验证）；本机 Linux 无 makensis，NSIS 编译只能 CI 验证。**顺带修 2 个 CI 暴露 bug**：(1) `cli-sidecar.yml` step 层 `${{ matrix.shell }}` 无效表达式（GitHub Actions 2.0 拒绝）→ 改 `if: matrix.os` 条件 + 硬编码 shell；(2) `scripts/build-cli.sh` 缺可执行位（git mode 100644 → 100755，Linux/macOS runner exit 126）；(3) `sigint_or_kill(&Child)` Windows release 编译错误（`start_kill()` 需 `&mut`，Unix 分支掩盖）→ 改 `&mut Child`。实机手测清单见 `docs/platform-windows.md`（用户 Windows 实机，待测）。
+- gap（明确 deferral）：macOS pkg / Linux preinst 安装体验 -> S4.1.c；签名/公证 -> S4.2 发布门；安装器多语言（zh-CN 等，模板已留结构）-> 后续；winget 安装进度显示（当前 DetailPrint 文本）-> 后续。
+
+#### S4.1.b 修复 — 安装版 Workbench「打开目录 → 构建镜像」失败（2026-08-08）
+
+- **根因（两个叠加）**：① 安装器只装 sidecar exe 无 `aisc-bundle\`，CLI root 发现（`src/aisc/application/resources.py` 冻结 bundle 分支）无来源 → CliError "AISC root not found"（`AISC_ERR_GENERAL`）→ Workbench 显示通用「AISC CLI 返回错误」；Linux dev 正常纯属 CWD 恰好是仓库。② 修好 ① 后必现：`build --events` 路径 `run_streaming_captured`（`src/aisc/adapters/docker_.py`）POSIX-only——`select.select` 在 Windows 管道 fd 抛 WinError 10038、`os.killpg`/`SIGKILL` 不存在，CLI 带 traceback 崩溃、不发 `build.failed` 终端事件 → Workbench 报 `WB_ERR_CLI_PROTOCOL`。
+- **Fix B（流式捕获跨平台）**：drain 拆为 `_drain_select`（POSIX 原样保留，零回归）+ `_drain_threads`（Windows：daemon reader 线程 + queue，`on_chunk` 仅主线程调用，超时抛 `subprocess.TimeoutExpired` 与 POSIX 契约一致）；杀子进程统一 `_kill_child`（POSIX `os.killpg` + Windows `taskkill /T /F` 兜底 + `proc.kill()`）。preflight `text=True` 补 `encoding="utf-8", errors="replace"`（Windows 非 UTF-8 区域按 ANSI 解码可崩）。新增 `tests/features/test_streaming_captured_cross_platform.py`（6 用例，任意 OS 可跑，Windows CI 覆盖线程分支）。
+- **Fix A（安装器随附 CLI bundle）**：`.github/workflows/nsis-installer.yml` 加 staging 步骤（`packaging/artifact.py stage` → `workbench/src-tauri/nsis/bundle`，复用 stage_bundle + verify_staged_bundle）+ 安装后冒烟（静默 `/S` 安装 → 定位 `$LOCALAPPDATA\AISC Workbench` 下 sidecar → `version --format json` + `build --dry-run --tag smoke:latest --events`，零 docker 调用验证冻结 bundle root 发现）；`tauri.conf.json` `bundle.resources` 映射 `nsis/bundle/aisc-bundle` → `$INSTDIR\aisc-bundle`（目录递归展开，命中 `resources.py` 冻结分支）；staging 产物为 CI 生成构建物，`.gitignore` 排除 `workbench/src-tauri/nsis/bundle/`。
+- **Fix C（sidecar 发现名字失配，冒烟测试暴露）**：tauri-bundler 2.9.x externalBin 安装为**基名** `aisc.exe`（去 triple 后缀，7z 检查安装包确认），而 `cli.rs` `sidecar_candidate_in` 只找 `aisc-<triple>.exe` → 安装版永远发现不了 sidecar，回退 PATH（用户机器命中 dev 装的 `aisc`，无随装 bundle → 同一个 "AISC root not found"）。修复：`sidecar_candidate_in` 增加基名候选（triple 名保留兼容既有部署/测试）+ 新单测；冒烟步骤改查 `aisc.exe`（triple 名兜底）。此修复对 macOS/Linux bundle（S4.1.c，安装名同为基名）同样生效。
+- **vendor/checksums.txt 刷新（前置修复）**：Dockerfile/entrypoint.sh 在 S0.4（f0877a5）修改后未重算哈希、`aisc-provider-inspect`/`aisc-session-wrapper` 从未录入，`artifact.py stage` 校验（release artifact 流程与本 CI staging 均依赖）全平台失败；`bash tools/vendor-refresh.sh` 重生成（DEVELOP_WIKI 维护要求）。
+- 验证：Fix B 单测 6/6 + features 55 绿，`tests.yml` Windows runner（3.11/3.12/3.13）全绿（线程分支）；本机 staging VERIFICATION PASSED（CI 同命令）；`nsis-installer.yml` 全链路绿——staging → `tauri build` → 静默 `/S` 安装 → 冒烟：`aisc.exe` 被发现（基名）→ `version` 返回 `bundle_version: 2.1.5-dev`（随装 bundle root 发现）→ `build --dry-run --events` 发出 build.start/build.plan（bundle 目录为构建上下文）→ SMOKE: PASSED。最终实机全流程（打开目录 → preflight → 构建镜像 → runtime start）待用户 Windows 实机验收（用该 run 的 `aisc-workbench-windows-nsis` artifact）。
+- gap（观察项，不在本次范围）：`runtime start` 卷挂载 `-v C:\...:/root/app` 依赖 Docker Desktop file-sharing（Windows 路径盘符/大小写语义）。
+- **修复（实机验收暴露，2026-08-08）**：安装新版后「选择工作区 → 下一步」报「未找到兼容的 AISC CLI」。根因：`negotiate_capabilities` 自动选中唯一合法候选但**从不写 pin**——`runtime_preflight` 等所有 runtime 命令只经 `session::resolve_pin` 取 CLI，全新安装协商通过后仍无 pin → preflight 直接 `cli_not_found`。叠加 Fix C：sidecar 基名可发现后安装版合法出现 2+ 候选（sidecar + PATH dev CLI），旧「恰好一个」门在 ≥2 时同样报 `cli_not_found`。修复（cli.rs `negotiate_capabilities`）：按优先级（S4.1.a sidecar > PATH > platform）取**第一个**合法候选并协商成功后**持久化为 pin**（镜像 `cli_pin` 语义），0 合法才报 `cli_not_found`。验证：NSIS CI run 31260617514（编译 + 冒烟）→ 实机复测。
+- **安装向导中文化（2026-08-08，用户请求）**：`tauri.conf.json` `bundle.windows.nsis.languages` 加 `SimpChinese` + `displayLanguageSelector: true` → 首次安装显示语言选择框（MUI LangDLL，记忆于 HKCU 注册表，静默 /S 自动跳过）；MUI 页面字符串来自 tauri-bundler 内嵌语言文件，S4.1.b 自定义字符串（依赖检查页标题/组件/按钮/状态、完成页「启动 AISC Workbench」、Section Dependencies 日志）以 `LangString DEP_*` 双语定义（installer.nsi 语言 include 之后）。编码要点：模板源文件保持 UTF-8 无 BOM，tauri-bundler 渲染时加 BOM + `-INPUTCHARSET UTF8` 编译，CJK 在任何区域均正确渲染（en-US CI runner 上中文不mojibake）。验证：NSIS CI 编译 + 静默安装冒烟 → 实机看语言框与中文 UI。
+- **修复（实机验收暴露 #2，2026-08-08，GBK stdout 崩溃）**：重装后 preflight 通过、构建真实启动（docker 输出流式正常），中途报「AISC CLI 输出不符合协议」。实机复现（后台跑安装版 sidecar `build --events`）抓到 traceback：`JsonlEmitter.emit` → `UnicodeEncodeError: 'gbk' codec can't encode character '\U0001f4e6'`。根因：zh-CN Windows 上冻结 CLI 的 `sys.stdout` 是 GBK 编码，buildkit 输出含 emoji（`#N [1/50] FROM` 行的 📦），`print(json.dumps(..., ensure_ascii=False))` 崩溃 → CLI 带 traceback 退出、无终端事件 → Workbench 报协议错误。CI 冒烟不触发（`--dry-run` 不流式转发 docker 输出；runner 区域设置亦非 GBK）。修复：`emit_json`/`JsonlEmitter.emit` 改 `ensure_ascii=True`（协议线纯 ASCII，Rust serde_json 解析 `\uXXXX` 转义结果一致）+ `main()` 入口 `sys.stdout.reconfigure(errors="replace")`（其余不可编码输出降级为 `?` 而非崩溃）+ 回归测试（GBK TextIOWrapper + emoji chunk + CJK envelope，9/9 与流式 6/6 本地绿）。验证：NSIS CI run 31261676013 + tests.yml 31261677484 → 实机复测。
+- **修复（实机验收暴露 #3，2026-08-09，依赖检测误报 + winget 弹终端）**：Deps 页对已装的 Docker/Python 报「未找到」，点安装后弹黑框秒退（winget 发现其实已装）。根因：`CheckDocker` 查 `HKLM\SOFTWARE\Docker Inc.\Docker Desktop\DefaultPath`——该键不存在，Docker Desktop 实际注册在卸载键 `InstallLocation`（机器级装在 `Program Files\Docker\Docker`）；`CheckPython` 读 `PythonCore` 键**默认值**——恒为空，真实路径在 `PythonCore\<版本>\InstallPath`（本机 3.14 在 HKLM 64 位视图、3.12 在 HKCU，均读不到）。修复：Docker 查真实双路径（`$PROGRAMFILES64` + `%LOCALAPPDATA%`）+ 卸载键 `InstallLocation` 兜底（64 位视图 → HKCU → WOW6432Node），并记住 exe 路径供「启动 Docker」按钮复用；Python 枚举 `PythonCore` 版本子键（SetRegView 64/32 + HKCU）验证 `InstallPath\python.exe` 真实存在，结束恢复 32 位视图（32 位安装器进程其余模板依赖默认重定向视图）；winget 从 `ExecWait`（弹控制台窗）改 `nsExec::ExecToLog`（隐藏控制台、输出实时流入安装日志），退出码非 0 时**重新检测**——winget 对「已安装」返回非 0，以实际状态而非退出码判定成功。验证：本机装 makensis 3.12，`check-deps-test.nsi`（生产函数逐字复制 + 真编译真运行 `/S`）→ `docker_installed=1` / `python_installed=1`；`nsExec::ExecToLog` 退出码压栈实测确认。CI 重建安装包 → 实机复测。
+- **修复（实机验收暴露 #4，2026-08-09，winget 日志乱码）**：`ExecToLog` 流式显示的 winget 输出是乱码。字节实测（管道重定向捕获 winget stdout）：`E5 90 8D...` = **UTF-8**（.NET 在 stdout 重定向时写死 UTF-8），而 nsExec 按系统 ANSI 代码页（GBK）转换 → 中文变「鍚嶇О」式乱码，无解（无法让 winget 改吐 GBK）。修复：改 `nsExec::ExecToStack` 静默捕获丢弃输出（压栈序退出码→输出，makensis 实测确认），日志只显示本地化状态行（「正在安装……（可能需要几分钟）」→ 装完重检测 → 成功/失败+退出码）。无窗口、无乱码。
+
+#### S4.1.a CLI sidecar 打包与分发基础（06-implementation-plan.md §六 S4.1；02 §四.3）
+
+- **PyInstaller CLI 独立二进制**：`packaging/aisc.spec`（onefile、console=True--CLI 是控制台工具，`session open` 经 PTY/ConPTY 需 console subsystem；piped spawn 用 CREATE_NO_WINDOW 防窗口闪现）+ `scripts/build-cli.sh`（linux/macos，TARGET_TRIPLE 命名）+ `scripts/build-cli.ps1`（windows）。产物 `aisc-<target-triple>`（Tauri externalBin 约定）。本地产物 10MB 单文件，`version --format json` envelope 正确。
+- **CI 矩阵**：`.github/workflows/cli-sidecar.yml`（workflow_dispatch + push develop/main 触发，paths 过滤 src/aisc/packaging/scripts/VERSION）--ubuntu/windows/macos 三平台 PyInstaller 构建 -> `actions/upload-artifact`（release 时供 Tauri bundle 使用）。
+- **Tauri sidecar 集成**：`tauri.conf.json` `bundle.externalBin: ["binaries/aisc"]`（Tauri 自动追加 target triple，Windows 自动 .exe）；`version` 0.1.0 -> **2.1.5-dev**（对齐 CLI VERSION，capability 协商兜底版本失配）。**手动路径解析**（不引 shell plugin，S3.2 原则）：`sidecar_candidate_in(exe_dir)` 查 exe 同目录 `aisc-<triple>`（含 .exe），`target_triple()` cfg 匹配。
+- **cli.rs discovery 候选序**：`explicit > saved pin > sidecar > PATH > platform`（02 §四.3 + S4.1.a；内置 CLI 优先于 pip/PATH 装的，用户显式 pin 仍可覆盖）；`CandidateSource::Sidecar`（TS CandidateSource 同步加 `"sidecar"`）。3 个新单测（sidecar 优先级于 PATH、查找、缺失）。
+- **`--aisc-cli` 启动 arg 接线**（S2.1 deferred）：main.rs 解析 `--aisc-cli <path>` -> lib.rs `run(cli_arg)` -> `.manage(CliArg)` managed state -> cli.rs `explicit_cli_path()` 在 negotiate/discover 优先（进程 arg > saved pin > sidecar）。
+- `.gitignore`：`workbench/src-tauri/binaries/`（sidecar 二进制 CI 生成，不提交）+ `.dockerignore` 同目录。
+- 验证：cargo 70 绿（59 lib +3 sidecar + 7 cli + 4 pty，零回归）；npm build 零错误；本机 PyInstaller 产物验证；dev 无 pin 启动（唯一候选 sidecar，capability 协商直接验证通过）；`npx tauri dev -- -- --aisc-cli <path>` 透传验证（`Running workbench --aisc-cli ...`，tauri CLI 双层 `--` 才透传 app args）。
+- gap（明确 deferral）：Windows NSIS 定制安装器（winget 引导装 Python/Docker/WebView2）-> S4.1.b；macOS pkg / Linux preinst -> S4.1.c；Docker 安装检测 UI -> S4.1.b；平台依赖文档完整版 -> S4.1.b/c。
+
+#### S3.3 可访问性（06-implementation-plan.md §六 S3.3；02 §十二；04 §九）- Phase 3 收尾
+
+- `TabBar.vue`：ARIA tabs 键盘导航--`@keydown` on tablist：ArrowLeft/Up 前一、ArrowRight/Down 后一（wrap-around）、Home/End 首尾，激活 + `tabRefs[i].focus()` 焦点跟随（04 §九）；`aria-controls` 指向终端。
+- `App.vue`：aria-live 区域（`role="status" aria-live="polite"` + `role="alert" aria-live="assertive"`，`.sr-only` 视觉隐藏）；`announce(text, alert)` helper **节流 ~1s**（burst 合并为最近一次，普通 poll 不播报，04 §九）；`watch(store.runtimeState)` 状态变化播报「Runtime Running/Stopped/…」、`watch(store.error)` 失败播报（alert）。平台快捷键（capture-phase window handler）：`Ctrl/Cmd+1..4` 切 tab + **自动聚焦目标终端**（`defineExpose({focus})` + `terminalRefs` Map + `nextTick` 延迟 focus--同步 focus 时 v-show 切换未完成、xterm 不可见导致焦点无效，实测需按两次才聚焦，nextTick 修复）、`Ctrl/Cmd+Enter` 摘要启动；终端聚焦未修饰键归 xterm（路由优先级，06 §六.3.3）；onBeforeUnmount remove listener + clear announceTimer（cleanup 延续 S3.1）。
+- `styles.css`：`:focus-visible` 全局轮廓（键盘导航可见、鼠标点击不显）。
+- 非仅靠色审计：PreflightGate dot+状态文本 ✓、Sidebar state+freshness 文本 ✓、TabBar 状态文本 ✓（文档确认无仅色项）。
+- 验证：npm build 零错误；cargo 零改零错；dev 无 panic；实机手测通过--键盘 Tab 全流程（picker 输入+下一步、summary Ctrl+Enter 启动、ready 后 Ctrl+1..4 切 tab 直接输入（nextTick focus 修复后一次到位）、TabBar 方向键/Home/End 切换焦点跟随、focus-visible 轮廓、终端未修饰键输入正常、常规回归不破）。
+- gap（明确 deferral）：屏幕阅读器完整 smoke test（NVDA/VoiceOver 真机）-> release 实机；OS 级全局快捷键 -> MVP 不做（06 §六.3.3）；焦点陷阱/复杂 roving tabindex -> 简单方向键导航已够。
+
+#### S3.2 安全硬化（06-implementation-plan.md §六 S3.2）
+
+- **显式 CSP**：`tauri.conf.json` `app.security.csp` 从 `null`（宽松）改为显式：`default-src 'self'; connect-src ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; script-src 'self'`。`ipc:` + dev 端口给 Tauri IPC/vite HMR，`'unsafe-inline'` style 给 Vue scoped style 运行时注入。dev 实测 HMR/终端/样式不破。
+- **移除未用 opener**：前端零调用 `openUrl`/`openPath`（grep 确认）-> `Cargo.toml`+`Cargo.lock` 移除 `tauri-plugin-opener`、`lib.rs` 移除 plugin init、`capabilities` 移除 `opener:default`、`package.json` 移除 `@tauri-apps/plugin-opener`。最小攻击面（Workbench 不打开外部 URL）。
+- **破坏性操作确认**（`confirm` 原生对话框，取消不执行）：`stopRuntime`（侧栏，有活动 session 时文案含数量「有 N 个活动会话，停止将结束它们并停止 Runtime」）、`stopConflictRuntime`（「停止 Runtime <id 前 8 位>？容器将停止但保留」）、`removeConflictRuntime`（「移除/强制移除运行中 Runtime <id 前 8 位>？容器与元数据将永久删除」，force 文案区分）。
+- **`docs/security-checklist.md`**（新）：安全验证清单--Tauri 配置（CSP/最小权限/opener 移除）、破坏性操作边界（confirm/退出确认/workspace 只读预检）、secret 与敏感数据（history/settings 无 secret、PTY scrollback 不持久化、粘贴 1MB cap S1.3、redact 脱敏）、进程与资源（无孤儿进程、无持久化日志通道）。已知 defer：签名/公证（S4）、Provider 密钥（MVP 从不读）、完整日志通道（无持久化日志）。
+- 验证：cargo 67 绿（opener 移除 + CSP 编译零回归）；npm build 零错误；dev 无 panic/CSP 错误；实机手测通过--CSP 不破 HMR/终端/样式、确认弹窗（取消不执行/确认执行）、常规回归正常、`~/.config/cn.aisc.workbench/` 仅 history.json/history.lock/settings.json（无 scrollback/日志/secret 文件）。
+- gap（明确 deferral）：macOS 签名/公证 + Windows 代码签名 -> S4 发布门；8h/10 session/高输出长测 -> release 实机。
+
+#### S3.1 并发与异常硬化（03-lifecycle-contract.md §九；04-observability.md §六.2）
+
+- 后端 `runtime.rs`：`OpMutexes` managed state（`HashMap<runtime_id, Arc<tokio::sync::Mutex<()>>>`，std Mutex 护 map、tokio Mutex 跨 await 持锁）+ `acquire_op_lock`（`lock_owned`，guard 命令结束时 drop 释放）。`stop_runtime`/`runtime_restart`/`remove_runtime` 在 run_control 前 acquire 该 runtime_id 的锁：**同 runtime 串行、不同 runtime 并发**（03 §九.1/§九.6；Tauri op mutex 只处理本进程排序，跨进程由 CLI registry/workspace lock 保证）。`start_runtime` 仍用 StartOp 全局单 start token。`lib.rs` `.manage(OpMutexes::default())`。2 个 tokio 单测（同 id 二次 acquire 阻塞、不同 id 并发立即获锁）。
+- store `stores/runtime.ts`：**request_seq/revision reducer**（04 §六.2）替换 S2.2.b 的 observed_at 排序守卫--`requestSeq`/`lastAppliedSeq`/`revision` 计数器；`refreshRuntime`（轮询）每次 `++requestSeq` 赋 seq，`applyRuntimeSnapshot(snap, seq)` 仅当 `seq >= lastAppliedSeq` 才 apply（stale 低 seq 响应丢弃，慢 poll/被控制操作取代的响应不覆盖新状态）+ revision 递增；控制操作（ensureRuntime start/reuse/restart）赋 `++requestSeq`（restart apply snapshot；start/reuse 设代际边界 `lastAppliedSeq = ++requestSeq`，supersede 在途旧 poll）。observed_at 仍用于 freshness 显示（不再用于排序）。`resetWorkspace`/`stopRuntime` 重置 seq/revision。
+- **cleanup 审计**（无缺口需修）：useRuntimePolling/useProviderPolling `stop()` 清 timer + remove 3 listeners（visibility/focus/blur）✓；Terminal `onBeforeUnmount` closePty + clear resize timer + disconnect ResizeObserver + remove window resize listener ✓；store `startTimer`（stopTimer 清）/`saveTimer`（debounce，app 生命周期 OK）✓。useProviderPolling 的 `watch(activeTabId, runtimeState)` 不 unlisten（App 根组件生命周期，可接受，文档注明）。
+- 验证：cargo 67 绿（56 lib+2 op lock+7 cli+4 pty，2 新测试零回归）；npm build 零错误；dev 无 panic；实机手测回归通过--常规流程（picker->summary->Start/恢复布局->多 tab->停止->重进）正常，侧栏 Runtime 项（state+freshness+observed）轮询正常更新，控制台无报错。
+- gap（明确 deferral）：operation_id for control ops（cancel 流程已处理 start 取消；UI 单 op 按钮禁用无并发竞态）-> 后续多 op 并发再加；两窗口 runtime state 细粒度 merge（CLI 跨进程锁 + 轮询已覆盖）-> 后续；Docker daemon 重启/runtime OOM 特殊处理（轮询检测 unknown/stopped，session 经 PTY 自终）-> 无额外代码；8h/10 session/高输出长测 -> S3.2（scrollback 不持久化）+ release 实机。
+
+#### S2.4.b 恢复布局（resume layout）（02-startup-flow.md §2.3；03-lifecycle-contract.md §六）- Phase 2 收尾
+
+- 纯前端切片（无后端）。关 Phase 2「恢复布局」gate。「崩溃后发现 runtime」gate 已被 S2.4.a recents + S2.2.b discovery 覆盖（preflight 显 reuse/restart，不自动 stop/remove）。
+- store `stores/runtime.ts`：`buildPatch` 只记 **open（非 idle）tab**（之前记全部 4 个），使 history layout 反映实际开着的 tab；`restorableLayout` computed（preflight reuse/restart + history 该 workspace 有 open tabs 时返回 `{agents, activeAgent}`）；抽 `ensureRuntime()`（start/reuse/restart 共用逻辑）；`initTabs(agentsToOpen[], activeAgent?)` 重构--为指定 agents 各开新 session（新 session_id，**不续接 PTY**，03 §六）；`launchRuntime(agentsToOpen, activeAgent)` 共用「ensureRuntime + initTabs + cancel/error 处理」；`startFromSummary` 改调 `launchRuntime([launch.agent], launch.agent)`；`resumeLayout()` 调 `launchRuntime(historyAgents, historyActive)`。
+- `LaunchSummary.vue`：preflight reuse/restart + history 有 open tabs 时显**「恢复布局」按钮** + 蓝色文案「检测到上次的标签布局。「恢复布局」会为各标签启动新的 Agent 会话，不会续接上次终端内容」（02 §2.3）。`Start`=空白打开（单 tab），`Cancel`=选择其他工作区（等效 contract 的 resume prompt [恢复布局]/[空白打开]/[选择其他工作区]）。
+- 验证：npm build 零错误；cargo 零改零错；dev 无 panic；实机手测通过--开 claude+bash 两 tab 关 app 重启 -> picker 点该工作区 -> summary 显「恢复布局」+ 文案 -> 点恢复布局 -> runtime reuse/restart + 自动开 claude+bash 两新 session（独立可交互）+ active 为上次的；Start 空白打开只开 1 tab；关 app 重启恢复布局仍可用。
+- gap（明确 deferral）：孤儿 session 检测/处理（`session list` 找无 PTY session -> 结束/忽略，03 §8.1）-> S3.1/后续；窗口几何 save/restore（02 §九.2）-> 后续；独立 resume prompt 视图（本切片用 summary 按钮等效）；history 损坏可恢复错误 UI -> 后续。
+- **Phase 2 验收门**：✅ 首次启动/快速启动（S2.1.a）/恢复布局（S2.4.b）三条主路径通过；✅ Docker 未运行/CLI 过旧/镜像缺失/workspace 无权限稳定可操作错误（S2.1.a）；✅ GUI 外 stop/remove 轮询周期内显真实状态（S2.3.a）；✅ 崩溃后重启发现 runtime 不自动 stop/remove（S2.4.a recents + S2.2.b discovery）；✅ 两窗口并发更新 history 不丢 workspace/tab（S2.4.a fs4 锁 + expected_revision 有界重试）。Phase 2 完成。
+
+#### S2.4.a history 持久化 + 最近工作区（02-startup-flow.md §九；06 §五 S2.4）
+
+- 后端 `history.rs`（新模块）：schema-versioned `history.json`（02 §九.2 subset：schema_version/revision/workspaces，含 runtime ref + layout tabs）。`load(dir)` 缺失->空、corrupt JSON->隔离 rename `.corrupt`、unsupported schema->error 不覆盖。`save(dir, expected_revision, patch)`：**fs4 跨进程锁**（`history.lock` exclusive，~5s 超时 fail-closed）-> 锁内 reload -> `revision != expected_revision` 返回 `Conflict{current_revision}` -> merge patch（upsert by path，保留其他 workspace，02 §九「多窗口只 patch 自己拥有的」）-> revision+1 -> 原子写（temp+fsync+rename，复用 settings.rs 模式）。命令 `load_history`/`save_history`。`error.rs` 加 `history_conflict()`（WB_ERR_HISTORY_CONFLICT，store 据此重试）/`history_error()` 构造器。`session.rs` `config_dir` 改 pub。`Cargo.toml` 加 `fs4`。7 个单测（round-trip / corrupt 隔离 / revision conflict / merge 保留其他 / unsupported schema 不覆盖 / upsert / load-missing）。
+- 前端 `types/index.ts`：`WorkbenchHistory`/`WorkspaceRecord`/`RuntimeRef`/`Layout`/`TabRecord`/`HistoryPatch`。`lib/ipc.ts`：`loadHistory`/`saveHistory(expectedRevision, patch)`。
+- store `stores/runtime.ts`：`history`/`historyRevision`/`lastRuntimeRef`/`recentWorkspaces`（按 last_used desc）；`loadHistory`（startup negotiate 并行）；`scheduleSave`（debounce 300ms）在 runtime ready / tab open/activate / workspace 选中 时持久化；`doSave(retries)` Conflict -> reload+adopt revision+有界重试 3 次；`selectRecentWorkspace(path)` 从 history 恢复 launch config（image/network/scope/agent）+ lastRuntimeRef（02 §六 优先级），避免 preflight 用默认配置与已有 runtime 冲突 + 防止 null 覆盖 disk runtime ref。
+- `App.vue`：picker 加最近工作区列表（basename + 全路径 + last_agent），点击 `selectRecent` -> `store.selectRecentWorkspace`。
+- **测试中修 2 个遗留 bug**：(1) `runPreflight` 之前把所有 `recommended_action=resolve_conflict`（任意 check 失败都返回）路由到冲突视图，导致 workspace/image 失败时进冲突视图且 `loadConflicts` 空->死锁；改：仅 `runtime_conflict` check 自身 fail 才进冲突视图，其他失败进 summary 显真实 gate。(2) `backToSummaryFromBuild` 之前有 stale preflight 时不 re-preflight，build 完返回摘要仍显旧「缺镜像」-> Start 禁用；改：清 stale preflight + 总是 re-preflight。
+- **`.dockerignore` 修复**（build-context-perf memory，阻塞测试时顺手修）：原 `node_modules/` 只匹配顶层，漏了 `workbench/src-tauri/target`（15G）/`workbench/node_modules`/`.venv`；加 `**/target/`/`**/node_modules/`/`.venv/`/`**/dist/`，build context 15.57GB -> 72MB。（buildx 切换仍 defer，`docker buildx` 未装。）
+- 验证：cargo 65 绿（54 lib+7 history+7 cli+4 pty，7 新 history 测试零回归）；npm build 零错误；dev 无 panic；实机手测通过--选工作区 start+开 tab 关 app 重启 -> picker 最近列表显该工作区 -> 点击恢复配置进 preflight -> start；`history.json` schema/revision/workspaces(runtime ref+4 tabs layout) 正确。
+- gap（明确 deferral）：启动对账（runtime list 合并 history vs 实际）+ 恢复布局提示（恢复布局/空白打开）+ 为 tabs 创建新 session（文案「不续接」）+ 孤儿 session 检测/处理 -> S2.4.b（关「崩溃后发现 runtime」+「恢复布局」gate）；窗口几何 save/restore -> S2.4.b；两窗口同 workspace 细粒度合并（MVP last-write-wins on same path）；history 损坏可恢复错误 UI -> S2.4.b（a 静默隔离）；buildx 切换（CLI adapter）-> 后续。
+
+#### S2.3.b Provider 状态 + P1 可观察性（04-observability.md §二.P1/§四.2/§五；05-cli-gui-contract.md §七）
+
+- 后端 `runtime.rs`：`ProviderStatus{runtime_id, agent, provider_id, provider_name, route_mode, auth_status, observed_at}`（secret-free，仅路由/auth 元数据，永不含密钥）+ `provider_current_argv` 纯函数 + `get_provider_status(app, workspace, runtime_id, agent)` 命令（包 `aisc provider current --runtime-id --agent <claude|codex> --workspace --format json`，run_control + envelope_error + parse；agent 校验 claude|codex，bash/cc-switch 客户端拒；错误码 `AISC_ERR_PROVIDER_STATUS_FAILED` 经 map_aisc 映射）+ 3 单测（argv 形状 + 完整解析 + 空字段解析）。`lib.rs` 注册。PROVIDER_TIMEOUT=30s。
+- 前端 `types/index.ts`：`ProviderStatus`。`lib/ipc.ts`：`getProviderStatus(workspace, runtimeId, agent)`。
+- store `stores/runtime.ts`：`providerStatuses: Record<"claude"|"codex", ProviderStatus|null>` per-agent 缓存（04 §四.2「不存在全局 Provider」，claude/codex 各一份不互相覆盖）+ `providerError` + `providerInFlight`（去重）+ `loadProviderStatus(agent)`（仅 runtime running 时查）+ `clearProviderStatuses`（runtime 切换/停止时清）。
+- `composables/useProviderPolling.ts`（新）：活动 agent 感知的 provider 轮询--活动 tab 为 claude/codex 且 runtime running 时，切换 tab 立即查 + 15s（聚焦）/60s（失焦）/隐藏暂停（04 §五）；bash/cc-switch 或非 running 不查；`watch(activeTabId, runtimeState)` 触发重查/暂停。
+- `RuntimeSidebar.vue`：P1 区--活动 agent 的 provider_name / route_mode / auth_status；bash/cc-switch 显「不适用」；capability 缺失（`!provider_status`）显「Unknown · 需升级 CLI」（04 §八）；加载态「加载中…」；auth_status 着色（configured 绿/login_required·not_configured 黄/unknown 灰，不只靠色）。
+- `App.vue`：mount `useProviderPolling`（与 runtime 轮询同 ready 生命周期）。
+- 验证：cargo 58 绿（47 lib+7 cli+4 pty，3 新 provider 测试零回归）；npm build 零错误（59 模块）；dev 无 panic；实机手测通过--claude tab 显 provider/route/auth；codex tab 独立缓存；bash/cc-switch 显「不适用」；外部 stop 后不再查 provider。
+- gap（明确 deferral）：cc-switch 退出后失效 Claude/Codex provider 缓存并立即刷新活动 Agent（04 §五 末句边缘规则）-> S2.4（tab 生命周期细化时一起）；provider 查询 revision/request_seq 抗乱序硬化 -> S3.1；P2 runtime 详情面板 / aria-live 节流播报 -> S3.3；provider GUI 编辑器 -> 永不（06 §十.6）。
+
+#### S2.3.a 轮询对账 + P0 可观察性侧栏（04-observability.md §二/§四.1/§五/§六；06 §五）
+
+- 纯前端切片（复用 S2.2.b `runtime_inspect(workspace)`，后端零改）。关 Phase 2 gate「GUI 外 stop/remove 在轮询周期内显示真实状态」。
+- `composables/useRuntimePolling.ts`（新）：可见性感知 inspect 循环--聚焦 5s / 失焦 15s / 最小化隐藏暂停（04 §五）；±10% jitter；`store.inspectInFlight` 去重；resume（hidden->visible 或 focus）先 `markStale` 再立即 tick。`start/stop` 由 App.vue `watch(store.status)` 驱动（ready->start，离开->stop）。
+- store `stores/runtime.ts`：`freshness`（fresh/stale/unknown，04 §六.1）+ `inspectInFlight`；`applyRuntimeSnapshot` 成功 apply 时置 fresh；`markStale()`（失败/resume，保留 last snapshot 标 stale）；`refreshRuntime()`（inspect+apply，dedupe，驱动轮询 + 手动刷新按钮）；`resetWorkspace`/`stopRuntime` 重置 freshness。
+- `features/workspace/RuntimeSidebar.vue`（新）：ready 视图常驻 P0 侧栏--Workspace / Runtime state 徽章 + freshness + observed Xs ago（本地 1s timer）+ runtime_id（短显，**点击复制完整 UUID**）+ container_name（点击复制）/ Config(image/network/scope，来自 snapshot.config) / Active agent / Sessions 列表 / 刷新 + 停止 Runtime。状态用文本+色（不只靠色，04 §九）。
+- `App.vue`：ready 视图改 `[sidebar | (TabBar+terminal)]`，原 toolbar 内容并入侧栏（删孤儿 `.toolbar`/`.meta` 样式）；mount 轮询 composable。
+- `types/index.ts`：`Freshness` 类型。
+- 验证：npm build 零错误（58 模块）；cargo 零改零错；dev 无 panic；实机手测通过--外部 `runtime stop` -> ~5s 内侧栏 Stopped·stale；外部 `runtime remove` -> Not found；手动「刷新」即时 inspect（observed 重置）；点击 id/ctr 行复制完整值。
+- gap（明确 deferral）：provider status（claude/codex 的 provider/route/auth）+ 刷新 -> S2.3.b（P1）；freshness fresh/stale/unknown 全 revision/request_seq 抗乱序硬化 -> S3.1（本切片 observed_at 简单守卫）；runtime_stop session reason 精修 / stopped 状态保留 tabs 供 restart -> S2.4（外部 stop 时 session 经 PTY 自终 disconnected，侧栏显 stopped，不自动 restart）；history / 启动 list 对账 / 孤儿检测 -> S2.4；P2 runtime 详情面板（last_operation_error/启动诊断折叠）/ aria-live 节流播报 -> 后续/S3.3。
+
+#### S2.2.b Runtime 状态机 + 管理 UI + 退出确认（03-lifecycle-contract.md §四/§七.2-3/§十；04 §四.1/§六；02 §七.3）
+
+- 后端 `runtime.rs`：`RuntimeSnapshot` 对齐 CLI `to_dict()`--修 S2.1.a 遗留 bug（struct 有 `ready` 字段但 CLI inspect/list 不发 `ready`，deserialize 必败，被 cancel 路径 try/catch 吞了致 inspect 实际从未成功）；现 drop `ready`，加 `config{workspace,image,network,scope}`/`owner`/`config_fingerprint`/`container_id`/`registry_state`/`observed_at`/`stale`，optional 字段 `#[serde(default)]`；新增 `RuntimeConfig`/`RuntimeListResult`。新增命令 `list_runtimes(workspace, owner)`（`aisc runtime list --workspace --owner --format json`）+ `remove_runtime(workspace, runtime_id, force)`（`--force`）。`runtime_inspect`/`stop_runtime`/`runtime_restart` 全部加 `workspace` 参数透传 `--workspace`（修 registry 定位 + config 回填；之前不带 workspace 致 registry_state=missing + config 空），且 stop/restart/remove 返回 `RuntimeSnapshot`（op 结果即 observation）。argv 抽纯函数 + 8 个单测（inspect/stop/restart/remove/list argv + snapshot 反序列化无 ready + docker-only 最小 + list_result）。`lib.rs` 注册 2 新命令；`capabilities/default.json` 加 `core:window:allow-destroy`。
+- 前端 `types/index.ts`：`RuntimeSnapshot` 扩全字段（drop `ready`）；`RuntimeState` 补 stopping/stopped/removing；`RuntimeListResult`。`lib/ipc.ts`：inspect/stop/restart 加 workspace 参数；`listRuntimes`/`removeRuntime`。
+- store `stores/runtime.ts`：`runtimeState`/`runtimeSnapshot` + `applyRuntimeSnapshot`（observed_at 守卫，旧观察不覆盖新，04 §六.2 简化版；全 revision/request_seq 硬化留 S3.1）；`conflicts`/`conflictError` + `loadConflicts`/`stopConflictRuntime`/`removeConflictRuntime`/`retryFromConflict`；`confirmExit`（02 §七.3：有活动 session 弹 confirm + 结束 owned session + 保留 runtime）。`runPreflight` 加 **discovery**--preflight 前先 `list_runtimes(workspace, workbench)` 找已有 project runtime 复用其 id（修根因：Workbench 每次生成新 runtime_id 不命中 CLI 的 reuse/restart，重进有 project runtime 的工作区必误报 resolve_conflict；现同配置->reuse/restart，异配置->resolve_conflict）。`startFromSummary` restart 路径 apply 返回 snapshot；resolve_conflict 进 `conflict` 状态。`WorkbenchStatus` 加 `conflict`。
+- **测试中修 3 个流程 bug**：(1) preflight `resolve_conflict` 原先进 summary 但 `can_start=false` 致 Start 禁用卡死 -> `runPreflight` 见 resolve_conflict 直接进冲突视图；(2) stop 后重进显冲突而非 restart -> discovery 复用已有 runtime id 修复；(3) 退出确认点确认后窗口不关（async `preventDefault` 时序）-> 始终同步 `preventDefault` + allow 则显式 `destroy()` + 加 `core:window:allow-destroy` 权限。
+- 组件 `features/startup/ConflictManager.vue`（新）：列出工作区 workbench runtime（id 缩写/state/image·scope）+ 停止（running/starting）/强制移除（running，force）/移除（stopped）+ 重新预检/返回。`App.vue`：`conflict` 视图 + onMounted 注册 `onCloseRequested`（始终 preventDefault + confirm + destroy）。
+- 验证：cargo 55 绿（44 lib+7 cli+4 pty，8 新测试零回归）；npm build 零错误；dev 无 panic；实机手测通过--制造 project runtime 冲突 -> 冲突视图列出 -> 强制移除 -> re-preflight -> start -> ready；stop 后重进 -> discovery 复用 -> restart -> ready；有活动 session 关窗弹确认 -> 确认关窗 + runtime 保留运行。
+- gap（明确 deferral）：轮询对账/外部 stop-remove 周期检测 -> S2.3；freshness fresh/stale/unknown + revision/request_seq 抗乱序硬化 -> S3.1；stopped 状态保留 tabs 供 restart 的 richer UX + runtime_stop session reason 精修 -> S2.4；history 持久化/启动 list 对账完整版（孤儿/多窗口）/崩溃恢复 -> S2.4（本切片 discovery 是其轻量子集）；Provider/auth + P0/P1 可观察性侧栏 -> S2.3。
+
+#### S2.2.a 多标签 + Session 状态机（03-lifecycle-contract.md §五/§六/§七.1；06 §五）
+
+- 纯前端切片（后端 S1.3 session registry 已是多 session 能力，零改动）。4 固定 agent 标签（Claude/Codex/Bash/cc-switch）共享同一 runtime（03 §二.3/§六），Tab 只是 Session 视图。
+- `types/index.ts` 加 `TabSessionState`（`idle` + SessionState）、`TabExit`、`Tab`（tabId/agent/title/sessionId/sessionState/exit）。
+- `stores/runtime.ts`：替换单一 `sessionId` 为 `tabs: Tab[]` + `activeTabId`；session 状态机 reducer--`initTabs`（runtime ready 后建 4 标签 + 开初始 agent 标签）、`openTab`/`reopenTab`（新 session_id -> `starting`）、`activateTab`（idle 标签首次激活即开）、`closeTab`（-> `closing` + `close_session`，PTY Exit 事件 finalize）、`onTabOpenOk/Fail`、`onTabSessionExit`（idempotent first-writer-wins，03 §五.2 重复终止事件合并为单一 TabExit）；`stopRuntime` 迭代关所有 live session 后 stop + 回 picker。`resetWorkspace` 统一清 tabs/runtimeId/preflight。
+- `Terminal.vue` 重构 tab-scoped：props `tabId`，从 store 读 `tab.sessionId/agent`；每非-idle 标签各一实例，`v-show` 仅活动标签可见（隐藏 PTY 继续跑，切换不丢 scrollback，03 §六.8）；`visible` watch + ResizeObserver 双重 fit（补 display 切换时 ResizeObserver 不触发缺口）；PTY `Exit` 事件为单一终态信号 -> `onTabSessionExit`，`closeTab` 仅触发 closeSession 不自行判定终态。
+- `features/workspace/TabBar.vue`（新）：4 标签 + 状态指示（未打开/启动中/关闭中/退出 code N/失败/已断开）+ × 关闭（running/starting/closing）+ ↻ 重新打开（exited/failed/disconnected，新 session_id）。
+- `App.vue` ready 视图：TabBar + `v-for` 渲染非-idle 标签 Terminal（key=tabId，v-show active）。
+- 验证：`npm run build`（vue-tsc+vite）零错误；`cargo build` 零改动零错误；dev 启动无 panic；实机手测通过--4 标签开/关/重开、切换不丢历史、隐藏标签继续运行、停止 Runtime 关全部回 picker、resize 正常。
+- gap（明确 deferral）：runtime 状态机/observed_at/revision/freshness/轮询对账 -> S2.2.b；list/remove/force-remove 管理 UI + 冲突复用/停止替换 -> S2.2.b；退出 Workbench 确认 + Tauri 关闭拦截 -> S2.2.b；runtime stop 时 session reason 精修为 `runtime_stop`（现为 transport_error/disconnected）-> S2.2.b 状态机关联；history 持久化/恢复布局/崩溃对账 -> S2.4；Provider/auth Warning + P0/P1 可观察性侧栏 -> S2.3。
+
+#### S2.1.b 镜像构建流式进度（05-cli-gui-contract.md §4.1）
+
+- `cli.rs` 增 `BuildEvent`（JSONL `{protocol,command,run_id,seq,type,ts,data}`）+ `run_build_stream(executable, argv, timeout, cancel, mpsc)`：`tokio::process` spawn + `BufReader::read_line` 逐行解析 `build.*` 事件 -> bounded mpsc(256) 背压；terminal 事件（complete/failed/cancelled）决定返回（complete->Ok，failed->Err(map_aisc(error_code))，cancelled->Err(cli_cancelled)）；取消/超时 `sigint_or_kill`（Unix `libc::kill(SIGINT)` 让 CLI 发 `build.cancelled` + 清 docker 子进程组；Windows fallback SIGKILL = transport failure，§4.1.4）。build.output 仅内存转发、不解析百分比（§4.1.3/§4.1.5）。
+- `runtime.rs` 增 `build_image(app, tag, on_event: Channel<BuildEvent>)`（mpsc->Channel 桥接，同 open_session 模式）+ `cancel_build`；`BuildOp` managed state（newtype 包 `Arc<Mutex<Option<CancellationToken>>>`，与 `StartOp` 同型但 Tauri 按具体类型管理 state，必须 distinct 类型--type alias 会 panic "already being managed"）。
+- **CLI 修复（S0.5 遗留）**：`output.py` `emit_json` + `JsonlEmitter.emit` 加 `flush=True`--Python stdout 管道下块缓冲，build 事件积压到进程结束才出，违反 §4.1.1「不能等进程结束后一次性返回」；实测 `python -u` 验证，修复后事件即时流出（契约测试 8 个仍过）。
+- 前端：`BuildEvent`/`BuildStatus` 类型；`ipc.buildImage/cancelBuild`；store `startBuild`（Channel 只收 build.output 追加 log；终态由命令返回值判定，避开回调 race + TS narrowing）、`cancelBuild`、`backToSummaryFromBuild`（回摘要并 re-preflight）；`BuildProgress.vue`（滚动 log + 经过时间 + Cancel + complete/failed/cancelled + 返回摘要；complete 后停留可看完整 log，不再自动跳走）；App.vue `building` 视图；LaunchSummary 「构建镜像」按钮在 image 缺失时启用。
+- 验证：cargo build/test 47 绿、npm build 零错误；CLI 时间戳实测事件流式到达（非突发）；实机手测通过（镜像缺失 -> 构建 -> 实时日志 -> complete -> 返回摘要 re-preflight -> image pass -> Start）。
+- 已知观感问题（已记 memory，后续解决）：`aisc build` context = 整个 repo（含 node_modules/target/.venv）-> Docker legacy builder 初始化 ~22s 空档，缓存命中后输出突发；Workbench 侧已加经过时间+占位提示缓解；根治 = `.dockerignore` + 换 buildx。
+- gap（明确 deferral）：runtime 状态机/对账/管理 UI（冲突复用/stop-remove）-> S2.2；workspace 最近列表 -> S2.4；多标签 -> S2.2；Provider/auth Warning -> S2.3。
+
+#### S2.1.a 启动与预检主路径（02-startup-flow.md §三/§四/§七/§八）
+
+- 后端 `runtime.rs` 增极薄命令：`runtime_preflight`（`aisc runtime preflight --format json`，解析 `PreflightReport{checks,can_start,recommended_action,matching_runtime_id,conflicts,observed_at}`）、`runtime_inspect`（取消后对账）、`runtime_restart`（reuse/restart 路径）；`start_runtime` 改为可取消--managed `StartOp(Arc<Mutex<Option<CancellationToken>>>)` 状态 + `cancel_runtime_start` 命令（02 §三 每异步操作带 cancel token）。`lib.rs` 注册 4 新命令 + `.manage(StartOp::default())`。无状态机/对账/list/remove（S2.2）。
+- 前端启动状态机（`stores/runtime.ts`）：idle/negotiating/blocked/picker/preflight/summary/starting/cancelled/ready/error；持 preflight 报告 + `LaunchConfig{agent,image,network,scope}` + runtime_id/matching_runtime_id + start 计时。actions：`runPreflight`、`startFromSummary`（按 recommended_action 走 start/reuse/restart -> 开 session；resolve_conflict 阻塞）、`cancelStart`（cancel_runtime_start -> inspect -> 保留/停止，02 §八）、`stopRuntime`、`backToPicker`。
+- 组件 `src/features/startup/`：`PreflightGate.vue`（逐项 check pass/warn/fail + hard/config 分类，02 §四.2）、`LaunchSummary.vue`（摘要屏 Workspace/Agent dropdown/Runtime reuse|start|restart/Image/Network/Scope + Start/Change settings/Cancel；image 缺失 config gate 禁用 Start，「构建镜像」禁用占位 S2.1.b）、`StartProgress.vue`（经过时间 + Cancel；取消后 inspect -> 保留|停止）。`App.vue` 状态路由壳；`Terminal.vue` agent 改从 `store.launch.agent` 取，sessionId watcher 加 `immediate:true`（修复 Terminal 在 status=ready 后才挂载导致 watcher 漏触发、bash 不出的问题）。
+- 类型 `types/index.ts` 加 PreflightReport/Check/RuntimeSnapshot/CheckStatus/RecommendedAction/LaunchConfig；`lib/ipc.ts` 加 runtimePreflight/runtimeInspect/runtimeRestart/cancelRuntimeStart。
+- 验证：`cargo build`/`cargo test`（47 绿）零 warning；`npm run build`（vue-tsc+vite）零错误；实机手测全链路通过--picker(原生 dialog) -> 预检 -> 摘要(agent=bash) -> Start -> bash 可交互 -> 停止 Runtime。（测试中遇主机内核升级未重启致 Docker veth 缺失，非代码问题，重启后恢复。）
+- gap（明确 deferral）：`build --events` 流式 + 构建进度 UI -> S2.1.b；workspace 最近列表 -> S2.4（history）；runtime 状态机/observed_at/revision/对账/list/remove -> S2.2；多标签 + Claude/Codex/cc-switch 标签 -> S2.2（S2.1.a 单 session + agent 选择）；`--workspace` 启动 arg 接线、resume_prompt -> S2.1.b/S2.4；Provider/auth Warning -> S2.3。
+
+#### S1.1 工程脚手架（06-implementation-plan.md §四）
+
+- 新建 `workbench/` Tauri 2 + Vue 3 + TypeScript 工程；引入 xterm.js + FitAddon；Tauri capabilities 仅允许 Workbench 命名 command；后端仅 `greet` 占位（lib.rs/main.rs）。
+
+#### S1.2 结构化 CLI runner（05-cli-gui-contract.md §九.1 / 02 §四.3 / 03 §十）
+
+- `workbench/src-tauri/src/cli.rs` argv-only runner（禁 shell，05 §九.1）：`tokio::process::Command` + `tokio::select!` 三路（`child.wait` / `tokio::time::sleep` / `CancellationToken`），超时与取消均 `kill`+`wait` 回收子进程；stdout 8MB 上限，超限后 drain-to-EOF 再返回 `WB_ERR_CLI_PROTOCOL`（不阻塞子进程退出）；`aisc.cli/v1` envelope 校验（`meta.protocol` 一致 + `meta.exit_code`==进程退出码，05 §八）。
+- discovery/pinning（02 §四.3）：按优先级枚举去重（explicit arg > `settings.json` pin > 进程 PATH `aisc`/`aisc.exe` > 平台已知位置 Linux `${XDG_BIN_HOME:-$HOME/.local/bin}`、macOS `/usr/local/bin`+`~/.local/bin`、Windows `%LOCALAPPDATA%\Programs\AISC`+`%LOCALAPPDATA%\AISC`）；`is_executable` 跨平台（Unix `mode&0o111` / Windows `.exe` 存在）；多安装冲突 `needs_confirm=true`，pinned 失效走 hard gate 不静默换；只保存 canonical 绝对路径，原子写（temp+fsync+rename）。
+- capability 协商：`negotiate` 跑 `version --format json` 取 `data.capabilities`，required={runtime,session} 缺失 -> `CapabilityReport(required_ok=false)` 携带 `WB_ERR_CAPABILITY_UNSUPPORTED`（不 panic，前端可显阻塞页而非崩溃）；optional={providerStatus,buildEvents}。值需精确匹配 `aisc.* /v1`（不按版本号猜）。
+- `error.rs`：`WorkbenchError{code,message,technical_detail,retryable,action}` + `map_aisc`（§八 全量 `AISC_ERR_*` -> action 路由，不靠 message 字符串匹配，02 §十）+ `redact`（env-var `KEY=VALUE` 与 `sk-` token 脱敏，4KB 上限，UTF-8 安全）；WB_ERR_* 传输/协议码（CLI_NOT_FOUND/TIMEOUT/CANCELLED/PROTOCOL/CAPABILITY_UNSUPPORTED/SETTINGS），action 枚举在 03 §十 基线上加 `choose_cli`。
+- `settings.rs`：`settings.json` 读写，保留未知字段（后续切片可扩展），`schema_version` 不支持时保留原文件返回可恢复错误（02 §九）；跨进程锁 deferral 到 S2.4（`history.rs` 切片负责跨平台锁），S1.2 仅原子写。
+- Tauri commands：`cli_discover` / `cli_pin` / `cli_clear_pin` / `negotiate_capabilities`；移除 `greet` 占位。
+- 测试：25 单测（envelope 校验 / capability classify / error map / discovery 优先级去重 / PATH 查找 / redact / settings 往返与 schema 守卫）+ 7 集成（`python3 -c` 发射 envelope 验 parse/timeout/cancel/stdout-cap/exit-code-mismatch；real `aisc` gated on `AISC_TEST_CLI` -> `required_ok=true`）。`cargo build` 零 warning，`cargo test` 32 全绿。
+- gap（明确 deferral）：settings 跨进程锁 -> S2.4；`--aisc-cli` 启动 arg 接线到 `cli_discover.explicit_path` -> S2.1；capability 不支持的阻塞页 UI -> S2.1。
+
+#### S1.3 PTY supervisor（05-cli-gui-contract.md §6.1/§9.2 / 03 §五/§七.1）
+
+- `workbench/src-tauri/src/pty.rs` portable-pty 监督核心（不依赖 Tauri，可本地子进程测）：`native_pty_system().openpty` + `slave.spawn_command` 起 `aisc session open`（text-only TTY，PTY 数据不混 JSON）；三个独立 `spawn_blocking` 任务——write 任务（拥 PTY writer，bounded mpsc 16 = 大段粘贴背压）、reader 任务（阻塞读循环，每 chunk base64 + 单调 seq 经 mpsc 发 `Output`）、wait 任务（拥 child，`child.wait()` 阻塞 -> 定 reason + 发单一 `Exit` + 置 `ExitSignal`）。`child.clone_killer()` 让 close/reader 在 `wait` 阻塞时强杀 child（满足「close 后无孤儿进程」验收门）。
+- Linux PTY 语义：slave 关闭时 master `read` 返回 `EIO`（非 EOF），reader 将 `EIO` 视为正常 EOF（不误判 transport_error），其它 `Err` 才是 transport loss（kill child + 标 `transport_error`）。
+- `ExitSignal`（`Arc<Mutex<Option<SessionExit>>>` + `Notify`）：idempotent `set`（first writer wins），`wait`/`wait_timeout`；wait 任务 set，close 与 observer 都 await 它，多终止信号合并为单一 `SessionExit`（03 §五）。
+- `session.rs`：`SessionRegistry`（`Arc<Mutex<HashMap>>` 作 `tauri::State`）+ 4 个 Tauri command。`open_session` 校验 runtime_id/session_id UUID v4 + agent enum（快失败，映射 `AISC_ERR_INVALID_*`），resolve pin（复用 S1.2 settings，无 pin -> `WB_ERR_CLI_NOT_FOUND`），建 mpsc(256) -> `spawn_pty_session` -> 桥接任务（mpsc -> `tauri::ipc::Channel`，先建 Channel 再起子进程不丢首屏）+ observer 任务（child 自然退出时更新 registry state=Exited/Disconnected + 缓存 exit）。`write_session`（1MB 粘贴上限 -> `WB_ERR_INPUT_TOO_LARGE`，clone writer_sender 跨 await 不持锁）。`resize_session`。`close_session`：移除 entry -> 若已 exited 直接返回缓存 exit -> 否则 `cancel`（user_close reason）+ `run_control` 跑 `session terminate --format json`（幂等，best-effort）+ `signal.wait_timeout(10s)` -> 超时则 `force_kill` + `wait_timeout(2s)` -> 返回 `SessionExit`，scope 结束 drop session 关 PTY（03 §七.1 terminate -> close PTY -> wait/reap）。
+- `PtyEvent`（`{type: output|exit|error}`，camelCase 字段，bytes base64）/ `SessionExit`（exit_code/reason/finishedAtMs）/ `SessionState`（starting/running/closing/exited/failed/disconnected）。
+- error.rs 增补：`input_too_large()` (`WB_ERR_INPUT_TOO_LARGE`) + `map_aisc` 加 `AISC_ERR_INVALID_RUNTIME_ID` arm。
+- deps：`portable-pty 0.9`、`base64 0.22`、`libc 0.2`（EIO 常量）。
+- 测试：36 单测（PtyEvent/SessionState 序列化、ExitSignal idempotent/wait/wait_timeout、UUID v4 校验、agent/argv 校验、snapshot camelCase）+ 4 PTY 集成（本地 `sh` 子进程验 Output 流 + exit_code 传递 + write 回显 + cancel user_close + resize；real `aisc session open --agent bash` gated on `AISC_TEST_CLI`+`AISC_TEST_RUNTIME_ID` -> 写 `echo hi_aisc` 收输出 + `exit` -> process_exit，已实机验证通过）。`cargo build` 零 warning，`cargo test` 47 全绿。
+- gap（明确 deferral）：`ResizeObserver` 节流 / 标签可见 fit / 终端 UI -> S1.4；runtime_stop 触发 session exited 联动 -> S2.2；disconnected->exited 的 terminate 确认重试 UI -> S2.x；session_list Tauri command -> S2.x。
+
+#### S1.4 最小端到端 UI（06-implementation-plan.md §四 S1.4）
+
+- 极薄 `workbench/src-tauri/src/runtime.rs`：`start_runtime`（`aisc runtime start --runtime-id --workspace --image super-claude:latest --network direct --scope project --owner workbench --format json`，120s 超时，解析 envelope data -> `RuntimeStartResult`）/ `stop_runtime`（`aisc runtime stop`，30s）——直接复用 S1.2 `run_control` + `session::resolve_pin`（后者改 pub），无状态机/对账（S2.2）。`session.rs` `resolve_pin` 改 `pub` 供 runtime.rs 复用。
+- 前端 PTY 接线（`Terminal.vue`）：`Channel<PtyEvent>` 先建再 invoke `open_session`（不丢首屏）；`onmessage` Output -> `atob` -> `Uint8Array` -> `term.write`，Exit/Error -> 终端内显式退出/错误行 + 通知 store；`term.onData` -> `TextEncoder` UTF-8 -> `write_session`（后端 1MB 粘贴上限 + bounded mpsc 背压）；`ResizeObserver`（150ms 节流）+ 窗口 resize 监听 -> `fit.fit()` + `resize_session`；watcher 新旧 sessionId 切换时先关旧 PTY 再开新。
+- `store`：`negotiate()`（mount 时 `negotiate_capabilities`，`required_ok=false` -> `blocked` 态显阻塞文案 +「选择 AISC CLI」文件 dialog -> `cli_pin` 重协商，不做 S2.1 完整启动流程）；`startBash()`（`crypto.randomUUID()` 生成 runtime_id/session_id -> `start_runtime` -> 置 sessionId 触发 Terminal 开 bash）；`stopRuntime()`（先 `close_session` 后 `stop_runtime`，best-effort）；`pickWorkspace()` 原生目录 dialog。
+- `App.vue`：工作区输入（回车也可触发）+「选择」+「启动 Bash」+「停止 Runtime」+ 状态行（status 着色）+ 工具栏错误行（含重试）。
+- deps：`tauri-plugin-dialog`（Cargo + `dialog:default` capability）+ `@tauri-apps/plugin-dialog`（npm）。
+- 类型：`types/index.ts` 加 `CapabilityReport`/`WorkbenchError`/`PtyEvent`/`SessionSnapshot`/`SessionExit`/`RuntimeStartResult` 等；`lib/ipc.ts` 类型化 invoke 封装。
+- 验证：`npm run build`（vue-tsc + vite）零错误；`cargo build` 零 warning；实机手测通过——未 pin 时阻塞页 + 选 CLI、工作区选择、启动 Bash 后终端可交互（`ls`/`echo`/中文/emoji）、resize 跟随、停止 Runtime 确定性关闭，测试后无残留 runtime/容器。
+- gap（明确 deferral）：多标签 + agent 选择（Claude/Codex/cc-switch）-> S2.2；启动摘要 + preflight gate + 镜像构建进度 -> S2.1；runtime 状态机/对账/list/inspect -> S2.2；history 持久化/崩溃对账 -> S2.4；Phase 1 验收门余项（10MB 输出、1MB 粘贴、100 次 resize、50 次开关、Claude/Codex smoke、Windows/macOS 实机）= 实机手测清单。
+
+#### S0.3 Session 数据面（05-cli-gui-contract.md §6）
+
+- 新增容器内 `aisc-session-wrapper`（Python）：`open` 从 `/run/aisc/runtime-context.json` 重建 scope 环境（CLAUDE/CODEX/CC_SWITCH config dir，CODEX_HOME 派生），`os.fork`+`os.execvpe`+sync pipe 在父进程 `tcsetpgrp` 后才 exec（消除 SIGTTOU 前台竞态），独立进程组启动受控 agent，原子 0600 `/run/aisc/sessions/<uuid>.json` 记录，wait/reap，传递退出码；`list` 输出 JSON 数组；`terminate` PID/PGID/start-ticks 身份校验 + 向整个 session 的进程组发信号（spare session leader 让 open wrapper reap agent，避免 zombie 堆积在 PID 1 sleep infinity 下）。
+- CLI：`aisc session open/list/terminate`，受控 argv（无 shell），runtime_id/session_id UUID v4 + agent enum 校验，稳定错误码；`session open` text-only（拒绝 `--format json`，PTY 数据不混 JSON）；`terminate` 超时跟随 `--grace`（grace+10s）。
+- secret-free：record/stdout 不含 env/argv/key；wrapper 断言 context runtime_id 与请求一致。
+- 集成测试：bash open project+temporary scope、live-session terminate 无残留、PID 复用/unknown 幂等不误杀。
+
+#### S0.4 Provider 状态 + Workbench capabilities（§4/§7）
+
+- `aisc version --format json` 广告 `capabilities` {runtime, session, providerStatus}（buildEvents 留 S0.5）。
+- `aisc provider current --runtime-id --agent claude|codex --format json`：容器内 `aisc-provider-inspect` 读 cc-switch.db(sqlite) + claude settings.json / codex config.toml + OAuth 文件，输出 secret-free `{provider_id, provider_name, route_mode, auth_status}`。`model_provider` 选 active codex entry；`PROXY_MANAGED` 占位符不算 configured；isinstance 守卫防畸形 config。
+- `resolve_running_container` 提到 `application/runtime.py` public（#5 cleanup，session+provider 共用，session 保留 alias，零测试改动）。
+- 错误码 `AISC_ERR_PROVIDER_STATUS_FAILED`（exit 21）登记到契约 §八 + RFC §4.1（同时回填 S0.3 的 18-20）。
+
+#### S0.5 build --events 契约（§4.1）
+
+- `DockerExecutor.run_streaming_captured(argv, on_chunk)`：`Popen` stdout/stderr=PIPE + 独立进程组（`start_new_session`），select 增量读，每 chunk -> `build.output` 事件；中断时 `killpg` docker 子进程组。
+- `run_build --events`：实时 `build.output`（非末尾回放）；KeyboardInterrupt -> `build.cancelled`(130, {image_tag, docker_exit_code, reason}) + exit 130；terminal `build.complete`/`build.failed`(带 error_code) 走 main.py。移除 `build.step.complete`/`build.warning`，image_exists 折进 `build.plan`。
+- `buildEvents: "aisc.build-events/v1"` capability 广告；逐 chunk 流式 = 天然背压，无无界缓冲。
+- 契约测试 8（成功/失败/取消三流、纯 JSONL、seq 单调）+ 取消集成 1（killpg 无 docker-client 残留）。
+
+#### Phase 0 验收门（§十二）
+
+- 全量 422 passed，capability 与 §4 逐项匹配，Linux Docker E2E 通过；代码级 §十二 全过。
+- 修复 `runtime remove` 非幂等：已移除 runtime 的二次 remove 现返回 not_found(rc0)，不再 RUNTIME_NOT_FOUND(rc1)。
+- 登记校验类错误码（SCOPE/NETWORK/WORKSPACE/INVALID_AGENT/INVALID_SESSION_ID）到契约 §八 + RFC §4.1 注明退出码与 code 多对一（JSON `errors[].code` 权威）；修正 INVALID_SESSION_ID 退出码 15->2（不再与 INVALID_RUNTIME_ID 冲突）。
+- 实机 deferral：claude/codex/cc-switch 交互、PTY 信号链路 -> Phase 1 S1.3；Windows/macOS 实机 -> 手测。
+
+# v2.2.0-dev (2026-08-03 ~ 2026-08-06) — Workbench Phase 0 S0.2: Runtime 控制面
+
+### 变更
+
+- 实现 `aisc runtime preflight` 命令：只读，零副作用，执行 Docker/workspace/image/network/runtime_conflict 五项检查后返回 JSON payload（`docs/gui-planning/05-cli-gui-contract.md §5.1`）。
+- Runtime ID 由 Workbench 提供（UUID v4），CLI 严格校验格式；不允许 CLI 自生成 ID。
+- 配置指纹 `sha256:<hex>` 对 image/network/scope/canonical workspace 规范化计算，用于幂等重试和复用检测。
+- Registry 路径修正：`containers.json`（非 `registry.json`），根目录已含 `.aisc` 时不再嵌套。
+- 新增 `list_containers_readonly()`：无锁、无副作用 registry 快照读；文件缺失返回空、损坏则抛异常（fail-closed）。
+- GC 修复：lock→snapshot→unlock→inspect→relock→compare→prune 模式，消除锁内 Docker 调用和 NameError 回归。
+- `_check_image()` 区分 "image not found" 与 "cannot observe"（Docker 不可用时返回 `DOCKER_UNAVAILABLE` 而非 `IMAGE_NOT_FOUND`）。
+- 基于 Docker label `io.aisc.runtime-id` 的容器发现与 reconciliation；Docker 中存在但 registry 中缺失的容器报告为 conflict。
+- 旧 registry 记录检测：缺失 runtime_id/scope/owner 的旧条目自动标记为 conflict（按 contract §5.1 行 140）。
+- CLI 命令层移除内联 PreflightExecutor，改用 `RealDockerExecutor()` 结构化 API（`preflight()`/`inspect_image()`/`inspect_container()`）。
+- 注册 exit codes 14-16（RUNTIME_CONFLICT/INVALID_RUNTIME_ID/RUNTIME_OPERATION_FAILED）到 `docs/rfc/aisc-cli-v1.md`。
+- 全部 runtime 测试从 pytest 迁移到 `unittest.TestCase`，同时兼容 unittest discover 和 pytest 运行器。
+- 新增 25 个 preflight 单元测试、13 个 subprocess 契约测试、8 个零副作用测试。
+
+#### Runtime CRUD 命令（§5.2-5.5）
+
+- 实现 `aisc runtime start/list/inspect/stop/restart/remove`，覆盖生命周期状态机（`03-lifecycle-contract.md §四`）。
+- `start`：workspace lock 内复用 preflight 的冲突判定做幂等/冲突重验（不信任客户端 preflight）；`docker run -d` 以 detached idle 模式创建容器，带 5 个 Docker labels（`io.aisc.managed`/`kind`/`runtime-id`/`owner`/`workspace-key`，不写原始宿主路径）；轮询 `docker exec cat /run/aisc/runtime-context.json` 做 ready check（校验 schema/runtime_id）；成功后才在 registry lock 内提交 registry 记录；registry commit 失败时 `docker rm -f` 清理新容器并返回 partial identity。
+- 容器名确定性：`aisc-wb-<runtime_id 前 8 hex>`，支撑幂等重试与定向 `docker rm`。
+- 新增 `workspace_lock()`（`.aisc/workspace-locks/<sha256>.lock`，POSIX `fcntl.flock` / Windows `msvcrt.locking`，fail-closed），锁顺序固定 workspace lock -> registry lock，仅 `start` 获取。
+- `list`：registry 快照 + Docker inspect 对账；Docker-only 容器标记 `registry_state: "missing"` 不自动删除；Docker 不可用返回稳定错误(3)，不伪装缓存为实时。
+- `inspect`：按 runtime_id 在 registry + Docker label 查找，区分 `not_found`/`stopped`/`unknown`。
+- `stop` 幂等；`restart` 原配置重启 + ready check；`remove` 运行中无 `--force` 拒绝(16)，`--force` 或已停止才删除容器并注销 registry。
+- `container/entrypoint.sh` 新增 idle 分支：`AISC_RUNTIME_MODE=idle` 时完成 scope/cc-switch/目录初始化后，原子写不含密钥的 `/run/aisc/runtime-context.json`（schema/runtime_id/scope/config dirs/ready_time），再 `exec sleep infinity` 保活 PID 1 供 `session open` 接入。
+- 修复 registry 一致性：`_state_dir()` 统一接受 workspace root 或 `.aisc` 路径，`_registry_lock`/`_write_registry_unlocked`/`workspace_lock` 共用；修复 `_query_docker_labels`/`_get_container_state` 误用 `returncode`（应为 `exit_code`）的潜在 bug（Mock 执行器下不显现，RealDockerExecutor 下崩溃）。
+- 旧 `aisc run/shell/switch/stop` 兼容路径不受影响；新语义全在 `runtime` 子命令族内。
+
+#### Code review 修复（645170b review）
+
+- **锁超时映射**：`workspace_lock`/`_registry_lock` 超时改为抛 `CliError(STATE_LOCK_TIMEOUT, exit 17)`，不再裸 `TimeoutError` 堆栈；注册 exit 17 到 RFC §4.1；`start_runtime` 的 workspace lock 超时改为 `ready_timeout + 30s`，避免并发 start 在 winner 持锁期间误超时。
+- **Docker-only registry_state**：`_snapshot_from_registry` 接受 `registry_state` 参数；`_resolve_container_for_lifecycle` 返回 4-tuple 含 registry_state；stop/restart 对 Docker-only 容器正确返回 `missing`（原先误标 `registered`）。
+- **`_wait_ready` 瞬态异常**：单次 `docker exec` 异常不再立即返回 None 触发清理，改为继续轮询到 deadline（仅超时或校验失败才返回 None）。
+- **重用已停止 runtime**：`start` 重用匹配但已停止的 runtime 时自动 `docker start` + ready check，返回 `reused=True, running, ready`（原先返回 stopped limbo）。
+- **proxy_config 接线**：`runtime start` 增加 `--proxy-config` 选项并透传到 `start_runtime`，proxy 模式可挂载 mihomo 配置。
+- **entrypoint 安全 JSON**：idle 分支改用 python3 写 `runtime-context.json`（quoted heredoc + env），避免路径含 `"`/`\` 时 shell 插值破坏 JSON。
+- 小清理：`_iso_now` 去重（CLI 层改 import）、`_require_image` 用 `RuntimeExitCode.IMAGE_NOT_FOUND` 常量、移除未用的 `conflict_check`、`stop_runtime` docstring 明确幂等边界、`container_name_for` 标注 32-bit 熵、`_list_docker_runtime_containers` 标注瞬态假阴性。
+- 新增 7 个回归测试（锁超时映射 ×2、Docker-only stop/restart、_wait_ready 瞬态/超时、重用已停止 runtime）。
+- **ac65adb review 回归修复**：锁超时改 `CliError` 后，`start_runtime` 的 register cleanup `except (ValueError, OSError)` 不再捕获它（`TimeoutError` 是 `OSError` 子类，`CliError` 不是），导致 ready 容器成孤儿。新增 `except CliError:` 分支清理容器并 re-raise 保留 `STATE_LOCK_TIMEOUT`。`_iso_now` 改公开名 `iso_now`；workspace_lock 标注 SIGALRM 主线程限制。新增 1 个回归测试。
+
+### 关键提交
+
+- `000a878` 登记 exit codes 14-16
+- `69821aa` preflight 垂直切片（domain/application/CLI/tests）
+- `d2bd4f3` 消除 registry 读竞态条件
+- `59e43c8` 修正 registry 路径和 fail-closed 语义
+- `5a983b3` PreflightExecutor → RealDockerExecutor
+- `86716e7` 区分不可观测与缺失语义
+- `9d1fef9` Docker label reconciliation
+- `ab0493a` 旧记录冲突检测
+- `96260e8` pytest → unittest.TestCase
+- (本批) runtime start/list/inspect/stop/restart/remove + entrypoint idle 模式 + workspace lock
+
+### 状态
+
+- 分支: `feature/workbench-phase0-s0.2`
+- 315 tests passed, 8 skipped（含 25 个 lifecycle 单元测试、runtime CRUD 契约测试、真 Docker start->remove 集成测试与并发 start 竞态测试）
+- Runtime 控制面（preflight + start/list/inspect/stop/restart/remove）已实现并通过 S0.2 DoD：空 Docker 状态 start->remove 全链路通过，JSON envelope 与退出码一致；同 workspace 并发 project start 只有一个成功，另一个 conflict(14)。
+- 下一步：S0.3 Session 数据面（`aisc session open/list/terminate` + 容器内 `aisc-session-wrapper`）。
+
+---
+
+# v2.1.4 (2026-07-24) — Codex 官方登录直连与安全的 Skills 同步
 
 ### 变更
 
@@ -27,7 +1467,7 @@
 
 ---
 
-## v2.1.3 (2026-07-24) — 稳定发布与跨平台制品校验
+# v2.1.3 (2026-07-24) — 稳定发布与跨平台制品校验
 
 ### 变更
 
@@ -44,7 +1484,7 @@
 
 ---
 
-## v2.1.2-dev (2026-07-24) — 单一版本源、宿主入口与 cc-switch 收敛
+# v2.1.2-dev (2026-07-24) — 单一版本源、宿主入口与 cc-switch 收敛
 
 ### 变更
 
@@ -62,7 +1502,7 @@
 
 ---
 
-## v2.1.1-dev (2026-07-23 ~ 2026-07-24) — root 运行时与 `/root/app` 工作区
+# v2.1.1-dev (2026-07-23 ~ 2026-07-24) — root 运行时与 `/root/app` 工作区
 
 ### 变更
 
@@ -81,7 +1521,7 @@
 
 ---
 
-## v2.1.0-dev (2026-07-23) — Claude 与 Codex 双 CLI
+# v2.1.0-dev (2026-07-23) — Claude 与 Codex 双 CLI
 
 ### 变更
 
@@ -98,7 +1538,7 @@
 
 ---
 
-## v2.0.5 (2026-07-22) — 配置管理与 Windows bind mount 修复
+# v2.0.5 (2026-07-22) — 配置管理与 Windows bind mount 修复
 
 ### 变更
 
@@ -119,7 +1559,7 @@
 
 ---
 
-## v2.0.4-dev (2026-07-21 ~ 2026-07-22) — Provider 预览与启动初始化修复
+# v2.0.4-dev (2026-07-21 ~ 2026-07-22) — Provider 预览与启动初始化修复
 
 ### 变更
 
@@ -136,7 +1576,7 @@
 
 ---
 
-## v2.0.3-dev (2026-07-21) — `.aisc` 配置迁移
+# v2.0.3-dev (2026-07-21) — `.aisc` 配置迁移
 
 ### 变更
 
@@ -154,7 +1594,7 @@
 
 ---
 
-## v2.0.1-dev (2026-07-20 ~ 2026-07-21) — 多容器管理与自动 Release
+# v2.0.1-dev (2026-07-20 ~ 2026-07-21) — 多容器管理与自动 Release
 
 ### 变更
 
@@ -172,7 +1612,7 @@
 
 ---
 
-## v2.0.0-dev (2026-07-16 ~ 2026-07-20) — Python CLI、可验证制品与跨平台安装器
+# v2.0.0-dev (2026-07-16 ~ 2026-07-20) — Python CLI、可验证制品与跨平台安装器
 
 本节按 `v1.2.0..v2.0.0-dev` 的真实 commit 顺序重新整理。旧日志曾把计划、未提交实验和后续版本混入同一节，现只保留已经进入 `v2.0.0-dev` 标签的结果。
 
@@ -213,7 +1653,7 @@
 
 ---
 
-## v1.5.2 (2026-07-16) — AI 简讯性能与可靠性
+# v1.5.2 (2026-07-16) — AI 简讯性能与可靠性
 
 - commit `e9945e4`：5 个资讯源并发抓取、全局截止时间、瞬时错误重试、gzip/deflate 解压、raw/rendered 双层缓存和 `--debug` 计时。
 - `--ai` 模式处理 reasoning-only 输出、token 耗尽和独立 LLM timeout；失败时降素材重试。
@@ -221,7 +1661,7 @@
 
 ---
 
-## v1.5.1 (2026-07-14) - 权限修复 + 简讯 URL 增强
+# v1.5.1 (2026-07-14) - 权限修复 + 简讯 URL 增强
 
 ### 变更
 - **`entrypoint.sh`**：项目模式下对 `.claude` 目录追加 `sudo chown -R AISC:AISC`，解决挂载卷文件属主非 uid 1000 导致 `cs` 写 `settings.json` 时报 `EACCES: permission denied`。
@@ -233,7 +1673,7 @@
 
 ---
 
-## v1.5.0 (2026-07-12) - AI 每日简讯注入启动头（TLDR + The Rundown）
+# v1.5.0 (2026-07-12) - AI 每日简讯注入启动头（TLDR + The Rundown）
 
 ### 动机
 启动头那段「🚀 [Super Claude] 工作站初始化中... + 后端状态 + 分隔线」纯装饰、无信息量。把每日 AI 资讯（TLDR AI + The Rundown AI）抓取 + LLM 中文精选后注入启动头，每次进容器先看今日要闻；同时支持单独 CLI 输出。
@@ -304,7 +1744,7 @@
 
 ---
 
-## v1.4.0 (2026-07-10) - LiteLLM 协议转换 + cc-switch-cli 集成
+# v1.4.0 (2026-07-10) - LiteLLM 协议转换 + cc-switch-cli 集成
 
 ### 动机
 TODO「claude code CLI外配置 cc-switch-cli」+ 汇报演示「Claude Code 接入 OpenAI 格式渠道的技术可行性」。内置 `cs` 只切 Anthropic 兼容后端（不改协议）；需 LiteLLM 做 Anthropic↔OpenAI 协议转换，并集成 cc-switch-cli（4.1k stars，多 AI CLI 管理）与 cs 共存。
@@ -341,7 +1781,7 @@ TODO「claude code CLI外配置 cc-switch-cli」+ 汇报演示「Claude Code 接
 
 ---
 
-## v1.3.2 (2026-07-04) — 容器内 Python 运行时
+# v1.3.2 (2026-07-04) — 容器内 Python 运行时
 
 ### 动机
 TODO「配置 docker 容器系统的 python」——容器内无 Python，Claude Code 无法跑 Python 脚本 / pip 装包。
@@ -366,7 +1806,7 @@ TODO「配置 docker 容器系统的 python」——容器内无 Python，Claude
 
 ---
 
-## v1.3.1 (2026-07-04) — 项目目录重构（按职责分组）
+# v1.3.1 (2026-07-04) — 项目目录重构（按职责分组）
 
 ### 动机
 
@@ -397,7 +1837,7 @@ TODO「配置 docker 容器系统的 python」——容器内无 Python，Claude
 
 ---
 
-## v1.3.0 (2026-07-04) — 启动器模块化重构（流水线 + 状态解耦）
+# v1.3.0 (2026-07-04) — 启动器模块化重构（流水线 + 状态解耦）
 
 ### 动机
 
@@ -437,7 +1877,7 @@ TODO「配置 docker 容器系统的 python」——容器内无 Python，Claude
 
 ---
 
-## v1.2.3 (2026-07-04) — 容器内建 Mihomo TUN 透明代理
+# v1.2.3 (2026-07-04) — 容器内建 Mihomo TUN 透明代理
 
 ### 动机
 
@@ -484,7 +1924,7 @@ TODO「配置 docker 容器系统的 python」——容器内无 Python，Claude
 
 ---
 
-## v1.2.2 (2026-07-01) — 非 root 运行（AISC 用户）
+# v1.2.2 (2026-07-01) — 非 root 运行（AISC 用户）
 
 ### 动机
 
@@ -545,14 +1985,14 @@ Claude Code 在 root 下拒绝 `--dangerously-skip-permissions` 模式。容器�
 - duo-cc/1y 设 COMPACT=1M 但模型未必真支持 1M：若实际窗口 <1M，到模型上限才报错而非提前压缩。duo-cc 充值后实测确认。
 - xf OPUS `xopglm52` 不加 `[1m]`：glm5.2 在讯飞只有 512k，加后缀会错。
 
-## v1.2.1 (2026-06-30) — README 手动构建/运行 文档完善
+# v1.2.1 (2026-06-30) — README 手动构建/运行 文档完善
 
 - **README 手动构建/运行部分重写**：拆分为构建/运行/常用变体三个小节，覆盖三平台命令。
   - 构建：明确 `USE_CN_MIRROR` 默认=1，新增 `--no-cache` 示例。
   - 运行：新增 Windows PowerShell/CMD 的 `-v` 语法，强调 `TERM=xterm-256color` 必要性。
   - 常用变体：`CLAUDE_SCOPE` 跳过菜单、`bash` 直接进 shell、`cs <后端>` 一键切换、`--name` 容器命名。
 
-## v1.2.0 (2026-06-30) — 插件化重构 + 双作用域 + 跨平台修复
+# v1.2.0 (2026-06-30) — 插件化重构 + 双作用域 + 跨平台修复
 
 ### 架构重构
 
@@ -634,7 +2074,7 @@ Claude Code 在 root 下拒绝 `--dangerously-skip-permissions` 模式。容器�
 `docker build` 通过；容器内 `locale` 确认 `C.UTF-8`，`ls` 中文无乱码。
 Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 
-## v1.1.3 (2026-06-28)
+# v1.1.3 (2026-06-28)
 
 ### 🚀 启动体验与全局行为优化
 
@@ -672,7 +2112,7 @@ Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 
 ---
 
-## v1.1.2 (2026-06-27)
+# v1.1.2 (2026-06-27)
 
 ### 🔐 安全重构：API Key 与脚本分离
 
@@ -710,7 +2150,7 @@ Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 
 ---
 
-## v1.1.1 (2026-06-27)
+# v1.1.1 (2026-06-27)
 
 ### 🔄 切换脚本重构：`cs` 统一入口
 
@@ -783,7 +2223,7 @@ Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 
 ---
 
-## v1.1.0 (2026-06-27)
+# v1.1.0 (2026-06-27)
 
 ### 🔄 架构重构：纯终端闭环
 
@@ -855,7 +2295,7 @@ Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 
 ---
 
-## v1.0.0 (2026-06-25)
+# v1.0.0 (2026-06-25)
 
 ### 初始版本
 
@@ -874,3 +2314,863 @@ Windows `.bat` 的 no.4 需在 Windows + Windows Terminal 环境实测确认。
 - [x] ~~Skill 引入（andrej-karpathy-skills）~~ → v1.1.0 完成
 - [x] ~~全局 claude-switch 命令~~ → v1.1.0 完成
 - [ ] Termius SSH 配置文档未编写
+
+# PP (2026-09-03) — Provider 页对标 cc-switch 桌面端（D-12，P1-P4）
+
+opt-batch 收口后按用户指令开工。四段全部落地：
+
+- **P1（`c523ae4`）数据契约**：provider_view 透出 api_format（优先级
+  meta>preset>agent 默认；claude=anthropic、codex=openai_responses，双侧
+  都露的裁决）/notes/website_url/icon/icon_color/codex model_catalog；
+  read_snapshot 扩列；_db_merge_row_extra（meta+显示列舞步后一次性回写
+  ——edit 的 delete→re-add 会重置全部）；patch 白名单扩展（api_format
+  三枚举校验/model_catalog 清洗）；+6 契约测试，_install_dance_cli 使
+  fake add 同步写 db、舞步可经 view 断言。adapter 75 全绿。
+- **P2（`70cafc7`）ProviderEditPage**：整页编辑器（返回+保存头），
+  简易/高级两档；add 态预设快速添加（服务端全联动=按 preset 预填裁决）
+  /自定义双路；上游格式三选+非 anthropic 路由提示；ModelMappingEditor
+  （claude 三档角色行+[1m] 切换——round-4 语义保留+折叠高级槽位；codex
+  三列 catalog 编辑器= /model 列表源）；fetch-models 行内反馈；备注/
+  网站/图标（内置图形集+色板）；未保存返回确认。旧弹层测试全量迁移
+  （16/16）。
+- **P3（`9a3cac1`）完全卡片化**：ProviderCard（图标 db 值或首字符圆标/
+  名称/备注标记/端点/启用中徽章；悬浮操作组=编辑/删除，触屏常显）；
+  卡体点击=启用（当前卡=取消代理，IDEA-4 r3 语义）；key 掩码不上卡；
+  旧表格样式与悬空 --ccs-grid 清除；行闪烁动画迁卡并补 keyframes。
+- **P4（后续 commit）死代码清除**：旧 add/edit 弹层模板、脚本岛
+  （addForm/editForm/editRoles/submit*/ROLE_SLOTS 旧块/oneM 旧实现/
+  modelOptions/fetchHint）与 popover-only 样式全部移除——
+  CcSwitchUiTab 600+ 行 → ~350 行。
+- 门禁：adapter 75 / pytest 相关 54 / vitest 426 / vue-tsc / vite build
+  全过；镜像重建烧入 P1 adapter。手测矩阵：新增（预设/自定义）→ 编辑
+  （上游格式/映射/图标/备注）→ 切换 → codex /model 列表生效。
+- **r2 手测反馈（五项，2026-09-03）**：①agent 切换 text pills → cc-switch
+  式品牌图标芯片（Claude 橙色十二芒 / Codex OpenAI 结标，内联 SVG
+  icon-only + aria-label/title）；②编辑页档位与添加路两行胶囊（radius-full
+  椭圆被否）→ 圆角矩形分段钮；③**激活交互反转**——卡体点击取消，改专用
+  「启用」按钮（hover 动作组首位，cc-switch 桌面式 ▶ 蓝钮）；当前卡的
+  取消代理语义保留为「停用」钮（同一 confirm 流，IDEA-4 r3 不丢）；
+  ④激活卡 = accent 边框 + 底色微染（--accent-soft），「使用中」徽章改
+  实心 accent；⑤悬浮边框高亮与激活态同色（accent 一族）。顺带清 P4 漏网
+  死代码（openAdd 不可达块 + addForm/addOpen/addMode 孤儿 ref + 表格时代
+  .row/.cur 样式）。测试迁移：激活 4 处 → button.start、编辑 4 处 →
+  button.edit。i18n：+enableBtn/disableBtn，usageHint 随新交互改写（双语）。
+  门禁：vitest 426 / vue-tsc / vite build 全过。纯前端改动——零容器/
+  sidecar 涉及，无需镜像重建，npm run dev 即验。
+- **r3 手测反馈（八项，2026-09-03）**：①图标集换统一单色系（几何/杂记号
+  12 枚；旧 emoji+形状混排渲染不一致）；②**拉取模型带未保存 key 全链**——
+  adapter `op_fetch_models` 接受 stdin request 文档的 api_key 覆盖（仅
+  stdin 通道；失败消息 redact 覆盖 key）→ CLI `fetch_models` 可选 request
+  透传 → Rust `cc_switch_fetch_models` 可选 api_key 走 run_control_input →
+  ipc/store/编辑页带 form.apiKey；adapter +2 测试；镜像 + sidecar 双重建；
+  ③[1m] 钮重设计（"1M" 实心 accent 切换芯片 + aria-pressed）；④「使用中」
+  徽章矩形化；⑤**全局椭圆治理**——根因 = `--radius-full: 50%` 在非正方
+  文本胶囊上产生椭圆角；六处改 radius-sm（switch-toast / ui-badge /
+  settings chip / doctor c-status / explorer 徽章+路径 chip / Terminal
+  截断钮），真圆点/头像/进度条保留；⑥官方直连卡**恒显示且置顶**（推翻
+  S8g-2 隐藏裁决，cc-switch 对等）：官方卡「启用」= 取消代理伪目标
+  （confirm 沿用，无 current 时免确认），官方卡无编辑/删除；**当前
+  provider 无「停用」钮**（停用 = 启用别的/官方）；store first-seen
+  稳定序——edit 舞步 delete→re-add 不再重排卡片（**比较器禁副作用**：
+  先全量钉序再 sort，V8 首次比较顺序曾颠倒结果——HTML 转储定位）；
+  ⑦agent 切换 out-in 交叉淡入 + stale 列表暗显（stale-while-revalidate
+  本已存在，缺的只是视觉连续性）；⑧图标生效链实弹验证——新镜像容器内
+  add 带 icon/color → list 回读 `◆`/`#4a9eff` 字节级一致（用户所见
+  "无效果"定位为旧 runtime 容器跑 pre-P1 adapter 静默丢字段）。
+  门禁：pytest 1108+120 subtests / adapter 77 / vitest 427 / vue-tsc /
+  vite build / cargo 270（env docker 探针测试并行跑偶发，单跑即过）/
+  vendor-refresh 1513 + bundle 双 staging PASS（pytest 曾把 __pycache__
+  留进 container/_bundle 被 staging 拒绝——清理后过）。
+- **r4 手测反馈（三项）+ cc-switch 静默降级事故根治（2026-09-03 下午）**：
+  **事故链（根因在我）**——当天的手动 `docker build` 走了 Dockerfile 回退
+  分支（ARG v5.9.0 + 旧资产名），把镜像里的 cc-switch 从 resolver 线的
+  **5.10.4 静默降级**到 5.9.0；5.9.0（max db v11）对桌面版 cc-switch 已
+  迁移的 **v18 共享 db**（data-root 挂载）连读都拒，daemon 起不来（O5
+  巡检救不动：start 同样被版本门禁拒）→ 上游 add/switch 全灭。用户编辑
+  deepseek：舞步 delete 成功、上游 re-add 秒拒（trace 铁证 rc=1×35ms）、
+  旧 restore 走同一条断路 → **行被删**（二次保存报 "provider not found"）。
+  ①抢救：8/31 备份（v17 可读）diff 确认仅丢 deepseek-claude，18 列原样
+  回填（映射五槽+EFFORT 全在；token 备份本就无，非舞步丢失）；
+  ②镜像：`aisc build` 产品路径（resolver 注入 URL/SHA256 强校验）重建 =
+  **5.10.4**，活体 db 副本验证：列表打开 + edit 舞步端到端 OK；
+  ③**堵回归类**：Dockerfile 回退分支 ARG 升 v5.10.4 + 资产名对齐
+  `cc-switch-cli-<ver>-linux-<arch>-musl` 新命名（无版本旧名已 404；
+  修正一次 `vv5.10.4` 双 v 手误后实证手动构建也出 5.10.4）；
+  ④adapter 加固：edit 舞步 delete 前 `_db_capture_row` 全行捕获，
+  re-add 失败 `_db_restore_row` 直连 SQL 原样回插（上游 CLI 从此不是
+  恢复路径的单点；is_current 强制 0 防双 current）；测试改写为新契约
+  （失败 → 恰 1 次上游 add + 行原样回来）；⑤前端：编辑页补 store 错误
+  横幅（"保存无反应"的 UI 半边——失败此前只在列表页可见）；agent 切换
+  过渡去 stale 变暗中间态（用户否）+ 放缓至 200ms。门禁：adapter 77 /
+  vitest 427 / vue-tsc / vite build / vendor-refresh 1513 + 双 staging
+  PASS。**用户待办：删除并重建 runtime 容器**（吃 5.10.4 + 加固
+  adapter）；deepseek 需重填 key（该行历史上就没有）。
+- **r5 手测反馈（三项，2026-09-03 晚）**：①**agent 切换徽章滞留**——
+  switchAgent 异步窗口保留旧 agent 列表，「使用中」徽章在新 agent 视图
+  停留到数据返回，交叉淡入被数据迟到抵消（用户"动画有什么意义"）；
+  修复：store 切换即清 providers + 列表区新增 loading 分支（out-in 变成
+  旧列表淡出→加载中→新列表淡入的完整换页语义；+1 回归测试钉死 pending
+  窗口零滞留）；②「切换中 Ns」横幅改 Teleport body 底部居中悬浮卡
+  （surface-2+边框+阴影，滑入过渡；原 in-flow 版本在卡片上方把卡片往下
+  挤——用户裁决）；③claude `/model` 仍显示 Opus/Sonnet/Haiku——上游
+  内置选择器显示**逻辑档位名**，ANTHROPIC_DEFAULT_*_MODEL 映射作用于
+  请求层（选 Opus 实际发映射后的上游模型），cc-switch 桌面端行为一致、
+  我们侧不可改显示名；验证途径=直接问 claude 当前模型（上游模型自报）
+  或用量/请求日志看实际转发。门禁：vitest 428 / vue-tsc / vite build。
+- **r5 追加（"问它是谁"被证伪 + 按模型用量表）**：用户实测问 claude
+  "你是谁"答"Opus"——**该方法不可靠**（我此前建议有误）：claude code 每次
+  请求注入身份 system prompt（"You are Claude…"），上游模型遵循 prompt
+  自称；**逻辑反证**：无 Opus 订阅还能正常对话 = 请求绝不可能到官方
+  （会 401）= 路由+映射必然在工作。落地补强：NetworkUsageTab 新增
+  **「按模型用量」表**——adapter `op_usage` 的 model 维度
+  （`proxy_request_logs.model` = 实际转发模型 ID）一直聚合着但前端从未
+  渲染；纯前端合并各 workspace models（CLI totals 只聚 providers），
+  scope 过滤同 provider 表。验证路径定型：切 Provider → 发一条消息 →
+  用量面板刷新 → 按模型行出现 `glm-5.3[1m]`（而非 claude-opus-*）即
+  铁证。门禁：vitest 429 / vue-tsc / vite build。追加：切换成功 toast
+  与「切换中」进度卡统一到同一位置（底部居中）——完成时同位置渐变
+  交接（进度卡渐隐、✓ 成功卡渐入），滑入方向随位翻转。
+- **r6 热切换实测 + codex catalog stale 接管（2026-09-03 晚）**：用户在
+  claude 实测热切换，请求日志铁证三条：current=zhipu、全程请求记 zhipu
+  名下（路由热切换生效）、最终 glm-5.3-flash 200 对话成功；**修正 r5 结
+  论**——claude 路由热但**模型映射不热**（env 进程态）：切换后旧会话仍发
+  claude-opus-5 逻辑名 → zhipu 401 十余条，换真实模型名立即通。codex
+  /model 列表刷新问题：ZZZ-TEST 假模型注入实验定案——**codex 列表启动
+  时进内存，连重开 /model 面板都不重读**（外部无解，上游架构）。顺藤
+  摸出真 bug：**切 provider 后 catalog 还是旧 provider 的模型**——
+  `_apply_codex_model_catalog` 的 FULL DEFERENCE 守卫 + `_set_codex_
+  catalog_key` 的所有权守卫把 TUI 映射页在**旧 provider** 下写的
+  cc-switch-model-catalog.json 保护成了跨切换 stale（用户 zhipu 现场：
+  列表全是 deepseek）。修复：两守卫加 `override_foreign/force` 让位参数，
+  op_switch 尾部 + catalog-sync 接管（db 行 modelCatalog 即 TUI 映射数据，
+  用户映射经行仍胜出），幂等快路径保持 deferre（同 provider 时外来文件
+  是用户活跃意图）；顺手修 catalog-sync envelope 存量 TypeError
+  （`provider=` kwarg 不在 _envelope 签名——文件写完才炸，后台 --live
+  refresh 一直在静默非零退出）。+2 测试（接管双向 + main envelope）。
+  活体容器热修验证：catalog-sync 干净 envelope、config 键改指
+  aisc-model-catalog.json、内容=['glm-5.3']。**codex 切换后仍需重开会话
+  才能看到新列表**（列表内存态不可外部刷新——重开即正确）。门禁：
+  adapter 79 / vendor-refresh + 双 staging + aisc build 镜像重建（用户
+  容器已 docker cp 热修）。
+- **r7 codex 拉取模型失败（2026-09-03 晚）**：`op_fetch_models` 只有
+  claude 语义（读 settings.env 的 ANTHROPIC_* 键）——codex 行是
+  config-TOML + auth.OPENAI_API_KEY 形状，PRIMARY 取数恒空 → 直接掉进
+  上游 CLI fallback → 用户看到莫名失败。修复：codex 分支用
+  `_codex_provider_fields` 提取 TOML base + auth key（与 catalog live
+  fetch 同源），preset 声明的 OpenAI 侧 base 作第二候选；+1 测试
+  （TOML 形状行 → PRIMARY 命中 /models）。活体热修后实测：zhipu
+  /models 端点不返回列表（上游不暴露/无权限——诚实报错）、deepseek
+  **HTTP 401**（用户 codex 行 key 被拒——拉取链已通，失败在 key 层；
+  r3 的未保存 key 链路恰好支持"粘贴新 key 直接重试拉取"验证）。
+  门禁：adapter 80 / vendor-refresh + 双 staging + aisc build 镜像
+  重建 + 活体 docker cp 热修。
+- **PP 封存 + r8 两项新特性（2026-09-03 晚，用户裁决 cc-switch 优化
+  封存）**：①**裸 Ctrl+C/V 接管复制/粘贴**（Windows Terminal 语义）——
+  Ctrl+C 有选中→复制（不到 PTY）、无选中→仍发 ^C（SIGINT 是中断运行中
+  进程的唯一手段，保留）；Ctrl+V 恒粘贴（原字面 ^V 回显无终端价值）；
+  Ctrl+Shift+C/V 原样保留；+3 键位测试（选中复制/无选中透传/V 不双贴
+  ——S8f keyup 类坑）；②**全局禁用 WebView2 默认右键菜单**——新
+  lib/contextMenu.ts（document 级 contextmenu preventDefault，自建菜单
+  渲染自己的 DOM 不受影响），App.vue onMounted 接线 + 模块测试。纯前端，
+  无容器/sidecar 涉及。门禁：vitest 433 / vue-tsc / vite build。
+
+# 发布 (2026-09-07) — v2.1.9-dev Preview
+
+- **`f59cb98` 冻结 + `v2.1.9-dev` tag → GitHub Release「AISC v2.1.9-dev
+  Preview」发布**（prerelease 已发布非草稿）。四件套：VERSION
+  2.1.9.dev0 / tauri.conf 2.1.9-dev / envelope fixture / notes
+  `docs/releases/v2.1.9.dev0.md`（F1 SSH 工作区 · F2 宿主 MCP · PERF
+  低配机专项 · PP Provider 页 · O 批优化 · 已知限制）。plans 归档
+  `docs/archive/2.1.9-dev-plans/`。资产：NSIS setup（125MB，
+  `5698425984cd038b…c2e542`，点号命名沿 v2.1.8 惯例）+ sha256，取自
+  f59cb98 的 NSIS lane 产物。发布前 CI 五 lane 全绿（cli-sidecar /
+  Workbench ×2 / Bundle / NSIS），pytest 1146 / 版本一致性 6。
+  **2.1.9 周期收官**：挂账清偿 T1-T8 + opt O1-O9 + PP + F1/F2 + PERF
+  P1-P9 + 审查修复 7 项 + 手测三轮修复（设置页卡死根治 / P7 梯子
+  语义 / P6a light not_found 覆写根治 + provider 门三重保障）。
+
+# PERF (2026-09-05 ~) — 低配机器 Docker 性能优化（分支 develop）
+
+> 规划入口：`docs/plans/2.1.9-dev-plans/perf-batch-spec.md`（D-13；探针事实
+> 基线 + P1-P10）。用户画像：8GB+弱CPU/慢盘复合低配机，全场景卡顿。
+
+- **P1 tick 合并 `runtime status` 单命令（2026-09-06）**：
+  5s 轮询 tick 从 2 次 aisc.exe（inspect + 无条件跟随的 services）合并为
+  **1 次**——每次 spawn 有 ~750ms 纯 sidecar 开销（onefile 解包+Python
+  启动，实测 p50≈741-777ms），tick 内 spawn 直接减半。实现：CLI 新子命令
+  `runtime status`（契约 §5.4b）返回 `{snapshot, services}`——snapshot 与
+  inspect 同构（权威）；services 为 **best-effort 嵌套字段**（服务端内部
+  3s deadline，超时/失败→null，不拖垮 snapshot 也不把 services 的慢污染
+  退避梯子的慢信号）；`_MemoExecutor` 逐调用去重两半对同一 runtime 的
+  重复只读 Docker 调用（ps/inspect 各只发一次）。Rust 新 `runtime_status`
+  command（raw JSON 透传 + snapshot 字段存在性校验）；前端 refreshRuntime
+  单次调用拆分应用（一次观测一个 seq 一个 observed_at——stale/fresh 语义
+  反而更严格），applyWebServices 抽出共享（值门不动）；控制路径（stop 对
+  账/ensureRuntime 发现）仍走完整 inspect 保真。11 个测试文件 ipc mock 批量
+  补 `runtimeStatus` 键 + layerContract FORBIDDEN 集补键。sidecar 重建双同步。
+  门禁：pytest 1119（+3：合并形状/去重实证（services 半零新增 ps/inspect）/
+  慢 services deadline 归 null 且限时返回）/ cargo 293（+argv）/ vitest 433 /
+  vue-tsc / vite。
+- **P1 CI 修复（2026-09-06）**：Workbench lane 两失败——①rust job
+  `artifact::tests::import_benchmark_ceiling`（存量时基测试，注释自称
+  「宽上限防慢 CI flake」但 1s 不够）：上限 1s→3s（n=1000 真 O(n²) 回归在
+  分钟级，3s 仍拦得住；紧 guard 是 gated<full 不等式不受影响）；②cli job
+  我的 deadline 测试竞态——gateway 非 ready 时 services 半在 list 前短路，
+  慢 exec 根本不触发：测试补真实 gateway listener + manifest 强制走 exec
+  路径（沿用 _gateway_listener fixture 范式）。
+- **P2 会话税：EOF 驱动退出 + resize 降频（2026-09-06）**：每会话整个
+  生命周期原为 watch_resize 每 0.1s 读 resize 文件 + 主线程每 0.2s
+  exec_inspect HTTP 轮询 = **每会话每秒 5 Docker API + 10 文件读**（空闲
+  CPU 持续唤醒，低配机多会话卡顿的直接来源）。修复：drain 线程在流结束
+  时置 EOF Event，主循环改** EOF 驱动**——正常退出恰好 1 次 inspect 结算
+  退出码；「EOF 但仍 Running」边角（后台进程占住 exec pty）1s 慢轮询；
+  流永不 EOF（hang）5s 保底重查（严格优于旧的无条件 0.2s 轮询）；**退出
+  判据仍是 exec_inspect.Running==false，语义零变化**。watch_resize 0.1→
+  0.25s（200-300ms resize 感知阈值内，拖拽分屏不迟滞）。三档 env 可调
+  （AISC_RESIZE_POLL/EXEC_FLOOR/EXEC_SETTLE，clamp 防呆）+
+  `AISC_EXEC_POLL=legacy` 保留旧路径一版本。#61 瞬态容错抽为 inspect_info
+  共用。+6 测试（EOF 单次结算恰 1 inspect/EOF-but-Running 慢轮询/socketpair
+  挂死流保底/三档 clamp；`test_open_interactive_full_lifecycle` 存量断言
+  兼容）。sidecar 重建双同步。门禁：pytest 1124 / cargo 293。
+- **P5a 锁互操作实验（2026-09-06）——双向成立，P5b 走主方案**：新
+  `src-tauri/tests/lock_interop.rs`（cargo 圈 spawn python）双向钉死——
+  Rust fs4 持锁时 Python `msvcrt.locking(LK_NBLCK,1)`/`fcntl.flock` 必须
+  阻塞，Python 持锁时 fs4 `try_lock_exclusive` 必须失败，释放后双向可得。
+  事实链（源码核验）：fs4 Windows = LockFileEx **[0,u64::MAX)** 与 Python
+  字节 [0,1) 重叠；fs4 POSIX = **BSD flock（与 fcntl.flock 同系统调用）**
+  ——纸面上「flock/fcntl 互不相通」的经典陷阱在本组合不存在，实验证实。
+  pytest 侧 `test_lock_interop.py` 负控制（Python 锁自排斥）。cargo 295
+  （+2）/ pytest 1125（+1）。
+- **P5b lease 心跳 Rust 直写（2026-09-06，O6b 清偿）**：心跳本是纯文件
+  刷新（锁→读→验 id→更新 lease_last_seen_at），却每 15s 付一次完整
+  aisc.exe spawn（~750ms）= **每工作区 240 spawn/h 纯开销**。P5a 已证
+  fs4 与 Python 锁双向互斥 → Rust 直写主方案：`beat_direct` 对齐
+  WorkspaceLeaseStore.heartbeat 全语义——fs4 同锁（3s 有界获取，拿不到
+  **跳拍**由 45s TTL 吸收，不走 CLI 回退避免同锁双重阻塞）；记录缺/异
+  schema fail-closed → Absent（**CLI 回退**重走 Python 重占链）；id 不匹
+  配 → Conflict（发同一 workspace-lease-conflict 事件 + 停拍，收敛
+  handle_lease_conflict 共享）；匹配 → 仅 lease_last_seen_at 前进
+  （RFC3339+00:00 手搓 civil_from_days 时间戳，与 Python isoformat 对齐）
+  经 storage::atomic_replace 落盘。claim/release 留 Python（低频控制
+  操作）。`AISC_LEASE_HEARTBEAT=cli` 一键回退。锁/文件路径布局与
+  Python lock_path_for(workspace) 逐段对齐（断言钉死）。测试：+3
+  （决策矩阵含锁路径 parity / 日期算法锚点 / **Python 解析 parity**
+  ——Rust 产物经 lease_from_dict + age_seconds 判 fresh）。**测试架构
+  教训**：初版 lease 测试 set AISC_DATA_ROOT 与 data_root 套件各自的
+  env 锁互不互斥 → 并行互踩（全量跑才现形）——重构为 synthetic_root
+  显式注入（beat_direct_in），测试零 env 操作。cargo 296。
+- **P7 退避覆盖扩展 + 背景降级（2026-09-06，纯前端）**：①provider 轮询
+  接入 O6 自适应梯子——pollBackoff 参数化 ladder（新增
+  PROVIDER_LADDER_MS 15→30→60s，runtime 梯子与默认行为零变化），
+  provider op 耗时作慢信号（该链 = 一次 aisc.exe 内 docker info+inspect+
+  exec）；②runtime 轮询失焦 15→30s、背景工作区 25→60s（P1 合并后每
+  tick 已是一次 spawn，但低配机上多工作区叠加仍是负担；切回工作区
+  立即 inspect 兜底）；③syncPoll 补 hidden gate（隐藏窗口不刷同步状态，
+  mutagen CLI 白spawn）；④environment 5s 自轮核实「就绪即停」现状无需
+  动；⑤lease cadence 不动（TTL 跨实例契约，成本已由 P5b 归零）。
+  门禁：vue-tsc / vitest 433 / vite。
+- **P4 SDK 执行器进命令层（2026-09-06）**：runtime/provider/services 命令层
+  硬编码 RealDockerExecutor——aisc.exe 体内每次 Docker 调用都是 docker.exe
+  子进程链（弱机每跳冷启 100-300ms × 每 tick 5-6 跳）。新
+  `SdkBackedDockerExecutor`（adapters/docker_sdk_backed.py）：**热读面走
+  SDK named pipe 进程内 HTTP**（preflight ping；inspect_container 直查 +
+  NotFound 映射 CLI「No such object」stderr 语义；run_captured 三热形态映射
+  ——ps（label 过滤 + mini 渲染器支持 ID/Names/Image/Status/Label 模板，
+  **attrs-only 取值防每容器额外 API 往返**）、exec（create/start/inspect，
+  防误伤只查 argv[1] 的 flag）、inspect 单名）；**其余一切原样委托内层
+  RealDockerExecutor**（run/build/start/stop/streaming/interactive——低频
+  控制面保持久经考验的 CLI 行为）；任何映射路径异常→CLI 回退（最坏=现状）。
+  命令层 13 处 `executor or RealDockerExecutor()` → `default_executor()`
+  工厂（AISC_DOCKER_EXECUTOR=cli 一键回退；测试注入 executor 不变）。
+  +8 等价性测试（ps 按 runtime-id 解析/Up-Exited 映射/七列模板含 Label/
+  inspect 形状与 not_found/exec 捕获与退出码/未知形状回退/委托与
+  preflight/env 逃生舱）——**fake 泄漏实证**：渲染器初版用 c.image.tags，
+  fake 无此属性→静默回退真 docker→断言撞上真实容器名（aisc-wb-35f66104），
+  顺势改 attrs-only。真机冒烟：SDK 路径实跑 ps 渲染正确。sidecar 重建
+  双同步。门禁：pytest 1136。
+- **P6a 热轮询 Rust 直连 named pipe（2026-09-06，空闲卡根治项）**：稳态
+  tick 从「1 次 aisc.exe（P1 后）+ 体内 docker.exe 链」→ **0 spawn**。新
+  `docker_api.rs`：极简引擎 HTTP 客户端（复用 env.rs 管道传输先例，扩展
+  `GET /containers/json?all=1&filters={label:...}`，Connection:close 靠
+  EOF 终止体）；纯函数三件——URL 百分号编码/HTTP 状态-体分离/容器 JSON
+  解析（**原始端点实证**：State=字符串 "exited"、Names=["/name"]、Id=
+  完整 sha256，与 docker-py `containers.list` 的富化 inspect 形状不同——
+  用 api._get 原始端点钉死）+ `light_snapshot` 组装（registry 文件直读 +
+  一次 API 组 RuntimeSnapshot 兼容 payload；web_access 故意缺席——store
+  合并上一份完整观测的 gateway/toolchain 字段，绝不抹白）。Rust command
+  `runtime_poll_light`（引擎不可达是合法 unknown+stale 观测；传输错误才
+  回退）。前端：`refreshRuntimeLight` 先试 light，失败回退 P1 CLI 路径；
+  useRuntimePolling 每 6 次 light tick 跑一次完整观测（~30s 补齐 gateway）。
+  **零副作用**：Python 侧零改动（无 sidecar 重建）。+5 纯函数测试（URL
+  编码/HTTP 解析/容器 JSON/registry 查找/snapshot 形状矩阵）；原始端点
+  形状已实证。门禁：cargo 301 / vue-tsc / vitest 433 / vite。
+- **P8 低配模式·容器限额基础（2026-09-06，第四波起）**：settings 新
+  `performance` 节（`lowSpec`/`containerMemory` 默认 3g/`containerCpus`
+  默认 1.5——sanitize：memory 只收数字+单后缀 b/k/m/g ≤16 字符防 argv
+  注入、cpus clamp 0.5..8.0；patch 深合并 + GUI reset 不清（机器事实非
+  装饰）；SettingsDocument/Patch/default 全接线）。`lowSpec` 开时 Rust
+  runtime_start 拼 `--max-memory/--max-cpus` → CLI flag → start_runtime
+  → docker run `--memory/--cpus`（**只影响新容器**；argv 注入位置在
+  -v 前、image 恒末位故 fake 的 argv[-1] 不破）。+1 注入测试（Recording
+  executor 断言 --memory 3g/--cpus 1.5 入 run argv）。sidecar 重建双同步。
+  门禁：cargo 301 / pytest 1162（+1）/ 生命周期 43。
+- **P8 低配模式收口（2026-09-06）**：①**自动探测**——新 `low_spec.rs`
+  `total_physical_ram()`（Windows GlobalMemoryStatusEx via windows-sys
+  0.59——依赖树已有零新增编译；POSIX sysconf）；setup 后台线程
+  `maybe_auto_enable`：RAM ≤8.5GB（doctor 同阈值）且未决策过 → 写
+  performance.lowSpec=true + **决策标记落 config 目录 `low-spec-decided`
+  而非 settings**（用户显式关闭后永不自动重开——一次性语义）+ emit
+  `low-spec-enabled`；App.vue 系统通知（plugin-notification 降级语义，
+  advisory 永不阻塞）。②**.wslconfig 保键合并**——`block_aware_merge`
+  （[wsl2] 节解析；auto 只补缺失 memory/processors、force 才覆写；节在
+  文件中部时键落节内；无节则追加）；`wslconfig_merge` command 只写文件，
+  **确认框文案明示 wsl --shutdown 会停所有 WSL 实例与容器**（destructive
+  保留人工环节的裁决落地）。③**SettingsForm 新 performance 组**——
+  lowSpec 开关 + memory/cpus 输入（RAM 带宽 advisory 行：探测结果
+  「{gb} GB 低配已自动开启/正常」）+ .wslconfig 按钮（confirm→merge→
+  结果反馈行）；settings store dirty/save 补 performance 比较；TS 类型
+  +ipc（lowSpecStatus/wslconfigMerge）+i18n 双语 14 键。+2 测试（RAM
+  探测合理域/wslconfig 合并矩阵——用户键保活、缺键补、节中位、force
+  覆写）。门禁：cargo 303 ×3 / vue-tsc / vitest 433 / vite。
+- **P9 冷启动残余（2026-09-06，PERF 收官）**：①**daemon 就绪等待去
+  spawn 化**——原 40 ×（cc-switch CLI spawn + 0.25s）最坏 10s 纯 spawn
+  链；改 pgrep -x cc-switch-real 快检（零 spawn）+ 指数退避
+  0.25/0.5/1/2s + 每 4 采样真询 status + **终判恒走真 status**（kill -0
+  证不了就绪，hung-but-alive 不得过闸）——容器实测就绪 1775ms（原最坏
+  10s、健康常态也要 4+ 次 spawn）。②**preset providers 双合一**——
+  claude/codex 两次 python3 spawn → `--agent all` 单次（子调用 stdout
+  捕获、聚合语义 added>refreshed>current、off 短路、任一失败 rc1）。
+  **镜像链事故（自纠）**：首建镜像后容器验证仍报旧脚本——bundle 链
+  （repo container/ → nsis/bundle → target/debug/aisc-bundle → image）
+  的 build-cli.ps1 同步只随 sidecar 重建跑，本次只改 container/ 未动
+  Python sidecar → nsis bundle 停在旧版 → `aisc build` 从 bundle 取到
+  旧脚本。修复：手动同步两处 bundle + vendor-refresh + 重建镜像，容器
+  实证 `first=added / second=current` 全通（教训与 2026-08-29 事故同源：
+  **改 container/ 后必须同步 bundle**，与是否动 sidecar 无关）。vendor-
+  refresh 1509；门禁：pytest 1138（+1 agent-all 三态）+ 容器内 P9a/P9b
+  双验证。**PERF P1-P9 至此全部收官**（P6b /events 流式与 P10 onedir
+  记 backlog）。
+- **P3a 审查修复：TSV 解码单遍化（2026-09-06，审查清单编制期间自查
+  发现）**：`_unescape` 原为顺序 replace（`\\t`→TAB … `\\\\`→`\`）——
+  **真 bug**：原始命令里的字面 `\t` 序列（如 `printf 'x\ty'`、
+  `grep 'a\tb'`、`C:\temp`）经 shell 转义后成 `x\\ty`，顺序替换先在尾
+  部命中 `\\t` 把它错解成反斜杠+TAB——历史记录的字面转义序列被损坏。
+  修复：单遍左→右扫描、成对消费转义对（未知转义保留字面反斜杠，绝不
+  崩不腐）。+1 回归测试（raw-string 线字节逐对断言 + printf 字面 \t
+  端到端）。bundle 同步 + vendor-refresh + 镜像重建。pytest 1139。
+- **P3 容器内 spawn 削减三件套（2026-09-06）**：低配机上「每条 shell 命令
+  一个 python3 + 一个 sed」「每次 agent 启动一个 node 解析同一个
+  settings.json」「每 60s 一个完整 cc-switch CLI 只为查健康」的三重持续税。
+  ①**3a shell 历史批量写**——bash/zsh 钩子改 shell 内 TSV spool（纯参数
+  展开转义 \\→\t→\n→\r，零 spawn；bashrc 顺手杀掉隐藏的每命令一次
+  `history 1 | sed`，read 内建取行），20 条/60s/EXIT 时一次 `flush`（stdin
+  TSV → 单事务 executemany；started_at=批量粒度——历史 UX 不需要逐条时间
+  毙的取舍；坏行跳过不炸批）；`append` 子命令保留兼容。spawn 率每命令
+  2→每 ~20 命令 1。②**3b env-inject mtime 缓存**——缓存命中判据用 bash
+  内建 `[ cache -nt settings ]`（**零外部进程**；cc-switch 切换必重写
+  settings→mtime 前进→缓存失效，方向安全：同秒双写最坏多跑一次 node）；
+  entrypoint node -e ×3 合一（单次输出三行 + read 内建拆行——初版用了
+  3×sed 取行，自纠）。③**3c 巡检 pgrep 快检**——throwaway 容器实证：
+  daemon 进程名=`cc-switch-real`（comm 列）、**无 pidfile**（四个常见位
+  置全查无——pidfile 方案出局），4/5 轮 `pgrep -x cc-switch-real`（毫秒
+  级）+ 每 5 轮真 `daemon status` 捕捉 alive-but-hung；O5 恢复语义不变，
+  发现延迟 60s→最坏 ~5min。spawn 率 60/h→~12/h。vendor-refresh 1514；
+  镜像重建 + **容器内三件套实证**（3a：`script -qec` 真 PTY 会话→spool→
+  EXIT flush→sqlite 往返 + 字面转义存活——初版验证脚本两坑：`bash -ic`
+  的 -c 串不进 history（钩子正确跳过）+ bash 双引号吃反斜杠层（断言
+  误报，python 改 heredoc）；3b：首调 71ms→缓存命中即时、settings 重写
+  即失效（var 跟随变化）；3c：pgrep 双向探测）。测试：history flush +3
+  （转义往返/坏行/空批）；zshrc SSOT 钉子不受动（只动 §6 历史块）。
+- **PERF 审查修复批（2026-09-06，D-13 审查清单 ①-⑦ 回流，计划 →
+  perf-review-fixes.md）**：用户审查后修复 7 项（2 Blocker/2 High/
+  2 Medium/1 Low）。**R1 P6a 降级语义（Blocker）**——`poll_light` 原
+  把 transport/HTTP 失败折叠成 `Ok(unknown+stale)`，前端只在 reject
+  时才回退 CLI → named pipe 不可用时永远不降级；改为统一 `Err`
+  （WB_ERR_CLI_PROTOCOL），`refreshRuntimeLight` catch 回退 P1 CLI 完整
+  路径（前端测试 pin 拒绝→fallback 调用一次 runtimeStatus）。**R2 P4
+  exec demux（Blocker）**——SDK `exec_start` 未开 demux，stderr 混进
+  stdout 且恒空；改 `demux=True` 分离双流 + mapped exec 仅在
+  timeout/input 双 None 时走 SDK（任一参数回退 CLI，不静默丢语义）。
+  **R3 P4 ps 模板（High）**——渲染前先验模板只含已知 token（剥掉已
+  知 token 后残留 `{{` → 回退 CLI；覆盖 `{{.CreatedAt}}` 与带空格形
+  态）；`Names` 按 CLI 语义 join 全部名并剥前导 `/`；`State` 兼容
+  list（字符串）/inspect（dict）双形状；**`containers.list(sparse=True)`**
+  ——默认 list 对每行容器追加一次 inspect（又一轮隐藏往返）；renderer
+  读 list payload 顶层 Labels/Image 并防御 inspect 形状。**R4 零 CLI
+  泄漏断言（High）**——ps/exec/inspect/preflight 四条 mapped 成功路径
+  mock 内层 CLI 断言零调用（fake 缺属性静默穿透的防线）。**R5 P8
+  memory 双端校验（Medium）**——Rust 原校验放过多后缀（`3gg`/`3bg`）；
+  收紧为纯数字或数字+单 b/k/m/g 后缀（`next_back` 取尾字符后再切，
+  避开多字节 panic 面）；Python `start_runtime` 数据层同格式校验非
+  法值 USAGE_ERROR 拒绝。**R6 P9 `--agent all` 契约（Medium）**——
+  明示 sequential best-effort 非原子：后败不回滚前成、聚合 rc1、下次
+  启动幂等重试（注释三处 + partial-failure 测试 pin）。**R7 P3 丢失
+  窗口文档化（Low）**——bash/zsh rc + helper 注释明示 SIGKILL/强停/
+  宿主崩溃可能丢 shell 内 buffered 记录（accepted loss window）。
+  container/ 五文件 bundle 三处 SHA256 亲验一致 + vendor-refresh
+  1514 全过。门禁：pytest 1146（+7）/ cargo 305+integration 全绿 /
+  vitest 434 / vue-tsc。
+- **PERF 手测二轮反馈：provider 检测恢复慢（2026-09-06 深夜，v1+v2 两轮）**：
+  启动工作区后开 claude 页先显示引导页，很长时间才「已配置」。**v1 根因
+  = P7 梯子把传输失败也当慢信号**：启动窗口期首探必然 >1.5s（aisc
+  spawn ~750ms + 容器内 cc-switch 冷启），失败后重试被推到 30s/60s 档。
+  **v2 补洞（用户复测仍慢后实锤）**：冷启动后 ~2s 立刻开 claude 页时，
+  首探撞上容器内 cc-switch daemon 启动期瞬态 `not_configured`——这是
+  「成功的慢响应」，v1 只把传输错误当未就绪，业务级 not_configured 照
+  样爬梯 → 30/60s 重试 → 38s+ 才恢复（用户日志实证：就绪 15:39:20、
+  首个完成探测 15:40:00）。**取证方法升级**：cli_exit 只在进程退出时
+  记录——挂起中的调用在日志里隐形，时间线重建必须留这个盲区；本次
+  另有一个 418s 的悬挂 session（被后续 reconcile 杀容器连带终结）干
+  扰判断。修复：①`loadProviderStatus` 回传 tri-state（ok/unsettled/
+  error/skipped）——探测**答了但 auth 未就绪**也算 unsettled；②轮询
+  器仅 configured 喂梯，其余一律归零 15s 基础档；③GuidePane 挂 watch：
+  auth 翻转为 configured 且 pane 仍处 guide 时**自动开会话**（兑现引
+  导文案「配置 Provider 后会自动打开会话」——v1 修复后用户还要手点
+  「启动会话」，秒开体验没真正回来）。+3 回归测试更新（间隔断言）。
+  **本地冷启动全程复现验证：unknown 1-2s → 3s 已配置**。门禁：vitest
+  439 / vue-tsc 0。
+- **P6a light 快照 not_found 覆写根治 + provider 门三重保障（2026-09-07
+  凌晨，遥测实锤闭环）**：skip 原因遥测一行定案——启动完成后 **light tick
+  对新容器双未命中（引擎标签索引竞态 + 注册表读取空）→ 自报 not_found
+  → 覆写刚设好的 running**（`:46 launch ok → :49 skip:state=not_found
+  → +27s 全量纠正+探测 ok`，全量来之前 provider 门全程关闭=用户的三轮
+  30-43s 等待）。修复三层：①**light 路径"双未命中"不再自作主张**——返
+  回 Err 走全量（"空+空"不是 light 能 own 的观测；+1 Rust 回归测试，含
+  注册表命中时 stopped 仍合法的反例）；②**启动后 15s not_found 宽限**——
+  applyRuntimeSnapshot 拒绝宽限期内的 not_found 覆写（对任何写入者的
+  兜底）；③**ensureProviderSettled 专用短间隔重试**（3s×8）——claude 页
+  的 configured 门与轮询器梯子彻底解耦，成功即经 GuidePane auto-open
+  watch 自动开会话。**真机端到端验证：claude 点击 → 1s configured →
+  会话自动打开（xterm×2）——「秒开」恢复**。skip 遥测转正保留
+  （state/noid/inflight 三种 skip 原因）。门禁：vitest 439 / vue-tsc 0 /
+  cargo docker_api 7。
+- **v2 后用户复测仍慢→第三轮排查（2026-09-07 凌晨，未闭环，等带遥测
+  复测）**：用户复测日志再现同一指纹——43s 内零 provider 记录、全量
+  runtime 刷新后 1s 内探测即出。逐层实测排除：容器内 provider-inspect
+  全年龄段 104ms 恒快且直接报 configured；宿主完整 CLI 679ms/configured；
+  本地 E2E（冷容器+开 claude 页）3s 已配置。残余疑点：用户开 claude 页
+  的精确时刻无法回溯（所有启动路径只开 bash，claude 必为手点），点击
+  时刻与探测出现时刻的差无法归因。**行动**：probe 结果遥测落 aisc.log
+  （`335cf9b`，每次探测一行 agent+tri-state+耗时），下一轮手测数据即
+  可精确归因。**排查方法沉淀**：①cli_exit 只在退出时记录——挂起调用
+  日志隐形，重建时间线必须留盲区意识；②CDP 远程调试 + 页内 click()
+  驱动真窗口比 Win32 合成点击可靠（前台锁会吃掉点击）；③bash grep
+  查 CR 不可靠、jsdom 默认 prerender、±10% 抖动下绝对窗口断言 flaky。
+- **PERF 手测首轮四反馈（2026-09-06 深夜，#1/#2/#4 已修，#3 取证无回归）**：
+  **#1 设置页卡死+视图不切换（P0，根因实锤）**——P8 给设置页加了
+  `performance` 分节但漏了 `GROUP_KEY` 条目与 i18n 键：`t(undefined)`
+  在渲染函数里抛 SyntaxError → **Vue patch 中途断裂**（设置 chip 已
+  切换、WorkspaceView 未卸载、SettingsForm 未挂载）→ 后续每次更新
+  重抛 `emitsOptions null` → **整个 UI 永久卡死**（用户看到的蓝色
+  矩形 = 半卸载 xterm canvas）。**取证链**：本地起 dev + CDP 远程调试
+  端口（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port`）
+  + SendKeys/合成点击驱动真窗口 + `Runtime.exceptionThrown` 长连接监听
+  抓到完整栈（`SettingsForm.vue renderList → t(undefined) →
+  parseTranslateArgs`）。修复三层：①GROUP_KEY 补 performance 键（zh
+  「性能」/en "Performance"）+ `GROUPS` 元组类型化（`Record<Group,string>`
+  让漏条目变编译错）+ 标题兜底 `?? group`；②main.ts 挂
+  `app.config.errorHandler` → logUiEvent 进 aisc.log（下次渲染错误
+  日志可查，不用再开 CDP）；③+2 回归测试（真 i18n 挂载断言七组标题
+  逐一对译 + lowSpec 开时 memory/cpus 输入渲染）。**修复已在真窗口
+  CDP 验证**：设置面板完整渲染含性能组。**#2 Provider 高级模式删
+  「其它信息」**（备注/网站/图标/图标颜色）：模板区块+ICONS/COLORS
+  常量+死 CSS+双语 6 键全删；**保留 form state 与 save 透传**——编辑
+  已有 provider 不丢已存 extras，仅新增走空默认。**#4 tauri-plugin-
+  notification 版本不匹配警告**：npm `^2.3.3` 被 lock 浮到 2.4.0 vs
+  Rust crate 2.3.3；cargo 缓存无 2.4.0（离线不可升），反向钉 npm
+  `--save-exact 2.3.3` 对齐。**#3 打开工作区变慢（取证，无代码回归）**：
+  冷启动 container_created→ready 5s（与 PERF 批次口径一致——P9 的
+  1775ms 是容器内 daemon 就绪，非全链门槛）；runtime op p50 213→456ms
+  在 dev 噪声内；用户体感大概率被 #1 的 UI 冻结放大 + 今晚首开三重
+  一次性成本（vite "config changed" 重优化 + 新镜像新容器 + 新 sidecar
+  AV 扫描）。修复后请复测计时，仍慢再专项插桩。门禁：vitest 436
+  （+2）/ vue-tsc 0 /（纯前端批次，Python/Rust 无改动）。
+- **审查修复批热修：vendor checksums 行尾事故（2026-09-06 晚，`fe28d75`）**：
+  b49ed0f 的 container/ 四文件（bashrc/zshrc/history/preset）编辑时被
+  写成 **CRLF**——vendor-refresh 对「有改动文件按工作区字节取哈希」
+  → CRLF 哈希刷进 checksums；CI（eol=lf 检出）Bundle/NSIS 两 lane
+  verify 炸 4 mismatch，本地 verify 对 CRLF 验 CRLF **假绿**；且 bundle
+  三副本同步的也是 CRLF 版（镜像内 shell 带 `\r` 实伤 bash）。git blob
+  侧因 .gitattributes 归一化本就正确。修复：四文件字节级归一 LF（哈希
+  与 CI 期望逐一相符）+ 重刷 vendor（1514，仅 4 行）+ bundle 重同步三
+  方一致。**两条教训**：①Windows 上跑 vendor-refresh 必须
+  `PATH="/tmp/py3shim:$PATH" bash tools/vendor-refresh.sh`——
+  WindowsApps 的 python3 stub（rc=49）会静默杀 step 3（无 `||` 兜底 +
+  `set -e`）；②core.autocrlf=true 环境下编辑 container/ 文本文件后必
+  查 CRLF（checkout-index -f 拉不回 LF，直接字节级归一最稳）。
+
+# F1/F2 (2026-09-03 ~) — 宿主工具 MCP · SSH 工作区（分支 develop）
+
+> PP 批次封存后用户发令开工。规划入口：`docs/plans/2.1.9-dev-plans/
+> f1-f2-design.md`（D-10 设计冻结 + T-F2a PoC 报告已回填）。顺序：F2
+> 先（体量小、风险隔离）→ F1。
+
+- **T-F2a 通道 PoC（2026-09-03，Docker Desktop 29.7.2/WSL2）**：通道
+  矩阵实测七轮。**direct 全通**（Desktop 自带 DNS 与 --add-host
+  host-gateway 两形态 × 127.0.0.1/0.0.0.0 四组 200——Desktop backend
+  代理宿主 loopback，host_mcp 绑 127.0.0.1 即可）；**proxy（TUN）默认
+  双杀不通**：dns-hijack any:53 把 Docker embedded DNS 一起劫走
+  （fake-ip 给 host.docker.internal 发 198.18.x.x 假地址）+ auto-route
+  连直连桥网关 IP 都截进 TUN。对策逐一实测：fake-ip-filter ✗、
+  nameserver-policy 指回 127.0.0.11 ✗、**dns-hijack 收窄到公共 DNS +
+  DOMAIN-SUFFIX,docker.internal,DIRECT + 私网 CIDR DIRECT ✓（200）**。
+  对策落点=AISC 注入的规范 tun/dns 块（我们所有权，不动用户订阅）。
+  报告全文回填 f1-f2-design.md 头部；Linux 原生引擎（host-gateway=
+  网桥 IP、loopback 不可达）记已知限制。
+- **T-F2b host_mcp.rs 最小实现（2026-09-03）**：Rust 后端**第一个本地
+  监听服务**落地——`127.0.0.1:0` 动态口 TcpListener + 每进程随机 token
+  （Bearer 校验，防本机其它进程冒用；容器内可见性按"容器即最高权限
+  主体"论证接受）。手写最小 HTTP/1.1（POST /mcp、头体分帧、上限 4MiB）
+  + 无状态 JSON-RPC（initialize 回显 protocolVersion / ping / tools/
+  list / tools/call；notification → 202）。工具面：`host_tools_list`
+  （自描述）+ `host_exec`（白名单精确路径匹配 → git-ro 只读筛（首
+  subcommand ∈ status/log/diff/show/branch）→ cwd 钉死当前工作区
+  （相对子路径 containment：拒 `..`/绝对/UNC）→ CREATE_NO_WINDOW spawn
+  → stdout/stderr 各 256KiB 截断标记 + 60s kill + Semaphore(4) 并发；
+  exec 日志只记 program/exit/耗时，token 永不入日志）。settings 新节
+  `host_tools`（raw JSON 数组 + typed 投影 + sanitize（空名/未知 preset
+  整项丢弃）+ patch 整组替换 + **reset 不清白名单**（非 GUI 装饰））；
+  load/save 命令与 setup 启动三处同步 live whitelist；start_runtime
+  成功后 set_workspace。零新 crate（tokio net 已有）。cargo 277 全绿
+  （+7：只读筛/containment/HTTP 头解析/dispatch/exec 拒绝与实跑双平台
+  分支）。**设计要点**：绑定面恒 127.0.0.1（Desktop backend 代理容器
+  流量到 loopback——PoC 结论），bind 失败降级"无端点"不阻塞启动。
+- **T-F2c 容器接线 + MCP 注入链 + mihomo 对策（2026-09-03）**：全链
+  闭合——Rust `start_runtime` 在白名单非空时追加 `--host-mcp-url`（URL
+  带 token query；host_mcp 补 `?token=` 等价鉴权通道，claude/codex 统一
+  纯 URL 注册，绕开两客户端 header 支持差异）→ CLI flag → application
+  `start_runtime` → docker argv 追加 `--add-host=host.docker.internal:
+  host-gateway`（Desktop 自带也通；Linux 原生引擎需要）+ `-e
+  AISC_HOST_MCP_URL`（缺省=功能关闭不注入）。容器侧 entrypoint §3.7b：
+  `register_host_mcp.py`（新，+4 测试）——claude `/root/app/.mcp.json`
+  mcpServers.aisc-host 读-合并-写（用户其它 server 存活）+ codex
+  config.toml `[mcp_servers.aisc-host]` 表级幂等 splice（其它表存活）；
+  env 缺失=移除旧注册（上进程 token 已轮转，留着只 401）；绝不写
+  settings.json；失败只告警。mihomo-build-config.js 落地 PoC 对策：
+  dns-hijack `any:53`→公共 DNS（8.8.8.8/1.1.1.1）+ LOOPBACK_RULES 追加
+  DOMAIN-SUFFIX,docker.internal,DIRECT + 私网双 CIDR DIRECT（no-resolve）
+  ——TUN 下容器→宿主通道恢复 200 的实证组合。门禁：pytest 1115+120
+  subtests / cargo 277 / vendor-refresh + 双 staging + aisc build 镜像。
+- **T-F2d 设置 UI（2026-09-03）**：SettingsForm 新「宿主工具」组——白名单
+  行编辑（显示名/程序完整路径/只读筛下拉：不受限 vs git-ro）+ 增删行；
+  deep watch 双向同步（编辑→doc.hostTools 过滤空行；load/cancel/reset
+  →重建工作副本）；store dirty/save 补 hostTools 比较；i18n 双语（含
+  安全边界 note）。types +HostToolEntry。**+1 socket 级端到端测试**
+  （cargo 278）：真 serve() 循环 + 真 TCP 连接裸 HTTP 字节——钉死
+  401 鉴权门 / token query 通道 / tools/call host_tools_list 完整链
+  （第一版断言 tools/list 响应含白名单路径是错的——schema 里不含
+  运行时数据，改为真调 host_tools_list）。门禁：vitest 433 / vue-tsc /
+  vite build / cargo 278。
+- **T-F2e 首轮手测反馈（2026-09-04，两个精确 bug）**：**链路全通**——
+  claude 发现 `aisc-host` 并成功调用（注册/通道/token/白名单防线全工作，
+  拒绝消息正确返回宿主指引）。修复：①`host_tools_list` malformed =
+  **双重序列化**（函数内先 to_string 成 Value::String，外层 tools/call
+  包装又 to_string 一层 → 客户端收到转义串怪物）→ 改为返回纯数组
+  Value 单层序列化；②agent 天然用裸名 `"git"` 调用而白名单存完整
+  路径 → 精确匹配拒绝（语义正确但可用性差）→ 解析链改为
+  **program 精确 → entry name（大小写不敏感）→ program basename（大小
+  号不敏感）**，仍白名单绑定（裸名只能命中用户登记的条目，永不出界）；
+  +1 测试（name/basename 命中 + 未匹配仍拒）。手测前插曲：用户首开
+  工作区报 `unrecognized arguments: --host-mcp-url`——旧 sidecar 不识
+  新 CLI flag，重建 PyInstaller + 双处同步后过（sidecar 同步规约再犯，
+  本轮 Python CLI 改动未触发重建记忆点）。门禁：cargo 279。
+- **T-F2e 二轮手测（2026-09-04）**：裸名解析生效（git 命中白名单执行）；
+  `host_exec` **端到端确认通**（exit 128 + stderr 真实回传——工作区本就
+  非 git repo，输出是正确事实）。`host_tools_list` 仍 malformed——claude
+  诊断精准："server 返回裸 array，没按 schema 包 result 对象"：分支漏了
+  MCP `tools/call` 的 `{content, isError}` 信封（host_exec 有、list 没有；
+  一修改了序列化层数但没改形状）。补信封，cargo 279。
+- **T-F2e 三轮（PASS，2026-09-04）**：`host_tools_list` 表格正常渲染
+  白名单；`host_exec` 持续真跑（git status exit 128 = 工作区非 repo 的
+  正确事实输出）。**F2 手测核心闭环**：MCP 发现 ✓ / 白名单列表 ✓ /
+  裸名命中执行 ✓ / 非白名单拒绝（一轮验证）✓。可选余项：git-ro 只读
+  筛实机验证（单测已覆盖）、codex 侧注入验证。
+- **T-F1a mutagen 许可核查（2026-09-04）**：v0.17 起双许可（MIT 核心 +
+  SSPL Pro 部分），官方二进制默认含 SSPL——随安装包分发有合规灰区。
+  **裁决 vendor v0.16.x（全 MIT 最后系列）**：本方案用面（sync CRUD +
+  ssh transport + rsync）v0.16 完整可用，v0.17+ 增量仅 Pro 特性。
+  分发链：`downloads/host-bin/`（gitignored）+ CI 下载 sha256 Fail
+  closed（mutagen 是宿主资产不进镜像，与 mihomo 的 git 内置模式不同）。
+  结论回填 f1-f2-design.md §F1-1。F2 批次（7 commit）已推送、CI 监视中。
+- **T-F1a vendor 落地（2026-09-04）**：`tools/stage-mutagen.sh`——
+  v0.16.4 四平台（windows/linux amd64 + darwin amd64/arm64）下载 +
+  **sha256 pin Fail closed**（四 pin 实测固化）+ GH_PROXY/多镜像链 +
+  缓存命中仍重解包（首版缓存分支跳过提取的 bug）；产物
+  `downloads/host-bin/<plat>/mutagen(.exe)`（gitignore 已加）。
+  实测：`mutagen.exe version` → 0.16.4。**CI Linux containment 失败
+  修复**（`7bdf3f0`）：`is_absolute()` 是宿主 OS 语义，`C:\other` 在
+  Linux 被判"相对"逃过拒绝——resolve_cwd 显式拒双平台绝对形状
+  （POSIX `/`、UNC `\`、Windows 盘符），跨平台一致可测。Workbench
+  lane 重跑绿，**F2 批次四 lane 全绿收官**。余项：NSIS/deb/DMG 打包
+  resources + CI 下载步骤接线（与 T-F1c Rust 侧发现耦合，下一段）。
+- **T-F1b 前半（2026-09-04）**：SSH profiles settings 节落地——Rust
+  `SshProfile{name,host,port,user,key_path}`（v1 裁决**仅密钥认证**：
+  key_path 纯引用不复制不读内容；密码/DPAPI 留待后续）+ sanitize
+  （空 name/host/user 丢弃、port=0 回 22）+ patch 整组替换 + **GUI reset
+  不清**（连接配置非装饰）；前端 SettingsForm 新「SSH 连接配置」组
+  （hostTools 同款工作副本双向 watch 模式）、store dirty/save 补
+  sshProfiles、i18n 双语（含 rsync/known_hosts 提示）。门禁：cargo
+  settings 20 / vitest 433 / vue-tsc / vite build。后半（picker「SSH
+  工作区」表单 + 影子目录创建）下一段。
+- **T-F1b 后半（2026-09-04）**：新 `sync.rs`（F1 同步层之家）——
+  `ssh_workspace_create` command：名称清洗（首字符字母数字 + 仅
+  alnum/-/_ ≤64——拒 `..`/分隔符/隐藏目录）+ 远端路径校验（绝对
+  POSIX）+ 影子目录 `<数据根>/sync-workspaces/<name>/`（重名拒绝）+
+  **`.aisc-ssh-workspace.json` 元数据**（profile 快照语义：同步层读
+  此文件而非 live settings——profile 后续修改永不静默改接既有工作区；
+  schema 校验读回，异 schema 视为普通本地工作区）；原子写复用
+  storage::atomic_replace；error.rs 补 `usage()` 构造器。前端：
+  WorkspacePicker 折叠「SSH 工作区」表单（profile 下拉/远端路径/名称 →
+  创建 → 以**普通工作区**打开进 preflight——身份链零改动裁决的落地
+  形态）；**层契约首抓**：组件直连 lib/ipc 被测试拦下（F-A01）→ 挪入
+  workspaces store（createSshWorkspace + createSshError）。+3 Rust 测试
+  （名称规则/远端路径/元数据往返+异 schema 拒绝）。门禁：cargo 282 /
+  vitest 433 / vue-tsc / vite build。
+- **T-F1c 同步引擎（2026-09-04，CLI 事实全实测）**：mutagen v0.16.4
+  Windows 实测三事实——①命令**自动拉起 daemon**（无需显式生命周期
+  管理）；②`ssh://` scheme URL 解析坏（"ssh" 成 hostname）→ 用 SCP
+  风格 `user@host:port/path`；③**SSH transport 走外部 ssh 二进制**且
+  URL query 参数（key/verifyHostKey）被忽略、host-key/passphrase
+  prompt 会卡死非交互 spawn → **对策：ssh wrapper 注入**（数据根
+  `sync-workspaces/bin/` 生成 config + wrapper，PATH 前置；config 载
+  HostName/Port/User/IdentityFile + `StrictHostKeyChecking accept-new` +
+  `BatchMode yes` + ConnectTimeout 15——非交互 + 首连自动记录 + 变更
+  key 仍硬失败）。引擎五 command：start/status/pause/resume/terminate
+  （`sync create --name <影子目录名> --ignore-vcs`；status 走
+  `sync list --template '{{json .}}'` 防御性字段投影；**非 SSH 工作区
+  返回 status:"none" 不报错**——前端每次 launch 都 fire）。mutagen
+  发现链：AISC_MUTAGEN_PATH → exe 同目录 → PATH。前端：
+  launchRuntime 开头 best-effort `attachSync()`（断网降级裁决：死远端
+  永不阻塞打开；状态/错误落 store.sync 供 T-F1d 渲染）+ refreshSync。
+  +3 测试（config body/wrapper endpoint 形状/**真机非交互验证**——
+  AISC_MUTAGEN_PATH 指向本地 v0.16.4，对死端口 create 秒败且断言
+  "Are you sure" prompt 零泄漏）。门禁：cargo sync 6 全量 285（复跑；
+  diag_engine 探针偶发再现）/ vitest 433 / vue-tsc / vite build。
+  余项：打包 resources 接线（NSIS/deb/DMG 装进 mutagen 二进制——
+  下轮与 T-F1d 一起）。
+- **T-F1d 同步状态 UI + 打包接线（2026-09-04）**：侧栏新「SSH 同步」节
+  （仅 SSH 工作区显示——status none 隐藏）：状态徽章（mutagen 全状态
+  集双语映射：watching/scanning/reconciling/staging/paused/halted…，
+  健康态绿/暂停停机黄）+ message/lastError + 刷新/暂停/恢复/断开四钮。
+  facade 五项转发（sync fwdRef + 四 action fwdFn——手写 facade 逐项
+  契约）。**冲突列表未做**（mutagen 冲突保留双副本在 alpha 侧 `~0`
+  前缀路径——T-F1e 手测后按真实形状补投影，记余项）。**打包接线**：
+  tauri.conf externalBin + `binaries/mutagen`（装后落 exe 旁，命中
+  发现链）；三 CI 补 stage 步骤（nsis windows_amd64 / bundle matrix
+  按 triple 选 PLAT，sha256 pin Fail closed）；Workbench CI 测试 job
+  补占位 touch。本地 binaries/ 已拷实测 tauri build 过。门禁：
+  vue-tsc / vitest 433 / vite / cargo build。
+- **T-F1e 补强：远端路径点击浏览（2026-09-04，用户手测反馈）**：
+  picker 的远端路径旁加「…」浏览钮 → 弹层（面包屑可跳/上级/目录点击
+  进入/「选择此目录」回填）。Rust `ssh_browse` command：经生成的
+  ssh config 显式 `-F` 跑真 ssh `ls -1 -p -- '<path>'`（该 spawn 全由
+  我们控制，无需 wrapper；BatchMode + ConnectTimeout 同防线），
+  `parse_ls_entries` 目录优先稳定排序（跳过 ./.. / total 行 / CR）；
+  ensure_transport 重构出 profile 版本（browse 发生在建工作区之前，
+  无 meta 可用）。store 层 browseRemote/browseError/browseBusy（F-A01）。
+  路径防注入：拒引号/反斜杠，单引号包裹远端执行。+1 解析测试
+  （cargo sync 7）。门禁：vue-tsc / vitest 433 / vite / cargo sync 7。
+  **CI 修复两笔**：`5517d87` stage-mutagen 兼容 macOS bash 3.2（关联
+  数组→case，`set -u` 下 unbound variable 实锤）；`06e2afd` 两条
+  bundle workflow 的 paths 补 `tools/stage-mutagen.sh`（脚本现为构建
+  依赖）——重跑后 **Bundle 33856688963 / NSIS 33856689035 / Workbench
+  rerun 全绿**（Workbench 首败为 pty 老测试时序 flake，本批未触 pty）。
+- **T-F1e 手测反馈修复：影子目录撞 data-root 重叠校验（2026-09-04）**：
+  打开 SSH 工作区报 `data root contains the workspace`——Stage 7 的
+  双向不重叠 fail-closed（D7-04）把 D-10 裁决的影子目录位置
+  （`<root>/sync-workspaces/<name>/`）拦下。**定向豁免**：Python
+  `_check_overlap` 与 Rust mirror `check_overlap` 双侧放行
+  `<root>/sync-workspaces/<name>`（至少一层名称；裸 `sync-workspaces/`
+  本身与其它子目录仍拒——防用户把 config/ 等当工作区）。论证：该子树
+  由 AISC 自建自管（ssh_workspace_create 是唯一写入方），校验防的是
+  用户自选工作区吞掉数据根状态面。+2 测试（双端：豁免命中/裸层拒/
+  其它子目录拒）。Rust 测试插曲：不存在的 workspace 路径 canonicalize
+  失败回退原样形态，与 verbatim 化 root 失配绕过比较（既有 fail-open
+  边界，测试改为先建目录表达准确语义）。**sidecar 重建 + 双处同步**
+  （Python 侧改动）。门禁：pytest 1116+120 / cargo data_root 11。
+- **watcher 补 mutagen 临时模式（2026-09-04）**：影子目录内 mutagen 的
+  原子写过渡文件（`~mutagen~...` 前缀）与既有 temp 类同源——
+  is_temp_file 补前缀匹配（真实文件 `real~file.rs` 不误伤，+断言）。
+  远端同步落盘的**正式文件**照常进变更页（期望行为：远端变化可见）。
+  cargo watcher 12。
+- **T-F1e 手测反馈四修（2026-09-04 晚）**：①**重开即报已存在**——
+  `ssh_workspace_create` 重名从报错改 `existed: true`（原 metadata 保留
+  不覆盖），前端照常打开，多工作区层 materialize 的 same-path adopt
+  天然完成「直接切换到运行中的实例」；②③**重开/新建内容与远端不同**
+  ——根因：重开时 `sync create` 撞同名 session 失败（错误只落侧栏
+  lastError，同步从未跑）；`sync_session_start` 改**幂等**：先 list 查
+  同名 → 存在则 resume（若 paused）+ **flush 强制同步一轮**，不存在则
+  create + flush（保证初始内容立即拉齐而非等扫描节拍）；④**家目录
+  出现 .mutagen 系文件**——mutagen daemon 状态默认落 `~/.mutagen/` +
+  `~/.mutagen.yml`；实测 `MUTAGEN_DATA_DIRECTORY` /
+  `MUTAGEN_CONFIG_FILE_PATH` 双 env 生效（本地实证 daemon/sessions 落
+  指定目录）→ `mutagen_env()` 注入 `<数据根>/mutagen/`（run_mutagen +
+  ssh_browse 全覆盖）。**注意**：daemon 数据目录切换后，旧 `~/.mutagen`
+  里的既有 session 不再可见（一次性——重开会话即重建；旧目录可手动
+  删除）。门禁：cargo sync 7 / build / vue-tsc / vitest 433 / vite。
+- **T-F1e 对齐根治（2026-09-04 深夜，真机 JSON 取证）**：用户复测
+  「依旧不对齐」——`sync list --template '{{json .}}'` 实 dump 三病灶：
+  ①**端口折进远端路径**（beta.path=`22/home/tv/scripts`）：SCP 风格
+  `user@host:22/path` 冒号后全是路径，端口从未生效且污染 root →
+  同步了 4 个"成功"周期的**不存在目录**；②解析字段两层全错（v0.16
+  list 元素即 Session，`name`/`status` 是顶层字段——旧 `.Session/.Status`
+  嵌套恒 miss → exists 恒 false → 每次撞 create 重名）；③诊断插曲：
+  bash `read` 吃 Python print 的 `\r\n` 残留 `\r` 粘进 endpoint
+  （beta.path 尾部 `\r`——诊断脚本锅非产品锅，但暴露自愈必要性）。
+  修复：`scp_endpoint` 去 `:port`（端口由 ssh_config `Port` 承载）；
+  解析改顶层字段；**自愈**——exists 会话的 beta.path 与 metadata
+  remotePath 不匹配（含历史坏形状）→ terminate + 以正确 endpoint
+  重建；create 追加 `--ignore .aisc-ssh-workspace.json --ignore
+  .mcp.json`（AISC 管理文件永不上推远端）。**真机终验**：干净
+  endpoint 重建 session 后远端内容（bili_jellyfin/…）实测流入影子
+  目录。门禁：cargo sync 7 / build。
+- **T-F1e 大目录反馈两修（2026-09-04 深夜）**：①几百 GB 工作区打开
+  「树全空」无进度可看——SyncStatus 扩 `alphaFiles/betaFiles/
+  totalFileSize`（session JSON alpha/beta 计数器；首次扫描完成前为
+  null 形），侧栏显示「本地 N 项 / 远端 N 项 · 大小」+ **15s 定向轮询**
+  （同步节挂载区间内 interval，卸载即清）；②两个管理 json 不再进
+  文件树——`.aisc-ssh-workspace.json`（F1 元数据）与 `.mcp.json`（容器
+  经 /root/app 挂载落入的项目级 MCP 注册）入 workspace.rs
+  DEFAULT_IGNORE（与 .aisc/.claude 同列；watcher/文件树/产物投影三面
+  一体生效）。门禁：vue-tsc / vitest 433 / vite / cargo sync 7 +
+  workspace 48。
+- **T-F1e 取消同步（2026-09-04 深夜，用户：本地放不下）**：应急先手——
+  hugetest 会话 terminate 对 scanning 态无限阻塞（CLI 卡远端取消），
+  根除路径 = Stop-Process daemon → 删持久化会话定义
+  （`<数据根>/mutagen/sessions/sync_*` 二进制序列化但路径明文可 grep）
+  → daemon 重启验证不复活；磁盘实测仅 6KB 无伤。产品化：
+  `sync_session_cancel` command（terminate 尽力 30s + **删除已同步内容**
+  （保 metadata）+ metadata 标记 `sync_disabled`）+ `sync_session_enable`
+  （显式恢复：清标记 + start）；start/status 对 disabled 返回
+  `status:"disabled"`——**launch 永不自动重连**；侧栏「取消同步」
+  （danger + confirm 说明删内容与不恢复）与 disabled 态「恢复同步」钮。
+  `run_mutagen` 补**真超时**（try_wait 轮询至 deadline 后 kill——
+  terminate 卡 scanning 的教训，output() 无期限）。门禁：cargo sync 7 /
+  build / vue-tsc / vitest 433 / vite。
+- **T-F1e 三修：取消即时化 + 传输 2x + 测试隔离（2026-09-04 深夜）**：
+  ①**取消同步长时间无反馈**——重排为「先标 disabled+清内容（UI 即时
+  翻转）→ 后台线程清扫」（terminate 10s 尽力 → 仍存活则杀 daemon +
+  删本工作区持久化定义，应急路径产品化；其它会话定义存活、daemon
+  惰性重启自动重挂）；②**1GiB 3m40s 太慢**——基准实测定位两层：裸
+  ssh 管道 8.4MB/s（WiFi 内网 ssh 加密物理层）vs **经 ssh.cmd wrapper
+  4.3MB/s——cmd batch 转发把吞吐砍半**。根治：**退役 wrapper**，改
+  「受管 ~/.ssh/config 别名段」（`# BEGIN/END AISC SYNC` 标记块内幂等
+  重写、块外用户内容永不动；`Host aisc-sync-<hash(host|port|user)>`
+  承载 HostName/Port/User/IdentityFile）+ `MUTAGEN_SSH_PATH` 直指真
+  ssh + endpoint 用别名；ssh_browse 同走别名（免 -F）。实测别名直连
+  1GiB = 2m09s（≈裸管道，wrapper 损耗归零，**对用户即 3m40s→约
+  2m10s**；再往上受限于 WiFi+ssh 加密——网线可再提）；③测试曾把
+  测试 profile 写进**真实 ~/.ssh/config**（ensure 系测试未隔离 home）
+  ——补 USERPROFILE/HOME tempdir 隔离 + 手工清理污染块。+1 测试
+  （别名稳定且 profile 作用域）。门禁：cargo sync 8 / build / vue-tsc /
+  vitest 433 / vite。
+- **T-F1e 超大内容策略（2026-09-04 深夜，用户：超大文件怎么办）**：
+  VS Code 式按需虚拟 FS 与容器挂载根本冲突（确认不可行），产品正解
+  =**排除规则**：metadata 新 `ignore_patterns`（Vec<String>，SSOT——
+  create 与每次自愈重建都从 meta 取）；`ssh_workspace_create` 收可选
+  patterns（清洗：trim/去空/拒内嵌空白），session create 动态 argv
+  逐个 `--ignore`（与固定 .aisc/.mcp 排除并列）；picker 表单新
+  「排除规则」输入（逗号分隔，placeholder 示例 `*.iso, downloads/,
+  media/`）；侧栏**超量警示**——远端总量 >10GB 显示建议（取消后改
+  子目录重建或带排除重建）。门禁：cargo sync 8 / build / vue-tsc /
+  vitest 433 / vite。
+- **T-F1e 按需拉取单个远端文件（2026-09-04 深夜，用户：被排除的
+  超大文件要用怎么办）**：`ssh_pull_file` command——`ssh cat` 二进制
+  安全流式落盘到影子目录根（basename 单段防穿越；300s 硬超时；
+  CREATE_NO_WINDOW；失败清残file），落在 ignore 匹配范围外 =
+  agent 立即可用且永不被同步删除。侧栏同步节「拉取文件」→ 内联
+  输入远端绝对路径 → 拉取（busy/error 态；store 走 F-A01）。海量
+  小文件场景的回答：同步类工具共同弱项，首次全量慢不可避免——
+  排除生成物（容器内重装）、初始完成后 watch 增量快。门禁：
+  cargo sync 8 / build / vue-tsc / vitest 433 / vite。
+- **T-F1e 磁盘防护三层（2026-09-04 深夜，用户：小文件总量把磁盘
+  爆掉怎么办）**：此前只有静态 >10GB 警示与事后手动取消——没有
+  任何机制对比远端总量与本地可用空间、磁盘将满时也不自动刹车。
+  补齐：①**状态透出容量**——SyncStatus 新 `freeBytes`（fs4
+  `free_space` 探数据根卷，零新依赖——history.rs 已引），侧栏在
+  远端总量 > 本地可用时红字「同步无法完成，建议取消重建」（10GB
+  advisory 让位）；②**低磁盘自动暂停**——`LOW_DISK_FLOOR_BYTES`
+  =2GiB，once-per-process 守护线程（首次 sync 命令时拉起）每 30s
+  探一次，跌破即对所有 live 会话 pause + 元数据盖 `low_disk_paused`
+  标记（list-first 只 pause 传输中的；已标记/已取消跳过——与用户
+  显式恢复不打架，恢复改为空间门槛）；③**恢复/新建门槛**——
+  `sync_session_resume` 对带标记录在 free<floor 时拒绝（UI 同步
+  disable 恢复钮，2GiB 镜像常量）；launch 时带标记且仍低于 floor
+  → 保持 parked（顺带强制 pause）+ 状态带 lowDisk；空间回升 →
+  自动清标记正常重连；**新建会话**在低于 floor 时直接拒绝。已知
+  边界（接受）：守护随 Workbench 进程存亡，app 全关后的后台同步
+  无人守——下次启动 status 立即出容量警示 + floor 门。纯 Rust+前端
+  改动（无 sidecar/镜像涉及）。门禁：cargo 289（+1 low_disk 决策
+  矩阵 + meta 标记 roundtrip 断言）/ vue-tsc / vitest 433 / vite。
+- **T-F1e 手测四反馈诊断修复（2026-09-05）**：①拉取文件改**浏览式**
+  ——侧栏拉取行加「…」→ 远端浏览弹层（面包屑/上级/目录进入/文件
+  点选回填）；新 `ssh_browse_workspace` command（profile 取自
+  workspace 元数据——侧栏无 live profile 表单），browse impl 与
+  picker 的 `ssh_browse` 共抽。②③④（本地 1GiB 不同步 / 取消→恢复
+  长时间异常后自愈 / 排除规则工作区启动后异常后自愈）**同一根因**：
+  真机取证链——daemon 四会话全部 `connecting-beta` 超 30s、唯一 ssh
+  子进程是裸端点孤儿、远端干净空闲（uptime 揭示盒子 10:44 重启过但
+  无僵死）→ 隔离实验直接复现：**`unable to locate agent bundle`**。
+  mutagen 每次 beta 拨号要从二进制旁的 `mutagen-agents.tar.gz`（78MB）
+  流式安装远端 agent——vendor 链（stage 脚本其实完整解包含它 → CI cp
+  与本地 binaries/ 只拷裸二进制）把它丢了；昨天能用是 dev shell 残留
+  `AISC_MUTAGEN_PATH` 指向完整解包目录，今天新 shell 走 exe 目录发现
+  链即全军覆没。**修复**：`ensure_mutagen_ready()`——每次 mutagen 调用
+  实际运行 `<数据根>/mutagen/bin/` 托管副本（二进制+agent 包共位安装，
+  幂等；还根治两连生 bug：Windows 锁运行中镜像致 daemon 跑
+  target/debug 时 **cargo build 必炸**（tauri-build remove_file
+  PermissionDenied 实锤）；/usr/bin 只读安装位）。agent 包发现链：二进制
+  旁 → workbench exe 目录 → bundle resources 目录（setup OnceLock 注入
+  resource_dir）→ 仓库 binaries/（dev）。分发链补齐：tauri.conf
+  resources 加 `binaries/mutagen-agents.tar.gz`（安装布局与 externalBin
+  同目录）、NSIS/bundle 两 workflow staging 补 cp、Workbench CI 占位
+  touch 跟进。**遗留清扫**：ensure_transport 顺带删除退役 wrapper 残留
+  （bin/ssh.cmd+ssh_config——stale config 无别名条目，PATH 前置目录里的
+  它是别名端点死锁地雷）。侧栏 `connecting-beta` 状态补映射（此前落
+  「应用变更」误导——用户看到的过渡态之一）→「重连中」。**真机验证**：
+  agent 包落位 10 秒内四会话全部 watching；用户本地 1GiB（testsync/
+  test.test）确认推抵远端（#2 闭环）。门禁：cargo 290（+agent 共位
+  安装/查找测试）/ vue-tsc / vitest 433 / vite。
+- **T-F1e 追加三修（2026-09-05 下午，用户三问引出的取证）**：①**单测
+  污染真实 ~/.ssh/config 根治**——wrapper 隔离测试用 USERPROFILE/HOME
+  环境变量隔离 home，但 Windows 上 `dirs::home_dir()` 走
+  SHGetKnownFolderPath **不认环境变量**，每次 cargo test 都把真实管理块
+  重写成测试 profile（127.0.0.1:1/deploy）——现场抓到 config 里别名被
+  换、session 端点悬空。修复：`ensure_managed_ssh_config_at(path,
+  profile)` 路径注入式拆分（生产 wrapper 读真实 home，测试传 tempdir
+  config；测试同时绕开 ensure_transport——它才是真实污染调用方）；
+  md5 前后比对验证 config 零触碰。②**bash（msys）环境拉起的 daemon
+  连不上 beta**：msys 转换环境下的 daemon 连 ssh 都不 spawn（0 子进程
+  实锤）；Windows 环境拉起秒恢复。对产品无影响（app 恒从 Windows 环境
+  spawn），诊断脚本教训记档。③**1GiB 推送实测 =123s**（≈8.7MB/s，
+  与裸 ssh 管道基准一致，wrapper 退役后零额外损耗）；顺带确认 mutagen
+  CLI 模板字段用导出名（`.Name/.Status`——JSON tag 是小写但模板走结构体）。
+  测试产物 bench-1g.dat 双侧清理。门禁：cargo 290 ×3 连绿 / sync 10。
+- **T-F1e 拉取浏览钉根（2026-09-05 晚，用户反馈：应直接定位工作区
+  对应文件夹、拒绝访问其它路径）**：`ssh_browse_workspace` 加服务端
+  containment——`resolve_workspace_browse_path` 纯函数（空/"/" 归一到
+  工作区远端根；**段归一化防 `..` 穿越**——纯字符串前缀挡不住
+  `/home/tv/test/../secret`；根外一律拒）；SyncStatus 新 `remotePath`
+  （disabled/watching 各路径均透出）；侧栏浏览弹层开箱即在工作区根、
+  ↑ 在根处禁用、面包屑改为 {label,path} 对且首屑=工作区文件夹名（根
+  之外不渲染）。手测输入框仍可手输任意路径（浏览引导、输入兜底的分层
+  裁决）。+1 containment 矩阵测试（含穿越/兄弟/父目录拒绝）。门禁：
+  cargo 291 / sync 11 / vue-tsc / vitest 433 / vite。
+- **T-F1e 多 profile 修复（2026-09-05 晚，收口后用户裁决即修）**：
+  `~/.ssh/config` 受管块从「单 profile 整块重写」改为「**按别名分节、
+  只 upsert 自己的节**」——旧实现对多 profile 用户是静默炸弹：打开
+  第二个 profile 的工作区瞬间抹掉第一个 profile 的别名 → 其别名端点
+  会话全部悬空（自愈只比对 beta 路径看不见端点形态，救不回）；当前
+  用户四工作区共用单 profile 故被掩盖。实现：`parse_block_sections`
+  （Host 分节解析 + 同别名去重）+ ensure 重构（提取块→upsert 本节→
+  重建，块外用户内容照旧不动）；别名含 port——profile 改端口产生新
+  别名旧节残留（无害：meta 快照语义下各工作区确保各自的别名，孤儿
+  节不产生）。+1 多 profile 测试（共存/只更新己节/重复节折叠/块外
+  内容保全）。门禁：cargo 292 / sync 12。
+- **T-F1e 手测收口（2026-09-05 晚，用户确认「测试基本没问题」）**：
+  F1/F2 两特性全链交付。覆盖矩阵：创建/重开/幂等、远端浏览选径、
+  大目录进度、排除规则、取消/恢复、按需拉取（浏览钉根）、传输性能
+  （1GiB=123s 基准）、磁盘防护三层（单元+门禁验证，真实触发场景未
+  强测——需 C 盘 <2GB 环境）、F2 MCP 三轮闭环。遗留 backlog：冲突
+  双副本列表投影（等真实冲突形状）、F2 host_exec 远端执行版、远端
+  rsync 缺失引导实测、2.1.9 收尾（VERSION 冻结、plans 归档）。

@@ -9,6 +9,7 @@ All docker operations are injected through a ``DockerExecutor``.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -24,6 +25,9 @@ from aisc.cli.output import (
     print_doctor_text,
 )
 from aisc.domain.models import CheckStatus, CliError, DoctorReport, VersionInfo
+from aisc.domain.models import SessionAgent
+from aisc.domain.models import RuntimeErrorCode
+from aisc.domain.artifacts import ArtifactAction, ArtifactKind, ArtifactOpenWith
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +106,19 @@ def _build_parser() -> _AiscArgumentParser:
     dp = sub.add_parser("doctor", help="Run environment diagnostics", allow_abbrev=False)
     _add_global_args(dp, is_subparser=True)
 
+    # --- serve (2.1.10 R1): long-lived remote channel on stdio ---
+    svp = sub.add_parser(
+        "serve",
+        help="Serve remote callers: newline-delimited JSON frames on stdio",
+        allow_abbrev=False,
+    )
+    svp.add_argument(
+        "--stdio",
+        action="store_true",
+        help="speak the frame protocol on stdin/stdout (the only transport in this version)",
+    )
+    _add_global_args(svp, is_subparser=True)
+
     # --- build ---
     bp = sub.add_parser("build", help="Build Docker image", allow_abbrev=False)
     _add_global_args(bp, is_subparser=True)
@@ -113,30 +130,72 @@ def _build_parser() -> _AiscArgumentParser:
                     help="Always pull the base image")
     bp.add_argument("--dry-run", action="store_true", default=False,
                     help="Plan the build without executing")
+    # Stage 8b (CS-01/CS-02): cc-switch release resolution. `latest` resolves
+    # the newest stable upstream release live (fail closed, never a silent
+    # pin); an explicit vX.Y.Z is reproducible; --cc-switch-manifest builds
+    # fully offline from a previously written resolution receipt.
+    bp.add_argument("--cc-switch-version", type=str, default=argparse.SUPPRESS,
+                    help="cc-switch version: 'latest' (default) or vX.Y.Z "
+                         "(env: CC_SWITCH_VERSION)")
+    bp.add_argument("--cc-switch-channel", type=str, default=argparse.SUPPRESS,
+                    choices=["stable"],
+                    help="cc-switch release channel (default: stable; "
+                         "env: CC_SWITCH_CHANNEL)")
+    bp.add_argument("--cc-switch-manifest", type=str, default=None, metavar="PATH",
+                    help="Build from a resolver manifest file (offline / "
+                         "reproducible; skips the live resolve)")
+    bp.add_argument("--require-pin", action="store_true", default=False,
+                    help="Fail the build when the cc-switch version cannot be "
+                         "resolved (default: an offline build continues WITHOUT "
+                         "the pin — unverified, CN-mirror download)")
 
     # --- run ---
-    rp = sub.add_parser("run", help="Run Docker container", allow_abbrev=False)
+    # F2-C: run ACTIVATES a workspace (detached, then exit). Interactive
+    # surfaces live on their own verbs: shell / claude / codex.
+    rp = sub.add_parser("run", help="Activate a workspace (detached container)",
+                        allow_abbrev=False)
     _add_global_args(rp, is_subparser=True)
+    rp.add_argument("path", type=str, nargs="?", default=None,
+                    help="Workspace directory to activate (e.g. ./ or /home/user/proj)")
+    rp.add_argument("--resume", type=str, default=None, metavar="N|PATH",
+                    help="Re-activate from history (see `aisc runs`); explicit flags win")
     rp.add_argument("--image", "-i", type=str, default="super-claude:latest",
                     help="Docker image (default: super-claude:latest)")
-    rp.add_argument("--workspace", type=str, default=None,
-                    help="Host workspace path to bind-mount (default: current directory)")
     rp.add_argument("--name", type=str, default="super-claude-station",
-                    help="Container name prefix (unique suffix appended)")
+                    help="Workspace alias — also the container name prefix; "
+                         "resume later by it (aisc run --resume <别名>)")
     rp.add_argument("--network", type=str, choices=["direct", "proxy"],
                     default=argparse.SUPPRESS,
                     help="Network mode: direct or proxy (default: direct)")
     rp.add_argument("--profile", type=str, choices=["proxy"],
                     default=None,
                     help="Compatibility alias for --network proxy (prefer --network proxy)")
-    rp.add_argument("--non-interactive", action="store_true", default=False,
-                    help="Run without interactive terminal (no -it, stdin=DEVNULL)")
     rp.add_argument("--dry-run", action="store_true", default=False,
-                    help="Plan the run without executing")
+                    help="Plan the activation without executing")
     rp.add_argument("--label", type=str, default="",
                     help="Container label for multi-container addressing (optional)")
-    rp.add_argument("--keep-alive", action="store_true", default=False,
-                    help="Keep container after exit (omit --rm flag)")
+
+    # --- F2-C: agent sugar + activation history ---
+    for _agent in ("claude", "codex"):
+        _ap = sub.add_parser(_agent, help=f"Open {_agent} in the active workspace",
+                             allow_abbrev=False)
+        _add_global_args(_ap, is_subparser=True)
+        _ap.add_argument("--workspace", type=str, default=None,
+                         help="Target a registered workspace instead of the active one")
+        _ap.add_argument("--name", type=str, default=None,
+                         help="Container name (overrides registry discovery)")
+        _ap.add_argument("rest", nargs=argparse.REMAINDER, default=[],
+                         help=f"Args passed to {_agent} verbatim (use -- first: aisc {_agent} -- -c)")
+
+    rsp = sub.add_parser("runs", help="Activation history (aisc run records)",
+                         allow_abbrev=False)
+    _add_global_args(rsp, is_subparser=True)
+
+    wsp = sub.add_parser("workspaces", help="Manage running CLI workspaces",
+                         allow_abbrev=False)
+    _add_global_args(wsp, is_subparser=True)
+    wsp.add_argument("--stop", action="store_true", default=False,
+                     help="Stop & remove every RUNNING CLI-owned workspace")
 
     # --- config ---
     cp = sub.add_parser("config", help="Config management", allow_abbrev=False)
@@ -189,12 +248,15 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Target container by label")
 
     # --- stop ---
-    spp = sub.add_parser("stop", help="Stop the container", allow_abbrev=False)
+    spp = sub.add_parser("stop", help="Stop & remove the active workspace container",
+                         allow_abbrev=False)
     _add_global_args(spp, is_subparser=True)
     spp.add_argument("--name", type=str, default=None,
                      help="Container name (overrides registry discovery)")
     spp.add_argument("--label", type=str, default=None,
                      help="Target container by label")
+    spp.add_argument("--all", action="store_true", default=False,
+                     help="Stop & remove EVERY CLI-owned container (Workbench runtimes untouched)")
 
     # --- restart ---
     rsp = sub.add_parser("restart", help="Restart the container", allow_abbrev=False)
@@ -211,6 +273,8 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Container name (overrides registry discovery)")
     shp.add_argument("--label", type=str, default=None,
                      help="Target container by label")
+    shp.add_argument("rest", nargs=argparse.REMAINDER, default=[],
+                     help="One-shot command in the container (use -- first: aisc shell -- ls -la)")
 
     # --- switch ---
     swp = sub.add_parser("switch", help="Switch AI provider in the container", allow_abbrev=False)
@@ -235,7 +299,7 @@ def _build_parser() -> _AiscArgumentParser:
     )
     _add_global_args(prsk, is_subparser=True)
     prsk.add_argument("provider_id", type=str,
-                      help="Provider ID (e.g., deepseek, codex-claude)")
+                      help="Provider ID (e.g., deepseek, zhipu, kimi)")
     prsk.add_argument("--name", type=str, default=None,
                       help="Container name (overrides registry discovery)")
     prsk.add_argument("--label", type=str, default=None,
@@ -243,9 +307,648 @@ def _build_parser() -> _AiscArgumentParser:
     prsk.add_argument("--agent", type=str, default="claude",
                       help="Target agent (default: claude)")
 
+    # provider current (Workbench S0.4): non-interactive, --format json
+    prpc = prsub.add_parser(
+        "current",
+        help="Show the current provider status for an agent (Workbench)",
+        allow_abbrev=False,
+    )
+    _add_global_args(prpc, is_subparser=True)
+    prpc.add_argument("--runtime-id", type=str, required=True,
+                      help="Runtime ID (UUID v4)")
+    prpc.add_argument("--agent", type=str, required=True,
+                      choices=["claude", "codex"],
+                      help="Agent (claude|codex)")
+    prpc.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+
+    # --- cc-switch (Stage 8d: provider data plane, aisc.cc-switch-provider/v1) ---
+    csp = sub.add_parser(
+        "cc-switch", help="Manage cc-switch providers (list/add/edit/delete)",
+        allow_abbrev=False,
+    )
+    _add_global_args(csp, is_subparser=True)
+    cssub = csp.add_subparsers(dest="cc_switch_command", title="cc-switch commands",
+                               parser_class=_AiscArgumentParser)
+
+    def _cc_switch_common(p):
+        _add_global_args(p, is_subparser=True)
+        p.add_argument("--runtime-id", type=str, required=True,
+                       help="Runtime ID (UUID v4)")
+        p.add_argument("--agent", type=str, required=True,
+                       choices=["claude", "codex"], help="Agent (claude|codex)")
+        p.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    csl = cssub.add_parser("list", help="List providers (secret-free snapshot)",
+                           allow_abbrev=False)
+    _cc_switch_common(csl)
+    csl.add_argument("--reveal-id", type=str, default=None, metavar="ID",
+                     help="Additionally emit the FULL api_key of this provider "
+                          "(edit-time explicit view, 2.1.11 P1)")
+
+    csa = cssub.add_parser("add", help="Add a provider (request JSON on stdin)",
+                           allow_abbrev=False)
+    _cc_switch_common(csa)
+    # KI-7①: default None, NOT "simple" — the Workbench never passes --mode,
+    # and a truthy argparse default unconditionally clobbered the stdin
+    # document's "mode":"custom" (observed as "unknown preset provider").
+    csa.add_argument("--mode", choices=["simple", "custom"], default=None,
+                     help="simple = preset provider + api key; custom = full "
+                          "fields (the stdin request's mode wins unless set)")
+    csa.add_argument("--provider", type=str, default=None,
+                     help="Preset provider id (simple mode, e.g. deepseek)")
+    csa.add_argument("--id", dest="new_id", type=str, default=None,
+                     help="Provider id to create (default: preset id / name slug)")
+
+    cse = cssub.add_parser("edit", help="Edit a provider (patch JSON on stdin)",
+                           allow_abbrev=False)
+    _cc_switch_common(cse)
+    cse.add_argument("provider_id", type=str, help="Provider ID to edit")
+
+    css = cssub.add_parser("switch", help="Activate a provider (make it current)",
+                           allow_abbrev=False)
+    _cc_switch_common(css)
+    css.add_argument("provider_id", type=str, help="Provider ID to activate")
+
+    csd = cssub.add_parser("delete", help="Delete a provider", allow_abbrev=False)
+    _cc_switch_common(csd)
+    csd.add_argument("provider_id", type=str, help="Provider ID to delete")
+    csd.add_argument("--confirm", action="store_true", default=False,
+                     help="Required confirmation flag")
+
+    # IDEA-5 (5c): remote model list for the mapping dropdown.
+    csf = cssub.add_parser("fetch-models",
+                           help="Fetch the remote model list for a provider",
+                           allow_abbrev=False)
+    _cc_switch_common(csf)
+    csf.add_argument("provider_id", type=str, nargs="?", default="",
+                    help="Provider ID to query (empty = add-mode inline probe; "
+                         "the stdin document then carries base_url)")
+
+    # --- network (IDEA-2: mihomo subscription data plane) ---
+    nwp = sub.add_parser(
+        "network", help="Network management (mihomo subscription for container TUN)",
+        allow_abbrev=False,
+    )
+    _add_global_args(nwp, is_subparser=True)
+    nwsub = nwp.add_subparsers(dest="network_command", title="network commands",
+                               parser_class=_AiscArgumentParser, required=True)
+
+    nws = nwsub.add_parser(
+        "subscription", help="Manage the proxy subscription (IDEA-2)",
+        allow_abbrev=False,
+    )
+    _add_global_args(nws, is_subparser=True)
+    nwssub = nws.add_subparsers(dest="subscription_command",
+                                title="subscription commands",
+                                parser_class=_AiscArgumentParser, required=True)
+
+    nwi = nwssub.add_parser(
+        "import", help="Import a subscription (URL on stdin — a credential, "
+                       "never argv)", allow_abbrev=False)
+    _add_global_args(nwi, is_subparser=True)
+
+    nwif = nwssub.add_parser(
+        "import-file", help="Import manually supplied subscription content "
+                            "(full content on stdin; fallback for sources "
+                            "that reject automated downloads)", allow_abbrev=False)
+    _add_global_args(nwif, is_subparser=True)
+
+    nwr = nwssub.add_parser(
+        "refresh", help="Re-fetch the stored subscription URL", allow_abbrev=False)
+    _add_global_args(nwr, is_subparser=True)
+
+    # 挂账①: persistence endpoint for the Rust (reqwest) downloader.
+    nwsd = nwssub.add_parser(
+        "store-downloaded",
+        help="Persist a Rust-side download ({url, content_b64, userinfo} JSON "
+             "on stdin — the fingerprint-wall-safe transport)",
+        allow_abbrev=False)
+    _add_global_args(nwsd, is_subparser=True)
+
+    nww = nwssub.add_parser(
+        "show", help="Show subscription status (secret-free)", allow_abbrev=False)
+    _add_global_args(nww, is_subparser=True)
+
+    nwc = nwssub.add_parser("clear", help="Remove the stored subscription",
+                            allow_abbrev=False)
+    _add_global_args(nwc, is_subparser=True)
+    nwc.add_argument("--confirm", action="store_true", default=False,
+                     help="Required confirmation flag")
+
+    # --- usage (IDEA-2: provider token usage aggregation) ---
+    usp = sub.add_parser(
+        "usage", help="Provider token usage statistics (all workspaces)",
+        allow_abbrev=False,
+    )
+    _add_global_args(usp, is_subparser=True)
+    ussub = usp.add_subparsers(dest="usage_command", title="usage commands",
+                               parser_class=_AiscArgumentParser, required=True)
+    uso = ussub.add_parser(
+        "overview", help="Subscription status + per-provider token usage",
+        allow_abbrev=False)
+    _add_global_args(uso, is_subparser=True)
+    uso.add_argument("--range", dest="range", type=str, default="7d",
+                     choices=["today", "7d", "30d"],
+                     help="Time window (default: 7d)")
+    uso.add_argument("--workspace", type=str, default=None,
+                     help="Limit to one workspace path (default: all)")
+
+    # --- logs (lifecycle-logging: the shared JSONL timeline) ---
+    lgp = sub.add_parser(
+        "logs", help="Lifecycle event log (full-flow debugging timeline)",
+        allow_abbrev=False,
+    )
+    _add_global_args(lgp, is_subparser=True)
+    lgsub = lgp.add_subparsers(dest="logs_command", title="logs commands",
+                               parser_class=_AiscArgumentParser, required=True)
+    lgs = lgsub.add_parser(
+        "show", help="Show recent lifecycle events (secret-free by construction)",
+        allow_abbrev=False)
+    _add_global_args(lgs, is_subparser=True)
+    lgs.add_argument("--lines", type=int, default=200, metavar="N",
+                     help="Number of recent events (default: 200; current file only)")
+    lgs.add_argument("--source", choices=["app", "cli", "ui", "all"],
+                     default="all",
+                     help="Filter by writer (default: all)")
+    lgt = lgsub.add_parser(
+        "path", help="Print the log file path (for scripts and the Workbench)",
+        allow_abbrev=False)
+    _add_global_args(lgt, is_subparser=True)
+
     # --- ps ---
     psp = sub.add_parser("ps", help="List all registered containers", allow_abbrev=False)
     _add_global_args(psp, is_subparser=True)
+
+    # --- maintenance (docker-resource-lifecycle B) ---
+    mtp = sub.add_parser("maintenance", help="Installer-facing Docker lifecycle ops",
+                         allow_abbrev=False)
+    _add_global_args(mtp, is_subparser=True)
+    mtsub = mtp.add_subparsers(dest="maintenance_command", title="maintenance commands",
+                               parser_class=_AiscArgumentParser)
+
+    mts = mtsub.add_parser("docker-scan", help="Read-only ownership classification",
+                           allow_abbrev=False)
+    _add_global_args(mts, is_subparser=True)
+    mts.add_argument("--context", choices=["first_install", "upgrade", "uninstall"],
+                     default="upgrade",
+                     help="Install context drives legacy-image evidence rules")
+    mts.add_argument("--old-image-id", action="append", default=[],
+                     help="Upgrade-captured old image ID (temporary evidence; repeatable)")
+
+    mtc = mtsub.add_parser("docker-cleanup", help="Remove owned/legacy containers+images",
+                           allow_abbrev=False)
+    _add_global_args(mtc, is_subparser=True)
+    mtc.add_argument("--context", choices=["first_install", "upgrade", "uninstall"],
+                     default="uninstall")
+    mtc.add_argument("--old-image-id", action="append", default=[])
+
+    mtr = mtsub.add_parser("docker-rebuild", help="No-cache rebuild with old-ID handoff",
+                           allow_abbrev=False)
+    _add_global_args(mtr, is_subparser=True)
+    mtr.add_argument("--root", required=True, help="Bundle root (contains Dockerfile)")
+    mtr.add_argument("--tag", default="super-claude:latest")
+    mtr.add_argument("--old-image-id", default="")
+    mtr.add_argument("--no-cache", action="store_true", default=True)
+    mtr.add_argument("--pull", action="store_true", default=False)
+
+    mtu = mtsub.add_parser("cache-usage", help="Read-only docker system df summary",
+                           allow_abbrev=False)
+    _add_global_args(mtu, is_subparser=True)
+
+    mtcc = mtsub.add_parser("cache-cleanup",
+                            help="Prune builder cache + dangling images (until-filtered)",
+                            allow_abbrev=False)
+    _add_global_args(mtcc, is_subparser=True)
+    mtcc.add_argument("--min-age-hours", type=int, default=24,
+                      help="Only clear cache entries older than this (default 24)")
+
+    # --- bundle (0.1.0 A3, guide 3.3.3) ---
+    bp = sub.add_parser("bundle", help="Runtime bundle store (fetch from GitHub Releases)",
+                        allow_abbrev=False)
+    _add_global_args(bp, is_subparser=True)
+    bsub = bp.add_subparsers(dest="bundle_command", title="bundle commands",
+                             parser_class=_AiscArgumentParser)
+    bf = bsub.add_parser("fetch", help="Download+verify+install the bundle for a version",
+                         allow_abbrev=False)
+    _add_global_args(bf, is_subparser=True)
+    bf.add_argument("--version", default=None,
+                    help="Version to fetch (default: this CLI's version; exact match)")
+    bf.add_argument("--from-file", default=None,
+                    help="Offline path: install from a local release archive (requires --sha256)")
+    bf.add_argument("--sha256", default=None,
+                    help="Expected sha256 of --from-file (same strength as the online API digest)")
+    bf.add_argument("--allow-mismatch", action="store_true", default=False,
+                    help="Escape hatch: install even if the manifest gate rejects this CLI")
+    bl = bsub.add_parser("list", help="List installed bundles", allow_abbrev=False)
+    _add_global_args(bl, is_subparser=True)
+    brm = bsub.add_parser("remove", help="Remove an installed bundle (refuses the active one)",
+                          allow_abbrev=False)
+    _add_global_args(brm, is_subparser=True)
+    brm.add_argument("version", help="Bundle version to remove")
+    bpth = bsub.add_parser("path", help="Print the bundles directory", allow_abbrev=False)
+    _add_global_args(bpth, is_subparser=True)
+
+    # --- update (0.1.0 A4, D-7) ---
+    up = sub.add_parser("update", help="Self-update the aisc CLI (frozen forms)",
+                        allow_abbrev=False)
+    _add_global_args(up, is_subparser=True)
+    up.add_argument("--check", action="store_true", default=False,
+                    help="Show the update plan without touching anything")
+    up.add_argument("--version", default=None,
+                    help="Target version (default: latest final release)")
+    up.add_argument("--from-file", default=None,
+                    help="Offline path: update from a local release archive (requires --sha256)")
+    up.add_argument("--sha256", default=None,
+                    help="Expected sha256 of --from-file")
+    up.add_argument("--rebuild", action="store_true", default=False,
+                    help="After replacing, run the installer-style no-cache image rebuild")
+    up.add_argument("--pin-tool", action="append", default=None, metavar="KEY=VALUE",
+                    help="Pin a container tool version in the data-root user layer "
+                         "(repeatable; CLAUDE_CODE_VERSION / CODEX_VERSION / CC_SWITCH_VERSION); "
+                         "applies at the next image build and survives updates")
+
+    # --- runtime ---
+    rtp = sub.add_parser("runtime", help="Runtime control plane (Workbench Phase 0)", allow_abbrev=False)
+    _add_global_args(rtp, is_subparser=True)
+    rtsub = rtp.add_subparsers(dest="runtime_command", title="runtime commands",
+                                parser_class=_AiscArgumentParser)
+
+    rtpf = rtsub.add_parser("preflight", help="Preflight checks for runtime start", allow_abbrev=False)
+    _add_global_args(rtpf, is_subparser=True)
+    rtpf.add_argument("--runtime-id", type=str, required=True,
+                      help="Runtime ID (UUID v4, provided by Workbench)")
+    rtpf.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtpf.add_argument("--image", type=str, default="super-claude:latest",
+                      help="Docker image (default: super-claude:latest)")
+    rtpf.add_argument("--network", type=str, choices=["direct", "proxy"],
+                      default="direct",
+                      help="Network mode (default: direct)")
+    rtpf.add_argument("--scope", type=str, choices=["project", "temporary"],
+                      default="project",
+                      help="Runtime scope (default: project)")
+    rtpf.add_argument("--owner", type=str, default="workbench",
+                      help="Owner identifier (default: workbench)")
+
+    # --- runtime start ---
+    rts = rtsub.add_parser("start", help="Start a Workbench runtime", allow_abbrev=False)
+    _add_global_args(rts, is_subparser=True)
+    rts.add_argument("--runtime-id", type=str, required=True,
+                     help="Runtime ID (UUID v4, provided by Workbench)")
+    rts.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    rts.add_argument("--image", type=str, default="super-claude:latest",
+                     help="Docker image (default: super-claude:latest)")
+    rts.add_argument("--network", type=str, choices=["direct", "proxy"],
+                     default="direct", help="Network mode (default: direct)")
+    rts.add_argument("--scope", type=str, choices=["project", "temporary"],
+                     default="project", help="Runtime scope (default: project)")
+    rts.add_argument("--owner", type=str, default="workbench",
+                     help="Owner identifier (default: workbench)")
+    rts.add_argument("--proxy-config", type=str, default=None,
+                     help="Host path to mihomo config.yaml to mount for --network proxy "
+                          "(S0.2: proxy caps/device are set; without this, TUN runs without a config)")
+    rts.add_argument("--host-mcp-url", type=str, default=None,
+                     help="F2 (D-10): full host-tools MCP URL incl. token query; forwarded "
+                          "into the container as AISC_HOST_MCP_URL for agent registration")
+    rts.add_argument("--max-memory", type=str, default=None,
+                     help="PERF P8 (D-13): container memory limit (docker --memory, e.g. 3g)")
+    rts.add_argument("--max-cpus", type=float, default=None,
+                     help="PERF P8 (D-13): container CPU limit (docker --cpus, e.g. 1.5)")
+
+    # --- runtime list ---
+    rtl = rtsub.add_parser("list", help="List runtimes with Docker reconciliation",
+                           allow_abbrev=False)
+    _add_global_args(rtl, is_subparser=True)
+    rtl.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    rtl.add_argument("--owner", type=str, default=None,
+                     help="Filter by owner (e.g. workbench)")
+
+    # --- runtime inspect ---
+    rti = rtsub.add_parser("inspect", help="Show a single runtime", allow_abbrev=False)
+    _add_global_args(rti, is_subparser=True)
+    rti.add_argument("--runtime-id", type=str, required=True,
+                     help="Runtime ID (UUID v4)")
+    rti.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+
+    # --- runtime status (PERF P1: merged inspect+services, one invocation) ---
+    rtstt = rtsub.add_parser("status", help="Snapshot + services in one call (poll path)",
+                             allow_abbrev=False)
+    _add_global_args(rtstt, is_subparser=True)
+    rtstt.add_argument("--runtime-id", type=str, required=True,
+                       help="Runtime ID (UUID v4)")
+    rtstt.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    # --- runtime stop ---
+    rtst = rtsub.add_parser("stop", help="Stop a runtime (keep container + metadata)",
+                            allow_abbrev=False)
+    _add_global_args(rtst, is_subparser=True)
+    rtst.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtst.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtst.add_argument("--grace", type=int, default=10,
+                      help="docker stop grace period in seconds (1..600; default 10)")
+
+    # --- runtime restart ---
+    rtr = rtsub.add_parser("restart", help="Restart a runtime with original config",
+                           allow_abbrev=False)
+    _add_global_args(rtr, is_subparser=True)
+    rtr.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtr.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+
+    # --- runtime remove ---
+    rtrm = rtsub.add_parser("remove", help="Remove a runtime (container + registry)",
+                            allow_abbrev=False)
+    _add_global_args(rtrm, is_subparser=True)
+    rtrm.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtrm.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtrm.add_argument("--force", action="store_true", default=False,
+                      help="Remove even if the runtime is running")
+
+    # --- runtime services (svc-2, aisc.runtime-services/v1) ---
+    # NOTE: the parent keeps --runtime-id/--workspace OPTIONAL and each
+    # subcommand redefines them required — Python 3.14 argparse rejects
+    # "services list --runtime-id X" when the parent marks the same option
+    # required (the subparser's parse no longer satisfies the parent's
+    # required check). The bare form is validated in _cmd_runtime dispatch.
+    rtsv = rtsub.add_parser("services", help="Web service gateway info + registered services",
+                            allow_abbrev=False)
+    _add_global_args(rtsv, is_subparser=True)
+    rtsv.add_argument("--runtime-id", type=str, default=None,
+                      help="Runtime ID (UUID v4)")
+    rtsv.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtsvsub = rtsv.add_subparsers(dest="runtime_services_command",
+                                  title="runtime services commands",
+                                  parser_class=_AiscArgumentParser)
+
+    rtsvl = rtsvsub.add_parser("list", help="List registered services (default)",
+                               allow_abbrev=False)
+    _add_global_args(rtsvl, is_subparser=True)
+    rtsvl.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtsvl.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+
+    rtsve = rtsvsub.add_parser("expose", help="Register a service port (ops/test entry)",
+                               allow_abbrev=False)
+    _add_global_args(rtsve, is_subparser=True)
+    rtsve.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtsve.add_argument("--port", type=str, required=True,
+                       help="Container service port (1024..65535)")
+    rtsve.add_argument("--name", type=str, default="",
+                       help="Display label (safe short text)")
+    rtsve.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    rtsvu = rtsvsub.add_parser("unexpose", help="Unregister a service port",
+                               allow_abbrev=False)
+    _add_global_args(rtsvu, is_subparser=True)
+    rtsvu.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    rtsvu.add_argument("--port", type=str, required=True,
+                       help="Container service port (1024..65535)")
+    rtsvu.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    # --- runtime reconcile (runtime-lifecycle-ux Stage 1, 02 §3) ---
+    rtrc = rtsub.add_parser("reconcile",
+                            help="Classify + auto-recycle stale runtimes for a workspace",
+                            allow_abbrev=False)
+    _add_global_args(rtrc, is_subparser=True)
+    rtrc.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtrc.add_argument("--instance-id", type=str, required=True,
+                      help="This Workbench instance's UUID v4")
+    rtrc.add_argument("--workspace-key", type=str, default=None,
+                      help="Optional cross-check: expected sha256 workspace key")
+
+    # --- runtime lease (runtime-lifecycle-ux Stage 1, 02 §2) ---
+    # Same py3.14 pattern as `services`: shared options on the group are
+    # optional, children re-require them; the bare form is usage-rejected
+    # in dispatch.
+    rtlg = rtsub.add_parser("lease", help="Workspace lease claim/heartbeat/release/inspect",
+                            allow_abbrev=False)
+    _add_global_args(rtlg, is_subparser=True)
+    rtlg.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    rtlg.add_argument("--instance-id", type=str, default=None,
+                      help="This Workbench instance's UUID v4")
+    rtlgsub = rtlg.add_subparsers(dest="runtime_lease_command",
+                                  title="runtime lease commands",
+                                  parser_class=_AiscArgumentParser)
+    for _name, _help in (
+        ("claim", "Claim the workspace lease"),
+        ("heartbeat", "Refresh the lease last-seen timestamp"),
+        ("release", "Release the workspace lease"),
+        ("inspect", "Show the current lease"),
+    ):
+        _p = rtlgsub.add_parser(_name, help=_help, allow_abbrev=False)
+        _add_global_args(_p, is_subparser=True)
+        _req = _name in ("claim", "heartbeat", "release")
+        _p.add_argument("--workspace", type=str, default=None,
+                        help="Workspace path (default: current directory)")
+        _p.add_argument("--instance-id", type=str, required=_req,
+                        help="This Workbench instance's UUID v4")
+        _p.add_argument("--lease-id", type=str, default=None,
+                        help="Lease ID (heartbeat/release match guard)")
+
+    # --- session ---
+    ssp = sub.add_parser("session", help="Session data plane (Workbench Phase 0)", allow_abbrev=False)
+    _add_global_args(ssp, is_subparser=True)
+    ssub = ssp.add_subparsers(dest="session_command", title="session commands",
+                              parser_class=_AiscArgumentParser)
+
+    # session open
+    sso = ssub.add_parser("open", help="Open an interactive agent session", allow_abbrev=False)
+    _add_global_args(sso, is_subparser=True)
+    sso.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    sso.add_argument("--session-id", type=str, required=True, help="Session ID (UUID v4)")
+    sso.add_argument("--agent", type=str, required=True,
+                     choices=list(SessionAgent.ALL),
+                     help="Agent type (claude|codex|bash|cc-switch)")
+    sso.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    sso.add_argument("--resume-id", type=str, default=None,
+                     help="Provider conversation ID to resume (claude|codex only, v2.1.8 T4)")
+
+    # session list
+    ssl = ssub.add_parser("list", help="List sessions in a runtime", allow_abbrev=False)
+    _add_global_args(ssl, is_subparser=True)
+    ssl.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    ssl.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+
+    # session terminate
+    sst = ssub.add_parser("terminate", help="Terminate a session", allow_abbrev=False)
+    _add_global_args(sst, is_subparser=True)
+    sst.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    sst.add_argument("--session-id", type=str, required=True, help="Session ID (UUID v4)")
+    sst.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    sst.add_argument("--grace", type=float, default=5.0,
+                     help="Grace period in seconds before SIGKILL (default: 5.0)")
+
+    # --- conversation (v2.1.8 T3) ---
+    cvp = sub.add_parser("conversation",
+                         help="Agent conversation discovery (Workbench v2.1.8)",
+                         allow_abbrev=False)
+    _add_global_args(cvp, is_subparser=True)
+    cvsub = cvp.add_subparsers(dest="conversation_command",
+                               title="conversation commands",
+                               parser_class=_AiscArgumentParser)
+
+    # conversation list
+    cvl = cvsub.add_parser("list", help="List agent history conversations in a workspace",
+                           allow_abbrev=False)
+    _add_global_args(cvl, is_subparser=True)
+    cvl.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+
+    # conversation preflight
+    cvp2 = cvsub.add_parser("preflight",
+                            help="Validate a conversation is resumable (captured, JSON)",
+                            allow_abbrev=False)
+    _add_global_args(cvp2, is_subparser=True)
+    cvp2.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    cvp2.add_argument("--conversation-id", type=str, required=True,
+                      help="Provider-native conversation ID (UUID)")
+    # No argparse choices: an unsupported agent must surface as
+    # AISC_ERR_CONVERSATION_INVALID_AGENT in the JSON envelope (design §2),
+    # not as an argparse usage error.
+    cvp2.add_argument("--agent", type=str, required=True,
+                      help="Agent type (claude|codex)")
+
+    # conversation delete (v2.1.8 T4 手测反馈 #4)
+    cvd = cvsub.add_parser("delete", help="Delete a conversation's session file",
+                           allow_abbrev=False)
+    _add_global_args(cvd, is_subparser=True)
+    cvd.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    cvd.add_argument("--conversation-id", type=str, required=True,
+                     help="Provider-native conversation ID (UUID)")
+    cvd.add_argument("--agent", type=str, required=True,
+                     help="Agent type (claude|codex)")
+
+    # conversation rename (v2.1.8 T4 手测反馈 #2): Workbench display title
+    cvr = cvsub.add_parser("rename", help="Set a conversation's display title",
+                           allow_abbrev=False)
+    _add_global_args(cvr, is_subparser=True)
+    cvr.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    cvr.add_argument("--conversation-id", type=str, required=True,
+                     help="Provider-native conversation ID (UUID)")
+    cvr.add_argument("--agent", type=str, required=True,
+                     help="Agent type (claude|codex)")
+    cvr.add_argument("--title", type=str, required=True,
+                     help="New display title (sanitized, ≤80 chars)")
+
+    # --- artifact (Stage 3, ART-02) ---
+    arp = sub.add_parser("artifact", help="Agent Artifact fact protocol (Stage 3)",
+                         allow_abbrev=False)
+    _add_global_args(arp, is_subparser=True)
+    arsub = arp.add_subparsers(dest="artifact_command", title="artifact commands",
+                               parser_class=_AiscArgumentParser)
+
+    arrec = arsub.add_parser("record", help="Record an agent artifact fact",
+                             allow_abbrev=False)
+    _add_global_args(arrec, is_subparser=True)
+    # v2.1.9 T3a (R2): the Workbench injects AISC_RUNTIME_ID (docker create)
+    # and AISC_TERMINAL_SESSION_ID (session wrapper) into every agent
+    # process — use them as argparse defaults so agents don't need to know
+    # their IDs. Flag still wins when both are present; explicit check in
+    # the command layer reports a stable usage error when neither is given
+    # (instead of argparse's bare "required" wall of text).
+    arrec.add_argument("--runtime-id", type=str,
+                       default=os.environ.get("AISC_RUNTIME_ID"),
+                       help="Runtime ID (UUID v4; default: env AISC_RUNTIME_ID)")
+    arrec.add_argument("--session-id", type=str,
+                       default=os.environ.get("AISC_TERMINAL_SESSION_ID"),
+                       help="Session ID (UUID v4; default: env AISC_TERMINAL_SESSION_ID)")
+    arrec.add_argument("--agent", type=str,
+                       default=os.environ.get("AISC_AGENT"),
+                       required=os.environ.get("AISC_AGENT") is None,
+                       choices=["claude", "codex", "bash", "cc-switch"],
+                       help="Producer agent (default: env AISC_AGENT)")
+    arrec.add_argument("--path", type=str, required=True,
+                       help="Workspace-relative path of the artifact")
+    arrec.add_argument("--action", type=str, choices=ArtifactAction.ALL, default="created",
+                       help="created|modified|deleted|renamed")
+    arrec.add_argument("--kind", type=str, choices=ArtifactKind.ALL, default="deliverable",
+                       help="deliverable|source_change|generated_output")
+    arrec.add_argument("--media-type", type=str, default=None,
+                       help="media type, e.g. text/markdown")
+    arrec.add_argument("--label", type=str, default="", help="Human label (<=256 chars)")
+    arrec.add_argument("--open-with", type=str, choices=ArtifactOpenWith.ALL,
+                       default="preview", help="preview|system|reveal|none")
+    arrec.add_argument("--previous-path", type=str, default=None,
+                       help="previous relative path (required for renamed)")
+    arrec.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    arlist = arsub.add_parser("list", help="List artifact records", allow_abbrev=False)
+    _add_global_args(arlist, is_subparser=True)
+    arlist.add_argument("--workspace", type=str, default=None,
+                        help="Workspace path (default: current directory)")
+    arlist.add_argument("--session-id", type=str, default=None,
+                        help="Filter by session id")
+    arlist.add_argument("--kind", type=str, choices=ArtifactKind.ALL, default=None,
+                        help="Filter by kind")
+
+    arinsp = arsub.add_parser("inspect", help="Inspect one artifact by id",
+                              allow_abbrev=False)
+    _add_global_args(arinsp, is_subparser=True)
+    arinsp.add_argument("--artifact-id", type=str, required=True, help="Artifact ID (UUID)")
+    arinsp.add_argument("--workspace", type=str, default=None,
+                        help="Workspace path (default: current directory)")
+
+    arclear = arsub.add_parser("clear-session", help="Remove a session's registry",
+                               allow_abbrev=False)
+    _add_global_args(arclear, is_subparser=True)
+    arclear.add_argument("--runtime-id", type=str, required=True, help="Runtime ID (UUID v4)")
+    arclear.add_argument("--session-id", type=str, required=True, help="Session ID (UUID v4)")
+    arclear.add_argument("--workspace", type=str, default=None,
+                         help="Workspace path (default: current directory)")
+
+    # --- data-root (Stage 7, 7d) ---
+    drp = sub.add_parser("data-root", help="Data root diagnostics and legacy migration",
+                         allow_abbrev=False)
+    _add_global_args(drp, is_subparser=True)
+    drsub = drp.add_subparsers(dest="data_root_command", title="data-root commands",
+                               parser_class=_AiscArgumentParser)
+
+    drdoc = drsub.add_parser("doctor", help="Resolve + legacy findings + manifest state",
+                             allow_abbrev=False)
+    _add_global_args(drdoc, is_subparser=True)
+    drdoc.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    drmig = drsub.add_parser("migrate", help="Migrate legacy layout into the data root",
+                             allow_abbrev=False)
+    _add_global_args(drmig, is_subparser=True)
+    drmig.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+    drmig.add_argument("--dry-run", action="store_true", default=False,
+                       help="Report the plan without touching anything")
+    drmig.add_argument("--apply", action="store_true", default=False,
+                       help="Execute the migration (default when --dry-run is absent)")
+    drmig.add_argument("--quarantine-unknown", action="store_true", default=False,
+                       help="Move unknown files to the migration quarantine "
+                            "(explicit consent; sources kept)")
+
+    drroll = drsub.add_parser("rollback", help="Undo one migration via its manifest",
+                              allow_abbrev=False)
+    _add_global_args(drroll, is_subparser=True)
+    drroll.add_argument("--workspace", type=str, default=None,
+                        help="Workspace path (default: current directory)")
+    drroll.add_argument("manifest", nargs="?", default=None,
+                        help="Manifest path (default: this workspace's manifest)")
 
     return parser
 
@@ -269,7 +972,9 @@ def _detect_events(argv: List[str]) -> bool:
 
 def _detect_command(argv: List[str]) -> Optional[str]:
     known = {"version", "doctor", "build", "run", "config", "profile",
-             "status", "stop", "restart", "shell", "switch", "provider", "ps"}
+             "status", "stop", "restart", "shell", "switch", "provider",
+             "cc-switch", "network", "usage", "logs", "ps", "runtime", "session",
+             "artifact", "data-root", "maintenance"}
     for arg in argv:
         if arg in known:
             return arg
@@ -415,6 +1120,35 @@ def _cmd_profile(
 # Build / Run command dispatch — all docker through injected executor
 # ---------------------------------------------------------------------------
 
+def _write_cc_switch_manifest(root: Path, resolved: Any) -> Optional[Path]:
+    """Write the resolution receipt next to the build outputs (Stage 8b).
+
+    Best-effort: an unwritable cache warns and builds on (the receipt also
+    lives in the image labels + BuildResult). Patched in tests to avoid
+    touching the real filesystem.
+
+    Location: the shared data-root cache (NOT the aisc bundle dir — a file
+    created inside the installed bundle survives the uninstaller's file list
+    and trips the NSIS clean-uninstall gate; resolver artifacts belong with
+    the resolver's metadata cache anyway)."""
+    from aisc.application.data_root import shared_root
+
+    manifest_path = shared_root() / "cache" / "cc-switch" / "last-resolved.json"
+    try:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        from aisc.application.cc_switch_resolver import resolved_at_now
+
+        manifest_path.write_text(
+            json.dumps(resolved.to_manifest(resolved_at=resolved_at_now()), indent=2),
+            encoding="utf-8",
+        )
+        return manifest_path
+    except OSError as exc:
+        sys.stderr.write(f"⚠️  could not write cc-switch manifest ({exc}); "
+                         f"build continues\n")
+        return None
+
+
 def _cmd_build(
     args: argparse.Namespace,
     emitter: Optional[JsonlEmitter],
@@ -431,11 +1165,63 @@ def _cmd_build(
         raise CliError(message=str(exc), exit_code=1,
                        error_code="AISC_ERR_GENERAL") from exc
     if root is None:
+        # A3 (guide 3.3.4): the pip install form has no repo and no frozen
+        # bundle — its build needs `aisc bundle fetch` first. Keep the
+        # source/frozen wording intact (repo users still get their hint).
+        import aisc as _aisc_pkg
+
+        pip_form = (
+            not getattr(sys, "frozen", False)
+            and _aisc_pkg.__file__ is not None
+            and "site-packages" in str(Path(_aisc_pkg.__file__).resolve())
+        )
+        if pip_form:
+            raise CliError(
+                message="AISC root not found: a pip/pipx install ships no build "
+                        "resources. Run `aisc bundle fetch` to download this "
+                        "version's bundle, or point --aisc-root at an extracted "
+                        "bundle directory.",
+                exit_code=1, error_code="AISC_ERR_GENERAL",
+            )
         raise CliError(
             message="AISC root not found. Use --aisc-root to specify a path, "
                     "or run from within an AISC repository.",
             exit_code=1, error_code="AISC_ERR_GENERAL",
         )
+
+    # v2.1.7 hotfix (2026-08-28 field report): failures BEFORE the event
+    # stream starts (root location, cc-switch resolution — a network-blocked
+    # machine fails here in seconds) used to print a bare error envelope to
+    # stdout. The Workbench stream parser saw no terminal event and showed a
+    # generic "AISC CLI 返回错误" with zero diagnosis. In --events mode a
+    # pre-run CliError now emits a TERMINAL build.failed carrying the real
+    # code + message, then re-raises for the normal exit path.
+    def _emit_prerun_failure(exc: CliError) -> None:
+        if emitter is None:
+            return
+        emitter.emit_terminal("build.failed", exc.exit_code, extra_data={
+            "image_tag": getattr(args, "tag", "super-claude:latest"),
+            "docker_exit_code": None,
+            "error_code": exc.error_code,
+            "message": exc.message,
+            "phase": "prerun",
+        })
+
+    def _warn_unpinned_build(exc: ResolveError, emitter_: Optional[JsonlEmitter]) -> None:
+        """S8b: announce the degraded unpinned build (fail-visible, never
+        silent) — stderr for text mode, a build.warning event for the
+        Workbench stream (additive event type; older frontends ignore it)."""
+        warning = (
+            "cc-switch 版本解析失败（网络受限）：本次构建不带解析钉版，"
+            "Dockerfile 将从国内镜像源下载 cc-switch（无 sha256 校验，"
+            "不保证可复现）。配好网络后重试可恢复钉版；--require-pin 可将"
+            "此情况设为致命错误。原因: " + exc.message
+        )
+        sys.stderr.write(f"⚠️  {warning}\n")
+        sys.stderr.flush()
+        if emitter_ is not None:
+            emitter_.emit("build.warning", data={"message": warning})
+
 
     # Run wizard if in interactive text mode and no explicit flags provided
     tag = getattr(args, "tag", "super-claude:latest")
@@ -460,17 +1246,87 @@ def _cmd_build(
             raise CliError(message="Build cancelled by user", exit_code=130,
                            error_code="AISC_ERR_CANCELLED")
 
+    # Stage 8b: resolve the cc-switch release BEFORE planning (D8-02 — the
+    # Dockerfile only consumes resolved facts, never resolves on its own).
+    import platform as _platform
+    from aisc.domain.cc_switch_release import (
+        CC_SWITCH_ERROR_NETWORK,
+        CC_SWITCH_ERROR_RATE_LIMITED,
+        ResolveError,
+        normalize_arch,
+    )
+    from aisc.application.cc_switch_resolver import CcSwitchResolver
+
+    cs_version = getattr(args, "cc_switch_version", None) or os.environ.get("CC_SWITCH_VERSION", "latest")
+    cs_channel = getattr(args, "cc_switch_channel", None) or os.environ.get("CC_SWITCH_CHANNEL", "stable")
+    cs_manifest = getattr(args, "cc_switch_manifest", None)
+    require_pin = bool(getattr(args, "require_pin", False)) or (
+        os.environ.get("AISC_REQUIRE_PIN", "").strip().lower() not in ("", "0", "false")
+    )
+    try:
+        cs_arch = normalize_arch(_platform.machine())
+    except ResolveError:
+        cs_arch = "x64"  # validated again inside the Dockerfile (arch assert)
+    resolver = CcSwitchResolver()
+    resolved: Any = None
+    try:
+        resolved = resolver.resolve(
+            channel=cs_channel,
+            version=cs_version,
+            arch=cs_arch,
+            libc="musl",
+            manifest_path=Path(cs_manifest) if cs_manifest else None,
+        )
+    except ResolveError as exc:
+        # S8b (2026-08-28 user ruling): a NETWORK-SHAPED failure degrades to
+        # an UNPINNED build instead of a fatal error — the Dockerfile's
+        # no-pin branch downloads cc-switch from CN mirrors (unverified,
+        # explicitly warned), the same semantics docker_rebuild has had
+        # since v2.1.6. Everything else (bad manifest, version not found on
+        # a LIVE api, invalid channel) and --require-pin stay fail-closed.
+        unpinned = (
+            exc.code in (CC_SWITCH_ERROR_NETWORK, CC_SWITCH_ERROR_RATE_LIMITED)
+            and not require_pin
+        )
+        cli_error = CliError(
+            message=f"cc-switch release resolution failed: {exc.message}",
+            exit_code=1, error_code=exc.code,
+        )
+        if not unpinned:
+            _emit_prerun_failure(cli_error)
+            raise cli_error from exc
+        _warn_unpinned_build(exc, emitter)
+
+    # Reproducibility receipt: always written next to the build outputs.
+    manifest_path = (
+        _write_cc_switch_manifest(root, resolved) if resolved is not None else None
+    )
+
+    if resolved is not None and effective_format == "text" and emitter is None:
+        sys.stderr.write(
+            f"cc-switch: {resolved.tag} ({resolved.asset_name}, "
+            f"sha256 {resolved.asset_sha256[:12]}…, source {resolved.source})\n"
+        )
+        sys.stderr.flush()
+
     plan = plan_build(
         root=root,
         tag=tag,
         no_cache=no_cache,
         pull=pull,
         dry_run=dry_run,
+        cc_switch=resolved,
     )
 
     # text mode → streaming (real-time build log); json/events → captured
     is_streaming = (effective_format == "text" and emitter is None)
-    result = run_build(plan, emitter=emitter, streaming=is_streaming)
+    result = run_build(
+        plan,
+        emitter=emitter,
+        streaming=is_streaming,
+        cc_switch_summary=resolved.to_manifest() if resolved is not None else None,
+        cc_switch_manifest_path=str(manifest_path) if manifest_path else "",
+    )
     return result.to_dict(), 0, []
 
 
@@ -480,11 +1336,12 @@ def _cmd_run(
     effective_format: str,
     aisc_root_arg: Optional[str],
 ) -> Tuple[Optional[Dict[str, Any]], int, List[Dict[str, Any]]]:
-    """Execute ``aisc run``. Returns (data, exit_code, errors)."""
+    """Execute ``aisc run`` — F2-C activation semantics: detached start,
+    registry default pointer, history record, activation summary."""
     from aisc.cli.commands.run import plan_run, run_container
+    from aisc.cli.commands import runs as cli_runs
     from aisc.application.resources import locate_aisc_root, _RootSourceError
 
-    # Locate AISC root for proxy config resolution
     aisc_root = None
     try:
         aisc_root = locate_aisc_root(explicit_root=aisc_root_arg)
@@ -492,13 +1349,30 @@ def _cmd_run(
         raise CliError(message=str(exc), exit_code=1,
                        error_code="AISC_ERR_GENERAL") from exc
 
-    # Resolve --profile proxy alias
+    # --resume: adopt the record's config; explicit flags win
+    resume = getattr(args, "resume", None)
+    rec = None
+    if resume:
+        rec = cli_runs.require_resume(resume)
+
+    path = getattr(args, "path", None)
+    if not path:
+        if rec:
+            path = rec["path"]
+        else:
+            raise CliError(
+                message="aisc run needs a workspace path (e.g. `aisc run ./`) — "
+                        "or --resume N|PATH from `aisc runs`",
+                exit_code=2, error_code="AISC_ERR_USAGE",
+            )
+    ws = Path(path).expanduser()
+
     profile = getattr(args, "profile", None)
     network = getattr(args, "network", argparse.SUPPRESS)
     network_explicit = network is not argparse.SUPPRESS
     if network is argparse.SUPPRESS:
-        network = "direct"  # default when neither --network nor --profile is given
-
+        network = (rec or {}).get("network", "direct") if rec else "direct"
+        network_explicit = False
     if profile == "proxy":
         if network_explicit and network == "direct":
             raise CliError(
@@ -507,26 +1381,141 @@ def _cmd_run(
             )
         network = "proxy"
 
-    non_interactive = getattr(args, "non_interactive", False)
-    is_interactive = (effective_format == "text" and emitter is None and not non_interactive)
-    capture = (effective_format != "text" or emitter is not None)
+    image = getattr(args, "image", "super-claude:latest")
+    if rec and image == "super-claude:latest" and rec.get("image"):
+        image = rec["image"]
+    label = getattr(args, "label", "")
+    if rec and not label and rec.get("label"):
+        label = rec["label"]
 
+    raw_name = getattr(args, "name", "super-claude-station") or "super-claude-station"
+    if rec and raw_name == "super-claude-station" and rec.get("alias"):
+        raw_name = rec["alias"]  # resume keeps the alias-named containers
     plan = plan_run(
-        image=getattr(args, "image", "super-claude:latest"),
-        workspace=getattr(args, "workspace", None) or str(Path.cwd()),
-        name=getattr(args, "name", "super-claude-station"),
+        image=image,
+        workspace=str(ws),
+        name=raw_name,
         network=network,
         dry_run=getattr(args, "dry_run", False),
-        interactive=is_interactive,
-        non_interactive=non_interactive,
-        label=getattr(args, "label", ""),
-        keep_alive=getattr(args, "keep_alive", False),
+        interactive=False,   # F2-C: activation is always detached (-d)
+        non_interactive=False,
+        label=label,
+        keep_alive=True,     # F2-C: no --rm — the workspace STAYS activated
         aisc_root=aisc_root,
     )
 
-    result = run_container(plan, emitter=emitter, capture=capture,
+    result = run_container(plan, emitter=emitter, capture=True,
                            aisc_root=aisc_root)
-    return result.to_dict(), 0, []
+
+    if not plan.dry_run:
+        abs_ws = str(Path(plan.workspace).resolve())
+        alias = "" if raw_name == "super-claude-station" else raw_name
+        if rec and not alias and rec.get("alias"):
+            alias = rec["alias"]  # --resume without a fresh --name keeps it
+        cli_runs.record(abs_ws, plan.image, plan.network, plan.label, alias)
+        cli_runs.set_active(abs_ws)
+
+    out = result.to_dict()
+    out["workspace"] = plan.workspace
+    out["commands"] = [
+        "aisc claude", "aisc codex", "aisc switch", "aisc shell",
+        "aisc status", "aisc stop", "aisc runs",
+    ]
+
+    if effective_format == "text" and emitter is None:
+        if out.get("reused"):
+            print(f"ℹ 工作区已在运行中: {plan.workspace}")
+            print(f"  容器 {out['reused']}（Up） · 复用现有容器，未新建")
+            print("  进入方式: aisc claude | aisc codex | aisc switch | aisc shell")
+            print("  如需重建: 先 aisc stop 再重新 aisc run")
+            return out, 0, []
+        print(f"💯 工作区已激活: {plan.workspace}")
+        print(f"  容器 {plan.name}（detached） · 镜像 {plan.image} · 网络 {plan.network}")
+        if out.get("replaced"):
+            names = ", ".join(out["replaced"])
+            print(f"  ♻ 已替换同工作区旧容器: {names}")
+        if plan.web_gateway_host_port and not plan.dry_run:
+            print(f"  🌐 Web 服务网关: http://p<端口>.localhost:{plan.web_gateway_host_port}/ "
+                  f"（容器内: aisc-web-expose <端口>）")
+        print("  进入方式: aisc claude | aisc codex | aisc switch | aisc shell")
+        print("  停止: aisc stop · 历史: aisc runs")
+
+    return out, 0, []
+
+
+def _cmd_agent(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Optional[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """Execute ``aisc claude`` / ``aisc codex`` (F2-C agent sugar)."""
+    from aisc.cli.commands.agents import cmd_agent
+
+    rest = [a for a in (getattr(args, "rest", None) or [])]
+    if rest and rest[0] == "--":
+        rest = rest[1:]
+
+    capture = effective_format != "text"
+    outcome = cmd_agent(
+        str(args.command),
+        rest,
+        workspace=getattr(args, "workspace", None),
+        name_override=getattr(args, "name", None),
+        explicit_root=getattr(args, "aisc_root", None),
+        capture=capture,
+    )
+    if capture:
+        return dict(outcome), int(outcome.get("exit_code", 0) or 0), []
+    # Text mode: the TTY was live; report the exit like shell does.
+    return {"container": None, "agent": str(args.command), "args": rest,
+            "exit_code": outcome.exit_code}, 0, []
+
+
+def _cmd_runs(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Optional[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """Execute ``aisc runs`` — the CLI activation history."""
+    from aisc.cli.commands import runs as cli_runs
+
+    items = cli_runs.list_runs()
+    if effective_format == "text":
+        if not items:
+            print("暂无激活历史 — aisc run <路径> 开始")
+        for i, r in enumerate(items, 1):
+            alias = f"  @{r['alias']}" if r.get("alias") else ""
+            print(f"  {i}. {r.get('path')}  [{r.get('image', '')} · {r.get('network', '')}]"
+                  f"  {r.get('last_used_at', '')}{alias}")
+        if items:
+            print("恢复: aisc run --resume <别名|序号|路径>（别名最稳，序号随列表变动）")
+        return None, 0, []
+    return {"runs": items}, 0, []
+
+
+def _cmd_workspaces(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Optional[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """Execute ``aisc workspaces`` — the machine-wide management view."""
+    from aisc.cli.commands.workspaces import (
+        cmd_workspaces, cmd_workspaces_stop, print_workspaces_text,
+    )
+
+    if getattr(args, "stop", False):
+        out = cmd_workspaces_stop()
+        if effective_format == "text":
+            def _short(s):
+                if s.get("alias"):
+                    return s["alias"]
+                ws = s.get("workspace", "")
+                return Path(ws).name or ws
+            names = ", ".join(_short(s) for s in out["stopped"]) or "无"
+            print(f"已批量停止 {len(out['stopped'])} 个运行中的工作区: {names}")
+        return out, 0, []
+
+    rows = cmd_workspaces()
+    if effective_format == "text":
+        print_workspaces_text(rows)
+    return {"workspaces": rows}, 0, []
 
 
 def _cmd_config(
@@ -594,9 +1583,15 @@ def _cmd_stop(
     args: argparse.Namespace,
     effective_format: str,
 ) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
-    """Execute ``aisc stop``.  Supports --format json."""
-    from aisc.cli.commands.container import cmd_stop
+    """Execute ``aisc stop`` (F2-C: stop+remove; --all sweeps CLI-owned)."""
+    from aisc.cli.commands.container import cmd_stop, cmd_stop_all
 
+    if getattr(args, "all", False):
+        data = cmd_stop_all(explicit_root=getattr(args, "aisc_root", None))
+        if effective_format == "text":
+            names = ", ".join(s["name"] for s in data.get("stopped", [])) or "无"
+            print(f"已停止并移除: {names}（跳过 Workbench 管理的 {data.get('skipped', 0)} 个）")
+        return data, 0, []
     data = cmd_stop(
         name_override=getattr(args, "name", None),
         explicit_root=getattr(args, "aisc_root", None),
@@ -630,7 +1625,7 @@ def _cmd_shell(
     if effective_format == "json":
         emit_json_usage_error(
             command="shell", version=__version__,
-            message="shell only supports text output, --format json is not supported",
+            message="shell 仅支持 text 输出——不支持 --format json",
         )
         sys.exit(2)
 
@@ -650,6 +1645,7 @@ def _cmd_shell(
         name_override=name_override,
         explicit_root=getattr(args, "aisc_root", None),
         label_override=label_override,
+        rest=getattr(args, "rest", None) or [],
     )
 
     exit_code = proc.exit_code if proc.exit_code >= 0 else 1
@@ -673,7 +1669,7 @@ def _cmd_switch(
     if effective_format == "json":
         emit_json_usage_error(
             command="switch", version=__version__,
-            message="switch only supports text output, --format json is not supported",
+            message="switch 仅支持 text 输出——不支持 --format json",
         )
         sys.exit(2)
 
@@ -716,29 +1712,147 @@ def _cmd_switch(
     return data, exit_code, errors
 
 
+def _cmd_cc_switch(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
+    """Execute ``aisc cc-switch`` subcommands (Stage 8d data plane).
+
+    All four ops are non-interactive and support ``--format json``; secrets
+    ride the stdin request document, never argv.
+    """
+    from aisc.cli.commands import cc_switch as cs_cmd
+
+    sub = getattr(args, "cc_switch_command", None)
+    if sub == "list":
+        data = cs_cmd.cmd_cc_switch_list(args)
+    elif sub == "add":
+        data = cs_cmd.cmd_cc_switch_add(args)
+    elif sub == "edit":
+        data = cs_cmd.cmd_cc_switch_edit(args)
+    elif sub == "switch":
+        data = cs_cmd.cmd_cc_switch_switch(args)
+    elif sub == "delete":
+        data = cs_cmd.cmd_cc_switch_delete(args)
+    elif sub == "fetch-models":
+        data = cs_cmd.cmd_cc_switch_fetch_models(args)
+    else:
+        raise CliError(message="unknown cc-switch subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+
+    if effective_format == "text":
+        cs_cmd.print_cc_switch_text(data)
+    return data, 0, []
+
+
+def _cmd_network(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
+    """Execute ``aisc network`` subcommands (IDEA-2 subscription data plane).
+
+    Non-interactive, ``--format json`` throughout; the subscription URL rides
+    stdin for ``import`` (secrets never ride argv).
+    """
+    from aisc.cli.commands import network as nw_cmd
+
+    if getattr(args, "network_command", None) != "subscription":
+        raise CliError(message="unknown network subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+
+    sub = getattr(args, "subscription_command", None)
+    if sub == "import":
+        data = nw_cmd.cmd_network_subscription_import(args)
+    elif sub == "import-file":
+        data = nw_cmd.cmd_network_subscription_import_file(args)
+    elif sub == "store-downloaded":
+        data = nw_cmd.cmd_network_subscription_store_downloaded(args)
+    elif sub == "refresh":
+        data = nw_cmd.cmd_network_subscription_refresh(args)
+    elif sub == "show":
+        data = nw_cmd.cmd_network_subscription_show(args)
+    elif sub == "clear":
+        data = nw_cmd.cmd_network_subscription_clear(args)
+    else:
+        raise CliError(message="unknown network subscription subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+
+    if effective_format == "text":
+        nw_cmd.print_network_subscription_text(data)
+    return data, 0, []
+
+
+def _cmd_usage(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
+    """Execute ``aisc usage`` subcommands (IDEA-2 usage data plane)."""
+    from aisc.cli.commands import usage as usage_cmd
+
+    if getattr(args, "usage_command", None) != "overview":
+        raise CliError(message="unknown usage subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+    data = usage_cmd.cmd_usage_overview(args)
+    if effective_format == "text":
+        usage_cmd.print_usage_overview_text(data)
+    return data, 0, []
+
+
+def _cmd_logs(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
+    """Execute ``aisc logs`` subcommands (lifecycle-logging P2)."""
+    from aisc.cli.commands import logs as logs_cmd
+
+    sub = getattr(args, "logs_command", None)
+    if sub == "show":
+        data = logs_cmd.cmd_logs_show(args)
+        is_show = True
+    elif sub == "path":
+        data = logs_cmd.cmd_logs_path(args)
+        is_show = False
+    else:
+        raise CliError(message="unknown logs subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+    if effective_format == "text":
+        logs_cmd.print_logs_text(data, is_show=is_show)
+    return data, 0, []
+
+
 def _cmd_provider(
     args: argparse.Namespace,
     effective_format: str,
 ) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
-    """Execute ``aisc provider``.  Text-only interactive."""
-    from aisc.cli.commands.container import cmd_provider_set_key, discover_container
+    """Execute ``aisc provider`` subcommands.
 
+    ``current`` is non-interactive and supports ``--format json`` (S0.4).
+    ``set-key`` is text-only interactive.
+    """
+    sub = getattr(args, "provider_command", None)
+
+    if sub == "current":
+        from aisc.cli.commands.provider import cmd_provider_current
+        data = cmd_provider_current(
+            runtime_id=args.runtime_id,
+            agent=args.agent,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+
+    # All other provider subcommands are text-only interactive.
     if effective_format == "json":
         emit_json_usage_error(
             command="provider", version=__version__,
-            message="provider only supports text output, --format json is not supported",
+            message="provider set-key 仅支持 text 输出——不支持 --format json",
         )
         sys.exit(2)
 
-    sub = getattr(args, "provider_command", None)
-    if sub not in ("set-key",):
-        if effective_format == "json":
-            emit_json_usage_error(
-                command="provider", version=__version__,
-                message="Unknown provider subcommand",
-            )
-        else:
-            print("Error: Unknown provider subcommand. Use 'aisc provider set-key'.", file=sys.stderr)
+    from aisc.cli.commands.container import cmd_provider_set_key, discover_container
+
+    if sub != "set-key":
+        print("Error: Unknown provider subcommand. Use 'aisc provider set-key' "
+              "or 'aisc provider current'.", file=sys.stderr)
         sys.exit(2)
 
     # Discover name once for use in returned data
@@ -792,18 +1906,553 @@ def _cmd_ps(
         explicit_root=getattr(args, "aisc_root", None),
     )
     data = [{"name": r.name, "label": r.label, "status": r.status,
-             "running": r.running, "image": r.image, "workspace": r.workspace}
+             "running": r.running, "image": r.image, "workspace": r.workspace,
+             "active": r.active}
             for r in rows]
     return data, 0, []
 
+
+def _cmd_maintenance(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc maintenance`` subcommands (docker-resource-lifecycle B).
+
+    Exit codes (02 §3): 0 all-ok/absent · 3 docker unavailable · 1 partial
+    resource failures · 2 usage. stdout carries ONLY the JSON envelope;
+    Docker noise rides stderr via run_captured.
+    """
+    from aisc.adapters.docker_ import RealDockerExecutor
+    from aisc.application.docker_lifecycle import (
+        docker_cleanup, docker_rebuild, docker_scan,
+    )
+    from aisc.domain.models import CliError
+
+    sub = args.maintenance_command
+    executor = RealDockerExecutor()
+    if sub == "docker-scan":
+        data = docker_scan(executor, context=args.context,
+                           old_image_ids=args.old_image_id)
+        if effective_format != "json":
+            from aisc.application.docker_lifecycle import render_scan_text
+            print(render_scan_text(data))
+            return None, 0, []
+        return data, 0, []
+    if sub == "docker-cleanup":
+        try:
+            data = docker_cleanup(executor, context=args.context,
+                                  old_image_ids=args.old_image_id)
+        except CliError as exc:
+            raise
+        failed = bool(data["containers"]["failed"] or data["images"]["failed"])
+        return data, (1 if failed else 0), []
+    if sub == "docker-rebuild":
+        data = docker_rebuild(executor, root=args.root, tag=args.tag,
+                              old_image_id=args.old_image_id,
+                              no_cache=args.no_cache, pull=args.pull)
+        return data, (1 if data.get("failed") else 0), []
+    if sub == "cache-usage":
+        from aisc.application.docker_lifecycle import cache_usage
+        return cache_usage(executor), 0, []
+    if sub == "cache-cleanup":
+        from aisc.application.docker_lifecycle import docker_cache_cleanup
+        data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)
+        return data, (1 if data.get("warnings") else 0), []
+    return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown maintenance subcommand: {sub}")]
+
+
+def _cmd_bundle(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc bundle`` subcommands. Supports --format json."""
+    from aisc.cli.commands.bundle import (
+        cmd_bundle_fetch,
+        cmd_bundle_list,
+        cmd_bundle_path,
+        cmd_bundle_remove,
+        print_bundle_text,
+    )
+
+    sub = args.bundle_command
+    if sub == "fetch":
+        data = cmd_bundle_fetch(version=args.version, from_file=args.from_file,
+                                sha256=args.sha256, allow_mismatch=args.allow_mismatch)
+    elif sub == "list":
+        data = cmd_bundle_list()
+    elif sub == "remove":
+        data = cmd_bundle_remove(args.version)
+    elif sub == "path":
+        data = cmd_bundle_path()
+    else:
+        return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown bundle subcommand: {sub}")]
+    if effective_format != "json":
+        print_bundle_text(sub, data)
+        return None, 0, []
+    return data, 0, []
+
+
+def _cmd_update(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc update``. Supports --format json."""
+    from aisc.cli.commands.update import cmd_update, cmd_update_check, print_update_text
+
+    if args.check:
+        data = cmd_update_check(version=args.version)
+        print_update_text("check", data) if effective_format != "json" else None
+        return (data, 0, []) if effective_format == "json" else (None, 0, [])
+    data = cmd_update(version=args.version, from_file=args.from_file,
+                      sha256=args.sha256, rebuild=args.rebuild,
+                      pin_tool=args.pin_tool)
+    if effective_format != "json":
+        print_update_text("update", data)
+        return None, 0, []
+    exit_code = 0 if data.get("status") in ("updated", "up-to-date") else 1
+    return data, exit_code, []
+
+
+def _cmd_runtime(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc runtime`` subcommands.  Supports --format json."""
+    from aisc.cli.commands.runtime import (
+        cmd_runtime_preflight,
+        cmd_runtime_start,
+        cmd_runtime_list,
+        cmd_runtime_inspect,
+        cmd_runtime_status,
+        cmd_runtime_stop,
+        cmd_runtime_restart,
+        cmd_runtime_remove,
+        cmd_runtime_services,
+        cmd_runtime_services_expose,
+        cmd_runtime_services_unexpose,
+        cmd_runtime_reconcile,
+        cmd_runtime_lease,
+    )
+
+    sub = args.runtime_command
+
+    if sub == "preflight":
+        result = cmd_runtime_preflight(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+            image=args.image,
+            network=args.network,
+            scope=args.scope,
+            owner=args.owner,
+            format=effective_format,
+        )
+        if "error" in result:
+            return None, result["exit_code"], [result["error"]]
+        return result, 0, []
+    elif sub == "start":
+        data = cmd_runtime_start(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+            image=args.image,
+            network=args.network,
+            scope=args.scope,
+            owner=args.owner,
+            proxy_config=args.proxy_config,
+            host_mcp_url=getattr(args, "host_mcp_url", None),
+            max_memory=getattr(args, "max_memory", None),
+            max_cpus=getattr(args, "max_cpus", None),
+        )
+        return data, 0, []
+    elif sub == "list":
+        data = cmd_runtime_list(
+            workspace=args.workspace,
+            owner=args.owner,
+        )
+        return data, 0, []
+    elif sub == "inspect":
+        data = cmd_runtime_inspect(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "status":
+        data = cmd_runtime_status(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "stop":
+        data = cmd_runtime_stop(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+            grace_seconds=args.grace,
+        )
+        return data, 0, []
+    elif sub == "restart":
+        data = cmd_runtime_restart(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "remove":
+        data = cmd_runtime_remove(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+            force=args.force,
+        )
+        return data, 0, []
+    elif sub == "services":
+        sub2 = getattr(args, "runtime_services_command", None)
+        if not getattr(args, "runtime_id", None):
+            return None, 2, [build_error(
+                "AISC_ERR_USAGE",
+                "runtime services requires --runtime-id",
+            )]
+        if sub2 == "expose":
+            data = cmd_runtime_services_expose(
+                runtime_id=args.runtime_id,
+                port=args.port,
+                name=args.name,
+                workspace=args.workspace,
+            )
+        elif sub2 == "unexpose":
+            data = cmd_runtime_services_unexpose(
+                runtime_id=args.runtime_id,
+                port=args.port,
+                workspace=args.workspace,
+            )
+        else:  # none or "list"
+            data = cmd_runtime_services(
+                runtime_id=args.runtime_id,
+                workspace=args.workspace,
+            )
+        return data, 0, []
+    elif sub == "reconcile":
+        data = cmd_runtime_reconcile(
+            workspace=args.workspace,
+            instance_id=args.instance_id,
+            workspace_key=args.workspace_key,
+        )
+        return data, 0, []
+    elif sub == "lease":
+        action = getattr(args, "runtime_lease_command", None) or "inspect"
+        if action != "inspect" and not getattr(args, "instance_id", None):
+            return None, 2, [build_error(
+                "AISC_ERR_USAGE",
+                f"runtime lease {action} requires --instance-id",
+            )]
+        data = cmd_runtime_lease(
+            action=action,
+            workspace=args.workspace,
+            instance_id=getattr(args, "instance_id", "") or "",
+            lease_id=getattr(args, "lease_id", None),
+        )
+        return data, 0, []
+    else:
+        # Unknown runtime subcommand
+        return None, 2, [build_error(
+            "AISC_ERR_USAGE",
+            f"Unknown runtime subcommand: {sub}"
+        )]
+
+
+
+
+def _cmd_session(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc session`` subcommands.  Supports --format json.
+
+    ``session open`` is interactive: it inherits stdio via ``docker exec -it``
+    and returns the agent exit code.  ``session list`` and ``session terminate``
+    are non-interactive and return JSON-serializable data.
+    """
+    from aisc.cli.commands.session import (
+        cmd_session_open,
+        cmd_session_list,
+        cmd_session_terminate,
+    )
+
+    sub = args.session_command
+
+    if sub == "open":
+        if effective_format == "json":
+            emit_json_usage_error(
+                command="session", version=__version__,
+                message="session open 仅支持 text 输出——不支持 --format json",
+            )
+            sys.exit(2)
+        data, exit_code = cmd_session_open(
+            runtime_id=args.runtime_id,
+            session_id=args.session_id,
+            agent=args.agent,
+            workspace=args.workspace,
+            resume_conversation_id=args.resume_id,
+        )
+        errors: List[Dict[str, Any]] = []
+        if exit_code != 0 and data.get("error"):
+            errors.append(build_error(
+                RuntimeErrorCode.SESSION_FAILED,
+                data["error"],
+            ))
+        return data, exit_code, errors
+    elif sub == "list":
+        data = cmd_session_list(
+            runtime_id=args.runtime_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "terminate":
+        data = cmd_session_terminate(
+            runtime_id=args.runtime_id,
+            session_id=args.session_id,
+            workspace=args.workspace,
+            grace_seconds=args.grace,
+        )
+        return data, 0, []
+    else:
+        return None, 2, [build_error(
+            "AISC_ERR_USAGE",
+            f"Unknown session subcommand: {sub}"
+        )]
+
+
+def _cmd_conversation(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc conversation`` subcommands (v2.1.8 T3).
+
+    Both subcommands are captured/read-only and return JSON-serializable
+    data under the aisc.cli/v1 envelope. CliErrors from the application
+    layer (AISC_ERR_CONVERSATION_*) propagate to the unified terminal.
+    """
+    from aisc.cli.commands.conversation import (
+        cmd_conversation_delete,
+        cmd_conversation_list,
+        cmd_conversation_preflight,
+        cmd_conversation_rename,
+    )
+
+    sub = args.conversation_command
+
+    if sub == "list":
+        data = cmd_conversation_list(workspace=args.workspace)
+        return data, 0, []
+    elif sub == "preflight":
+        data = cmd_conversation_preflight(
+            workspace=args.workspace,
+            conversation_id=args.conversation_id,
+            agent=args.agent,
+        )
+        return data, 0, []
+    elif sub == "delete":
+        data = cmd_conversation_delete(
+            workspace=args.workspace,
+            conversation_id=args.conversation_id,
+            agent=args.agent,
+        )
+        return data, 0, []
+    elif sub == "rename":
+        data = cmd_conversation_rename(
+            workspace=args.workspace,
+            conversation_id=args.conversation_id,
+            agent=args.agent,
+            title=args.title,
+        )
+        return data, 0, []
+    else:
+        return None, 2, [build_error(
+            "AISC_ERR_USAGE",
+            f"Unknown conversation subcommand: {sub}"
+        )]
+
+
+def _cmd_artifact(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc artifact`` subcommands.  Supports --format json.
+
+    ``record``/``list``/``inspect``/``clear-session`` are non-interactive and
+    return JSON-serializable data under the aisc.cli/v1 envelope.
+    """
+    from aisc.cli.commands.artifact import (
+        cmd_artifact_record,
+        cmd_artifact_list,
+        cmd_artifact_inspect,
+        cmd_artifact_clear_session,
+    )
+
+    sub = args.artifact_command
+
+    if sub == "record":
+        # T3a: env defaults mean argparse no longer enforces these — report
+        # a stable usage error when neither flag nor env provided them.
+        missing = [n for n, v in (
+            ("--runtime-id", args.runtime_id),
+            ("--session-id", args.session_id),
+        ) if not v]
+        if missing:
+            raise CliError(
+                message=(
+                    "missing required arguments: "
+                    + ", ".join(missing)
+                    + " (or set AISC_RUNTIME_ID / AISC_TERMINAL_SESSION_ID — "
+                      "the Workbench injects both into agent sessions)"
+                ),
+                exit_code=2,
+                error_code="AISC_ERR_USAGE",
+            )
+        data = cmd_artifact_record(
+            runtime_id=args.runtime_id,
+            session_id=args.session_id,
+            agent=args.agent,
+            path=args.path,
+            action=args.action,
+            kind=args.kind,
+            media_type=args.media_type,
+            label=args.label,
+            open_with=args.open_with,
+            previous_path=args.previous_path,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "list":
+        data = cmd_artifact_list(
+            workspace=args.workspace,
+            session_id=args.session_id,
+            kind=args.kind,
+        )
+        return data, 0, []
+    elif sub == "inspect":
+        data = cmd_artifact_inspect(
+            artifact_id=args.artifact_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    elif sub == "clear-session":
+        data = cmd_artifact_clear_session(
+            runtime_id=args.runtime_id,
+            session_id=args.session_id,
+            workspace=args.workspace,
+        )
+        return data, 0, []
+    else:
+        return None, 2, [build_error(
+            "AISC_ERR_USAGE",
+            f"Unknown artifact subcommand: {sub}"
+        )]
+
+
+def _cmd_data_root(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """Execute ``aisc data-root`` subcommands (Stage 7, 7d).
+
+    doctor/migrate --dry-run/migrate --apply/rollback are non-interactive;
+    conflicts and unconsented unknowns raise CliError (stable code, non-zero
+    exit) instead of guessing.
+    """
+    from aisc.cli.commands.data_root import (
+        cmd_data_root_doctor,
+        cmd_data_root_migrate,
+        cmd_data_root_rollback,
+    )
+
+    sub = args.data_root_command
+    if sub == "doctor":
+        return cmd_data_root_doctor(workspace=args.workspace), 0, []
+    elif sub == "migrate":
+        return cmd_data_root_migrate(
+            workspace=args.workspace,
+            dry_run=args.dry_run,
+            quarantine_unknown=args.quarantine_unknown,
+        ), 0, []
+    # --apply is accepted for explicitness; applying is the default action
+    # when --dry-run is absent (03-ux-flow contract spelling).
+    elif sub == "rollback":
+        return cmd_data_root_rollback(
+            workspace=args.workspace, manifest=args.manifest,
+        ), 0, []
+    return None, 2, [build_error(
+        "AISC_ERR_USAGE",
+        f"Unknown data-root subcommand: {sub}"
+    )]
 
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _log_cli_exit(
+    command: str,
+    exit_code: int,
+    started: float,
+    run_id: Optional[str],
+    *,
+    error_code: Optional[str] = None,
+) -> None:
+    """Lifecycle log line for a CLI invocation (lifecycle-logging P1).
+
+    One line per process exit at the three main() terminals — the same
+    ``run_id`` the envelope carries (env-injected by the Workbench), so
+    app-side op events and cli exits align on one timeline. Best-effort:
+    applog never raises.
+    """
+    import time as _time
+
+    from aisc.applog import append_event
+
+    level = "info" if exit_code == 0 else ("warn" if exit_code == 130 else "error")
+    append_event(
+        "cli_exit", level=level, source="cli", run_id=run_id,
+        command=command or "aisc", exit_code=exit_code,
+        duration_ms=int((_time.monotonic() - started) * 1000),
+        error_code=error_code,
+    )
+
+
 def main(argv: Optional[Sequence[str]] = None) -> None:
     """Main CLI entry point."""
+    import time as _time
+
+    started = _time.monotonic()
+    # Same id the envelope will carry (env-injected by the Workbench;
+    # self-generated for standalone CLI use) — keeps the log timeline and
+    # envelope.meta.run_id identical.
+    _run_id = os.environ.get("AISC_RUN_ID") or str(__import__("uuid").uuid4())
+    # Never let stdout's locale encoding (GBK on zh-CN Windows, cp1252 on
+    # en-US) crash the CLI with UnicodeEncodeError. Protocol JSON is pure
+    # ASCII by construction (ensure_ascii=True in emit_json/JsonlEmitter);
+    # any other unencodable output (wizard emoji, non-ASCII messages)
+    # degrades to '?' instead of aborting mid-command.
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass  # non-TextIOWrapper (PyInstaller wrapper) - protocol sites are ASCII anyway
+    # Help localization (manual test ask 2026-09-09): follow the OS locale —
+    # Chinese environments get Chinese help via output-layer translation
+    # (see aisc.cli.help_i18n); every other locale keeps the English source.
+    # MUST run before _build_parser(): argparse group titles ('options' 等)
+    # resolve _() at construction time, not render time.
+    from aisc.cli.help_i18n import maybe_install as _maybe_i18n
+    _maybe_i18n()
+
     parser = _build_parser()
+
+    # Shell completion (manual test ask 2026-09-09): argcomplete follows the
+    # argparse tree automatically — subcommands, flags, choices all covered,
+    # zero per-command maintenance. No-op outside a completion environment
+    # (no _ARGCOMPLETE env); optional import so argcomplete-less installs
+    # only lose completion, never the CLI.
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
+
     args_list = list(argv) if argv is not None else sys.argv[1:]
 
     # Pre-detect format/events/command for error messages
@@ -840,6 +2489,97 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                                if a.dest == "command"][0].choices["provider"]
             provider_parser._aisc_format = "json" if json_requested else None
             provider_parser._aisc_command = "provider"
+            # Also propagate to provider current subparser (S0.4, supports --format json)
+            if "current" in args_list:
+                try:
+                    current_parser = [a for a in provider_parser._subparsers._group_actions
+                                      if a.dest == "provider_command"][0].choices["current"]
+                    current_parser._aisc_format = "json" if json_requested else None
+                    current_parser._aisc_command = "provider current"
+                except (AttributeError, IndexError, KeyError):
+                    pass
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+    # Propagate JSON format to runtime subparser for parse-time errors.
+    if "runtime" in args_list:
+        try:
+            runtime_parser = [a for a in parser._subparsers._group_actions
+                              if a.dest == "command"][0].choices["runtime"]
+            runtime_parser._aisc_format = "json" if json_requested else None
+            runtime_parser._aisc_command = "runtime"
+
+            # Also propagate to every runtime sub-subparser (CLI-A02/A05: any
+            # command that supports --format json must emit a JSON usage error,
+            # not fall back to argparse text — matches the session propagation).
+            for _sub in ("preflight", "start", "list", "inspect", "stop",
+                         "restart", "remove", "reconcile", "lease"):
+                if _sub in args_list:
+                    try:
+                        _sp = [a for a in runtime_parser._subparsers._group_actions
+                               if a.dest == "runtime_command"][0].choices[_sub]
+                        _sp._aisc_format = "json" if json_requested else None
+                        _sp._aisc_command = f"runtime {_sub}"
+                    except (AttributeError, IndexError, KeyError):
+                        pass
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+    # Propagate JSON format to session subparser for parse-time errors.
+    if "session" in args_list:
+        try:
+            session_parser = [a for a in parser._subparsers._group_actions
+                              if a.dest == "command"][0].choices["session"]
+            session_parser._aisc_format = "json" if json_requested else None
+            session_parser._aisc_command = "session"
+            # Also propagate to session sub-subparsers (list/terminate support --format json).
+            for _sub in ("open", "list", "terminate"):
+                if _sub in args_list:
+                    try:
+                        _sp = [a for a in session_parser._subparsers._group_actions
+                               if a.dest == "session_command"][0].choices[_sub]
+                        _sp._aisc_format = "json" if json_requested else None
+                        _sp._aisc_command = f"session {_sub}"
+                    except (AttributeError, IndexError, KeyError):
+                        pass
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+    # Propagate JSON format to artifact subparser for parse-time errors.
+    if "artifact" in args_list:
+        try:
+            artifact_parser = [a for a in parser._subparsers._group_actions
+                               if a.dest == "command"][0].choices["artifact"]
+            artifact_parser._aisc_format = "json" if json_requested else None
+            artifact_parser._aisc_command = "artifact"
+            for _sub in ("record", "list", "inspect", "clear-session"):
+                if _sub in args_list:
+                    try:
+                        _sp = [a for a in artifact_parser._subparsers._group_actions
+                               if a.dest == "artifact_command"][0].choices[_sub]
+                        _sp._aisc_format = "json" if json_requested else None
+                        _sp._aisc_command = f"artifact {_sub}"
+                    except (AttributeError, IndexError, KeyError):
+                        pass
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+    # Propagate JSON format to data-root subparser for parse-time errors.
+    if "data-root" in args_list:
+        try:
+            data_root_parser = [a for a in parser._subparsers._group_actions
+                                if a.dest == "command"][0].choices["data-root"]
+            data_root_parser._aisc_format = "json" if json_requested else None
+            data_root_parser._aisc_command = "data-root"
+            for _sub in ("doctor", "migrate", "rollback"):
+                if _sub in args_list:
+                    try:
+                        _sp = [a for a in data_root_parser._subparsers._group_actions
+                               if a.dest == "data_root_command"][0].choices[_sub]
+                        _sp._aisc_format = "json" if json_requested else None
+                        _sp._aisc_command = f"data-root {_sub}"
+                    except (AttributeError, IndexError, KeyError):
+                        pass
         except (AttributeError, IndexError, KeyError):
             pass
 
@@ -890,6 +2630,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         "config": "config_command",
         "profile": "profile_command",
         "provider": "provider_command",
+        "runtime": "runtime_command",
+        "session": "session_command",
+        "artifact": "artifact_command",
+        "conversation": "conversation_command",
     }
     if args.command in _grouped_dests:
         if getattr(args, _grouped_dests[args.command], None) is None:
@@ -924,8 +2668,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     if args_events and args.command in ("build", "run"):
         emitter = JsonlEmitter(command=args.command)
     elif args_events and args.command in ("version", "doctor", "config", "profile",
-                                            "status", "stop", "restart", "shell", "switch",
-                                            "provider", "ps"):
+                                           "status", "stop", "restart", "shell", "switch",
+                                           "provider", "ps", "session", "artifact",
+                                           "data-root"):
         if effective_format == "json":
             emit_json_usage_error(
                 command=args.command, version=__version__,
@@ -945,6 +2690,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     version_info: Optional[VersionInfo] = None
 
     try:
+        # 2.1.10 R1: serve owns its stdout completely (frame protocol) and
+        # never participates in the envelope/text dispatch below. A missing
+        # --stdio raises CliError here, which the shared handler reports.
+        if args.command == "serve":
+            from aisc.cli.commands.serve import cmd_serve
+            sys.exit(cmd_serve(args))
+
         if args.command == "version":
             version_info = _cmd_version(args)
             data = version_info.to_dict()
@@ -957,6 +2709,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_build(args, emitter, effective_format)
         elif args.command == "run":
             data, exit_code, errors = _cmd_run(args, emitter, effective_format, aisc_root)
+        elif args.command in ("claude", "codex"):
+            data, exit_code, errors = _cmd_agent(args, effective_format)
+        elif args.command == "runs":
+            data, exit_code, errors = _cmd_runs(args, effective_format)
+        elif args.command == "workspaces":
+            data, exit_code, errors = _cmd_workspaces(args, effective_format)
         elif args.command == "config":
             data, exit_code, errors = _cmd_config(args, effective_format)
         elif args.command == "profile":
@@ -973,8 +2731,32 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_switch(args, effective_format)
         elif args.command == "provider":
             data, exit_code, errors = _cmd_provider(args, effective_format)
+        elif args.command == "cc-switch":
+            data, exit_code, errors = _cmd_cc_switch(args, effective_format)
+        elif args.command == "network":
+            data, exit_code, errors = _cmd_network(args, effective_format)
+        elif args.command == "usage":
+            data, exit_code, errors = _cmd_usage(args, effective_format)
+        elif args.command == "logs":
+            data, exit_code, errors = _cmd_logs(args, effective_format)
         elif args.command == "ps":
             data, exit_code, errors = _cmd_ps(args, effective_format)
+        elif args.command == "maintenance":
+            data, exit_code, errors = _cmd_maintenance(args, effective_format)
+        elif args.command == "bundle":
+            data, exit_code, errors = _cmd_bundle(args, effective_format)
+        elif args.command == "update":
+            data, exit_code, errors = _cmd_update(args, effective_format)
+        elif args.command == "runtime":
+            data, exit_code, errors = _cmd_runtime(args, effective_format)
+        elif args.command == "session":
+            data, exit_code, errors = _cmd_session(args, effective_format)
+        elif args.command == "conversation":
+            data, exit_code, errors = _cmd_conversation(args, effective_format)
+        elif args.command == "artifact":
+            data, exit_code, errors = _cmd_artifact(args, effective_format)
+        elif args.command == "data-root":
+            data, exit_code, errors = _cmd_data_root(args, effective_format)
         else:
             if effective_format == "json":
                 emit_json_usage_error(
@@ -987,6 +2769,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             return
 
     except CliError as exc:
+        _log_cli_exit(args.command, exc.exit_code, started, _run_id,
+                      error_code=exc.error_code)
         # --- unified terminal: main owns the single terminal event ---
         if emitter is not None and not emitter.terminated:
             cmd = args.command or "aisc"
@@ -1006,6 +2790,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 version=__version__,
                 data=exc.data,  # structured outcome, not null
                 errors=[build_error(exc.error_code, exc.message, exc.hint)],
+                run_id=_run_id,
             )
             emit_json(envelope)
         else:
@@ -1014,6 +2799,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         return
 
     except KeyboardInterrupt:
+        _log_cli_exit(args.command, 130, started, _run_id)
         if emitter is not None and not emitter.terminated:
             cmd = args.command or "aisc"
             emitter.emit(f"{cmd}.cancelled", {"exit_code": 130}, terminal=True)
@@ -1022,6 +2808,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         sys.exit(130)
 
     # --- success: terminal event if events mode ---
+    _log_cli_exit(args.command, exit_code, started, _run_id)
     if emitter is not None and not emitter.terminated:
         cmd = args.command or "aisc"
         term_data = dict(data or {})
@@ -1034,6 +2821,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         envelope = build_envelope(
             command=args.command, exit_code=exit_code,
             version=__version__, data=data, errors=errors,
+            run_id=_run_id,
         )
         emit_json(envelope)
     else:
@@ -1053,8 +2841,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             elif isinstance(data, dict) and data.get("executed"):
                 if args.command == "build":
                     print(f"Build succeeded: {data.get('image_tag', '')}")
-                else:
-                    print("Container finished.")
+                # run: the activation summary (_cmd_run) already spoke —
+                # "Container finished." was the old foreground-run wording;
+                # F2-C detached keep-alives never finish here
+        elif args.command == "data-root":
+            from aisc.cli.commands.data_root import print_data_root_text
+            print_data_root_text(data)
         elif args.command == "config":
             from aisc.cli.commands.config import print_validate_text, print_effective_text
             from aisc.application.config_service import ServiceResult
@@ -1090,8 +2882,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             )
             print_status_text(sr)
         elif args.command == "stop":
-            from aisc.cli.commands.container import print_stop_text
-            print_stop_text(data if isinstance(data, dict) else {})
+            # --all already printed its batch summary in _cmd_stop — feeding
+            # the batch dict to print_stop_text was a KeyError crash (r2 #1)
+            if not getattr(args, "all", False):
+                from aisc.cli.commands.container import print_stop_text
+                print_stop_text(data if isinstance(data, dict) else {})
         elif args.command == "restart":
             from aisc.cli.commands.container import print_restart_text
             print_restart_text(data if isinstance(data, dict) else {})
@@ -1101,11 +2896,28 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                 name=r.get("name", ""), label=r.get("label", ""),
                 status=r.get("status", ""), running=r.get("running", False),
                 image=r.get("image", ""), workspace=r.get("workspace", ""),
+                active=r.get("active", False),
             ) for r in (data if isinstance(data, list) else [])]
             print_ps_text(ps_rows)
-        elif args.command in ("shell", "switch", "provider"):
+        elif args.command in ("shell", "switch"):
             # interactive output printed directly by _cmd_*
             pass
+        elif args.command == "provider":
+            if getattr(args, "provider_command", "") == "current":
+                from aisc.cli.commands.provider import print_provider_current_text
+                print_provider_current_text(data)
+            # set-key: interactive, output already printed by _cmd_*
+        elif args.command == "runtime":
+            from aisc.cli.commands.runtime import print_runtime_text
+            print_runtime_text(getattr(args, "runtime_command", ""), data, errors)
+        # maintenance text output is printed in dispatch (scan lines are
+        # consumed by installers; cleanup/rebuild print nothing extra).
+        elif args.command == "session":
+            from aisc.cli.commands.session import print_session_text
+            print_session_text(getattr(args, "session_command", ""), data, errors)
+        elif args.command == "artifact":
+            from aisc.cli.commands.artifact import print_artifact_text
+            print_artifact_text(getattr(args, "artifact_command", ""), data, errors)
 
     sys.exit(exit_code)
 

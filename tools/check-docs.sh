@@ -232,7 +232,7 @@ if grep -q 'image/Dockerfile' README.md; then
   found_stale_img=1
 fi
 
-# Also check in active docs (exclude devlog.md, plans/, TODO/, _bundle/, vendor/)
+# Also check in active docs (exclude devlog.md, plans/, TODO/, _bundle/, vendor/; archive/completed = pre-restructure historical plans quoting image/ paths as fact)
 while IFS= read -r -d '' f; do
   if grep -q 'image/Dockerfile' "$f"; then
     _fail "Stale reference: 'image/Dockerfile' found in $f (should be 'container/Dockerfile')"
@@ -241,6 +241,7 @@ while IFS= read -r -d '' f; do
 done < <(find . -name '*.md' \
   -not -path './docs/devlog.md' \
   -not -path './docs/plans/*' \
+  -not -path './docs/archive/completed/*' \
   -not -path './docs/TODO/*' \
   -not -path './container/_bundle/*' \
   -not -path './vendor/*' \

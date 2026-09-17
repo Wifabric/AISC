@@ -84,10 +84,55 @@ def plan_run(
 
     ws_path = Path(workspace).resolve() if workspace else Path.cwd()
 
-    # Resolve proxy config
+    # Resolve proxy config (IDEA-2: data-root subscription first — the
+    # legacy <aisc_root>/.claude/mihomo/config.yaml is adopted once on first
+    # use; an explicit --proxy-config always wins).
     resolved_proxy = proxy_config
-    if network == "proxy" and not resolved_proxy and aisc_root is not None:
-        resolved_proxy = str(aisc_root / ".claude" / "mihomo" / "config.yaml")
+    if network == "proxy" and not resolved_proxy:
+        from aisc.application.network_subscription import (
+            resolve_subscription_config_path,
+        )
+
+        resolved_proxy = resolve_subscription_config_path() or ""
+
+    # Stage 7 (DATA-01): agent config mounts from the data root. The dirs
+    # are created here (host side) so Windows bind mounts have real targets.
+    # Fail closed: an unusable data root stops the run — never fall back to
+    # copying agent state into the workspace.
+    from aisc.application.data_root import DataRootResolver
+
+    resolved_state = DataRootResolver().resolve(ws_path)
+    ws_state_dir = resolved_state.workspace_dir
+    for sub in ("claude", "codex", "cc-switch", "runtime"):
+        (ws_state_dir / sub).mkdir(parents=True, exist_ok=True)
+
+    # svc-5: one gateway host port per one-shot run (same capability as
+    # managed runtimes). Ports reserved by other registered containers are
+    # skipped best-effort; dry-run shows the publish plan without Docker.
+    from aisc.application.web_gateway import (
+        allocate_gateway_host_port,
+        registry_host_ports,
+    )
+
+    exclude: set = set()
+    if aisc_root is not None:
+        try:
+            from aisc.adapters.container_registry import list_containers
+
+            exclude = registry_host_ports(list_containers(Path(aisc_root)))
+        except Exception:
+            exclude = set()
+    web_gateway_port = allocate_gateway_host_port(exclude=exclude)
+
+    # runtime-lifecycle-ux 3a: one-shot runs are project-scoped by definition
+    # (agent state mounts from the data root) — they mount the persistent
+    # toolchain exactly like managed runtimes (host_bind backend).
+    toolchain_root = ""
+    if ws_state_dir is not None:
+        from aisc.application.toolchain import prepare_toolchain, toolchain_dir_for
+
+        prepare_toolchain(ws_state_dir)
+        toolchain_root = str(toolchain_dir_for(ws_state_dir)).replace("\\", "/")
 
     return RunPlan(
         image=image,
@@ -100,12 +145,22 @@ def plan_run(
         proxy_config=resolved_proxy,
         label=label,
         keep_alive=keep_alive,
+        agent_state_root=str(ws_state_dir),
+        web_gateway_host_port=web_gateway_port,
+        toolchain_root=toolchain_root,
     )
 
 
 # ---------------------------------------------------------------------------
 # Run result (structured outcome)
 # ---------------------------------------------------------------------------
+
+def _name_series(container_name: str) -> str:
+    """Container names are ``<alias>-<hash8>``; the alias may itself contain
+    dashes, the hash never does — strip the last segment to get the series
+    (rename detection keys off it, r2 #C)."""
+    return container_name.rsplit("-", 1)[0]
+
 
 @dataclass
 class RunResult:
@@ -116,9 +171,18 @@ class RunResult:
     container_exit_code: Optional[int] = None
     dry_run: bool = False
     executed: bool = False
+    # svc-5: service-access metadata — the gateway publish that rode this
+    # run's docker argv. Empty when no port was allocated.
+    web_gateway: Dict[str, Any] = field(default_factory=dict)
+    # r1 #2: older same-workspace containers this activation swept
+    # (stopped+removed+unregistered before the new one started).
+    replaced: List[str] = field(default_factory=list)
+    # r1 #2 (revised): a LIVE same-workspace container was REUSED — nothing
+    # was started; the summary tells the user it is already open.
+    reused: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             "image": self.image,
             "container_id": self.container_id,
             "dry_run": self.dry_run,
@@ -126,6 +190,39 @@ class RunResult:
             "docker_argv": list(self.docker_argv),
             "container_exit_code": self.container_exit_code,
         }
+        if self.web_gateway:
+            out["web_gateway"] = dict(self.web_gateway)
+        if self.replaced:
+            out["replaced"] = list(self.replaced)
+        if self.reused:
+            out["reused"] = self.reused
+        return out
+
+
+def _run_captured_with_publish_retry(executor, plan: RunPlan, attempts: int = 3):
+    """``docker run`` (captured) with bounded gateway bind-conflict retry.
+
+    The argv is regenerated from the (replaced) plan each attempt so the
+    publish spec never stacks. Only the captured paths can detect the
+    conflict — the interactive streaming path inherits stderr and surfaces
+    Docker's own message on the terminal (unchanged behavior).
+    """
+    import dataclasses
+
+    from aisc.application.web_gateway import allocate_gateway_host_port, is_bind_conflict
+
+    proc = executor.run_captured(list(plan.docker_argv))
+    tried = 1
+    while proc.exit_code != 0 and is_bind_conflict(proc.stderr or "") \
+            and tried < attempts:
+        plan = dataclasses.replace(
+            plan,
+            web_gateway_host_port=allocate_gateway_host_port(
+                start_hint=plan.web_gateway_host_port + 1),
+        )
+        proc = executor.run_captured(list(plan.docker_argv))
+        tried += 1
+    return proc, plan
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +262,13 @@ def run_container(
         dry_run=plan.dry_run,
         executed=False,
     )
+    if plan.web_gateway_host_port:
+        from aisc.domain.web_services import WEB_GATEWAY_CONTAINER_PORT
+
+        result.web_gateway = {
+            "container_port": WEB_GATEWAY_CONTAINER_PORT,
+            "host_port": plan.web_gateway_host_port,
+        }
 
     # --- emit start event ---
     if emitter is not None:
@@ -223,9 +327,9 @@ def run_container(
     inspect = exec_.inspect_image(plan.image)
     if inspect.status == ImageInspectStatus.MISSING:
         raise CliError(
-            message=f"Image '{plan.image}' not found. Please build it first:\n"
+            message=f"镜像 '{plan.image}' 不存在。请先构建：\n"
                     f"  aisc build --tag {plan.image}\n"
-                    f"Or specify an existing image with --image <name>.",
+                    f"或用 --image <名称> 指定已有镜像。",
             exit_code=5, error_code="AISC_ERR_IMAGE_NOT_FOUND",
             data=result.to_dict(),
         )
@@ -249,22 +353,94 @@ def run_container(
         )
     # EXISTS → proceed
 
-    # --- register container in the multi-container index ---
-    if aisc_root is not None:
-        from aisc.adapters.container_registry import register
+    # --- r1 #2 (revised) + r2 #C: same-workspace activation is IDEMPOTENT;
+    # a DIFFERENT --name is a rename intent and rebuilds ---
+    # A default (label-less) activation owns the workspace's single CLI
+    # slot. A LIVE older container of the SAME name series is REUSED — the
+    # user chose to run a workspace that is already open, so tell them
+    # (and how to reach or rebuild it) instead of churning containers under
+    # them. A live container of a DIFFERENT series (explicit --name that
+    # disagrees with the existing one) is a rename: rebuild under the new
+    # name (alias and container name must stay one story). Only DEAD ones
+    # (Exited/gone — nobody is using them) are swept (stop+rm+unregister)
+    # before the new start. GUI runtimes (owner=workbench, lease-guarded)
+    # and --label multi-container slots are never touched. If docker does
+    # not answer the liveness probe, judge nothing: fall through to the
+    # normal start path rather than risk tearing down a live container we
+    # could not see.
+    if not plan.dry_run and not plan.label:
+        from aisc.adapters.container_registry import list_containers as _lc
+        from aisc.adapters.container_registry import unregister
+        from aisc.application.data_root import workspace_state_dir
         try:
-            register(aisc_root, plan.name, {
-                "image": plan.image,
-                "workspace": plan.workspace,
-                "network": plan.network,
-                "label": plan.label,
-            })
-        except (ValueError, OSError) as exc:
-            raise CliError(
-                message=f"Failed to write container registry: {exc}",
-                exit_code=1, error_code="AISC_ERR_STATE_WRITE_FAILED",
-                data=result.to_dict(),
-            ) from exc
+            _reg = workspace_state_dir(Path(plan.workspace))
+            _target = Path(plan.workspace)
+            _ps = exec_.run_captured(
+                ["ps", "-a", "--format", "{{.Names}}\t{{.Status}}"],
+                timeout=10.0)
+            if _ps.exit_code == 0:
+                _states: Dict[str, str] = {}
+                for _line in (_ps.stdout or "").splitlines():
+                    _nm2, _, _st = _line.partition("\t")
+                    if _nm2:
+                        _states[_nm2] = _st
+                for _nm, _meta in _lc(_reg).items():
+                    _meta = _meta if isinstance(_meta, dict) else {}
+                    if _meta.get("owner") == "workbench":
+                        continue
+                    if _meta.get("label"):
+                        continue
+                    try:
+                        if Path(str(_meta.get("workspace", ""))).resolve() != _target:
+                            continue
+                    except OSError:
+                        continue
+                    if (_states.get(str(_nm), "").startswith("Up")
+                            and _name_series(str(_nm)) == _name_series(plan.name)):
+                        if result.reused is None:
+                            result.reused = str(_nm)
+                        continue
+                    # dead, unknown-to-docker, or a different name series
+                    # (rename intent) → sweep and rebuild
+                    exec_.run_captured(["stop", _nm], timeout=30.0)
+                    _rm = exec_.run_captured(["rm", "-f", _nm], timeout=30.0)
+                    if _rm.exit_code == 0 or "no such" in (_rm.stderr or "").lower():
+                        try:
+                            unregister(_reg, _nm)
+                        except Exception:
+                            pass
+                        result.replaced.append(str(_nm))
+        except Exception:
+            pass
+
+    if result.reused is not None:
+        result.executed = False
+        return result
+
+    # --- register container in the multi-container index ---
+    # F2-C: the registry root is the WORKSPACE's state dir (workspaces/<h>/
+    # runtime) — the same anchor `aisc runtime start` (the Workbench path)
+    # uses. The old cwd/install-root anchor split-brained discovery: from
+    # $HOME the data-root/workspace overlap gate fired outright (nas).
+    from aisc.adapters.container_registry import register
+    from aisc.application.data_root import workspace_state_dir
+    try:
+        reg_root = workspace_state_dir(Path(plan.workspace))
+        register(reg_root, plan.name, {
+            "image": plan.image,
+            "workspace": plan.workspace,
+            "network": plan.network,
+            "label": plan.label,
+        }, set_default=not plan.label)
+        # r2 #A: a --label slot is a BYPASS activation — it must not steal
+        # the workspace's default pointer (the bare `aisc claude` entry);
+        # only the default (label-less) activation owns that pointer.
+    except (ValueError, OSError) as exc:
+        raise CliError(
+            message=f"Failed to write container registry: {exc}",
+            exit_code=1, error_code="AISC_ERR_STATE_WRITE_FAILED",
+            data=result.to_dict(),
+        ) from exc
 
     # --- plan event for non-dry ---
     if emitter is not None:
@@ -281,122 +457,38 @@ def run_container(
             "docker_argv": argv,
         })
 
-    if capture:
-        # --- machine mode (json / events): captured output, forwarded to stderr ---
-        import sys as _sys
-        proc = exec_.run_captured(argv)
-        result.container_exit_code = proc.exit_code
-        result.executed = True
+    # F2-C (fix2-design.md): run is ACTIVATE-ONLY — detached start (the
+    # plan always carries -d for keep-alive runs), capture the container id,
+    # return. No attach, no foreground streaming: the interactive surface is
+    # `aisc shell` / `aisc claude` / `aisc codex`.
+    proc, plan = _run_captured_with_publish_retry(exec_, plan)
+    result.docker_argv = list(plan.docker_argv)
+    if plan.web_gateway_host_port:
+        result.web_gateway = {**result.web_gateway,
+                              "host_port": plan.web_gateway_host_port}
+    result.container_id = (proc.stdout or "").strip() or None
+    result.container_exit_code = proc.exit_code
+    result.executed = True
 
-        # Forward docker stdout/stderr to stderr
-        if proc.stdout:
-            _sys.stderr.write(proc.stdout)
-        if proc.stderr:
-            _sys.stderr.write(proc.stderr)
-
-        if proc.exit_code != 0:
-            raise CliError(
-                message=f"Container exited with code {proc.exit_code}",
-                exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
-                data=result.to_dict(),
-            )
-    elif plan.interactive and not plan.non_interactive:
-        # Text mode: streaming with inherited streams
-        # For keep_alive mode, container runs in background (-d), then we attach
-        if plan.keep_alive:
-            # Step 1: Start container in detached mode
-            proc = exec_.run_captured(argv)
-            if proc.exit_code != 0:
-                raise CliError(
-                    message=f"Failed to start container: {proc.stderr}",
-                    exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
-                    data=result.to_dict(),
-                )
-
-            # Step 2: Attach to the running container
-            attach_argv = ["attach", "--sig-proxy=true", plan.name]
-            proc = exec_.run_streaming(attach_argv)
-            result.container_exit_code = 0  # Container keeps running after detach
-            result.executed = True
-
-            if proc.command_not_found:
-                raise CliError(
-                    message="Docker CLI not found",
-                    exit_code=3, error_code="AISC_ERR_DOCKER_UNAVAILABLE",
-                    data=result.to_dict(),
-                )
-        else:
-            # Normal interactive mode (container removed on exit)
-            proc = exec_.run_streaming(argv)
-            result.container_exit_code = proc.exit_code if proc.exit_code >= 0 else proc.exit_code
-            result.executed = True
-
-            if proc.command_not_found:
-                raise CliError(
-                    message="Docker CLI not found",
-                    exit_code=3, error_code="AISC_ERR_DOCKER_UNAVAILABLE",
-                    data=result.to_dict(),
-                )
-            if proc.timed_out:
-                raise CliError(
-                    message="Container run timed out",
-                    exit_code=1, error_code="AISC_ERR_GENERAL",
-                    data=result.to_dict(),
-                )
-            if proc.exit_code != 0:
-                raise CliError(
-                    message=f"Container exited with code {proc.exit_code}",
-                    exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
-                    data=result.to_dict(),
-                )
-    elif plan.non_interactive and not capture:
-        # Non-interactive mode: streaming with DEVNULL stdin
-        proc = exec_.run_non_interactive(argv)
-        result.container_exit_code = proc.exit_code if proc.exit_code >= 0 else proc.exit_code
-        result.executed = True
-
-        if proc.command_not_found:
-            raise CliError(
-                message="Docker CLI not found",
-                exit_code=3, error_code="AISC_ERR_DOCKER_UNAVAILABLE",
-                data=result.to_dict(),
-            )
-        if proc.timed_out:
-            raise CliError(
-                message="Container run timed out",
-                exit_code=1, error_code="AISC_ERR_GENERAL",
-                data=result.to_dict(),
-            )
-        if proc.exit_code != 0:
-            raise CliError(
-                message=f"Container exited with code {proc.exit_code}",
-                exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
-                data=result.to_dict(),
-            )
-    else:
-        # JSON / events mode (no capture flag, not interactive, not non_interactive): captured
-        import sys as _sys
-        proc = exec_.run_captured(argv)
-        result.container_exit_code = proc.exit_code
-        result.executed = True
-
-        # Forward docker stdout/stderr to stderr
-        if proc.stdout:
-            _sys.stderr.write(proc.stdout)
-        if proc.stderr:
-            _sys.stderr.write(proc.stderr)
-
-        if proc.exit_code != 0:
-            raise CliError(
-                message=f"Container exited with code {proc.exit_code}",
-                exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
-                data=result.to_dict(),
-            )
-
-    # --- success ---
+    if proc.exit_code != 0:
+        raise CliError(
+            message=f"Failed to start container: {proc.stderr}",
+            exit_code=10, error_code="AISC_ERR_CONTAINER_FAILED",
+            data=result.to_dict(),
+        )
     if emitter is not None:
         emitter.emit("run.container.complete", data={
             "exit_code": result.container_exit_code,
         })
+
+    # svc-5: a `--rm` container is gone the moment it exits — prune its
+    # registry entry now so nothing lingers (best-effort, never fatal).
+    if not plan.keep_alive and aisc_root is not None:
+        try:
+            from aisc.adapters.container_registry import gc as registry_gc
+
+            registry_gc(Path(aisc_root), exec_)
+        except Exception:
+            pass
 
     return result

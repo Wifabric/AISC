@@ -1,0 +1,16 @@
+{
+  "schema": "aisc.cc-switch-resolved/v1",
+  "channel": "stable",
+  "version": "v5.10.4",
+  "release_id": 379251188,
+  "commit": "main",
+  "published_at": "2026-08-30T10:41:04Z",
+  "asset_name": "cc-switch-cli-v5.10.4-linux-x64-musl.tar.gz",
+  "asset_url": "https://github.com/SaladDay/cc-switch-cli/releases/download/v5.10.4/cc-switch-cli-v5.10.4-linux-x64-musl.tar.gz",
+  "asset_sha256": "a9a569d85cb0a61169082a558f86786e0e7ee9c2725900e7d6e876873eb416c3",
+  "asset_size": 8661392,
+  "arch": "x64",
+  "libc": "musl",
+  "source": "manifest",
+  "resolved_at": "2026-09-16T00:00:00Z"
+}

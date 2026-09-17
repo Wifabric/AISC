@@ -133,8 +133,9 @@ def cmd_status(
     permission failures raise CliError.
     """
     exec_ = executor or RealDockerExecutor()
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
@@ -203,60 +204,124 @@ def cmd_stop(
     explicit_root: Optional[str] = None,
     executor: Optional[DockerExecutor] = None,
     label_override: Optional[str] = None,
+    remove: bool = True,
 ) -> Dict[str, Any]:
-    """Stop the discovered container via ``docker stop``.
+    """Stop the discovered container via ``docker stop`` (F2-C: then REMOVE).
 
     Requires the container to exist. Idempotent: stopping an already-stopped
     container returns success. The container is unregistered from the index
-    after stop (it is no longer an active target).
+    after stop (it is no longer an active target) and — since F2-C runs are
+    detached keep-alives — removed by default, else every stop litters.
     """
     exec_ = executor or RealDockerExecutor()
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
-    # First check if container exists
-    status = cmd_status(name_override=name, explicit_root=explicit_root,
+    # First check if container exists (same derived registry root)
+    status = cmd_status(name_override=name, explicit_root=root,
                          executor=executor)
 
     if not status.exists:
         raise CliError(
-            message=f"Container '{name}' not found — nothing to stop.",
+            message=f"容器 '{name}' 不存在——无可停止。",
             exit_code=1, error_code="AISC_ERR_CONTAINER_NOT_FOUND",
         )
 
-    if not status.running:
-        return {"name": name, "stopped": False, "already_stopped": True}
+    if status.running:
+        proc = exec_.run_captured(["stop", name], timeout=30.0)
+        if proc.exit_code != 0:
+            raise _classify_process_error(proc, name, "stop")
+    if remove:
+        # An already-stopped keep-alive container still needs its cleanup.
+        rm = exec_.run_captured(["rm", "-f", name], timeout=30.0)
+        if rm.exit_code != 0:
+            raise _classify_process_error(rm, name, "remove")
 
-    argv = ["stop", name]
-    proc = exec_.run_captured(argv, timeout=30.0)
-
-    if proc.exit_code != 0:
-        raise _classify_process_error(proc, name, "stop")
-
-    # Unregister from the multi-container index (no longer an active target)
+    # Unregister from the multi-container index (no longer an active
+    # target). The registry root must go through _resolve_root — writing at
+    # the raw explicit_root would CREATE an empty containers.json there and
+    # shadow the real (.aisc / state-dir) one for every later lookup.
     try:
-        from aisc.adapters.container_registry import unregister
-        from aisc.application.resources import locate_aisc_root
-        try:
-            root = locate_aisc_root(explicit_root=explicit_root)
-        except Exception:
-            root = None
-        if root is not None:
-            unregister(root, name)
+        from aisc.adapters.container_registry import unregister, _resolve_root
+        reg = None
+        if root:
+            reg = _resolve_root(None, root)
+        if reg is None:
+            # name/label override legs keep the legacy root resolution
+            from aisc.application.resources import locate_aisc_root
+            try:
+                reg = locate_aisc_root(explicit_root=explicit_root)
+            except Exception:
+                reg = None
+        if reg is not None:
+            unregister(reg, name)
     except Exception:
         pass
 
-    return {"name": name, "stopped": True, "already_stopped": False}
+    return {"name": name, "stopped": status.running,
+            "already_stopped": not status.running, "removed": remove}
+
+
+def cmd_stop_all(
+    explicit_root: Optional[str] = None,
+    executor: Optional[DockerExecutor] = None,
+) -> Dict[str, Any]:
+    """F2-C ``aisc stop --all``: stop + remove every CLI-owned container.
+
+    Workbench-managed runtimes (owner=workbench) are deliberately untouched —
+    the GUI owns their lifecycle (leases, reconcile); the CLI's blast radius
+    stays on its own one-shot activations.
+    """
+    exec_ = executor or RealDockerExecutor()
+    from aisc.adapters.container_registry import list_containers, unregister
+    from aisc.application.data_root import DataRootResolver
+
+    # Every workspace registry under the data root (the family's registries
+    # are workspace-scoped; the CLI's blast radius excludes Workbench-owned
+    # runtimes wherever they live).
+    shared_workspaces = DataRootResolver().resolve_shared_root() / "workspaces"
+    stopped: List[Dict[str, Any]] = []
+    skipped = 0
+    registry_dirs = [
+        p / "runtime" for p in shared_workspaces.glob("*") if (p / "runtime" / "containers.json").is_file()
+    ] if shared_workspaces.is_dir() else []
+    for reg_dir in registry_dirs:
+        for cname, meta in list_containers(reg_dir).items():
+            meta = meta or {}
+            if meta.get("owner") == "workbench":
+                skipped += 1
+                continue
+            name = str(cname)
+            if not name:
+                continue
+            stop = exec_.run_captured(["stop", name], timeout=30.0)
+            rm = exec_.run_captured(["rm", "-f", name], timeout=30.0)
+            try:
+                unregister(reg_dir, name)
+            except Exception:
+                pass
+            stopped.append({
+                "name": name,
+                "workspace": meta.get("workspace", ""),
+                "exit_code": rm.exit_code if rm.exit_code != 0 else stop.exit_code,
+            })
+    return {"stopped": stopped, "skipped": skipped}
 
 
 def print_stop_text(data: Dict[str, Any]) -> None:
-    """Print stop result in human-readable format."""
+    """Print stop result in human-readable format.
+
+    F2-C stop = stop + REMOVE (detached keep-alives would otherwise litter);
+    the wording says both — English phrasing that only said "stopped" hid
+    the removal (manual test r2 note).
+    """
     if data.get("already_stopped"):
-        print(f"Container '{data['name']}' was already stopped.")
+        print(f"容器 '{data['name']}' 此前已停止，现已移除。")
     else:
-        print(f"Container '{data['name']}' stopped.")
+        print(f"容器 '{data['name']}' 已停止并移除。")
 
 
 # ---------------------------------------------------------------------------
@@ -274,8 +339,9 @@ def cmd_restart(
     Requires the container to exist.
     """
     exec_ = executor or RealDockerExecutor()
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
@@ -307,38 +373,80 @@ def print_restart_text(data: Dict[str, Any]) -> None:
 # Shell command
 # ---------------------------------------------------------------------------
 
+def _active_registry_root(explicit_root: Optional[str]) -> Optional[str]:
+    """F2-C default leg: the ACTIVE workspace's registry root (never cwd —
+    the cwd anchor trips the data-root guard from $HOME and reads the
+    wrong registry). Shared by the no-override paths of stop/shell/
+    status/restart/switch."""
+    if explicit_root:
+        return explicit_root
+    from aisc.cli.commands import runs as cli_runs
+
+    try:
+        active = cli_runs.get_active()
+    except Exception:
+        active = None
+    if active:
+        from aisc.application.data_root import workspace_state_dir
+
+        try:
+            return str(workspace_state_dir(Path(active)))
+        except Exception:
+            return None
+    return None
+
+
 def cmd_shell(
     name_override: Optional[str] = None,
     explicit_root: Optional[str] = None,
     executor: Optional[DockerExecutor] = None,
     label_override: Optional[str] = None,
+    rest: Optional[List[str]] = None,
 ) -> ProcessResult:
     """Open an interactive shell via ``docker exec -it NAME bash``.
 
+    r2 #I: args after ``--`` pass through verbatim (``aisc shell -- ls -la``)
+    like the agent sugar — a non-interactive one-shot exec (no ``-it``).
     Uses streaming executor for interactive terminal.  Text-only.
     Returns ProcessResult so caller can inspect exit_code / errors.
     """
     exec_ = executor or RealDockerExecutor()
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
     # Verify container exists and is running
-    status = cmd_status(name_override=name, explicit_root=explicit_root,
+    status = cmd_status(name_override=name, explicit_root=root,
                          executor=executor)
 
     if not status.exists:
         raise CliError(
-            message=f"Container '{name}' not found — cannot open shell.",
+            message=f"容器 '{name}' 不存在——无法打开 shell。",
             exit_code=1, error_code="AISC_ERR_CONTAINER_NOT_FOUND",
         )
     if not status.running:
         raise CliError(
-            message=f"Container '{name}' is not running — cannot open shell.",
+            message=f"容器 '{name}' 未在运行——无法打开 shell。",
             exit_code=1, error_code="AISC_ERR_CONTAINER_NOT_FOUND",
         )
 
+    passthrough = [a for a in (rest or []) if a != "--"]
+    if passthrough:
+        # one-shot, non-interactive: no -it (docker exec -t without a TTY
+        # dies), stream like the interactive case
+        argv = ["exec", name, *passthrough]
+        proc = exec_.run_streaming(argv)
+        if proc.command_not_found:
+            raise CliError(message="Docker CLI 不可用",
+                           exit_code=3, error_code="AISC_ERR_DOCKER_UNAVAILABLE")
+        return proc
+
+    # v2.1.7 S6 (Gate-S6/D10): interactive shells get the tutorial `help`
+    # via the exec environment (BASH_FUNC_* re-import) — see
+    # aisc.cli.tutorial.help_function_env. The plain `bash` argv is
+    # unchanged; nothing is written to the image or any profile.
     argv = ["exec", "-it", name, "bash"]
     proc = exec_.run_streaming(argv)
 
@@ -469,13 +577,14 @@ def cmd_switch(
                 exit_code=2, error_code="AISC_ERR_USAGE",
             )
 
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
     # Verify container exists and is running
-    status = cmd_status(name_override=name, explicit_root=explicit_root,
+    status = cmd_status(name_override=name, explicit_root=root,
                          executor=executor)
 
     if not status.exists:
@@ -526,13 +635,14 @@ def cmd_provider_set_key(
             exit_code=2, error_code="AISC_ERR_USAGE",
         )
 
+    root = _active_registry_root(explicit_root) if not (name_override or label_override) else explicit_root
     name = discover_container(name_override=name_override,
-                              explicit_root=explicit_root,
+                              explicit_root=root,
                               label_override=label_override,
                               executor=exec_)
 
     # Verify container exists and is running
-    status = cmd_status(name_override=name, explicit_root=explicit_root,
+    status = cmd_status(name_override=name, explicit_root=root,
                          executor=executor)
 
     if not status.exists:
@@ -600,6 +710,7 @@ class PsRow:
     running: bool = False
     image: str = ""
     workspace: str = ""
+    active: bool = False
 
 
 def cmd_ps(
@@ -607,80 +718,70 @@ def cmd_ps(
     explicit_root: Optional[str] = None,
     executor: Optional[DockerExecutor] = None,
 ) -> List[PsRow]:
-    """List all registered containers with live docker status.
+    """List every registered container machine-wide, with live docker status.
 
-    Runs a lazy GC first to prune stale entries, then ``docker inspect`` each
-    remaining entry. Daemon/permission errors do not raise — rows show
-    ``status='?'`` instead so listing degrades gracefully.
+    Manual test r1 #1 (F2-C): activations register under the WORKSPACE's
+    state dir (data-root ``workspaces/<h>/runtime``), so the old
+    cwd-anchored single registry never saw them — scan every workspace
+    registry instead (the same data face as ``aisc workspaces``). One
+    ``docker ps -a`` round trip carries status; a registered name docker
+    does not know reads as ``gone`` (stale entry — orphan hygiene). When
+    docker is unreachable nothing is guessed: every row shows ``?``.
+
+    *explicit_root* now means the DATA ROOT override (a dir containing
+    ``workspaces/``), matching the registry anchor; the machine-global
+    ACTIVE workspace (last ``aisc run``) gets ``active=True``.
     """
-    from aisc.adapters.container_registry import list_containers
-    from aisc.application.resources import locate_aisc_root
+    from aisc.cli.commands.workspaces import docker_states, registry_entries
 
     exec_ = executor or RealDockerExecutor()
 
-    # Resolve root for registry access
-    root = None
-    if explicit_root is not None:
-        rp = Path(explicit_root).resolve()
-        if rp.is_dir():
-            root = rp
-    if root is None:
-        try:
-            root = locate_aisc_root(explicit_root=explicit_root)
-        except Exception:
-            root = None
+    entries, defaults = registry_entries(exec_, data_root=explicit_root)
+    states, docker_ok = docker_states(exec_)
 
-    if root is None:
-        return []
-
-    # Lazy GC prunes dead entries (best-effort)
-    try:
-        from aisc.adapters.container_registry import gc
-        gc(root, exec_)
-    except Exception:
-        pass
-
-    containers = list_containers(root)
     rows: List[PsRow] = []
-    fmt = '{{.State.Running}}\t{{.State.Status}}\t{{.Config.Image}}'
-    for nm, meta in containers.items():
-        row = PsRow(
-            name=nm,
-            label=meta.get("label", "") if isinstance(meta, dict) else "",
-            image=meta.get("image", "") if isinstance(meta, dict) else "",
-            workspace=meta.get("workspace", "") if isinstance(meta, dict) else "",
-            status="?",
-            running=False,
-        )
-        argv = ["inspect", "--format", fmt, nm]
-        proc = exec_.run_captured(argv, timeout=10.0)
-        if proc.command_not_found or proc.timed_out:
-            row.status = "?"
+    for nm, meta in entries:
+        meta = meta if isinstance(meta, dict) else {}
+        name = str(nm)
+        if not name:
+            continue
+        if not docker_ok:
+            status, running = "?", False
+        elif name not in states:
+            status, running = "gone", False
         else:
-            stderr_lower = (proc.stderr or "").lower()
-            if proc.exit_code != 0 and any(kw in stderr_lower for kw in (
-                "no such object", "no such container", "not found",
-            )):
-                row.status = "gone"
-            else:
-                stdout = (proc.stdout or "").strip()
-                if stdout:
-                    parts = stdout.split("\t")
-                    row.running = parts[0].lower() == "true" if parts else False
-                    row.status = parts[1] if len(parts) > 1 else "?"
-                    if len(parts) > 2:
-                        row.image = parts[2]
-        rows.append(row)
+            status = states[name]
+            running = status.startswith("Up")
+        ws = str(meta.get("workspace", ""))
+        rows.append(PsRow(
+            name=name,
+            label=str(meta.get("label", "")),
+            image=str(meta.get("image", "")),
+            workspace=ws,
+            status=status,
+            running=running,
+            # r2 #B: star the registry DEFAULT pointer — what a bare
+            # `aisc claude` actually lands in — not "any container of the
+            # active workspace" (label slots live there too).
+            active=name in defaults,
+        ))
 
+    # active first, then running, then name — glanceable and stable
+    rows.sort(key=lambda r: (not r.active, not r.running, r.name))
     return rows
 
 
 def print_ps_text(rows: List[PsRow]) -> None:
-    """Print the ``aisc ps`` table."""
+    """Print the ``aisc ps`` table (dead/gone rows get a cleanup hint)."""
     if not rows:
-        print("No containers registered. Run 'aisc run' first.")
+        print("尚无已注册容器——先 aisc run <路径> 激活工作区。")
         return
-    print(f"{'NAME':<36} {'LABEL':<10} {'STATUS':<10} {'IMAGE':<24} WORKSPACE")
+    print(f"{'NAME':<36} {'ACTIVE':<6} {'LABEL':<10} {'STATUS':<10} {'IMAGE':<24} WORKSPACE")
     for r in rows:
         label = r.label or "-"
-        print(f"{r.name:<36} {label:<10} {r.status:<10} {r.image:<24} {r.workspace}")
+        star = "*" if r.active else ""
+        print(f"{r.name:<36} {star:<6} {label:<10} {r.status:<10} {r.image:<24} {r.workspace}")
+    # r2 #G: orphan hygiene — dead/gone rows exist, tell the user what to do
+    if any(not r.running for r in rows):
+        print("提示: 已停止(gone/Exited)的容器可 aisc stop --name <名> 清除，"
+              "或 aisc run --resume <别名|序号|路径> 重建。")

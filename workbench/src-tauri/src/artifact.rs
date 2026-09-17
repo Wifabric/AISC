@@ -1,0 +1,773 @@
+//! Agent Artifact index (Stage 3, ART-04/06, R3-07, R3-10).
+//!
+//! The Workbench-side projection of the CLI's session-scoped registries. The
+//! CLI (`aisc artifact record`) is the authoritative fact writer; this module
+//! imports the CLI's JSONL registries (same host data root / workspace hash),
+//! validates each record against `aisc.artifact/v1`, and persists a merged,
+//! schema-versioned index with revision + cross-process lock + atomic replace
+//! + corrupt isolation.
+//!
+//! Deliberately separate from packaging artifacts (R3-10): distinct schema,
+//! module, and namespaces.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use fs4::fs_std::FileExt;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tauri::AppHandle;
+
+use crate::error::WorkbenchError;
+use crate::session::config_dir;
+use crate::storage;
+
+pub const ARTIFACT_SCHEMA_VERSION: u64 = 1;
+pub const INDEX_SCHEMA_VERSION: u64 = 1;
+
+const INDEX_FILE: &str = "artifacts.json";
+const LOCK_FILE: &str = "artifacts.lock";
+const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+const LOCK_POLL: Duration = Duration::from_millis(50);
+
+// ---------------------------------------------------------------------------
+// Schema (aisc.artifact/v1) — mirror of the CLI record
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactRecord {
+    pub schema_version: u64,
+    pub artifact_id: String,
+    pub workspace_relative_path: String,
+    pub action: String,
+    pub kind: String,
+    pub media_type: Option<String>,
+    pub label: String,
+    pub open_with: String,
+    pub producer: serde_json::Value,
+    pub state: String,
+    pub provenance: String,
+    pub recorded_at: String,
+    pub previous_path: Option<String>,
+    pub extra: serde_json::Value,
+}
+
+const KNOWN_FIELDS: &[&str] = &[
+    "schema_version",
+    "artifact_id",
+    "workspace_relative_path",
+    "action",
+    "kind",
+    "media_type",
+    "label",
+    "open_with",
+    "producer",
+    "state",
+    "provenance",
+    "recorded_at",
+    "previous_path",
+    "extra",
+];
+
+/// Deserialize preserving unknown top-level fields into `extra` (A-ART01-1:
+/// the schema v1 fixture must round-trip through Python, Rust, and TS without
+/// dropping unknown fields).
+impl<'de> Deserialize<'de> for ArtifactRecord {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: serde_json::Value = serde_json::Value::deserialize(d)?;
+        let obj = value
+            .as_object()
+            .ok_or_else(|| serde::de::Error::custom("artifact record must be an object"))?;
+        let get = |k: &str| obj.get(k).cloned();
+        let mut extra: serde_json::Map<String, serde_json::Value> = get("extra")
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default();
+        for (k, v) in obj {
+            if !KNOWN_FIELDS.contains(&k.as_str()) {
+                extra.insert(k.clone(), v.clone());
+            }
+        }
+        Ok(ArtifactRecord {
+            schema_version: get("schema_version").and_then(|v| v.as_u64()).unwrap_or(0),
+            artifact_id: get("artifact_id")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            workspace_relative_path: get("workspace_relative_path")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            action: get("action")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "created".to_string()),
+            kind: get("kind")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "deliverable".to_string()),
+            media_type: get("media_type").and_then(|v| v.as_str().map(str::to_string)),
+            label: get("label")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            open_with: get("open_with")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "preview".to_string()),
+            producer: get("producer").unwrap_or(serde_json::Value::Null),
+            state: get("state")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "present".to_string()),
+            provenance: get("provenance")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            recorded_at: get("recorded_at")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            previous_path: get("previous_path").and_then(|v| v.as_str().map(str::to_string)),
+            extra: serde_json::Value::Object(extra),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArtifactIndex {
+    pub schema_version: u64,
+    pub revision: u64,
+    #[serde(default)]
+    pub artifacts: Vec<ArtifactRecord>,
+    /// v2.1.7 S5 (spike-artifact-flood R1): fingerprint of the CLI registry
+    /// dir at import time (file count + total bytes + newest mtime). An
+    /// unchanged fingerprint lets the next import return the existing index
+    /// instead of re-parsing/rebuilding/rewriting the whole thing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_fingerprint: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Data root / workspace hash (must match the Python CLI)
+// ---------------------------------------------------------------------------
+
+/// Host data root for artifact registries (never inside a workspace, R3-05).
+/// Stage 7 (DATA-04): canonical location is `<data-root>/artifacts` via
+/// `data_root::default_data_root()` (honors AISC_DATA_ROOT); the explicit
+/// `AISC_ARTIFACT_DATA_ROOT` override keeps working for tests/dev.
+pub fn resolve_data_root() -> PathBuf {
+    if let Ok(root) = std::env::var("AISC_ARTIFACT_DATA_ROOT") {
+        if !root.is_empty() {
+            return PathBuf::from(root);
+        }
+    }
+    crate::data_root::default_data_root().join("artifacts")
+}
+
+/// Pre-Stage-7 artifact root (read fallback for old records).
+fn legacy_data_root() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let base = std::env::var("LOCALAPPDATA")
+            .unwrap_or_else(|_| ".".to_string());
+        return PathBuf::from(base).join("aisc").join("artifacts");
+    }
+    #[cfg(not(windows))]
+    {
+        if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+            if !xdg.is_empty() {
+                return PathBuf::from(xdg).join("aisc").join("artifacts");
+            }
+        }
+        if let Some(home) = dirs::home_dir() {
+            return home.join(".local").join("share").join("aisc").join("artifacts");
+        }
+        PathBuf::from(".aisc-artifacts")
+    }
+}
+
+/// Irreversible short hash of a canonical workspace path (matches the CLI).
+///
+/// On Windows, `fs::canonicalize` returns a `\\?\`-prefixed verbatim path,
+/// while Python's `Path.resolve()` does not — strip the prefix so the hashes
+/// agree and the Workbench reads the same registry the CLI wrote.
+pub fn workspace_hash(workspace: &Path) -> String {
+    let canon = fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let mut s = canon.to_string_lossy().into_owned();
+    #[cfg(windows)]
+    {
+        if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+            s = format!(r"\\{}", stripped);
+        } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            s = stripped.to_string();
+        }
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(s.as_bytes());
+    let digest = hasher.finalize();
+    digest[..8]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Directory holding one workspace's session registries (written by the CLI).
+pub fn registry_dir(data_root: &Path, workspace: &Path) -> PathBuf {
+    data_root.join(workspace_hash(workspace))
+}
+
+// ---------------------------------------------------------------------------
+// CLI registry import
+// ---------------------------------------------------------------------------
+
+/// Parse one JSONL line into a validated record; returns None for a corrupt /
+/// unsupported line (isolated, never truncates the file — A-ART01-2).
+fn parse_record_line(line: &str) -> Option<ArtifactRecord> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    let sv = value.get("schema_version").and_then(|v| v.as_u64()).unwrap_or(0);
+    if sv != ARTIFACT_SCHEMA_VERSION {
+        return None; // unsupported schema: fail closed, do not import
+    }
+    let rec: ArtifactRecord = serde_json::from_value(value).ok()?;
+    if rec.artifact_id.is_empty() || rec.workspace_relative_path.is_empty() {
+        return None;
+    }
+    Some(rec)
+}
+
+/// Read all CLI session registries for a workspace into a merged record list.
+/// Corrupt lines are skipped; a missing registry dir yields an empty list.
+/// Stage 7: canonical `<data-root>/artifacts` first; when it has no
+/// session files the pre-Stage-7 root is read (transition fallback).
+pub fn read_cli_registries(workspace: &Path) -> Vec<ArtifactRecord> {
+    let root = resolve_data_root();
+    let dir = registry_dir(&root, workspace);
+    let mut out = read_registry_dir(&dir);
+    if out.is_empty() {
+        let legacy = registry_dir(&legacy_data_root(), workspace);
+        out = read_registry_dir(&legacy);
+    }
+    out
+}
+
+fn read_registry_dir(dir: &Path) -> Vec<ArtifactRecord> {
+    let mut out = Vec::new();
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return out,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        for line in content.lines() {
+            if let Some(rec) = parse_record_line(line) {
+                out.push(rec);
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Index persistence (revision + lock + atomic + corrupt isolation)
+// ---------------------------------------------------------------------------
+
+/// Index file location under the app config dir.
+fn index_path(dir: &Path) -> PathBuf {
+    dir.join(INDEX_FILE)
+}
+
+/// Load the merged index. Corrupt index is isolated (renamed .corrupt) and a
+/// fresh index is returned so the app keeps working (A-ART01-2 / R3-07).
+pub fn load_index(dir: &Path) -> ArtifactIndex {
+    let path = index_path(dir);
+    match fs::read_to_string(&path) {
+        Ok(raw) => match serde_json::from_str::<ArtifactIndex>(&raw) {
+            Ok(idx) if idx.schema_version == INDEX_SCHEMA_VERSION => idx,
+            Ok(_) | Err(_) => {
+                let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+                ArtifactIndex {
+                    schema_version: INDEX_SCHEMA_VERSION,
+                    revision: 0,
+                    artifacts: Vec::new(),
+                    registry_fingerprint: None,
+                }
+            }
+        },
+        Err(_) => ArtifactIndex {
+            schema_version: INDEX_SCHEMA_VERSION,
+            revision: 0,
+            artifacts: Vec::new(),
+            registry_fingerprint: None,
+        },
+    }
+}
+
+fn acquire_lock(dir: &Path) -> Result<fs::File, WorkbenchError> {
+    fs::create_dir_all(dir)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("mkdir: {e}")))?;
+    let lock_path = dir.join(LOCK_FILE);
+    let lock_file = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("lock open: {e}")))?;
+    let deadline = Instant::now() + LOCK_TIMEOUT;
+    loop {
+        match lock_file.try_lock_exclusive() {
+            Ok(true) => break,
+            Ok(false) => {
+                if Instant::now() >= deadline {
+                    return Err(WorkbenchError::history_error()
+                        .with_detail("artifact index lock timeout"));
+                }
+                std::thread::sleep(LOCK_POLL);
+            }
+            Err(e) => {
+                return Err(WorkbenchError::history_error()
+                    .with_detail(format!("lock error: {e}")));
+            }
+        }
+    }
+    Ok(lock_file)
+}
+
+/// Import the CLI registries and persist a fresh merged index (revision bump).
+/// Returns the new index.
+pub fn import_registries(app: &AppHandle, workspace: &Path) -> Result<ArtifactIndex, WorkbenchError> {
+    let dir = config_dir(app)?;
+    let lock = acquire_lock(&dir)?;
+    let result = import_locked(&dir, workspace);
+    let _ = lock.unlock();
+    result
+}
+
+/// Test/import entry: same as import_locked but takes the registry dir
+/// directly (the workspace path derives it via resolve_data_root, which the
+/// hermetic tests cannot inject).
+#[cfg(test)]
+fn import_from_registry_dir(
+    dir: &Path,
+    registry_dir: &Path,
+) -> Result<ArtifactIndex, WorkbenchError> {
+    // fingerprint gate against the given registry dir (mirrors import_locked)
+    let fp = fingerprint_dir(registry_dir);
+    let existing = load_index(dir);
+    if let (Some(current), Some(stored)) = (fp.as_deref(), existing.registry_fingerprint.as_deref()) {
+        if current == stored && !existing.artifacts.is_empty() {
+            return Ok(existing);
+        }
+    }
+    let records = read_registry_dir(registry_dir);
+    let mut index = existing;
+    let mut by_id: std::collections::BTreeMap<String, ArtifactRecord> = std::collections::BTreeMap::new();
+    for rec in records {
+        by_id.insert(rec.artifact_id.clone(), rec);
+    }
+    let mut artifacts: Vec<ArtifactRecord> = by_id.into_values().collect();
+    artifacts.sort_by(|a, b| a.workspace_relative_path.cmp(&b.workspace_relative_path));
+    index.artifacts = artifacts;
+    index.revision = index.revision.wrapping_add(1);
+    index.registry_fingerprint = fp;
+    let bytes = serde_json::to_vec(&index)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("serialize: {e}")))?;
+    storage::atomic_replace(&dir.join(INDEX_FILE), &bytes)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("write: {e}")))?;
+    Ok(index)
+}
+
+fn import_locked(dir: &Path, workspace: &Path) -> Result<ArtifactIndex, WorkbenchError> {
+    // v2.1.7 S5 (R1): fingerprint gate — an unchanged registry dir returns
+    // the existing index untouched. Reopening an unchanged workspace drops
+    // from O(N) parse+merge+serialize+write to one read_dir pass.
+    let fp = registry_fingerprint(workspace);
+    let existing = load_index(dir);
+    if let (Some(current), Some(stored)) = (fp.as_deref(), existing.registry_fingerprint.as_deref()) {
+        if current == stored && !existing.artifacts.is_empty() {
+            return Ok(existing);
+        }
+    }
+    let records = read_cli_registries(workspace);
+    let mut index = existing;
+    // Deterministic merge: dedupe by artifact_id (latest line wins), sort by path.
+    let mut by_id: std::collections::BTreeMap<String, ArtifactRecord> = std::collections::BTreeMap::new();
+    for rec in records {
+        by_id.insert(rec.artifact_id.clone(), rec);
+    }
+    let mut artifacts: Vec<ArtifactRecord> = by_id.into_values().collect();
+    artifacts.sort_by(|a, b| a.workspace_relative_path.cmp(&b.workspace_relative_path));
+    index.artifacts = artifacts;
+    index.revision = index.revision.wrapping_add(1);
+    index.registry_fingerprint = fp;
+    let bytes = serde_json::to_vec(&index)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("serialize: {e}")))?;
+    storage::atomic_replace(&dir.join(INDEX_FILE), &bytes)
+        .map_err(|e| WorkbenchError::history_error().with_detail(format!("write: {e}")))?;
+    Ok(index)
+}
+
+/// Cheap change detection for the CLI registry dir: (jsonl count, total
+/// bytes, newest mtime nanos). Any appended record changes bytes+newest
+/// mtime; a rewritten file changes mtime. Collisions only delay one import.
+fn registry_fingerprint(workspace: &Path) -> Option<String> {
+    let root = resolve_data_root();
+    let mut dir = registry_dir(&root, workspace);
+    let mut parts = fingerprint_dir(&dir);
+    if parts.is_none() {
+        dir = registry_dir(&legacy_data_root(), workspace);
+        parts = fingerprint_dir(&dir);
+    }
+    parts
+}
+
+fn fingerprint_dir(dir: &Path) -> Option<String> {
+    let entries = fs::read_dir(dir).ok()?;
+    let mut count: u64 = 0;
+    let mut total: u64 = 0;
+    let mut newest: u128 = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let meta = entry.metadata().ok()?;
+        count += 1;
+        total += meta.len();
+        if let Ok(m) = meta.modified() {
+            if let Ok(d) = m.duration_since(std::time::UNIX_EPOCH) {
+                newest = newest.max(d.as_nanos());
+            }
+        }
+    }
+    Some(format!("{count}:{total}:{newest}"))
+}
+
+// ---------------------------------------------------------------------------
+// IPC command payloads
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactListResult {
+    pub schema_version: u64,
+    pub artifacts: Vec<ArtifactRecord>,
+    pub next_cursor: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactInspectResult {
+    pub artifact: ArtifactRecord,
+}
+
+/// Pure pagination/filter helper (unit-testable without a Tauri AppHandle).
+fn paginate_artifacts(
+    artifacts: Vec<ArtifactRecord>,
+    kind: Option<String>,
+    cursor: Option<usize>,
+) -> ArtifactListResult {
+    let filtered: Vec<ArtifactRecord> = artifacts
+        .into_iter()
+        .filter(|a| kind.as_deref().map(|k| a.kind == k).unwrap_or(true))
+        .collect();
+    let total = filtered.len();
+    let start = cursor.unwrap_or(0).min(total);
+    let page: Vec<ArtifactRecord> = filtered.into_iter().skip(start).take(200).collect();
+    let next = if start + page.len() < total {
+        Some(start + page.len())
+    } else {
+        None
+    };
+    ArtifactListResult {
+        schema_version: INDEX_SCHEMA_VERSION,
+        artifacts: page,
+        next_cursor: next,
+    }
+}
+
+/// List artifacts from the merged index, filtered by kind, paginated.
+pub fn list_artifacts(app: &AppHandle, kind: Option<String>, cursor: Option<usize>) -> ArtifactListResult {
+    let dir = match config_dir(app) {
+        Ok(d) => d,
+        Err(_) => return empty_list(),
+    };
+    let index = load_index(&dir);
+    paginate_artifacts(index.artifacts, kind, cursor)
+}
+
+fn empty_list() -> ArtifactListResult {
+    ArtifactListResult {
+        schema_version: INDEX_SCHEMA_VERSION,
+        artifacts: Vec::new(),
+        next_cursor: None,
+    }
+}
+
+pub fn inspect_artifact(app: &AppHandle, artifact_id: &str) -> Result<ArtifactInspectResult, WorkbenchError> {
+    let dir = config_dir(app)?;
+    let index = load_index(&dir);
+    index
+        .artifacts
+        .iter()
+        .find(|a| a.artifact_id == artifact_id)
+        .cloned()
+        .map(|artifact| ArtifactInspectResult { artifact })
+        .ok_or_else(|| {
+            WorkbenchError::cli_protocol()
+                .with_detail(format!("artifact not found: {artifact_id}"))
+        })
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn artifact_list(
+    app: AppHandle,
+    kind: Option<String>,
+    cursor: Option<usize>,
+) -> Result<ArtifactListResult, WorkbenchError> {
+    Ok(list_artifacts(&app, kind, cursor))
+}
+
+#[tauri::command]
+pub async fn artifact_inspect(
+    app: AppHandle,
+    artifact_id: String,
+) -> Result<ArtifactInspectResult, WorkbenchError> {
+    inspect_artifact(&app, &artifact_id)
+}
+
+#[tauri::command]
+pub async fn artifact_refresh(
+    app: AppHandle,
+    workspace: String,
+) -> Result<ArtifactIndex, WorkbenchError> {
+    import_registries(&app, Path::new(&workspace))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_valid_record_line() {
+        let line = r#"{"schema_version":1,"artifact_id":"aaaaaaaa-0000-4000-8000-000000000001","workspace_relative_path":"reports/result.md","action":"created","kind":"deliverable","media_type":"text/markdown","label":"报告","open_with":"preview","producer":{"agent":"claude","session_id":"22222222-2222-4222-8222-222222222222","runtime_id":"11111111-1111-4111-8111-111111111111"},"state":"present","provenance":"manifest","recorded_at":"2026-08-15T00:00:00Z","extra":{}}"#;
+        let rec = parse_record_line(line).expect("valid line");
+        assert_eq!(rec.workspace_relative_path, "reports/result.md");
+        assert_eq!(rec.kind, "deliverable");
+        assert_eq!(rec.provenance, "manifest");
+        assert_eq!(rec.extra, serde_json::json!({}));
+    }
+
+    /// REL-03: a record written by a PREVIOUS release (same schema 1, missing
+    /// newer optional fields media_type/previous_path/label) loads with the
+    /// contract defaults and keeps unknown fields in `extra` for a rollback.
+    #[test]
+    fn previous_version_record_loads_with_defaults() {
+        let line = r#"{
+            "schema_version": 1,
+            "artifact_id": "aaaaaaaa-0000-4000-8000-000000000001",
+            "workspace_relative_path": "docs/guide.md",
+            "action": "created",
+            "kind": "deliverable",
+            "producer": {"agent": "claude"},
+            "state": "present",
+            "recorded_at": "2026-08-01T00:00:00Z",
+            "old_field": "kept"
+        }"#;
+        let rec = parse_record_line(line).expect("parses previous-version record");
+        assert_eq!(rec.media_type, None);
+        assert_eq!(rec.previous_path, None);
+        assert_eq!(rec.open_with, "preview");
+        assert_eq!(rec.label, "");
+        // Unknown field from the previous version survives into `extra`.
+        assert_eq!(rec.extra.get("old_field").and_then(|v| v.as_str()), Some("kept"));
+    }
+
+    // --- v2.1.7 S5 (spike-artifact-flood R1): fingerprint-gated import ---
+
+    fn record_line(id: &str, path: &str) -> String {
+        format!(
+            r#"{{"schema_version":1,"artifact_id":"{id}","workspace_relative_path":"{path}","action":"created","kind":"deliverable","producer":{{"agent":"claude"}},"state":"present","recorded_at":"2026-08-27T00:00:00Z"}}"#
+        )
+    }
+
+    #[test]
+    fn fingerprint_unchanged_skips_reimport() {
+        let tmp = tempdir().unwrap();
+        let reg = tmp.path().join("registry");
+        std::fs::create_dir_all(&reg).unwrap();
+        std::fs::write(reg.join("a.jsonl"), record_line("id-1", "a.md")).unwrap();
+
+        let idx_dir = tmp.path().join("idx");
+        std::fs::create_dir_all(&idx_dir).unwrap();
+        let first = import_from_registry_dir(&idx_dir, &reg).unwrap();
+        assert_eq!(first.artifacts.len(), 1);
+        assert!(first.registry_fingerprint.is_some());
+        let rev = first.revision;
+
+        // Second import with an UNCHANGED registry: same revision, no rewrite.
+        let second = import_from_registry_dir(&idx_dir, &reg).unwrap();
+        assert_eq!(second.revision, rev, "unchanged fingerprint must skip reimport");
+        assert_eq!(second.artifacts.len(), 1);
+    }
+
+    #[test]
+    fn fingerprint_change_triggers_reimport() {
+        let tmp = tempdir().unwrap();
+        let reg = tmp.path().join("registry");
+        std::fs::create_dir_all(&reg).unwrap();
+        std::fs::write(reg.join("a.jsonl"), record_line("id-1", "a.md")).unwrap();
+
+        let idx_dir = tmp.path().join("idx");
+        std::fs::create_dir_all(&idx_dir).unwrap();
+        let first = import_from_registry_dir(&idx_dir, &reg).unwrap();
+
+        // Append a record: bytes + newest mtime change → full reimport.
+        // (mtime granularity: force a NEW mtime by setting the file time
+        // explicitly when available; otherwise bump content twice.)
+        std::fs::write(reg.join("a.jsonl"), format!(
+            "{}\n{}",
+            record_line("id-1", "a.md"),
+            record_line("id-2", "b.md"),
+        )).unwrap();
+        match std::fs::File::options().write(true).open(reg.join("a.jsonl")) {
+            Ok(f) => {
+                let t = std::time::SystemTime::now() + std::time::Duration::from_secs(1);
+                let _ = f.set_modified(t);
+            }
+            Err(_) => {}
+        }
+
+        let second = import_from_registry_dir(&idx_dir, &reg).unwrap();
+        assert_eq!(second.artifacts.len(), 2, "changed fingerprint must reimport");
+        assert!(second.revision > first.revision);
+    }
+
+    /// S5 benchmark evidence (spike-artifact-flood.md): import cost at
+    /// 200/500/1000 records. Not an assertion — a timing print the report
+    /// cites; keep a generous ceiling so slow CI never flakes it.
+    #[test]
+    fn import_benchmark_ceiling() {
+        for n in [200u32, 500, 1000] {
+            let tmp = tempdir().unwrap();
+            let reg = tmp.path().join("registry");
+            std::fs::create_dir_all(&reg).unwrap();
+            let body: Vec<String> = (0..n)
+                .map(|i| record_line(&format!("id-{i}"), &format!("f{i}.md")))
+                .collect();
+            std::fs::write(reg.join("all.jsonl"), body.join("\n")).unwrap();
+            let idx_dir = tmp.path().join("idx");
+            std::fs::create_dir_all(&idx_dir).unwrap();
+            let t0 = std::time::Instant::now();
+            let idx = import_from_registry_dir(&idx_dir, &reg).unwrap();
+            let mut full = t0.elapsed();
+            let t1 = std::time::Instant::now();
+            let skipped = import_from_registry_dir(&idx_dir, &reg).unwrap();
+            let mut gated = t1.elapsed();
+            assert_eq!(idx.artifacts.len(), n as usize);
+            assert_eq!(skipped.revision, idx.revision);
+            // Warm-run ceilings: generous (3s) so a loaded shared CI runner
+            // never flakes it — a real O(n²) regression at n=1000 lands in
+            // minutes, far past this line. The order-based invariant below
+            // is the tight guard.
+            assert!(full.as_millis() < 3000, "full import too slow at {n}: {full:?}");
+            // Gated does strictly less work than full, but a one-shot
+            // wall-clock pair on a loaded shared runner can invert the
+            // order (CI flake 2026-09-16, n=500: full=28ms gated=7ms at
+            // n=200 then inverted). Bounded pair-retry — a genuine gate
+            // regression loses every attempt, noise loses at most two.
+            let mut cheaper = gated < full;
+            let mut tries = 0;
+            while !cheaper && tries < 2 {
+                tries += 1;
+                std::fs::remove_dir_all(&idx_dir).unwrap();
+                std::fs::create_dir_all(&idx_dir).unwrap();
+                let t2 = std::time::Instant::now();
+                let re_full = import_from_registry_dir(&idx_dir, &reg).unwrap();
+                full = t2.elapsed();
+                let t3 = std::time::Instant::now();
+                let re_gated = import_from_registry_dir(&idx_dir, &reg).unwrap();
+                gated = t3.elapsed();
+                assert_eq!(re_gated.revision, re_full.revision);
+                cheaper = gated < full;
+                eprintln!("bench retry n={n} full={full:?} gated={gated:?}");
+            }
+            assert!(
+                cheaper,
+                "fingerprint gate must be cheaper at {n}: full={full:?} gated={gated:?}"
+            );
+            eprintln!("bench n={n} full={full:?} gated={gated:?}");
+        }
+    }
+
+    #[test]
+    fn unsupported_schema_line_fails_closed() {
+        let line = r#"{"schema_version":99,"artifact_id":"x","workspace_relative_path":"a.md"}"#;
+        assert!(parse_record_line(line).is_none());
+    }
+
+    #[test]
+    fn corrupt_line_is_isolated() {
+        assert!(parse_record_line("not json at all").is_none());
+        assert!(parse_record_line(r#"{"schema_version":1,"artifact_id":""}"#).is_none());
+    }
+
+    #[test]
+    fn unknown_fields_survive_round_trip() {
+        let line = r#"{"schema_version":1,"artifact_id":"aaaaaaaa-0000-4000-8000-000000000001","workspace_relative_path":"a.md","x_future":{"kept":true}}"#;
+        let rec = parse_record_line(line).expect("parses");
+        assert_eq!(rec.extra, serde_json::json!({"x_future": {"kept": true}}));
+    }
+
+    #[test]
+    fn index_corrupt_is_isolated_and_recovers() {
+        let dir = tempdir().unwrap();
+        let idx_path = index_path(dir.path());
+        fs::write(&idx_path, "this is not json").unwrap();
+        let index = load_index(dir.path());
+        assert_eq!(index.schema_version, INDEX_SCHEMA_VERSION);
+        assert!(index.artifacts.is_empty());
+        // The corrupt file is renamed, not deleted.
+        assert!(idx_path.with_extension("json.corrupt").exists());
+    }
+
+    #[test]
+    fn artifact_pagination_returns_next_cursor_only_while_pages_remain() {
+        let make = |i: usize| ArtifactRecord {
+            schema_version: 1,
+            artifact_id: format!("aaaaaaaa-0000-4000-8000-{i:012}"),
+            workspace_relative_path: format!("f{i:03}.md"),
+            action: "created".into(),
+            kind: "deliverable".into(),
+            media_type: Some("text/markdown".into()),
+            label: String::new(),
+            open_with: "preview".into(),
+            producer: serde_json::json!({"agent":"claude","session_id":"s","runtime_id":"r"}),
+            state: "present".into(),
+            provenance: "manifest".into(),
+            recorded_at: "t".into(),
+            previous_path: None,
+            extra: serde_json::json!({}),
+        };
+        let all: Vec<ArtifactRecord> = (0..250).map(make).collect();
+        let page1 = paginate_artifacts(all.clone(), None, None);
+        assert_eq!(page1.artifacts.len(), 200);
+        assert_eq!(page1.next_cursor, Some(200));
+        let page2 = paginate_artifacts(all, None, page1.next_cursor);
+        assert_eq!(page2.artifacts.len(), 50);
+        assert_eq!(page2.next_cursor, None);
+    }
+
+    #[test]
+    fn workspace_hash_is_stable_and_short() {
+        let dir = tempdir().unwrap();
+        let h1 = workspace_hash(dir.path());
+        let h2 = workspace_hash(dir.path());
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 16);
+    }
+}

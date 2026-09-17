@@ -1,0 +1,128 @@
+name: CLI sidecar build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'src/aisc/**'
+      - 'packaging/**'
+      - 'scripts/build-cli.*'
+      - 'scripts/verify-*.py'
+      - 'VERSION'
+      - 'pyproject.toml'
+      - 'vendor/**'
+      - '.github/workflows/cli-sidecar.yml'
+
+jobs:
+  sidecar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller build
+          pip install -e .
+
+      - name: Build CLI sidecar
+        shell: bash
+        run: |
+          TARGET_TRIPLE=${{ matrix.triple }} scripts/build-cli.sh
+        if: matrix.os != 'windows-latest'
+
+      - name: Build CLI sidecar (Windows)
+        shell: pwsh
+        run: |
+          $env:TARGET_TRIPLE = "${{ matrix.triple }}"
+          scripts/build-cli.ps1
+        if: matrix.os == 'windows-latest'
+
+      - name: Verify artifact
+        shell: bash
+        run: |
+          ls -la dist/
+        if: always()
+
+      # 2.1.9 (D-9 期间两起实证): windows-latest 的 Docker 引擎冷启动与
+      # parity smoke 赛跑——A 轨跑在引擎就绪前、B 轨 19 秒后已通，中间态
+      # 差异即误报（e39d5bd/221b180 两轮同族 flake）。就绪门只挡 Windows：
+      # ubuntu 开机即有 daemon；mac 无 daemon 时双轨确定性一致不受影响。
+      - name: Wait for Docker engine (Windows cold-start guard)
+        shell: bash
+        if: runner.os == 'Windows'
+        run: |
+          for i in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then echo "docker ready after ${i}0s"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::docker engine not ready after 300s; parity smoke may compare cold-start states"
+
+      # Stage 2 (S2.5, CLI-A05): the pip-installed CLI (editable console
+      # script from `pip install -e .`) and the frozen sidecar must agree on
+      # the aisc.cli/v1 command matrix. Any difference fails the build. The
+      # wheel clean-room install is covered by workbench-ci's install smoke, so
+      # we do not rebuild the wheel here.
+      - name: Dual-track parity smoke (CLI-A05)
+        shell: bash
+        run: |
+          set -e
+          SIDECAR=$(ls dist/aisc-* | head -1)
+          echo "sidecar: $SIDECAR"
+          # Resolve the pip-installed console script. `command -v` first: pip
+          # install -e . puts the script on PATH via setup-python. Each lookup
+          # is `|| true` so a miss does not trip `set -e` before the fallback.
+          CLI_A=$(command -v aisc 2>/dev/null || true)
+          [ -z "$CLI_A" ] && CLI_A=$(command -v aisc.exe 2>/dev/null || true)
+          if [ -z "$CLI_A" ]; then
+            SCRIPTS=$(python -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>/dev/null || true)
+            CLI_A=$(ls "$SCRIPTS"/aisc "$SCRIPTS"/aisc.exe 2>/dev/null | head -1 || true)
+          fi
+          test -n "$CLI_A"
+          echo "pip cli: $CLI_A"
+          python scripts/verify-cli-parity.py --cli-a "$CLI_A" --cli-b "$SIDECAR"
+
+      # Stage 2 (S2.6, CLI-A07): clean-room smoke + manifest (sha256/arch/version).
+      - name: Sidecar clean-room smoke + manifest (CLI-A07)
+        shell: bash
+        run: |
+          SIDECAR=$(ls dist/aisc-* | head -1)
+          python scripts/verify-sidecar.py smoke "$SIDECAR" --triple "${{ matrix.triple }}" \
+            > dist/aisc-sidecar-manifest.json
+          cat dist/aisc-sidecar-manifest.json
+
+      # Stage 2 (S2.7, CLI-A08): dependency SBOM + pip-check integrity audit
+      # from the installed environment (`pip install -e .` above).
+      - name: Dependency SBOM + integrity audit (CLI-A08)
+        shell: bash
+        run: |
+          python scripts/verify-sbom.py --venv-python "$(python -c 'import sys; print(sys.executable)')" \
+            --out dist/aisc-sbom.json
+          head -c 300 dist/aisc-sbom.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aisc-sidecar-${{ matrix.triple }}
+          path: |
+            dist/aisc-${{ matrix.triple }}*
+            dist/aisc-sidecar-manifest.json
+            dist/aisc-sbom.json
+          if-no-files-found: error

@@ -257,6 +257,118 @@ def _check_aisc_root(
     )
 
 
+def _check_bundle_store(root: Optional[Path]) -> CheckResult:
+    """Check 6b: the fetched-bundle store (pip installs' build resources).
+
+    PASS when the ACTIVE root is a repo/frozen bundle (the store is
+    irrelevant); PASS when it resolves from ``bundles/<ver>/``; WARN when a
+    store exists but nothing is compatible; WARN on pip forms with no store
+    at all (build needs ``aisc bundle fetch``)."""
+    import sys as _sys
+
+    from aisc import __version__
+
+    pip_form = (
+        not getattr(_sys, "frozen", False)
+        and __file__ is not None
+        and "site-packages" in str(Path(__file__).resolve())
+    )
+    try:
+        from aisc.application.data_root import shared_root
+
+        dr = shared_root()
+    except Exception:
+        dr = None
+    if dr is not None:
+        from aisc.application.resources import find_data_root_bundles
+
+        candidates, skipped = find_data_root_bundles(dr)
+        if candidates:
+            return CheckResult(
+                name="aisc-bundle",
+                status=CheckStatus.PASS,
+                message=f"bundle store: {candidates[0]}",
+            )
+        if skipped:
+            return CheckResult(
+                name="aisc-bundle",
+                status=CheckStatus.WARN,
+                message="bundle store present but no compatible bundle",
+                detail="; ".join(skipped[:3]),
+            )
+    if root is not None:
+        return CheckResult(
+            name="aisc-bundle",
+            status=CheckStatus.PASS,
+            message=f"root resolves without the bundle store ({root})",
+        )
+    if pip_form:
+        return CheckResult(
+            name="aisc-bundle",
+            status=CheckStatus.WARN,
+            message="pip install without build resources",
+            detail="run `aisc bundle fetch` to download this version's bundle "
+                   "(build/docker-rebuild need it)",
+        )
+    return CheckResult(
+        name="aisc-bundle",
+        status=CheckStatus.WARN,
+        message="no bundle store and no repo root",
+    )
+
+
+def _check_channel_confusion() -> CheckResult:
+    """Check 6c: multiple `aisc` hits on PATH -> WARN with the list.
+
+    Only lists paths + file info by default — running every hit's
+    `--version` is `--verbose` territory (never execute unknown binaries
+    unprompted)."""
+    import shutil as _shutil
+
+    hits: list = []
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not d:
+            continue
+        for cand in (Path(d) / "aisc", Path(d) / "aisc.exe"):
+            try:
+                if cand.is_file() and cand.stat().st_size > 0:
+                    hits.append(str(cand))
+            except OSError:
+                continue
+    if len(hits) > 1:
+        return CheckResult(
+            name="channel-confusion",
+            status=CheckStatus.WARN,
+            message=f"{len(hits)} aisc executables on PATH",
+            detail="; ".join(hits[:4]) + (" …" if len(hits) > 4 else ""),
+        )
+    if len(hits) == 1:
+        return CheckResult(name="channel-confusion", status=CheckStatus.PASS,
+                           message=hits[0])
+    return CheckResult(name="channel-confusion", status=CheckStatus.WARN,
+                       message="no aisc executable found on PATH")
+
+
+def _check_platform_support() -> CheckResult:
+    """Check 6d: py3-none-any wheel installs anywhere; payloads are
+    linux-amd64. Unsupported combos get a WARN (no install-time hook
+    exists for pure wheels — guide 3.5.5)."""
+    import platform as _platform
+
+    combo = f"{_platform.system().lower()}-{_platform.machine().lower()}"
+    supported = {"windows-amd64", "linux-x86_64", "darwin-arm64"}
+    if combo in supported:
+        return CheckResult(name="platform-support", status=CheckStatus.PASS,
+                           message=combo)
+    return CheckResult(
+        name="platform-support",
+        status=CheckStatus.WARN,
+        message=f"unsupported combination {combo}",
+        detail="official artifacts are windows-x86_64 / linux-x86_64 / "
+               "macos-arm64; builds may be extremely slow or unstable here",
+    )
+
+
 def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
     """Check 7: Verify key root files exist."""
     if root is None:
@@ -269,19 +381,20 @@ def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
         ]
 
     required = {
-        "VERSION": "VERSION",
-        "container/Dockerfile": "container/Dockerfile",
-        "config/versions.env": "config/versions.env",
+        # A2 dual-shape: repo checkouts carry it at src/aisc/VERSION.
+        "VERSION": ("VERSION", "src/aisc/VERSION"),
+        "container/Dockerfile": ("container/Dockerfile",),
+        "config/versions.env": ("config/versions.env",),
     }
     results: List[CheckResult] = []
-    for label, rel in required.items():
-        p = root / rel
-        if p.is_file():
+    for label, rels in required.items():
+        p = next((root / rel for rel in rels if (root / rel).is_file()), None)
+        if p is not None:
             results.append(
                 CheckResult(
                     name=f"root-file:{label}",
                     status=CheckStatus.PASS,
-                    message=f"{rel} exists",
+                    message=f"{rels[0]} exists",
                 )
             )
         else:
@@ -289,7 +402,7 @@ def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
                 CheckResult(
                     name=f"root-file:{label}",
                     status=CheckStatus.FAIL,
-                    message=f"{rel} not found",
+                    message=f"{rels[0]} not found",
                 )
             )
     return results
@@ -375,6 +488,94 @@ def _check_docker_compose(
         name="docker-compose",
         status=CheckStatus.PASS,
         message=version_line,
+    )
+
+
+def _check_wsl_memory(
+    home: Optional[Path] = None,
+    total_ram_gb: Optional[Callable[[], Optional[float]]] = None,
+    platform: Optional[str] = None,
+) -> CheckResult:
+    """O6 (opt-batch, D-11): WSL2 memory guidance on low-RAM Windows hosts.
+
+    Docker Desktop's WSL2 backend defaults to ~50%/8GB of host RAM (whichever
+    is less) for the utility VM — on an 8GB machine the VM, Vmmem, and the
+    host then fight for memory and the container side (cc-switch daemon OOM,
+    see O5) suffers first. When the host has ≤8GB and `%USERPROFILE%\\.wslconfig`
+    does not cap `memory` under [wsl2], surface a WARN with the recommended
+    snippet. Advisory ONLY — never edits system config. Non-Windows hosts SKIP.
+    """
+    if (platform or sys.platform) != "win32":
+        return CheckResult(name="wsl-memory", status=CheckStatus.SKIP,
+                           message="Windows-only check")
+
+    home = home or Path.home()
+    cfg = home / ".wslconfig"
+
+    def _default_total_ram_gb() -> Optional[float]:
+        import ctypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return None
+        return stat.ullTotalPhys / (1024 ** 3)
+
+    ram = (total_ram_gb or _default_total_ram_gb)()
+    if ram is None:
+        return CheckResult(name="wsl-memory", status=CheckStatus.SKIP,
+                           message="Could not read physical memory")
+
+    capped = False
+    try:
+        if cfg.is_file():
+            in_wsl2 = False
+            for line in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("["):
+                    in_wsl2 = stripped.lower() == "[wsl2]"
+                elif in_wsl2 and stripped.lower().startswith("memory"):
+                    capped = True  # any memory= cap counts, value not judged
+                    break
+    except OSError:
+        pass
+
+    if capped or ram > 8.5:
+        return CheckResult(
+            name="wsl-memory",
+            status=CheckStatus.PASS,
+            message=(
+                f"物理内存 {ram:.0f}GB"
+                + ("，.wslconfig 已设 memory 上限" if capped else "，无需 WSL 内存上限")
+            ),
+        )
+    return CheckResult(
+        name="wsl-memory",
+        status=CheckStatus.WARN,
+        message=(
+            f"物理内存 {ram:.0f}GB 且 .wslconfig 未限制 WSL2 内存——"
+            "Docker 的 WSL2 虚拟机默认可占约 50% 内存，低配机上易与宿主争抢"
+            "（容器侧 cc-switch daemon 可能被 OOM）"
+        ),
+        hint=(
+            "建议在 %USERPROFILE%\\.wslconfig 添加：\n"
+            "[wsl2]\n"
+            f"memory={'4GB' if ram <= 4.5 else '5GB'}\n"
+            "保存后运行 `wsl --shutdown` 生效（仅建议，AISC 不会自动修改）"
+        ),
     )
 
 
@@ -576,6 +777,16 @@ def run_doctor(
     # 6. aisc root — pass through root_error verbatim
     checks.append(_check_aisc_root(root, root_error=root_error))
 
+    # 6b. aisc-bundle store (0.1.0 A3, guide 3.3.4): append-only check —
+    # the pip install form has no repo, so the aisc-root WARN above is
+    # misleading there. This check names the fetch path explicitly.
+    checks.append(_check_bundle_store(root))
+
+    # 6c. A8 (guide 3.5.5): channel + platform-support — multi-channel
+    # installs are the #1 "upgraded but still old version" confusion.
+    checks.append(_check_channel_confusion())
+    checks.append(_check_platform_support())
+
     # 7. root files
     checks.extend(_check_root_files(root))
 
@@ -596,6 +807,9 @@ def run_doctor(
 
     # 10. root writability
     checks.append(_check_root_writable(root))
+
+    # 11. WSL2 memory guidance (O6: WARN-only advisory, never a gate)
+    checks.append(_check_wsl_memory())
 
     exit_code, error_code, error_message = _compute_exit_code(checks)
 

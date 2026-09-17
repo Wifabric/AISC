@@ -1,14 +1,14 @@
 # AISC 开发者手册
 
-> **开发基线：** `develop` 分支，项目版本 `v2.1.4`，状态 Alpha。本文以当前源码、脚本、测试和 `.github/workflows/artifact.yml` 为准；用户安装与命令教程见 `README.md`。
+> **开发基线：** `develop` 分支，项目版本 `0.1.0.dev0`（0.x Alpha，0.1.0 周期起），状态 Alpha。本文以当前源码、脚本、测试和 `.github/workflows/`（tests / cli-sidecar / workbench-ci / nsis-installer / bundle-linux-macos / artifact）为准；用户安装与命令教程见 `README.md`。
 
 ## 1. 分支与发布角色
 
 | 引用 | 角色 | 自动化 |
 | --- | --- | --- |
-| `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Artifact 跨平台构建 |
-| `main` | 面向发布的稳定线；通过 PR 接收已验证变更 | 目标为 `main` 的 PR 触发 Artifact 构建 |
-| `v*` tag | 不可变发布标识，标签内容应与根 `VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
+| `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Workbench CI / cli-sidecar / Bundle / NSIS（按各自 paths 过滤）；Artifact 为 dispatch-only |
+| `main` | 面向发布的稳定线；通过 PR 接收已验证变更（0.1.0 起也是 PyPI pending publisher 绑定的默认分支） | 无自动构建 |
+| `v*` tag | 不可变发布标识，标签内容应与 `src/aisc/VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
 
 不要把三者混成同一种工作流：开发基于 `develop`，发布候选通过 PR 进入 `main`，发布 tag 指向已审核的发布提交。普通 push 到 `main` 不在当前 workflow 的分支触发列表中，也不会创建 Release；只有 `v*` tag 会进入 aggregate 和 release jobs。
 
@@ -21,33 +21,153 @@ git status --short
 
 ## 2. 开发环境
 
-### 2.1 前提
+### 2.1 你在构建什么
 
-- Python 3.11 或更高版本；CI 当前使用 Python 3.12。
-- Git。
-- Docker CLI 和 daemon；纯 Python 单元测试不需要 Docker，镜像和容器验证需要。
-- 可选：uv，用于隔离安装或复现用户的源码安装方式。
-- 打包验证需要 PyInstaller 6.21.0；Windows setup 还需要 Inno Setup，macOS PKG 需要系统打包工具。
+本仓库有三条产物线，开发环境要让三者都能构建、联调：
 
-### 2.2 本地安装
+```text
+src/aisc/（Python CLI）
+  │  PyInstaller 冻结：scripts/build-cli.ps1（Win）/ build-cli.sh（Linux/macOS）
+  ▼
+workbench/src-tauri/binaries/aisc-<triple>[.exe]        Tauri sidecar（externalBin）
+
+container/ + config/ + vendor/ + src/aisc/VERSION
+  │  python packaging/artifact.py stage --output workbench/src-tauri/nsis/bundle
+  ▼
+workbench/src-tauri/nsis/bundle/aisc-bundle/            CLI bundle（随安装器分发）
+  │  cargo build 时再拷贝到 target/debug/aisc-bundle/
+  ▼
+aisc build ──▶ Docker 镜像
+
+workbench/（Vue 3 + TS + Vite）+ workbench/src-tauri/（Tauri 2 + Rust）
+  └─ npm run tauri dev ─▶ 真窗口：UI ⇄ Rust ⇄ sidecar CLI ⇄ Docker
+```
+
+**新手最常见的卡点**：sidecar（`binaries/`）与 bundle（`nsis/bundle/`）都被 .gitignore，
+clone 后两者都不存在，`tauri dev` 起不来——首次搭建必须先构建（2.3 第 7 步 / 2.4）。
+
+### 2.2 前提（版本与 CI 对齐）
+
+| 组件 | 版本 | 说明 |
+| --- | --- | --- |
+| Git | 任意新版本 | |
+| Python | **3.12**（>=3.11 可用） | CI 用 3.12；Windows 宿主 3.14 有坑（见 2.7），故便携 3.12 落 `.tools\python312` |
+| Node | **22** | 与 CI 一致（根 `.nvmrc` 锁 22）；>=26 挂 vitest（见 2.7），故便携副本落 `.tools\node22` |
+| Rust | stable；Windows 用 msvc target，Linux 用 gnu | rustup 安装；Windows 另需 VS Build Tools（C++ 工作负载，供 link.exe） |
+| Docker Desktop | 当前稳定版 | 应用真实功能与镜像/容器验证需要；纯 Python 单测、vitest、vue-tsc 不需要 |
+| WebView2 | Win11 自带 | Tauri Windows 渲染 |
+| Linux 桌面库 | webkit2gtk-4.1 / libayatana-appindicator / librsvg / base-devel | Tauri Linux 渲染；缺了 cargo build 直接报系统库找不到 |
+
+可选：uv（隔离安装、复现用户的源码安装方式）。PyInstaller、pytest 由 `pip install -e ".[dev]"`
+一并安装。Windows 安装器由 Tauri bundler 内置 NSIS 产出（`tauri build` 自动下载工具链，无需
+手装 NSIS）；`packaging/windows/` 下的 Inno 脚本是遗留物，现行安装器模板在
+`workbench/src-tauri/nsis/`。
+
+### 2.3 首次搭建：Windows 裸机（约 30–60 分钟）
+
+原则：**全部工具链项目级/用户级安装，不污染宿主机全局 PATH 与注册表**。代价是每个新开的
+PowerShell 会话要先激活（2.6）——rustup 特意用 `--no-modify-path` 安装，这是设计而非遗漏。
+
+1. 基础件：Git、VS Build Tools（含 C++ 工作负载）、Docker Desktop（Win11 的 WebView2 自带）。
+2. Node 22 便携版：nodejs.org 下载 `node-v22.x-win-x64.zip`，解压为 `.tools\node22`。
+3. Python 3.12 便携版（nuget 包）解压为 `.tools\python312`。
+4. Rust：`rustup-init.exe -y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc`
+   → 装到 `~\.cargo\bin`，PATH 由 dev-env 脚本会话级前置。
+5. venv（CLI 源码 + PyInstaller + pytest）：
+   ```powershell
+   .tools\python312\python.exe -m venv .venv
+   .venv\Scripts\pip install -e ".[dev]"
+   ```
+6. 前端依赖：`cd workbench; npm ci`（lockfile 的 resolved 指向 npmmirror，需可访问）。
+7. **构建 sidecar 与 bundle**（都被 gitignore，clone 后不存在）：
+   ```powershell
+   powershell -File scripts\build-cli.ps1
+   .venv\Scripts\python packaging\artifact.py stage --root . --output workbench\src-tauri\nsis\bundle
+   ```
+   - `build-cli.ps1` 用 PyInstaller 冻结 CLI，产物自动拷到 `workbench\src-tauri\binaries\` 与
+     `target\debug\aisc.exe` 两处（缺任何一处都等于在跑旧代码），并把 `container/`、`config/`、
+     `vendor/` 同步进已存在的 bundle 目录。
+   - 脚本检测到运行中的 aisc 进程会**拒绝构建**（防文件锁半同步）——先关 Workbench 再跑。
+8. 起应用：
+   ```powershell
+   . scripts\dev-env.ps1     # 先激活（必须 dot-source，注意开头的点）
+   cd workbench
+   npm run tauri dev         # 首次 Rust 全量编译数分钟属正常，之后增量 10–60 秒
+   ```
+
+### 2.4 首次搭建：Linux（macOS 类推）
+
+系统依赖（Arch 例，Debian 系用 apt 等价包名）：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -e .
+sudo pacman -S --needed webkit2gtk-4.1 libayatana-appindicator librsvg base-devel
 ```
 
-Windows PowerShell：
+```bash
+git clone <repo> && cd AISC && git checkout develop
+python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+nvm install 22                                        # 任何 22.x 皆可（根 .nvmrc 锁 22）
+curl https://sh.rustup.rs | sh -s -- -y --profile minimal
+bash scripts/build-cli.sh                             # 产出 dist/aisc-<triple>（脚本不代拷）
+cp dist/aisc-x86_64-unknown-linux-gnu workbench/src-tauri/binaries/
+python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
+cd workbench && npm ci && npm run tauri dev
+```
+
+macOS：`build-cli.sh` 产出 `dist/aisc-aarch64-apple-darwin`，同样手动拷入 `binaries/`；
+PKG 打包见 §10。Linux/macOS 日常改 Python 推荐直接 venv 直连（2.5 表中路径 A），免重建 sidecar。
+
+### 2.5 日常循环：改哪层，怎么让它生效
+
+| 改动面 | 生效方式 |
+| --- | --- |
+| `workbench/src`（TS/Vue） | vite HMR，保存即热更 |
+| `workbench/src-tauri`（Rust） | `tauri dev` 检测改动自动重编并重启，10–60 秒 |
+| `src/aisc`（Python CLI） | 路径 **A**（日常首选）：venv 直连——`npm run tauri dev -- -- --aisc-cli ..\.venv\Scripts\aisc.exe`（Linux/macOS 为 `../.venv/bin/aisc`），改完重启 Workbench 即生效，不重建 sidecar。路径 **B**（手测/发布形态）：重跑 `build-cli.ps1|.sh` 重建 sidecar——Python 改动不重建就不生效，曾有应用跑了两天旧 sidecar 的事故 |
+| `container/` | 重跑 `build-cli.ps1` 同步 bundle 源两处（`nsis/bundle` 与 `target/debug`；tauri dev 每次重启都从 `nsis/` 重新拷贝，不同步等于每次重启回退旧代码），再 `bash tools/vendor-refresh.sh` 刷 vendor checksums |
+
+提交前跑全门禁（2.6）。
+
+### 2.6 会话激活与本地门禁
+
+每个新开的 shell 先激活项目工具链（前置 `.tools` Node 22、`~\.cargo\bin`，激活 `.venv`）：
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
+. scripts\dev-env.ps1      # PowerShell（Windows）；必须 dot-source，直接运行不生效
 ```
 
-项目声明 `requires-python = ">=3.11"`，console script 只有 `aisc = aisc.cli.main:main`。`python -m aisc` 可用于源码级调试，但面向用户的唯一宿主入口是 `aisc`。
+```bash
+source scripts/dev-env.sh  # git-bash（Windows）/ Linux
+```
 
-如果命令命中了旧安装：
+全门禁 = pytest 全测（忽略 integration）+ `cargo test --lib` + vitest + vue-tsc，脚本自含激活：
+
+```powershell
+powershell -File scripts\local-gates.ps1    # Windows；pytest 临时根自动指 C:\pt 短路径
+```
+
+```bash
+bash scripts/local-gates.sh                 # Linux；内置 locale / npmmirror 修复
+```
+
+任一红即停；全绿输出 `LOCAL GATES: ALL GREEN`。
+
+### 2.7 已知环境坑速查
+
+| 症状 | 原因 | 修法 |
+| --- | --- | --- |
+| `tauri dev` 报 `failed to run 'cargo metadata' ... program not found` | rustup 是 `--no-modify-path` 安装，新会话无 cargo | 先 dot-source `dev-env`（2.6） |
+| vitest `panelLayout` 用例全挂 | Node ≥26 原生 localStorage 遮蔽 jsdom 注入 | 用 Node 22（dev-env 已前置 `.tools\node22` / nvm 22） |
+| pytest streaming 用例超时挂 | Windows 宿主 Python 3.14：子进程复制 std 句柄，管道 EOF 不释放 | venv 建在 `.tools\python312` 上（2.3 第 5 步） |
+| 测试夹具 `FileNotFoundError`（路径 >260） | Windows MAX_PATH | TMP 指短路径 `C:\pt`（local-gates.ps1 已内置） |
+| `npm ci` 拉包失败 | lockfile resolved 指向 npmmirror | `npm ci --registry=https://registry.npmmirror.com`（local-gates.sh 已内置） |
+| 契约测试断言英文 help 失败 | zh_CN locale 触发 help 输出层翻译 | 跑测时 `LC_ALL=C.UTF-8 LANGUAGE=en`（local-gates.sh 已内置） |
+| `build-cli.ps1` 拒绝构建 | Workbench 运行中，驻留 serve 池锁着 `aisc.exe` | 关闭 Workbench（或结束 aisc 进程）后重跑 |
+
+### 2.8 命中旧安装时
+
+项目声明 `requires-python = ">=3.11"`，console script 只有 `aisc = aisc.cli.main:main`；
+`python -m aisc` 可用于源码级调试，但面向用户的唯一宿主入口是 `aisc`。如果命令命中了旧安装：
 
 ```bash
 command -v aisc
@@ -59,13 +179,21 @@ python3 -c "import aisc; print(aisc.__file__)"
 
 ## 3. 快速验证
 
-最小无 Docker 验证：
+CLI 最小无 Docker 验证（venv 外也能跑）：
 
 ```bash
 PYTHONPATH=src python3 -m aisc version
 PYTHONPATH=src python3 -m aisc build --dry-run
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m pytest tests/ -q --ignore=tests/integration
+# 等价 unittest 跑法：PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
 git diff --check
+```
+
+Workbench 侧（`workbench/` 目录内）：
+
+```bash
+npx vitest run          # 单测
+npx vue-tsc --noEmit    # 类型门禁
 ```
 
 资源和文档验证：
@@ -83,6 +211,8 @@ bash tools/check-docs.sh
 aisc build --no-cache
 aisc run
 ```
+
+真机手测：`tauri dev` 起来后按所在特性分支的手测清单过一遍（`docs/plans/` 各计划与 `docs/devlog.md` 有历轮记录）。
 
 ## 4. 架构与调用链
 
@@ -172,10 +302,10 @@ aisc ps/status/stop/restart/shell/switch
 
 ### 4.4 AISC root 发现
 
-`src/aisc/application/resources.py` 要求 root 包含：
+`src/aisc/application/resources.py` 要求 root 包含（版本 marker 双形，0.1.0 A2 起）：
 
 ```text
-VERSION
+VERSION 或 src/aisc/VERSION    # repo 检出为后者；staged bundle/frozen 为前者
 container/Dockerfile
 config/versions.env
 ```
@@ -223,7 +353,7 @@ docker run --rm -it \
 
 ```text
 AISC/
-  VERSION                     项目版本唯一事实源
+  src/aisc/VERSION            项目版本唯一事实源（A2 起为包内 package-data）
   README.md                   用户手册
   DEVELOP_WIKI.md             本手册
   pyproject.toml              Python 包和 console script
@@ -239,13 +369,17 @@ AISC/
     _bundle/                  手工维护的 vendored 插件和 Skills
     downloads/                Mihomo/geodata 本地构建资源
   config/versions.env         外部依赖与镜像变量
-  src/aisc/                   宿主 Python CLI
-  tests/                      unittest 测试
+  src/aisc/                   宿主 Python CLI（PyInstaller 冻结为 Tauri sidecar）
+  tests/                      Python 测试（stdlib unittest 风格，见 §9）
+  workbench/                  Workbench 桌面端
+    src/                      Vue 3 + TS + Vite 前端
+    src-tauri/                Tauri 2 + Rust 外壳；binaries/（sidecar）与 nsis/bundle/（aisc-bundle）被 gitignore，首次构建生成
+  scripts/                    dev-env / local-gates / build-cli / build-installer 等开发与打包脚本
   packaging/
     artifact.py               stage/archive/verify/build/aggregate
     ci_smoke.py               frozen artifact 版本与布局 smoke
     pyinstaller/entrypoint.py PyInstaller 入口
-    windows/                  Inno Setup 与 installer smoke
+    windows/                  遗留 Inno 脚本与 installer smoke（现行 Windows 安装器模板在 workbench/src-tauri/nsis/）
     macos/                    PKG 构建和手工测试说明
     install.*                 便携安装脚本
     uninstall.*               便携卸载脚本
@@ -261,7 +395,7 @@ AISC/
     plans/                    历史/实施计划，不替代当前源码
     releases/                 tag 对应 Release Notes
     devlog.md                 开发日志
-  .github/workflows/artifact.yml
+  .github/workflows/          tests / cli-sidecar / workbench-ci / nsis-installer / bundle-linux-macos / artifact
 ```
 
 `container/_bundle/` 当前是手工维护资源。文档和流程只能引用仓库中真实存在的维护脚本；不要假设有额外的 Skills staging/cleanup 工具。
@@ -423,19 +557,20 @@ PROXY_ENABLED=0|1
 
 ### 8.4 版本事实源
 
-项目版本只修改根 `VERSION`：
+项目版本只修改 `src/aisc/VERSION`（0.1.0 A2 起，自根 `VERSION` 迁入包内——data-files 形态会落在 site-packages 之外的 `<sys.prefix>/aisc/`，`--user` 安装直接 miss）：
 
-- `src/aisc/__init__.py` 在源码/editable 模式读取它。
-- setuptools 将 `VERSION` 作为 data-file 安装，包元数据仅作兜底。
-- PyInstaller 使用 `--add-data VERSION:.` 嵌入 frozen executable。
+- `src/aisc/__init__.py` 以 `Path(__file__).with_name("VERSION")` 读取（package-data 后为必然命中项）。
+- setuptools 以 `[tool.setuptools.package-data]` 安装进包内；动态版本 `{file = "src/aisc/VERSION"}`（构建期不 import 包）。
+- PyInstaller 使用 `--add-data src/aisc/VERSION:.` 嵌入 frozen executable（仍落 `_MEIPASS` 根）。
+- staged bundle 内部布局不变：bundle 根保留自己的 `VERSION`（已安装产物契约）。repo 根与 bundle 根靠双形 marker 识别（`resources.py`/`artifact.py`：`VERSION` 或 `src/aisc/VERSION` + `container/Dockerfile` + `config/versions.env`）。
 - `packaging/artifact.py` 用它命名产物、生成 bundle manifest 并执行一致性保护。
 - `packaging/ci_smoke.py` 比较 executable 的 `cli_version` 与期望版本。
 
-不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `VERSION`；Release Notes 文件名和 tag 从该值派生。
+不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `src/aisc/VERSION`；Release Notes 文件名和 tag 从该值派生。
 
 ### 8.5 外部依赖与可复现性
 
-`config/versions.env` 是外部依赖和镜像变量的声明位置：
+`config/versions.env` 是外部依赖和镜像变量的声明位置（0.1.0 A5 起被构建消费：CLAUDE_CODE_VERSION/CODEX_VERSION 作为 build args 转发；用户层覆盖见 `<数据根>/config/versions.env`——`aisc update --pin-tool` 写入，按键覆盖出厂值，CLI 更新/NSIS 升级/bundle fetch 均不触碰，D-27）：
 
 | 变量 | v2.1.4 当前值 | 消费与风险 |
 | --- | --- | --- |
@@ -464,13 +599,16 @@ PROXY_ENABLED=0|1
 
 ### 9.1 实际框架和主命令
 
-仓库当前测试使用 Python stdlib `unittest`。实际完整测试命令是：
+仓库测试以 Python stdlib `unittest` 风格编写——不依赖 pytest fixture（dev extra 里的 pytest 只作运行器，不引入 fixture 依赖）。两种跑法等价，都在实际使用：
 
 ```bash
+# unittest（tests.yml CI 与源码级调试）
 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+# pytest（workbench-ci.yml 与 local-gates 门禁；忽略 integration）
+python -m pytest tests/ -q --ignore=tests/integration
 ```
 
-不要把 pytest 作为项目测试主命令。`pyproject.toml` 的 dev extra 虽包含 pytest，但当前受维护测试和 CI packaging tests 都通过 unittest 运行，也不应引入依赖 pytest fixture 的必要测试。
+新增测试保持 unittest 风格。真 SSH 集成测试在 `AISC_TEST_SSH` 门控下运行（无该环境变量即跳过）。
 
 ### 9.2 测试范围
 
@@ -490,7 +628,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
 - `FakeDockerExecutor` 用于不连接 daemon 的计划和命令测试。
 - artifact 测试使用临时目录，不应在仓库中留下 staging/dist。
 - 静态 entrypoint 测试不能替代真实 Docker 启动；修改镜像、权限、TUN、文件系统锁或 Windows bind mount 后需要对应平台 smoke。
-- CI 当前只显式运行 `tests/packaging`，不是完整 unittest；`develop` 合入前仍应本地运行完整命令。
+- CI 分工：`tests.yml` 跑完整 unittest discover；`workbench-ci.yml` 在改动涉及 CLI 时跑 pytest 全量。`develop` 合入前仍应本地跑 `scripts/local-gates.ps1|.sh` 全门禁。
 
 ## 10. 打包与产物
 
@@ -542,7 +680,11 @@ CI 矩阵及唯一官方平台集合：
 
 ## 11. CI 与发布
 
-### 11.1 Artifact workflow
+### 11.1 Workflow 清单
+
+0.1.0 起共 7 个 workflow：`tests.yml`（manual dispatch）、`cli-sidecar.yml`、`workbench-ci.yml`、`nsis-installer.yml`、`bundle-linux-macos.yml`（四者 push + paths 过滤）、`artifact.yml`（**dispatch-only**，tag ref 上跑 build→aggregate→release）、`pypi-publish.yml`（**dispatch-only**，输入已存在 v* tag；见 ADR-002/§11.2 5b）。「唯一 workflow」时代的描述以本清单为准。
+
+### 11.1b Artifact workflow
 
 `.github/workflows/artifact.yml` 是当前唯一 GitHub Actions workflow：
 
@@ -586,7 +728,7 @@ tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为
 示例中的版本值必须从 `VERSION` 读取，避免手写漂移：
 
 ```bash
-VERSION_VALUE="$(python3 -c "from pathlib import Path; print(Path('VERSION').read_text().strip())")"
+VERSION_VALUE="$(python3 -c "from pathlib import Path; print(Path('src/aisc/VERSION').read_text().strip())")"
 git tag -a "v${VERSION_VALUE}" -m "Release v${VERSION_VALUE}"
 git push origin "v${VERSION_VALUE}"
 ```
@@ -594,13 +736,24 @@ git push origin "v${VERSION_VALUE}"
 创建 tag 前至少运行：
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+python -m pytest tests/ -q --ignore=tests/integration   # 全测（Windows 注意 TMP 短路径，见 2.7）
+python scripts/check-version-sync.py                    # 四件套一致性（0.1.0 起）
 bash tools/check-docs.sh
 bash tools/vendor-verify.sh
-python3 packaging/artifact.py stage --output /tmp/aisc-staging
-python3 packaging/artifact.py verify --bundle /tmp/aisc-staging/aisc-bundle
+python packaging/artifact.py stage --output /tmp/aisc-staging
+python packaging/artifact.py verify --bundle /tmp/aisc-staging/aisc-bundle
+pip install build pipx twine && python scripts/verify-cli-install.py   # clean-room 三腿 + off-checkout + twine（0.1.0 起）
 git diff --check
 ```
+
+**5b. PyPI 步骤（0.1.0 起，ADR-002）**：GitHub Release 完成后——
+
+1. `workflow_dispatch` 运行 `pypi-publish.yml`，输入该 tag；build 段跑全部守卫（tag==VERSION、check-version-sync、twine check、薄形负向、gitleaks、pip-audit）。
+2. TestPyPI 自动发布（environment `testpypi`，skip-existing）→ verify-testpypi（真实 index 安装验证，含传播重试）。
+3. **`pypi` environment 人工审批**（Required reviewers）→ 正式发布（final-only 正则门挡 dev/rc）→ verify-pypi → SBOM 附到同一 Release。
+4. 发布后紧跟一提交 bump 到 `X.Y.(Z+1).dev0`。
+
+dev 迭代（TestPyPI only）：每次上传前四件套 bump `.devN` → 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
 
 不要覆盖已发布 tag，不要 force-push 发布引用。Release Notes 缺失会使 release job 无法读取 `body_path`；平台 job 任一失败会阻止 aggregate/release。
 
@@ -638,7 +791,8 @@ git diff --check
 | --- | --- | --- |
 | `README.md` | 最终用户当前行为、安装、CLI、排障 | 用户文档事实入口 |
 | `DEVELOP_WIKI.md` | 当前开发架构、流程和契约 | 维护者事实入口 |
-| `docs/adr/001-python-stdlib-cli.md` | 使用 Python stdlib CLI 的决策 | 架构决策背景 |
+| `docs/adr/001-python-stdlib-cli.md` | 使用 Python stdlib CLI 的决策（分发/依赖部分被 002 取代） | 架构决策背景 |
+| `docs/adr/002-pypi-distribution.md` | 三轨分发、PyPI 瘦 wheel、六级解析链、fetch 信任模型 | 0.1.0 发布架构 |
 | `docs/rfc/aisc-cli-v1.md` | JSON envelope / JSONL 协议 | 机器接口契约 |
 | `docs/plans/` | 实施计划与历史设计 | 不能覆盖当前源码事实 |
 | `docs/devlog.md` | 变更历史 | 非命令参考 |

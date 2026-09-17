@@ -1,0 +1,1076 @@
+/** Minimal Workbench domain types (S1.1 scaffold + S1.4 UI types).
+ * Mirrors the aisc.cli/v1 JSON shapes and Workbench Tauri command payloads. */
+
+export type Agent = "claude" | "codex" | "bash" | "cc-switch";
+
+export interface RuntimeConfig {
+  workspace: string;
+  image: string;
+  network: "direct" | "proxy";
+  scope: "project" | "temporary";
+}
+
+export type RuntimeState =
+  | "unknown"
+  | "not_found"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "removing";
+
+export interface RuntimeInfo {
+  runtime_id: string;
+  container_name: string;
+  state: RuntimeState;
+  config: RuntimeConfig;
+}
+
+export type SessionState =
+  | "starting"
+  | "running"
+  | "closing"
+  | "exited"
+  | "failed"
+  | "disconnected";
+
+export interface SessionInfo {
+  session_id: string;
+  runtime_id: string;
+  agent: Agent;
+  state: SessionState;
+  exit_code: number | null;
+}
+
+// --- S1.2: CLI runner / capability / errors ---
+
+export type WorkbenchAction =
+  | "retry"
+  | "refresh"
+  | "upgrade_cli"
+  | "start_docker"
+  | "build_image"
+  | "choose_workspace"
+  | "choose_cli"
+  | "none";
+
+export interface WorkbenchError {
+  code: string;
+  message: string;
+  technical_detail: string | null;
+  retryable: boolean;
+  action: WorkbenchAction;
+}
+
+export interface VersionInfo {
+  cli_version: string | null;
+  bundle_version: string | null;
+  contract_version: string | null;
+  image_version: string | null;
+  claude_version: string | null;
+  python_version: string | null;
+}
+
+export interface Capabilities {
+  runtime: string | null;
+  session: string | null;
+  providerStatus: string | null;
+  buildEvents: string | null;
+  runtimeServices?: string | null;
+}
+
+export interface CapabilityReport {
+  required_ok: boolean;
+  runtime: boolean;
+  session: boolean;
+  provider_status: boolean;
+  build_events: boolean;
+  /** svc-4 (web gateway): optional — gates the Services panel. */
+  runtime_services: boolean;
+  missing_required: string[];
+  missing_optional: string[];
+  version_info: VersionInfo | null;
+  error: WorkbenchError | null;
+}
+
+export type CandidateSource = "explicit" | "saved" | "path" | "platform" | "sidecar";
+
+export interface Candidate {
+  path: string;
+  source: CandidateSource;
+  valid: boolean;
+  version_info: VersionInfo | null;
+  capabilities: Capabilities | null;
+  error: string | null;
+}
+
+export interface DiscoveryReport {
+  candidates: Candidate[];
+  selected: string | null;
+  needs_confirm: boolean;
+  error: WorkbenchError | null;
+}
+
+// --- S1.3: PTY / session ---
+
+export interface SessionSnapshot {
+  session_id: string;
+  runtime_id: string;
+  agent: Agent;
+  state: SessionState;
+  generation: number;
+}
+
+export type AckResult = "acknowledged" | "already_acknowledged";
+
+// --- v2.1.8 T4: agent conversation discovery (design §1f) ---
+
+/** One agent history conversation (thin read over provider JSONL; the CLI
+ *  owns the schema — workspaces/<hash>/{claude,codex}). */
+export interface ConversationSummary {
+  conversation_id: string;
+  agent: "claude" | "codex";
+  title: string;
+  started_at: string | null;
+  last_at: string | null;
+  /** null when only a head scan was taken (file_too_large). */
+  message_count: number | null;
+  file_size: number;
+  resumable: boolean;
+  unavailable_reason?: "file_too_large" | "malformed" | "unsupported";
+}
+
+export interface ConversationListResult {
+  schema_version: number;
+  conversations: ConversationSummary[];
+}
+
+export interface ConversationPreflightResult {
+  conversation_id: string;
+  agent: string;
+}
+
+export interface ConversationDeleteResult {
+  deleted: boolean;
+  conversation_id: string;
+  agent: string;
+}
+
+export interface ConversationRenameResult {
+  renamed: boolean;
+  conversation_id: string;
+  agent: string;
+  title: string;
+}
+
+/** Result of the unified exit coordinator (03 §4.3; runtime-lifecycle-ux
+ * 02 §4 adds the per-runtime cleanup entries — absent on the legacy
+ * sessions-only path). */
+export interface ShutdownReport {
+  graceful_closed: number;
+  force_reaped: number;
+  terminate_timed_out: number;
+  reap_timed_out: number;
+  unreaped_session_ids: string[];
+  flush_errors: string[];
+  runtime_cleanup?: RuntimeCleanupEntry[];
+}
+
+export interface SessionExit {
+  exit_code: number | null;
+  reason: string;
+  finished_at_ms: number;
+}
+
+export type PtyEvent =
+  /** `offset` (O2, D-11): the chunk's starting position in the session's
+   * RAW byte stream — monotonic across both pumps, used to page earlier
+   * output back from the on-disk spool. */
+  | { type: "output"; seq: number; bytes: string; offset: number }
+  | { type: "exit"; reason: string; exitCode: number | null }
+  | { type: "error"; code: string; message: string };
+
+// --- O2 (opt-batch, D-11): output spool readback ---
+
+/** One page of earlier output read from the session spool (raw positions). */
+export interface SpoolPage {
+  start: number;
+  length: number;
+  /** base64 of the raw [start, start+length) byte range */
+  bytes: string;
+  /** true when the page reached the beginning of the durable prefix */
+  eof: boolean;
+}
+
+// --- S1.4: runtime control ---
+
+export interface RuntimeStartResult {
+  runtime_id: string;
+  container_name: string;
+  state: string;
+  ready: boolean;
+}
+
+/** Request for Terminal.vue to open a session (owned by the store). */
+export interface SessionRequest {
+  runtimeId: string;
+  sessionId: string;
+}
+
+// --- S2.1.a: preflight + inspect ---
+
+// --- G-13: one-click diagnosis (05 §六, Step 12) ---
+
+export type DoctorStatus = "pass" | "warn" | "fail" | "skip";
+
+/** One `aisc doctor` host check (05 §六): hint/detail are per-check, already
+ * redacted Rust-side; unknown fields are ignored. */
+export interface DoctorCheck {
+  name: string;
+  status: DoctorStatus;
+  message: string;
+  detail: string | null;
+  hint: string | null;
+}
+
+export interface DoctorSummary {
+  passed: number;
+  warnings: number;
+  failures: number;
+  skipped: number;
+}
+
+/** `data.host` from the doctor envelope; `data.container` is not surfaced. */
+export interface DoctorReport {
+  checks: DoctorCheck[];
+  summary: DoctorSummary;
+}
+
+/** Stage 6 (REL-01): one bounded operation trace. */
+export interface OpTrace {
+  operationId: string;
+  source: string; // rust | cli | docker | ui
+  phase: string;
+  durationMs: number;
+  outcome: string; // ok | error | cancel
+  errorCode: string | null;
+  retryable: boolean;
+  action: string | null;
+  detail: string | null;
+}
+
+/** Stage 6 (REL-01): allowlisted redacted diagnostic bundle (D6-05/06). */
+export interface DiagnosticBundle {
+  generatedAtMs: number;
+  appVersion: string;
+  platform: string;
+  settings: unknown;
+  envReadiness: EnvReadiness;
+  doctor: DoctorReport | null;
+  recentOperations: OpTrace[];
+  /** lifecycle-logging (P3): recent tail of the shared JSONL timeline
+   * (secret-free by construction — P1's allowlisted schema). */
+  recentLogLines: LogEvent[];
+  /** lifecycle-logging (P4): `docker logs --tail 50` per managed container
+   * (empty when docker is unavailable). */
+  containerLogs: ContainerLogTail[];
+  /** Stage 7 (DATA-04): canonical data root { root, origin }. */
+  dataRoot: { root: string; origin: string } | null;
+  path: string | null;
+}
+
+/** lifecycle-logging: one event line on the shared timeline. Fixed core
+ * keys plus loose extras (command/phase/duration_ms/error_code …). */
+export interface LogEvent {
+  ts: string;
+  level: string;
+  source: string;
+  event: string;
+  run_id?: string;
+  [key: string]: unknown;
+}
+
+/** lifecycle-logging (P3): the `logs_tail` IPC payload. */
+export interface LogsTail {
+  path: string | null;
+  lines: LogEvent[];
+}
+
+/** lifecycle-logging (P4): one managed container's `docker logs` tail. */
+export interface ContainerLogTail {
+  name: string;
+  id: string;
+  status: string;
+  tail: string;
+}
+
+export type CheckStatus = "pass" | "warn" | "fail";
+
+export interface PreflightCheck {
+  id: string; // docker | workspace | image | network | runtime_conflict
+  status: CheckStatus;
+  error_code: string | null;
+  detail: string | null;
+}
+
+export type RecommendedAction = "start" | "reuse" | "restart" | "resolve_conflict";
+
+export interface PreflightReport {
+  spec: unknown;
+  checks: PreflightCheck[];
+  can_start: boolean;
+  recommended_action: RecommendedAction;
+  matching_runtime_id: string | null;
+  conflicts: unknown;
+  observed_at: string;
+}
+
+/** `aisc runtime inspect/list/stop/restart/remove` snapshot (05 §5.3-5.5).
+ * Mirrors the CLI RuntimeSnapshot.to_dict(); no `ready` field (that is on the
+ * start payload only). */
+export interface RuntimeSnapshot {
+  runtime_id: string;
+  state: RuntimeState;
+  config: RuntimeConfig;
+  owner: string;
+  config_fingerprint: string;
+  container_name: string;
+  container_id: string;
+  registry_state: string;
+  observed_at: string;
+  stale: boolean;
+  /** svc-0: absent on old CLI payloads → treat as unavailable (legacy). */
+  web_access?: WebGatewayInfo | null;
+  /** runtime-lifecycle-ux 3a: advisory policy + toolchain health (absent on
+   *  old CLIs — consumers render nothing). */
+  dependency_policy?: string;
+  toolchain?: {
+    mounted: boolean;
+    storage: string;
+    compatibility: "compatible" | "warning" | "unknown";
+  };
+}
+
+/** `aisc runtime list` envelope data (05 §5.3). */
+export interface RuntimeListResult {
+  runtimes: RuntimeSnapshot[];
+  observed_at: string;
+}
+
+// --- svc-0 (container web-service access): aisc.runtime-services/v1 ---------
+// Frozen contract: docs/plans/container-service-access/decisions.md. Missing
+// `web_access` (old CLI / legacy runtime) degrades to "unavailable" — never
+// a failed parse.
+
+/** Gateway reachability snapshot; shared by `RuntimeSnapshot.web_access` and
+ * `RuntimeServicesResult.gateway`. `reason` is set only when unavailable. */
+export interface WebGatewayInfo {
+  state: "ready" | "unavailable";
+  container_port: number;
+  host_port: number;
+  host: string;
+  reason?: string; // WebUnavailableReason, "" when ready
+}
+
+export type WebUnavailableReason =
+  | "legacy_runtime"
+  | "runtime_not_running"
+  | "gateway_unreachable"
+  | "docker_unavailable"
+  | "no_mapping";
+
+/** One service row in a `runtime services` payload (URL attached). */
+export interface WebServiceInfo {
+  port: number;
+  protocol: string;
+  name: string;
+  state: string; // v1: only "registered"
+  url: string;
+}
+
+/** `aisc runtime services` payload (schema aisc.runtime-services/v1). */
+export interface RuntimeServicesResult {
+  schema_version: string;
+  runtime_id: string;
+  gateway: WebGatewayInfo;
+  services: WebServiceInfo[];
+  observed_at: string;
+}
+
+// --- runtime-lifecycle-ux Stage 2: reconcile + lease + structured shutdown ---
+// Field names mirror the Python payloads verbatim (snake_case); a blocked
+// classification is a VALID answer — can_proceed=false is not an error.
+
+export type ReconcileClassification =
+  | "clean"
+  | "active_same_instance"
+  | "stale_ephemeral"
+  | "active_other_instance"
+  | "unknown_owner"
+  | "stale_registry"
+  | "docker_unavailable";
+
+export interface ReconcileCleanupInfo {
+  attempted: boolean;
+  stopped: boolean;
+  removed: boolean;
+  registry_pruned: boolean;
+}
+
+export interface ReconcilePayload {
+  schema_version: string;
+  workspace_key: string;
+  classification: ReconcileClassification;
+  runtime_id: string | null;
+  can_proceed: boolean;
+  cleanup: ReconcileCleanupInfo;
+  observed_at: string;
+  error_code: string | null;
+  technical_detail: string | null;
+}
+
+export interface LeaseClaimResult {
+  outcome: "claimed" | "claimed_stale" | "reclaimed";
+  lease_id: string;
+  workspace_key: string;
+}
+
+export type RuntimeRetention = "remove_on_close" | "keep_stopped" | "keep_running";
+
+export interface ShutdownTarget {
+  workspace: string;
+  runtimeId: string;
+  retention?: RuntimeRetention;
+}
+
+export interface ShutdownRequest {
+  workspaces: ShutdownTarget[];
+  reason: "window_close" | "tray_exit" | "app_exit";
+}
+
+export interface RuntimeCleanupEntry {
+  workspace: string;
+  runtime_id: string;
+  action: "removed" | "kept" | "skipped" | "failed";
+  state: "stopped" | "not_found" | "unknown";
+  error_code: string | null;
+}
+
+/** `aisc provider current` snapshot (05 §七). Secret-free: routing/auth only.
+ * `agent` is claude | codex (bash/cc-switch are not applicable). */
+export interface ProviderStatus {
+  runtime_id: string;
+  agent: Agent;
+  provider_id: string;
+  provider_name: string;
+  route_mode: string; // official-direct | cc-switch-proxy | unknown
+  auth_status: string; // configured | login_required | not_configured | unknown
+  observed_at: string;
+}
+
+// --- Stage 8e (CS-05/06): cc-switch provider data plane (v1, secret-free) ---
+
+/** One provider row from the in-container adapter snapshot. The API key is
+ * only ever represented as `api_key_mask` (**** + last 4). */
+export interface CcSwitchProvider {
+  id: string;
+  name: string;
+  app_type: string;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+  api_key_mask: string;
+  /** 2.1.11 P1: present ONLY on the row explicitly targeted by
+   * `--reveal-id` (edit-time explicit view); every other row — and every
+   * other snapshot — stays secret-free. */
+  api_key?: string;
+  is_current: boolean;
+  /** IDEA-5 (5c): secret-free whitelist view of the role-model env (five
+   * slots + effort + base URL); credential keys are structurally absent.
+   * Optional: older CLI envelopes predate it. */
+  role_env?: Record<string, string>;
+  /** Preset rows: historical ∪ current preset-written model ids (the
+   * offline dropdown tier); custom rows carry an empty list. Optional for
+   * the same envelope-compat reason. */
+  known_models?: string[];
+  /** PP (D-12): the upstream wire format (the local router's protocol
+   * selector) — read-side priority meta > preset > agent default. */
+  api_format?: "anthropic" | "openai_chat" | "openai_responses";
+  /** PP (D-12): display columns (db-backed; survive the edit dance). */
+  notes?: string;
+  website_url?: string;
+  icon?: string;
+  icon_color?: string;
+  /** PP (D-12): codex mapping catalog (the /model list source). */
+  model_catalog?: CcSwitchCatalogEntry[];
+}
+
+/** PP (D-12): one codex mapping row (model id / display name / window). */
+export interface CcSwitchCatalogEntry {
+  model: string;
+  display_name: string;
+  context_window: number;
+}
+
+/** `aisc cc-switch fetch-models` result — tier 1 of the mapping dropdown.
+ * `available=false` carries the upstream message (e.g. HTTP 401) as a hint;
+ * the UI falls back to known_models + manual input. */
+export interface FetchModelsResult {
+  available: boolean;
+  models: string[];
+  message: string;
+}
+
+export interface CcSwitchProvidersResult {
+  agent: string;
+  providers: CcSwitchProvider[];
+  operation_id: string;
+}
+
+/** Request document for add/edit. `api_key` is the secret channel (transient
+ * form state → Tauri IPC → CLI stdin; never argv/storage/logs). */
+export interface CcSwitchRequest {
+  mode?: "simple" | "custom";
+  id?: string;
+  provider?: string; // preset id (simple mode)
+  name?: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  /** PP (D-12): extras accepted by add (top level) and edit (patch). */
+  api_format?: "anthropic" | "openai_chat" | "openai_responses";
+  notes?: string;
+  website_url?: string;
+  icon?: string;
+  icon_color?: string;
+  model_catalog?: { models: Array<{ model: string; contextWindow?: number; display_name?: string }> };
+  patch?: {
+    name?: string;
+    base_url?: string;
+    model?: string;
+    env?: Record<string, string | null>;
+    api_format?: "anthropic" | "openai_chat" | "openai_responses";
+    notes?: string;
+    website_url?: string;
+    icon?: string;
+    icon_color?: string;
+    model_catalog?: { models: Array<{ model: string; contextWindow?: number; display_name?: string }> };
+  };
+}
+
+// --- IDEA-2 (2d): subscription status + provider token usage ---
+
+/** Raw `subscription-userinfo` header values (bytes / unix seconds); the
+ * whole object is null when the source provided no usage header. */
+export interface SubscriptionUserInfo {
+  upload?: number;
+  download?: number;
+  total?: number; // 0 = unlimited plan
+  expire?: number;
+}
+
+/** Secret-free subscription snapshot (envelope of `aisc network subscription
+ * …`); the full URL only ever lives in the data-root snapshot file. */
+export interface SubscriptionStatus {
+  configured: boolean;
+  source: "download" | "manual" | null;
+  url_masked: string | null;
+  fetched_at: string | null;
+  config_sha256: string | null;
+  has_config_file: boolean;
+  userinfo: SubscriptionUserInfo | null;
+  /** Where the usage facts came from when userinfo is present:
+   * "header" (subscription-userinfo) | "node-names" (airports that embed the
+   * plan facts as fake proxy nodes — 挂账② fallback). */
+  userinfo_source?: "header" | "node-names" | null;
+  config_path?: string;
+}
+
+export type UsageRange = "today" | "7d" | "30d";
+
+/** Per-provider aggregation row (tokens = input+output+cache read+creation). */
+export interface UsageProviderRow {
+  app: string;
+  provider_id: string;
+  provider_name: string;
+  requests: number;
+  success: number;
+  failed: number;
+  tokens_total: number;
+  cost_estimate: number;
+  currency: string;
+}
+
+export interface UsageModelRow {
+  app: string;
+  model: string;
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  cost_estimate: number;
+}
+
+export interface UsageWorkspaceEntry {
+  workspace_hash: string;
+  workspace_path: string;
+  running: boolean;
+  container: string;
+  source: "live" | "cache" | "none";
+  fetched_at: string | null;
+  available: boolean;
+  providers: UsageProviderRow[];
+  models: UsageModelRow[];
+}
+
+export interface UsageOverview {
+  subscription: SubscriptionStatus;
+  range: UsageRange | string;
+  since: number;
+  workspaces: UsageWorkspaceEntry[];
+  totals: {
+    providers: UsageProviderRow[];
+    requests: number;
+    tokens_total: number;
+    cost_estimate: number;
+  };
+}
+
+// --- S2.4.a: workbench history (02 §九.2 subset) ---
+
+export interface RuntimeRef {
+  runtime_id: string;
+  image: string;
+  network: string;
+  scope: string;
+}
+
+export interface TabRecord {
+  tab_id: string;
+  agent: Agent;
+  title: string;
+  position: number;
+  /** G-17: the tab's split tree (absent for a flat G-08 tab). */
+  split_layout?: SplitLayout | null;
+}
+
+export interface Layout {
+  active_tab_id: string | null;
+  tabs: TabRecord[];
+}
+
+// --- G-17 (Step 16): PaneTree model (03 §6.1/6.3) ---
+
+export type SplitAxis = "horizontal" | "vertical";
+
+/** In-memory PaneTree tagged union (camelCase; see stores/paneTree.ts ops). */
+export interface PaneSplitNode {
+  kind: "split";
+  axis: SplitAxis;
+  ratio: number;
+  first: PaneNode;
+  second: PaneNode;
+}
+export interface PaneLeafNode {
+  kind: "pane";
+  paneId: string;
+  sessionType: LaunchAgent;
+}
+export type PaneNode = PaneSplitNode | PaneLeafNode;
+
+/** Persisted PaneTree tagged union (snake_case, mirrors the Rust PaneNode).
+ * History schema v2. */
+export type PersistedPaneNode =
+  | {
+      kind: "split";
+      axis: SplitAxis;
+      ratio: number;
+      first: PersistedPaneNode;
+      second: PersistedPaneNode;
+    }
+  | { kind: "pane"; pane_id: string; session_type: LaunchAgent };
+
+/** Per-tab split layout persisted in history v2. */
+export interface SplitLayout {
+  version: number;
+  active_pane_id: string;
+  root: PersistedPaneNode;
+}
+
+/** Live per-pane session state (pane tree leaf runtime; the pane's static
+ * session type lives in the leaf, not here). */
+export interface PaneRuntime {
+  sessionId: string | null;
+  sessionState: TabSessionState;
+  exit: TabExit | null;
+}
+
+export interface WorkspaceRecord {
+  path: string;
+  last_used_at: string;
+  pinned: boolean;
+  last_agent: string;
+  runtime: RuntimeRef | null;
+  layout: Layout | null;
+}
+
+/** Patch a window submits to save_history: workspaces to upsert by path. */
+export interface HistoryPatch {
+  workspaces: WorkspaceRecord[];
+}
+
+export interface WorkbenchHistory {
+  schema_version: number;
+  revision: number;
+  workspaces: WorkspaceRecord[];
+}
+
+// --- v2.1.7 S2: workspace forget transaction (⑦⑧) ---
+
+/** Read-only preview for the forget confirm dialog: what WOULD be deleted,
+ *  what stays, and whether anything blocks the operation right now. */
+export interface ForgetPreview {
+  workspacePath: string;
+  workspaceKey: string;
+  /** "open-here" | "lease-active" | null (null = clear to proceed). */
+  blockedReason: string | null;
+  dataPresent: boolean;
+  /** State-category NAMES under workspaces/<key>/ (claude/codex/cc-switch/
+   *  runtime/toolchain, plus "other:N") — never file contents. */
+  categories: string[];
+  /** Named toolchain volumes that will be KEPT (D12), listed for manual
+   *  cleanup; empty when none exist or the check was skipped. */
+  namedVolumes: string[];
+  warnings: string[];
+}
+
+/** Structured outcome of the single-IPC forget transaction. */
+export interface ForgetResult {
+  workspaceKey: string;
+  historyRemoved: boolean;
+  dataRemoved: boolean;
+  /** Quarantine dir left behind when the purge failed (recoverable). */
+  quarantineLeft: string | null;
+  namedVolumesKept: string[];
+  warnings: string[];
+}
+
+// --- Stage 5 (ONB-01): onboarding state (schema-versioned, no secrets) ---
+
+export type OnboardingStatus =
+  | "not_started"
+  | "in_progress"
+  | "skipped"
+  | "blocked"
+  | "completed"
+  | "abandoned";
+
+export interface OnboardingState {
+  schema_version: number;
+  flow_version: number;
+  status: OnboardingStatus;
+  current_step: string;
+  completed_steps: string[];
+  skipped_steps: string[];
+  last_error_code: string;
+  source: string;
+}
+
+/** Frontend patch to onboarding_update; all fields optional, never secrets. */
+export interface OnboardingPatch {
+  status?: OnboardingStatus;
+  currentStep?: string;
+  completeStep?: string;
+  skipStep?: string;
+  lastErrorCode?: string;
+  source?: string;
+}
+
+/** Installer handoff facts (NSIS → Workbench, non-sensitive, never a fact — D5-07). */
+export interface InstallerHandoff {
+  installer_source: string;
+  installed_version: string;
+  first_run: boolean;
+  docker_hint: string;
+  present: boolean;
+  product_name: string;
+}
+
+// --- Stage 5 (A-ONB02): environment readiness (installed ≠ engine ready) ---
+
+export interface EnvReadiness {
+  cli: string;        // unknown | checking | ready | unavailable
+  docker: string;     // unknown | not_installed | installing | installed | starting | ready | blocked
+  engine: string;     // unknown | unavailable | starting | ready | permission_denied
+  webview2: string;   // unknown | ready | missing
+  dockerDesktopPath: string;
+  cliPath: string;
+  /** Redacted reason the engine probe is not ready (spawn err / exit / timeout /
+   *  docker CLI missing). "" when ready. Surfaced for diagnostics (Stage 6 KI-1). */
+  engineDetail: string;
+}
+
+export type LaunchAgent = "claude" | "codex" | "bash" | "cc-switch";
+
+export interface LaunchConfig {
+  image: string;
+  network: "direct" | "proxy";
+  scope: "project" | "temporary";
+}
+
+// --- S2.1.b: build events (05 §4.1) ---
+
+export interface BuildEvent {
+  protocol?: string;
+  command?: string;
+  run_id?: string;
+  seq?: number;
+  type: string; // build.start | build.plan | build.output | build.complete | build.failed | build.cancelled
+  ts?: string;
+  data?: Record<string, unknown>;
+}
+
+export type BuildStatus = "idle" | "building" | "complete" | "failed" | "cancelled";
+
+// --- v2.1.7 S4 (Gate-S4 §1): structured build progress ---
+
+/** `build.progress` data payload — the ONLY progress fact source (the UI
+ *  never parses build.output). Null fields mean "not reliably known". */
+export interface BuildProgressData {
+  phase: "prepare" | "pull" | "steps" | "export" | "done" | string;
+  step_current: number | null;
+  step_total: number | null;
+  /** Determinate percent, monotonic, <100 until build.complete. */
+  percent: number | null;
+  progress_kind: "determinate" | "indeterminate";
+  summary: string;
+}
+
+// --- S2.3.a: observability (04 §六.1) ---
+
+/** Runtime observation freshness quality (not a Runtime state). */
+export type Freshness = "fresh" | "stale" | "unknown";
+
+// --- S2.2.a: multi-tab (03 §五/§六) ---
+
+/** Per-tab session lifecycle. `idle` = never opened; the rest mirror SessionState.
+ * (O9, D-11: the "dormant" lazy-restored placeholder state was removed — a
+ * reopened workspace restores every tab with live sessions immediately.) */
+export type TabSessionState = "idle" | "guide" | SessionState;
+
+/** Minimal exit info shown on an exited/failed tab (reason + code only). */
+export interface TabExit {
+  reason: string;
+  exitCode: number | null;
+}
+
+/**
+ * A fixed agent tab (03 §六). `sessionId` is null while idle or after exit;
+ * the session state machine drives the binding (idle -> starting -> running ->
+ * exited/disconnected/failed). Tab identity persists for the workspace session;
+ * history persistence lands in S2.4.
+ *
+ * G-17 (Step 16): a tab owns a PaneTree. `agent`/`sessionId`/`sessionState`/
+ * `exit` remain the ACTIVE pane projection (so TabBar/sidebar/title keep
+ * working); `tree`/`activePaneId`/`panes` hold the pane model. A G-08 flat tab
+ * is a single-leaf tree.
+ */
+export interface Tab {
+  tabId: string;
+  agent: LaunchAgent;
+  title: string;
+  sessionId: string | null;
+  sessionState: TabSessionState;
+  exit: TabExit | null;
+  /** Saved history tab_id when restored (02 §2.3 saved→new mapping); null for
+   * freshly created tabs. */
+  savedTabId: string | null;
+  /** G-17: the tab's split tree (camelCase in-memory PaneNode). */
+  tree: PaneNode;
+  /** G-17: active pane id (the session projection mirrors this pane). */
+  activePaneId: string;
+  /** G-17: per-pane live state keyed by pane id (always holds the active pane). */
+  panes: Record<string, PaneRuntime>;
+  /** v2.1.8 T4: the provider conversation this tab resumed (undefined for
+   *  non-resume tabs). Lets the History tab activate the live tab instead
+   *  of spawning a duplicate resume that the provider would refuse. */
+  resumeConversationId?: string;
+}
+
+// --- Step 3: typed settings (02 §三.4; wire sections are snake_case, the
+// document envelope is camelCase - defaults live in Rust, never here) ---
+
+export interface UiSettings {
+  language: string; // auto | zh-CN | en-US
+  font_scale: number; // 0.80..=1.50
+  theme: string; // system | dark | light
+  /** User-configured Explorer ignore names (WX-01); complements built-ins. */
+  explorer_ignore: string[];
+  /** The agent tab the tab-bar + split button creates (IDEA-1); claude |
+   * codex | bash | cc-switch. Defaults to "bash" in the Rust backend. */
+  default_tab_agent: string;
+  /** IDEA-3 (3f round 3): the workspace-bar `+` default target page
+   * (workspace | settings; future feature pages extend this). */
+  default_new_page: string;
+}
+
+export interface TerminalSettings {
+  font_family: string; // non-empty, <=256
+  font_size: number; // 10..=24
+  line_height: number; // 1.0..=1.6
+  letter_spacing: number; // -1..=3
+  scrollback: number; // 1000..=50000
+  renderer: string; // auto | default | webgl
+  smooth_scroll_duration: number; // 0..=500 ms
+}
+
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
+export interface WindowSettings {
+  remember_geometry: boolean;
+  close_behavior: string; // quit | minimize-to-tray
+  geometry: WindowGeometry | null;
+}
+
+export interface ValidationIssue {
+  field: string;
+  reason: string;
+}
+
+/** F2 (D-10): one host-tools whitelist entry (settings `hostTools`). */
+export interface HostToolEntry {
+  name: string;
+  program: string;
+  readOnlyPreset?: string;
+}
+
+/** 2.1.10 R2c: one remote machine profile (settings remoteMachines). */
+export interface RemoteMachine {
+  name: string;
+  host: string;
+  user?: string;
+  port?: number;
+  /** Private key path on THIS machine (reference only). */
+  keyPath?: string;
+}
+
+export interface SettingsDocument {
+  schemaVersion: number;
+  revision: number;
+  aiscCliPath: string | null;
+  ui: UiSettings;
+  terminal: TerminalSettings;
+  window: WindowSettings;
+  /** F2: empty = host-exec is OFF (every container call refused). */
+  hostTools?: HostToolEntry[];
+  /** 2.1.10 R2c: remote machine profiles (read-only until R4's UI). */
+  remoteMachines?: RemoteMachine[];
+  /** PERF P8 (D-13): low-spec mode + container resource limits. */
+  performance?: PerformanceSettings;
+  issues: ValidationIssue[];
+  /** On-disk file was corrupt and isolated; app runs on defaults. */
+  corrupted: boolean;
+  /** On-disk schema is newer than supported: read-only, saves refused. */
+  readOnly: boolean;
+}
+
+/** Section-level GUI patch. Omitted sections stay unchanged. */
+export interface SettingsPatch {
+  ui?: UiSettings;
+  terminal?: TerminalSettings;
+  window?: WindowSettings;
+  hostTools?: HostToolEntry[];
+  remoteMachines?: RemoteMachine[];
+  performance?: PerformanceSettings;
+}
+
+/** 2.1.10 R4b: which machine the Workbench drives right now. */
+export interface TargetInfo {
+  machine: RemoteMachine | null;
+  kind: "local" | "remote";
+}
+
+/** PERF P8 (D-13): low-spec mode + per-container resource budget. */
+export interface PerformanceSettings {
+  lowSpec: boolean;
+  containerMemory: string;
+  containerCpus: number;
+}
+
+export interface SaveOutcome {
+  revision: number;
+  issues: ValidationIssue[];
+}
+
+// --- Stage 3 (3c): Workspace Explorer + Agent Artifacts ---
+
+export interface ArtifactRecord {
+  schema_version: number;
+  artifact_id: string;
+  workspace_relative_path: string;
+  action: "created" | "modified" | "deleted" | "renamed";
+  kind: "deliverable" | "source_change" | "generated_output";
+  media_type: string | null;
+  label: string;
+  open_with: "preview" | "system" | "reveal" | "none";
+  producer: { agent: string; session_id: string; runtime_id: string };
+  state: "present" | "deleted" | "moved" | "missing";
+  provenance: "manifest" | "workspace_change";
+  recorded_at: string;
+  previous_path: string | null;
+  extra: Record<string, unknown>;
+}
+
+export interface ArtifactListResult {
+  schema_version: number;
+  artifacts: ArtifactRecord[];
+  next_cursor: number | null;
+}
+
+export interface ArtifactInspectResult {
+  artifact: ArtifactRecord;
+}
+
+export interface WorkspaceNode {
+  relative_path: string;
+  name: string;
+  kind: "dir" | "file";
+  expandable: boolean;
+  artifact_badges: string[];
+  change_state: string;
+}
+
+export interface WorkspaceListResult {
+  schema_version: number;
+  nodes: WorkspaceNode[];
+  next_cursor: string | null;
+  truncated: boolean;
+}
+
+export interface WorkspacePreviewResult {
+  relative_path: string;
+  media_type: string;
+  size: number;
+  text: string | null;
+  base64: string | null;
+  truncated: boolean;
+}
+
+export interface WorkspaceCopyResult {
+  relative_path: string;
+  absolute_path: string;
+}
+
+/** Stage 11 (11b): result of a contained Explorer mutation. The UI routes
+ *  errors by the stable WB_ERR_* code, never by message text. */
+export interface WorkspaceMutationResult {
+  schema_version: number;
+  operation: "create_file" | "create_dir" | "copy" | "rename";
+  relative_path: string;
+  kind: "dir" | "file";
+}

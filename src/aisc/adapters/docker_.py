@@ -17,13 +17,19 @@ Protocol methods
 from __future__ import annotations
 
 import os
+import queue
+import select
+import socket
+import time
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
 from aisc.domain.models import (
     BuildPlan,
@@ -38,6 +44,31 @@ from aisc.domain.models import (
 # ---------------------------------------------------------------------------
 # Executor protocol — single injectable abstraction
 # ---------------------------------------------------------------------------
+
+def _poll_resize_step(resize_file, last_size, apply_resize):
+    """One resize-file poll step (G-02): read ``"<cols> <rows>"``; when it
+    changed, call *apply_resize* with ``(cols, rows)`` and return the new
+    size, otherwise return *last_size* unchanged. A missing/garbage file is
+    tolerated (returns *last_size*).
+
+    Hoisted out of the interactive watch threads so the update semantics are
+    unit-testable. The previous INLINE version assigned the closed-over
+    ``last_size`` without ``nonlocal`` -- Python made it a thread-local, so
+    every iteration raised UnboundLocalError (silently swallowed by the
+    broad except) and NO resize after the sidecar's initial read ever
+    reached the container (B-05: terminals stuck at their startup size).
+    """
+    try:
+        content = open(resize_file).read().strip().split()
+        if len(content) == 2:
+            cur = (int(content[0]), int(content[1]))
+            if cur != last_size:
+                apply_resize(cur)
+                return cur
+    except Exception:  # noqa: BLE001
+        pass
+    return last_size
+
 
 @runtime_checkable
 class DockerExecutor(Protocol):
@@ -56,18 +87,42 @@ class DockerExecutor(Protocol):
         never returns bare ``bool``."""
 
     def run_captured(self, docker_argv: List[str],
-                     *, timeout: Optional[float] = None) -> ProcessResult:
-        """Execute ``docker <argv>`` with captured stdout / stderr."""
+                     *, timeout: Optional[float] = None,
+                     input_text: Optional[str] = None) -> ProcessResult:
+        """Execute ``docker <argv>`` with captured stdout / stderr.
+
+        ``input_text`` (Stage 8d) pipes a string to the child's stdin — the
+        cc-switch provider data plane's secret channel (never argv)."""
 
     def run_streaming(self, docker_argv: List[str],
                       *, timeout: Optional[float] = None) -> ProcessResult:
         """Execute ``docker <argv>`` with inherited stdin / stdout / stderr.
         Returns a ``ProcessResult`` with exit code captured, stderr empty."""
 
+    def open_interactive(
+        self,
+        container: str,
+        argv: List[str],
+        env: Optional[Dict[str, str]] = None,
+    ) -> ProcessResult:
+        """Open an interactive TTY session via the Docker SDK so the exec pty
+        can be resized with ``exec_resize`` (G-02: the docker CLI's exec pty is
+        frozen at the spawn size). Raw tty stream: stdout forwarded to fd 1,
+        stdin forwarded to the socket, terminal-size watcher forwards changes.
+        Returns the agent's exit code from exec_inspect."""
+
     def run_non_interactive(self, docker_argv: List[str],
                             *, timeout: Optional[float] = None) -> ProcessResult:
         """Execute ``docker <argv>`` with DEVNULL stdin, inherited stdout / stderr.
         For ``--non-interactive`` mode."""
+
+    def run_streaming_captured(self, docker_argv: List[str],
+                               on_chunk: "Callable[[str, str], None]",
+                               *, timeout: Optional[float] = None) -> ProcessResult:
+        """Execute ``docker <argv>`` streaming stdout/stderr chunks to
+        *on_chunk(stream, chunk)*. Used by ``build --events`` for real-time
+        ``build.output`` events (not end-of-build replay). The child runs in its
+        own process group so a cancel can kill it without signaling the CLI."""
 
     # Container operations
     def list_containers(self, all: bool = False) -> ProcessResult:
@@ -99,6 +154,40 @@ class DockerExecutor(Protocol):
 # Factory functions are below; Protocol methods don't have bodies.
 
 # ---------------------------------------------------------------------------
+# Process-tree kill helper (cross-platform)
+# ---------------------------------------------------------------------------
+
+def _kill_child(proc: subprocess.Popen) -> None:
+    """Kill *proc* and its whole child tree, never raising.
+
+    POSIX: SIGKILL the child's process group (docker build subprocesses must
+    not outlive the CLI).  Windows: ``taskkill /T /F`` tree kill with
+    ``proc.kill()`` as fallback.  Safe to call from exception handlers —
+    neither ``os.killpg`` nor ``signal.SIGKILL`` exist on Windows, so the
+    fallbacks keep the cleanup path from crashing and masking the original
+    exception.
+    """
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+            return
+        except OSError:
+            pass
+    else:
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Real Docker executor (production)
 # ---------------------------------------------------------------------------
 
@@ -108,6 +197,18 @@ class RealDockerExecutor:
     _PREFLIGHT_TIMEOUT = 8.0
     _INSPECT_TIMEOUT = 10.0
 
+    # Windows install locations to try when the CLI is not on PATH. A fresh
+    # winget install only lands in the user PATH after Explorer re-reads the
+    # environment, so a Workbench launched straight from the installer inherits
+    # a stale PATH and ``shutil.which`` misses it (TODO 20260806 line 76).
+    # The per-user "Install for me" layout (Programs\DockerDesktop) leads —
+    # KI-6: its absence made direct terminal CLI runs see no running engine.
+    _WINDOWS_FALLBACK_PATHS = (
+        r"%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin\docker.exe",
+        r"C:\Program Files\Docker\Docker\resources\bin\docker.exe",
+        r"%LOCALAPPDATA%\Docker\Docker\resources\bin\docker.exe",
+    )
+
     def __init__(self, docker_path: Optional[str] = None):
         self._docker_path: Optional[str] = docker_path
 
@@ -115,7 +216,25 @@ class RealDockerExecutor:
         if self._docker_path is not None:
             return self._docker_path
         self._docker_path = shutil.which("docker")
+        if self._docker_path is None and os.name == "nt":
+            for candidate in self._WINDOWS_FALLBACK_PATHS:
+                expanded = os.path.expandvars(candidate)
+                if os.path.isfile(expanded):
+                    self._docker_path = expanded
+                    break
         return self._docker_path
+
+    def _subprocess_env(self) -> dict:
+        """Env for docker subprocesses: the resolved docker dir prepended to
+        PATH so credential helpers next to the docker CLI (e.g.
+        ``docker-credential-desktop.exe``) resolve even when the parent
+        process inherited a stale PATH (Workbench launched straight from the
+        installer; S4.1.b)."""
+        env = os.environ.copy()
+        dp = self._resolve_path()
+        if dp:
+            env["PATH"] = os.path.dirname(dp) + os.pathsep + env.get("PATH", "")
+        return env
 
     # ------------------------------------------------------------------
     # preflight
@@ -132,7 +251,9 @@ class RealDockerExecutor:
             proc = subprocess.run(
                 [docker_path, "info"],
                 capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=self._PREFLIGHT_TIMEOUT,
+                env=self._subprocess_env(),
             )
         except FileNotFoundError:
             return DockerPreflightResult(
@@ -187,6 +308,7 @@ class RealDockerExecutor:
                 capture_output=True, text=True,
                 timeout=self._INSPECT_TIMEOUT,
                 encoding="utf-8", errors="replace",
+                env=self._subprocess_env(),
             )
         except FileNotFoundError:
             return ImageInspectResult(
@@ -210,9 +332,22 @@ class RealDockerExecutor:
             )
 
         if proc.returncode == 0:
+            # 容器随镜像同步更新 (KI-4 挂账): harvest the content-addressed
+            # .Id for the image-sync conflict check. Existence stays the
+            # primary answer — an unparseable body degrades to "" (unknown),
+            # never to a failure.
+            image_id = ""
+            try:
+                import json as _json
+                docs = _json.loads(proc.stdout or "[]")
+                if isinstance(docs, list) and docs and isinstance(docs[0], dict):
+                    image_id = str(docs[0].get("Id") or "")
+            except (ValueError, TypeError, IndexError):
+                image_id = ""
             return ImageInspectResult(
                 status=ImageInspectStatus.EXISTS,
                 image=image_name, message="",
+                image_id=image_id,
             )
 
         stderr_text = proc.stderr or ""
@@ -260,7 +395,8 @@ class RealDockerExecutor:
     # ------------------------------------------------------------------
 
     def run_captured(self, docker_argv: List[str],
-                     *, timeout: Optional[float] = None) -> ProcessResult:
+                     *, timeout: Optional[float] = None,
+                     input_text: Optional[str] = None) -> ProcessResult:
         dp = self._resolve_path() or "docker"
         try:
             proc = subprocess.run(
@@ -268,6 +404,8 @@ class RealDockerExecutor:
                 capture_output=True, text=True,
                 timeout=timeout,
                 encoding="utf-8", errors="replace",
+                env=self._subprocess_env(),
+                input=input_text,
             )
             return ProcessResult(
                 stdout=proc.stdout or "",
@@ -298,7 +436,9 @@ class RealDockerExecutor:
                       *, timeout: Optional[float] = None) -> ProcessResult:
         dp = self._resolve_path() or "docker"
         try:
-            proc = subprocess.run([dp] + list(docker_argv), timeout=timeout)
+            proc = subprocess.run(
+                [dp] + list(docker_argv), timeout=timeout, env=self._subprocess_env(),
+            )
             return ProcessResult(
                 stdout="", stderr="", exit_code=proc.returncode,
             )
@@ -317,6 +457,245 @@ class RealDockerExecutor:
                 stdout="", stderr=f"command error: {exc}",
                 exit_code=-1, command_not_found=True,
             )
+
+    # ------------------------------------------------------------------
+    # open_interactive (G-02 resize chain)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _client_from_env_safe():
+        """2.1.9 hotfix r3 (nairong #61, user VM repro): ``docker.from_env()``
+        with DOCKER_HOST unset loads the docker CLI context metadata, and
+        docker-py 7.x opens meta.json WITHOUT an encoding — on zh-CN Windows
+        that decodes as GBK while Docker Desktop (Chinese-language installs)
+        writes UTF-8 bytes into it, raising a bare UnicodeDecodeError wrapped
+        in a plain Exception ("corrupted meta file"). Not a DockerException,
+        so it escaped as a traceback → exit 1, zero output. Fall back to the
+        platform DEFAULT endpoint: an explicit base_url never reads
+        meta.json, skipping context resolution entirely."""
+        import docker  # lazy: every other path stays dependency-free
+
+        try:
+            return docker.from_env()
+        except Exception:  # noqa: BLE001 — context meta unreadable
+            if os.name == "nt":
+                return docker.DockerClient(base_url="npipe:////./pipe/docker_engine")
+            return docker.DockerClient(base_url="unix:///var/run/docker.sock")
+
+    def open_interactive(
+        self,
+        container: str,
+        argv: List[str],
+        env: Optional[Dict[str, str]] = None,
+    ) -> ProcessResult:
+        """Interactive TTY session via the Docker SDK (see protocol doc).
+
+        The sidecar is spawned with **pipes** (not a ConPTY) by the Rust
+        pty supervisor. stdin/stdout are raw byte streams - no console
+        processing, no codepage, no Unicode width tables. The container's
+        UTF-8 / VT sequences pass through directly to xterm.js.
+
+        Terminal size is passed via the ``AISC_RESIZE_FILE`` env var: Rust
+        writes ``"<cols> <rows>\\n"`` on resize, this sidecar polls it
+        (100ms) and calls ``exec_resize``. (G-02, 2026-08-10.)
+        """
+        import docker  # lazy: every other path stays dependency-free
+        import requests  # docker SDK dependency: transport-layer exceptions
+
+        # 2.1.9 hotfix (nairong #61): transport-layer failures (npipe
+        # ReadTimeout / ConnectionError) are NOT DockerException subclasses —
+        # they used to escape as a bare traceback with the sidecar's stderr
+        # discarded by the pty supervisor (Stdio::null), surfacing as
+        # "exit 1 with zero terminal output". Catch them here so every
+        # failure becomes an orderly ProcessResult whose message reaches
+        # the terminal. Same class of bug as #59 (resolver IncompleteRead).
+        def _transport_failure(stage: str, exc: Exception) -> ProcessResult:
+            return ProcessResult(
+                stdout="", stderr=f"{stage} failed: {exc}",
+                exit_code=-1, command_not_found=True,
+            )
+
+        try:
+            client = self._client_from_env_safe()
+        except (docker.errors.DockerException, requests.RequestException, OSError) as exc:
+            return _transport_failure("docker daemon unreachable", exc)
+        try:
+            exec_kwargs: Dict[str, Any] = {"tty": True, "stdin": True}
+            if env:
+                # v2.1.7 S6: session-scoped environment (the bash tutorial
+                # `help` function enters here) — never the image or a profile.
+                exec_kwargs["environment"] = dict(env)
+            exec_id = client.api.exec_create(container, list(argv), **exec_kwargs)["Id"]
+        except docker.errors.NotFound:
+            return ProcessResult(
+                stdout="", stderr="container not found",
+                exit_code=-1, command_not_found=True,
+            )
+        except (docker.errors.DockerException, requests.RequestException, OSError) as exc:
+            return _transport_failure("exec create", exc)
+        try:
+            sock = client.api.exec_start(exec_id, socket=True, tty=True)
+        except (docker.errors.DockerException, requests.RequestException, OSError) as exc:
+            return _transport_failure("exec start", exc)
+
+        stop = threading.Event()
+        errors: List[Exception] = []
+
+        # Initial resize from the resize file (set by Rust before spawn).
+        resize_file = os.environ.get("AISC_RESIZE_FILE")
+        last_size: Optional[tuple] = None
+        if resize_file:
+            try:
+                content = open(resize_file).read().strip().split()
+                if len(content) == 2:
+                    last_size = (int(content[0]), int(content[1]))
+                    client.api.exec_resize(
+                        exec_id, height=last_size[1], width=last_size[0]
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+
+        def read_sock(size: int) -> bytes:
+            """Read raw bytes from the docker-py exec socket.
+
+            Transport shape differs by platform: native sockets expose
+            ``recv``, while Unix-socket transports return ``socket.SocketIO``
+            which only exposes ``read`` (docker-py 7.x). Cover both so Linux
+            and WSL sessions receive PTY output.
+            """
+            if hasattr(sock, "recv"):
+                return sock.recv(size)
+            if hasattr(sock, "read"):
+                return sock.read(size)
+            return os.read(sock.fileno(), size)
+
+        def send_all(data: bytes) -> None:
+            """Send every byte; transports expose either ``sendall`` or ``write``."""
+            if hasattr(sock, "sendall"):
+                sock.sendall(data)
+                return
+            raw = getattr(sock, "_sock", None)
+            if raw is not None and hasattr(raw, "sendall"):
+                raw.sendall(data)
+                return
+            view = memoryview(data)
+            while view:
+                if hasattr(sock, "write") and getattr(sock, "writable", lambda: False)():
+                    sent = sock.write(view)
+                else:
+                    sent = os.write(sock.fileno(), view)
+                if sent is None:
+                    raise OSError("socket write would block")
+                if sent <= 0:
+                    raise OSError("socket write failed")
+                view = view[sent:]
+
+        def shutdown_write() -> None:
+            """Half-close the write side when stdin reaches EOF.
+
+            Raw sockets expose ``shutdown``; ``socket.SocketIO`` hides the raw
+            socket in ``_sock``. Close fully only as a last resort.
+            """
+            raw = getattr(sock, "_sock", None)
+            targets = [raw, sock] if raw is not None else [sock]
+            for target in targets:
+                if hasattr(target, "shutdown"):
+                    try:
+                        target.shutdown(socket.SHUT_WR)
+                        return
+                    except OSError:
+                        pass
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+        def drain() -> None:
+            """Socket -> stdout (raw bytes, no processing)."""
+            try:
+                while True:
+                    chunk = read_sock(65536)
+                    if not chunk:
+                        break
+                    os.write(sys.stdout.fileno(), chunk)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def forward() -> None:
+            """stdin -> socket; on EOF, close the write side."""
+            try:
+                while True:
+                    chunk = os.read(sys.stdin.fileno(), 4096)
+                    if not chunk:
+                        break
+                    send_all(chunk)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+            finally:
+                shutdown_write()
+
+        def watch_resize() -> None:
+            """Poll the resize file; forward size changes to exec_resize."""
+            if not resize_file:
+                return
+            # Local copy + module-level step helper: immune to the closure
+            # trap that previously dropped every post-initial resize (B-05).
+            last = last_size
+            while not stop.is_set():
+                last = _poll_resize_step(
+                    resize_file,
+                    last,
+                    lambda size: client.api.exec_resize(
+                        exec_id, height=size[1], width=size[0]
+                    ),
+                )
+                stop.wait(0.1)
+
+        t_drain = threading.Thread(target=drain, daemon=True)
+        t_fwd = threading.Thread(target=forward, daemon=True)
+        t_resize = threading.Thread(target=watch_resize, daemon=True)
+        t_drain.start()
+        t_fwd.start()
+        t_resize.start()
+
+        exit_code = -1
+        # 2.1.9 hotfix (nairong #61): exec_inspect polls every 200ms over the
+        # same npipe; a single transient transport hiccup used to escape as a
+        # bare traceback (only APIError was caught), killing a HEALTHY session.
+        # Tolerate a few consecutive failures before giving up orderly.
+        inspect_failures = 0
+        try:
+            while True:
+                try:
+                    info = client.api.exec_inspect(exec_id)
+                    inspect_failures = 0
+                except (docker.errors.APIError, requests.RequestException, OSError) as exc:
+                    inspect_failures += 1
+                    if inspect_failures >= 3:
+                        raise
+                    time.sleep(0.5)
+                    continue
+                if not info.get("Running"):
+                    exit_code = int(info.get("ExitCode", 0))
+                    break
+                time.sleep(0.2)
+        except (docker.errors.APIError, requests.RequestException, OSError) as exc:
+            errors.append(exc)
+        finally:
+            stop.set()
+            t_drain.join(timeout=5)
+            t_fwd.join(timeout=5)
+
+        if errors:
+            try:
+                os.write(2, ("[open_interactive] thread error: %r\n" % (errors[0],)).encode())
+            except OSError:
+                pass
+            return ProcessResult(
+                stdout="", stderr=f"exec stream error: {errors[0]}",
+                exit_code=-1,
+            )
+        return ProcessResult(stdout="", stderr="", exit_code=exit_code)
 
     # ------------------------------------------------------------------
     # run_non_interactive
@@ -331,6 +710,7 @@ class RealDockerExecutor:
                 [dp] + list(docker_argv),
                 stdin=subprocess.DEVNULL,
                 timeout=timeout,
+                env=self._subprocess_env(),
             )
             return ProcessResult(
                 stdout="", stderr="", exit_code=proc.returncode,
@@ -350,6 +730,119 @@ class RealDockerExecutor:
                 stdout="", stderr=f"command error: {exc}",
                 exit_code=-1, command_not_found=True,
             )
+
+    # ------------------------------------------------------------------
+    # run_streaming_captured (build --events: real-time build.output)
+    # ------------------------------------------------------------------
+
+    def run_streaming_captured(self, docker_argv: List[str],
+                               on_chunk: "Callable[[str, str], None]",
+                               *, timeout: Optional[float] = None) -> ProcessResult:
+        """Run ``docker <argv>`` in its own process group, streaming each
+        stdout/stderr chunk to *on_chunk(stream, chunk)*. On any interruption
+        (cancel/error) the child's whole process tree is killed so Docker
+        build subprocesses do not outlive the CLI.
+
+        Drain strategy is platform-specific: ``select`` is POSIX-only
+        (Windows supports sockets only), so Windows uses reader threads +
+        a queue instead.  Chunk ordering and the timeout contract
+        (applied at the final ``proc.wait``) are identical on both."""
+        dp = self._resolve_path() or "docker"
+        try:
+            proc = subprocess.Popen(
+                [dp] + list(docker_argv),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=True,  # own process group -> cancel can kill tree
+                env=self._subprocess_env(),
+            )
+        except FileNotFoundError:
+            return ProcessResult(
+                stdout="", stderr="command not found: docker",
+                exit_code=-1, command_not_found=True,
+            )
+        except OSError as exc:
+            return ProcessResult(
+                stdout="", stderr=f"command error: {exc}",
+                exit_code=-1, command_not_found=True,
+            )
+        try:
+            if os.name == "posix":
+                result = self._drain_select(proc, on_chunk, timeout=timeout)
+            else:
+                result = self._drain_threads(proc, on_chunk, timeout=timeout)
+        except BaseException:
+            # Cancel or error: kill the Docker child's whole process tree.
+            _kill_child(proc)
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+            raise
+        finally:
+            for stream in (proc.stdout, proc.stderr):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+        return result
+
+    def _drain_select(self, proc: subprocess.Popen,
+                      on_chunk: "Callable[[str, str], None]",
+                      *, timeout: Optional[float]) -> ProcessResult:
+        """POSIX: incremental read of both pipes via ``select`` (original
+        implementation, kept byte-for-byte equivalent)."""
+        streams = {proc.stdout: "stdout", proc.stderr: "stderr"}
+        open_fds = list(streams.keys())
+        while open_fds:
+            ready, _, _ = select.select(open_fds, [], [], 0.5)
+            for f in ready:
+                data = f.read1(4096)
+                if data:
+                    on_chunk(streams[f], data.decode("utf-8", "replace"))
+                else:
+                    open_fds.remove(f)
+        proc.wait(timeout=timeout)
+        return ProcessResult(stdout="", stderr="", exit_code=proc.returncode)
+
+    def _drain_threads(self, proc: subprocess.Popen,
+                       on_chunk: "Callable[[str, str], None]",
+                       *, timeout: Optional[float]) -> ProcessResult:
+        """Windows: two daemon reader threads feed a queue; the main thread
+        drains it and invokes *on_chunk* so emission stays single-threaded
+        (``JsonlEmitter`` is not lock-protected)."""
+        q: "queue.Queue[Optional[tuple[str, bytes]]]" = queue.Queue()
+
+        def _reader(stream: "object", name: str) -> None:
+            try:
+                while True:
+                    chunk = stream.read1(4096)
+                    if not chunk:
+                        break
+                    q.put((name, chunk))
+            finally:
+                q.put(None)  # EOF sentinel for this stream
+
+        threads = [
+            threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True),
+            threading.Thread(target=_reader, args=(proc.stderr, "stderr"), daemon=True),
+        ]
+        for t in threads:
+            t.start()
+
+        remaining = 2
+        while remaining:
+            try:
+                item = q.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if item is None:
+                remaining -= 1
+                continue
+            stream, chunk = item
+            on_chunk(stream, chunk.decode("utf-8", "replace"))
+
+        proc.wait(timeout=timeout)
+        return ProcessResult(stdout="", stderr="", exit_code=proc.returncode)
 
     @property
     def docker_path(self) -> str:
@@ -436,10 +929,12 @@ class FakeDockerExecutor:
             stdout="", stderr="", exit_code=0,
         )
         self._streaming_exit_code: int = 0
+        self._streaming_chunks: List = []  # [(stream, chunk), ...] for run_streaming_captured
 
         # Call tracking
         self.calls: List[List[str]] = []           # run_captured argv
         self.streaming_calls: List[List[str]] = []  # run_streaming argv
+        self.interactive_calls: List[tuple] = []    # (container, argv) for open_interactive
         self.preflight_calls: int = 0
         self.inspect_calls: List[str] = []          # image names inspected
 
@@ -513,21 +1008,45 @@ class FakeDockerExecutor:
         )
 
     # ------------------------------------------------------------------
-    # run_non_interactive
+    # open_interactive (G-02 resize chain)
     # ------------------------------------------------------------------
 
-    def run_non_interactive(self, docker_argv: List[str],
-                            *, timeout: Optional[float] = None) -> ProcessResult:
-        """Fake non-interactive — tracks call, returns streaming exit code."""
+    def set_streaming_exit(self, code: int) -> None:
+        """Configure the exit code returned by run_streaming / open_interactive."""
+        self._streaming_exit_code = code
+
+    def run_streaming_captured(self, docker_argv: List[str],
+                               on_chunk: "Callable[[str, str], None]",
+                               *, timeout: Optional[float] = None) -> ProcessResult:
+        """Replay configured chunks to *on_chunk*, then return the preset exit
+        code. Set chunks via :meth:`set_streaming_chunks`."""
         self.streaming_calls.append(list(docker_argv))
+        for stream, chunk in self._streaming_chunks:
+            on_chunk(stream, chunk)
         return ProcessResult(
             stdout="", stderr="",
             exit_code=self._streaming_exit_code if self._streaming_exit_code >= 0 else -1,
             command_not_found=(self._streaming_exit_code < 0),
         )
 
-    def set_streaming_exit(self, code: int) -> None:
-        self._streaming_exit_code = code
+    def set_streaming_chunks(self, chunks) -> None:
+        """Configure ``[(stream, chunk), ...]`` replayed by run_streaming_captured."""
+        self._streaming_chunks = list(chunks)
+
+    def open_interactive(
+        self,
+        container: str,
+        argv: List[str],
+        env: Optional[Dict[str, str]] = None,
+    ) -> ProcessResult:
+        """Fake interactive session: record (container, argv, env), return the
+        configured streaming exit code."""
+        self.interactive_calls.append((container, list(argv), dict(env or {})))
+        return ProcessResult(
+            stdout="", stderr="",
+            exit_code=self._streaming_exit_code if self._streaming_exit_code >= 0 else -1,
+            command_not_found=(self._streaming_exit_code < 0),
+        )
 
     # ------------------------------------------------------------------
     # Zero-call assertion
@@ -535,7 +1054,7 @@ class FakeDockerExecutor:
 
     @property
     def total_calls(self) -> int:
-        return len(self.calls) + len(self.streaming_calls)
+        return len(self.calls) + len(self.streaming_calls) + len(self.interactive_calls)
 
     def assert_zero_docker_calls(self, msg: str = "") -> None:
         """Fail if any docker subprocess call was made."""
@@ -632,7 +1151,7 @@ def validate_run_resources(workspace: Path) -> None:
     Raises FileNotFoundError, PermissionError, or NotADirectoryError.
     """
     if not workspace.exists():
-        raise FileNotFoundError(f"Workspace does not exist: {workspace}")
+        raise FileNotFoundError(f"工作区目录不存在: {workspace}")
     if not workspace.is_dir():
         raise NotADirectoryError(f"Workspace is not a directory: {workspace}")
     if not os.access(str(workspace), os.R_OK):

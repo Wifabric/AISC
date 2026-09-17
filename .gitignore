@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# Downloaded Docker Desktop installer for the offline NSIS build (~600 MB,
+# fetched by scripts/fetch-docker-installer.ps1; never committed).
+workbench/src-tauri/docker-offline/
+
 # IDE
 .vscode/
 .idea/
@@ -65,5 +69,27 @@ tasks/
 # Local archive (project cleanup snapshots — never delete)
 .archive/
 
+# Project-scoped portable toolchains (Node 22 for workbench dev; restored on
+# demand — see scripts/dev-env.ps1 / scripts/dev-env.sh). Host Node stays untouched.
+.tools/
+
 # Backup / temp artefact clutter
 *.bak
+workbench/src-tauri/binaries/
+
+# CI-staged AISC CLI bundle (workbench/src-tauri/nsis/bundle/aisc-bundle)
+# staged by nsis-installer.yml before `tauri build`; generated at build time
+workbench/src-tauri/nsis/bundle/
+
+# 2.1.9 D-9 (T8c): npm 离线逃生预置包——本机按需 stage（scripts/stage-npm.sh），
+# 不入 git/安装包（claude-code 平台伴生包 ~95MB/架构，codex ~123MB）。
+# mihomo/geodata 预置继续 tracked（小且版本钉死）。
+container/downloads/*.tgz
+container/downloads/yazi-*.zip
+
+# 本机调试/发布暂存残留（反复产生，永不入库；发布资产权威源在 GitHub Releases）
+error_log/
+release-staging/
+.pnpm-store/
+.containers.lock
+/containers.json

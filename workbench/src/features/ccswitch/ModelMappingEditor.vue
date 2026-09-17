@@ -1,0 +1,195 @@
+<script setup lang="ts">
+/**
+ * ModelMappingEditor (PP, D-12): the desktop-parity mapping table.
+ *
+ * - claude: three ROLE rows (Sonnet/Opus/Haiku → upstream model) plus a
+ *   collapsed "advanced" pair (default model / subagent). The data shape is
+ *   the five role-env slots the adapter has always carried — this is a
+ *   view-layer re-projection of the SAME storage, not a new contract.
+ * - codex: the three-column catalog editor (model / display name / context
+ *   window) writing `modelCatalog` — the /model list source. Rows are
+ *   add/remove; the fetch-models candidates dropdown inserts rows.
+ */
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import type { CcSwitchCatalogEntry } from "../../types";
+
+const { t } = useI18n();
+const props = defineProps<{
+  agent: "claude" | "codex";
+  /** claude: the five role-env slots (v-model style, mutated in place). */
+  roles?: Record<string, string>;
+  /** claude: role-slot metadata (key/label/[1m] eligibility). */
+  roleSlots?: Array<{ key: string; label: string; oneM?: boolean }>;
+  /** codex: catalog rows (v-model style, mutated in place). */
+  catalog?: CcSwitchCatalogEntry[];
+  /** candidate model ids from fetch-models + known_models (dropdown). */
+  candidates?: string[];
+}>();
+
+const advancedOpen = ref(false);
+
+const mainRoles = computed(() =>
+  (props.roleSlots ?? []).filter((s) =>
+    ["ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+     "ANTHROPIC_DEFAULT_HAIKU_MODEL"].includes(s.key)),
+);
+const advRoles = computed(() =>
+  (props.roleSlots ?? []).filter((s) =>
+    ["ANTHROPIC_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"].includes(s.key)),
+);
+
+function addCatalogRow(): void {
+  (props.catalog ?? []).push({ model: "", display_name: "", context_window: 128000 });
+}
+
+function removeCatalogRow(i: number): void {
+  (props.catalog ?? []).splice(i, 1);
+}
+
+const ONE_M = "[1m]";
+/** IDEA-5 round 4 parity: the [1m] suffix is legal on MODEL/OPUS/SONNET
+ * only; the toggle appends/strips it on the slot's current value. */
+function hasOneM(key: string): boolean {
+  return (props.roles?.[key] ?? "").endsWith(ONE_M);
+}
+function toggleOneM(key: string): void {
+  if (!props.roles) return;
+  const value = props.roles[key] ?? "";
+  props.roles[key] = hasOneM(key)
+    ? value.slice(0, -ONE_M.length)
+    : (value ? value + ONE_M : value);
+}
+</script>
+
+<template>
+  <!-- claude: role mapping table -->
+  <div v-if="agent === 'claude'" class="mapping" role="group"
+       :aria-label="t('ccswitch.mapping.title')">
+    <p class="hint">{{ t("ccswitch.mapping.claudeHint") }}</p>
+    <div v-for="slot in mainRoles" :key="slot.key" class="row">
+      <span class="role">{{ slot.label }}</span>
+      <input
+        list="pp-map-candidates"
+        :value="roles?.[slot.key] ?? ''"
+        :placeholder="t('ccswitch.mapping.placeholder')"
+        @input="roles && (roles[slot.key] = ($event.target as HTMLInputElement).value)"
+      />
+      <button v-if="slot.oneM" class="icon one-m" :class="{ on: hasOneM(slot.key) }"
+              :title="t('ccswitch.mapping.oneMTip')"
+              :aria-pressed="hasOneM(slot.key)"
+              @click="toggleOneM(slot.key)">1M</button>
+    </div>
+    <datalist id="pp-map-candidates">
+      <option v-for="c in candidates" :key="c" :value="c" />
+    </datalist>
+    <button class="link" @click="advancedOpen = !advancedOpen">
+      {{ advancedOpen ? t("ccswitch.mapping.advHide") : t("ccswitch.mapping.advShow") }}
+    </button>
+    <div v-if="advancedOpen">
+      <div v-for="slot in advRoles" :key="slot.key" class="row">
+        <span class="role">{{ slot.label }}</span>
+        <input
+          list="pp-map-candidates"
+          :value="roles?.[slot.key] ?? ''"
+          :placeholder="t('ccswitch.mapping.placeholder')"
+          @input="roles && (roles[slot.key] = ($event.target as HTMLInputElement).value)"
+        />
+        <button v-if="slot.oneM" class="icon one-m" :class="{ on: hasOneM(slot.key) }"
+                :title="t('ccswitch.mapping.oneMTip')"
+                :aria-pressed="hasOneM(slot.key)"
+                @click="toggleOneM(slot.key)">1M</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- codex: three-column catalog editor -->
+  <div v-else class="mapping" role="group" :aria-label="t('ccswitch.mapping.title')">
+    <p class="hint">{{ t("ccswitch.mapping.codexHint") }}</p>
+    <div class="cat-head">
+      <span>{{ t("ccswitch.mapping.colModel") }}</span>
+      <span>{{ t("ccswitch.mapping.colName") }}</span>
+      <span>{{ t("ccswitch.mapping.colWindow") }}</span>
+      <span></span>
+    </div>
+    <div v-for="(row, i) in catalog" :key="i" class="cat-row">
+      <input
+        list="pp-cat-candidates"
+        v-model="row.model"
+        :placeholder="t('ccswitch.mapping.placeholder')"
+      />
+      <input v-model="row.display_name" :placeholder="t('ccswitch.mapping.namePh')" />
+      <input
+        type="number" min="1000" step="1000"
+        :value="row.context_window || 128000"
+        @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 128000"
+      />
+      <button class="icon del" :title="t('ccswitch.mapping.remove')"
+              :aria-label="t('ccswitch.mapping.remove')"
+              @click="removeCatalogRow(i)">×</button>
+    </div>
+    <datalist id="pp-cat-candidates">
+      <option v-for="c in candidates" :key="c" :value="c" />
+    </datalist>
+    <button class="link" @click="addCatalogRow">＋ {{ t("ccswitch.mapping.add") }}</button>
+  </div>
+</template>
+
+<style scoped>
+.mapping { display: flex; flex-direction: column; gap: 8px; }
+.hint { font-size: var(--font-xs); color: var(--text-faint); margin: 0; }
+.row { display: flex; align-items: center; gap: 8px; }
+.role { width: 110px; font-size: var(--font-sm); color: var(--text-2); }
+input {
+  flex: 1; min-width: 120px;
+  background: var(--surface-3); color: var(--text);
+  border: var(--border-w) solid var(--border-strong); border-radius: var(--radius-sm);
+  min-height: var(--control-h-sm); padding: 0 var(--space-2); font-size: var(--font-sm);
+}
+/* 手测 r8/r9 (2026-09-12): the codex table went through three bad shapes —
+ * a bare borderless × (invisible), then a floating chip that the number
+ * field's overflowing min-width swallowed (looked INSIDE the input), then a
+ * chip that changed visual weight between rest and hover. Final shape: the
+ * row reads as FOUR ALIGNED BOXES — three fields plus a slim full-height
+ * action cell with the SAME surface/border as the fields; only its colors
+ * flip to danger on hover, so the footprint never changes. The number field
+ * stays strictly in its track (the generic input min-width was written for
+ * the flex role rows and overflows grid tracks). */
+/* 手测 r10: the workbench has NO global border-box reset (the key-row input
+ * sets it explicitly for the same reason) — content-box inputs with
+ * width:100% render track + padding + border wide and ride under the delete
+ * cell; the 30px button + borders was 32px of the same disease. Border-box
+ * everything in the grid and let tracks own the geometry. */
+.cat-row input { box-sizing: border-box; min-width: 0; }
+input[type="number"] { width: 100%; }
+.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 30px; gap: 8px;
+  align-items: center; font-size: var(--font-xs); color: var(--text-faint); }
+.cat-row { display: grid; grid-template-columns: 1fr 0.7fr 92px 30px; gap: 8px;
+  align-items: stretch; }
+button.icon { min-width: 24px; min-height: 24px; padding: 0; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: var(--font-md); }
+button.icon.del {
+  box-sizing: border-box;
+  width: 30px; min-height: var(--control-h-sm); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted); font-weight: 600;
+  transition: color var(--duration-normal) var(--ease),
+    border-color var(--duration-normal) var(--ease),
+    background-color var(--duration-normal) var(--ease);
+}
+button.icon.del:hover { color: var(--error-fg); border-color: var(--error-border); background: var(--error-bg); }
+/* PP r3 (user ruling): a proper toggle chip instead of the raw "[1m]" text
+ * squished against the input — solid accent when on, quiet ghost when off. */
+button.icon.one-m {
+  flex: none; min-width: 36px; min-height: var(--control-h-sm); padding: 0 8px;
+  font-size: var(--font-xs); font-weight: 600; letter-spacing: 0.4px;
+  color: var(--text-faint); background: none;
+  border: var(--border-w) solid var(--border-strong); border-radius: var(--radius-sm);
+}
+button.icon.one-m:hover { color: var(--text-2); }
+button.icon.one-m.on { color: var(--accent-fg); border-color: var(--accent); background: var(--accent); }
+button.link { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: var(--font-sm); align-self: flex-start; }
+</style>
+

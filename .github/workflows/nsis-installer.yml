@@ -1,0 +1,252 @@
+name: NSIS installer build
+
+# Builds the Windows NSIS installer on a Windows runner. The custom
+# installer.nsi template (Docker Desktop host integration + G-18 PATH) is
+# rendered and compiled here - local Linux dev cannot validate it.
+#
+# NOTE: installer.nsi's `Section Docker` auto-installs Docker Desktop via
+# winget on interactive GUI installs, but is guarded by ${Silent}/$PassiveMode,
+# so every silent install in this workflow never invokes winget - do not
+# "simplify" that guard away.
+#
+# Prerequisite: the AISC CLI sidecar binary for the Windows target must be
+# present in workbench/src-tauri/binaries/ (it is built by cli-sidecar.yml
+# and dropped in by the release process; this job builds it from source).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'workbench/src/**'
+      - 'workbench/package.json'
+      - 'workbench/package-lock.json'
+      - 'workbench/vite.config.*'
+      - 'workbench/tsconfig*.json'
+      - 'workbench/src-tauri/**'
+      - '.github/workflows/nsis-installer.yml'
+      - '.github/workflows/cli-sidecar.yml'
+      - 'src/aisc/**'
+      - 'packaging/**'
+      - 'scripts/build-cli.*'
+      - 'VERSION'
+      - 'pyproject.toml'
+      - 'vendor/**'
+
+jobs:
+  nsis:
+    name: NSIS installer (windows x86_64)
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install CLI build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build CLI sidecar
+        shell: pwsh
+        run: |
+          $env:TARGET_TRIPLE = "x86_64-pc-windows-msvc"
+          scripts/build-cli.ps1
+
+      - name: Drop sidecar into externalBin dir
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path workbench/src-tauri/binaries | Out-Null
+          Copy-Item dist/aisc-x86_64-pc-windows-msvc.exe workbench/src-tauri/binaries/aisc-x86_64-pc-windows-msvc.exe
+          Get-ChildItem workbench/src-tauri/binaries
+
+      - name: Stage AISC CLI bundle (aisc-bundle for root discovery)
+        shell: pwsh
+        run: |
+          python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
+          Get-ChildItem workbench/src-tauri/nsis/bundle/aisc-bundle | Select-Object -First 5 Name
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: workbench/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: workbench
+        run: npm ci
+
+      - name: Build NSIS installer (tauri downloads NSIS 3.11 automatically)
+        working-directory: workbench
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Verify installer artifact
+        shell: pwsh
+        run: |
+          Get-ChildItem workbench/src-tauri/target/release/bundle/nsis/*-setup.exe | ForEach-Object {
+            Write-Host "artifact: $($_.FullName) ($($_.Length) bytes)"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aisc-workbench-windows-nsis
+          path: workbench/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
+      # End-to-end smoke on the *installed* app: silent install, G-18 PATH
+      # behavior (conflict scenario, exactly-once entry, REG_EXPAND_SZ
+      # preservation, resolution from a NEW PowerShell via PATH), sidecar
+      # version + `build --dry-run`, and S4.2 upgrade/uninstall retention.
+      - name: Smoke test installed app (silent install + PATH + retention)
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem workbench/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw "no setup.exe artifact found" }
+          $appDir = "$env:LOCALAPPDATA\AISC Workbench"
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          if ($null -eq $userPath) { $userPath = "" }
+          $origPath = $userPath
+
+          function Set-UserPath([string]$value) {
+            Set-ItemProperty -Path "HKCU:\Environment" -Name Path -Value $value -Type ExpandString
+          }
+          function Get-UserPath { [Environment]::GetEnvironmentVariable("Path", "User") }
+          function Count-InstDirEntries([string]$p) {
+            ($p -split ';' | Where-Object { $_.TrimEnd('\') -ieq $appDir }).Count
+          }
+
+          try {
+            # --- G-18 conflict scenario: a sentinel aisc shadows us ---
+            $sentinel = Join-Path $env:TEMP "aisc-sentinel"
+            New-Item -ItemType Directory -Force -Path $sentinel | Out-Null
+            Copy-Item "$env:SystemRoot\System32\cmd.exe" (Join-Path $sentinel "aisc.exe") -Force
+            Set-UserPath "$sentinel;$env:USERPROFILE\AppData\Roaming\aisc-smoke-test"
+            $p1 = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($p1.ExitCode -ne 0) { throw "silent install (conflict) failed with exit $($p1.ExitCode)" }
+            $after = Get-UserPath
+            if ((Count-InstDirEntries $after) -ne 0) { throw "G-18 conflict: INSTDIR added to PATH despite sentinel aisc" }
+            if (Test-Path "HKCU:\Software\aisc\AISC Workbench") {
+              $marker = (Get-ItemProperty "HKCU:\Software\aisc\AISC Workbench" -Name PathEntryOwned -ErrorAction SilentlyContinue).PathEntryOwned
+              if ($marker) { throw "G-18 conflict: ownership marker set despite conflict" }
+            }
+            Write-Host "G-18 CONFLICT: PASSED"
+
+            # --- main install on a clean-ish PATH (REG_EXPAND_SZ) ---
+            $testEntry = "$env:USERPROFILE\AppData\Roaming\aisc-smoke-test"
+            New-Item -ItemType Directory -Force -Path $testEntry | Out-Null
+            Set-UserPath "%USERPROFILE%\AppData\Roaming\aisc-smoke-test"
+            $proc = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) { throw "silent install failed with exit $($proc.ExitCode)" }
+
+            if (-not (Test-Path "$appDir\aisc-bundle\VERSION")) { throw "aisc-bundle not installed under $appDir" }
+            # tauri-bundler installs the externalBin sidecar under its base
+            # name (aisc.exe); accept the triple-suffixed name as a fallback.
+            $sidecar = Get-ChildItem $appDir -Filter "aisc*.exe" | Where-Object { $_.Name -in @("aisc.exe", "aisc-x86_64-pc-windows-msvc.exe") } | Select-Object -First 1
+            if (-not $sidecar) { throw "sidecar not found under $appDir (expected aisc.exe or aisc-x86_64-pc-windows-msvc.exe)" }
+            Write-Host "sidecar: $($sidecar.FullName)"
+
+            & $sidecar.FullName version --format json
+            if ($LASTEXITCODE -ne 0) { throw "aisc version failed with exit $LASTEXITCODE" }
+
+            # --- G-18: exactly one entry, REG_EXPAND_SZ + %VAR% preserved ---
+            $after = Get-UserPath
+            if ((Count-InstDirEntries $after) -ne 1) { throw "G-18: expected exactly 1 INSTDIR PATH entry, got $(Count-InstDirEntries $after)" }
+            $typeCode = (Get-Item "HKCU:\Environment").GetValueKind('Path')
+            if ($typeCode -ne 'ExpandString') { throw "G-18: user PATH type changed to $typeCode (expected ExpandString)" }
+            # GetEnvironmentVariable expands EXPAND_SZ; check the raw registry
+            # value so a literal %USERPROFILE% entry is detectable.
+            $raw = (Get-Item "HKCU:\Environment").GetValue("Path", $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            if ($raw -notlike "*%USERPROFILE%\AppData\Roaming\aisc-smoke-test*") { throw "G-18: %USERPROFILE% entry lost/expanded (raw=$raw)" }
+
+            # --- G-18: resolution from a NEW PowerShell process via PATH ---
+            # A runner may already have another aisc in the SYSTEM PATH (e.g.
+            # a pip-installed console script): Windows puts system PATH first,
+            # so in that case `aisc` legitimately resolves to the other one -
+            # the installer must not override it (05 §5.2.5). Assert resolution
+            # to $INSTDIR only when the system PATH has no other aisc.
+            $sysAisc = $null
+            foreach ($e in ([Environment]::GetEnvironmentVariable("Path","Machine") -split ';')) {
+              if ($e -eq '') { continue }
+              $exp = [Environment]::ExpandEnvironmentVariables($e)
+              if ($exp -like "\\*") { continue }
+              if (Test-Path (Join-Path $exp 'aisc.exe')) { $sysAisc = Join-Path $exp 'aisc.exe'; break }
+            }
+            $resolved = & powershell -NoProfile -Command "Get-Command aisc -ErrorAction Stop | Select-Object -ExpandProperty Source"
+            if ($LASTEXITCODE -ne 0) { throw "G-18: aisc not resolvable via PATH" }
+            if ($null -eq $sysAisc) {
+              if ($resolved -ine "$appDir\aisc.exe") {
+                throw "G-18: PATH resolution failed - got '$resolved', expected '$appDir\aisc.exe'"
+              }
+              Write-Host "G-18 PATH (resolves to INSTDIR): PASSED"
+            } else {
+              if ($resolved -ine $sysAisc) { throw "G-18: system aisc '$sysAisc' not shadowing resolution (got '$resolved')" }
+              Write-Host "G-18 PATH (system aisc shadow, conflict semantics): PASSED - $sysAisc"
+            }
+            & powershell -NoProfile -Command "aisc version --format json | Out-Null; exit `$LASTEXITCODE"
+            if ($LASTEXITCODE -ne 0) { throw "G-18: aisc version via PATH failed with exit $LASTEXITCODE" }
+
+            & $sidecar.FullName build --dry-run --tag smoke:latest --events --cc-switch-manifest config/cc-switch-manifest.json
+            if ($LASTEXITCODE -ne 0) { throw "aisc build --dry-run failed with exit $LASTEXITCODE" }
+            Write-Host "SMOKE: PASSED"
+
+            # --- S4.2: upgrade + uninstall smoke (data retention) ---
+            $dataDir = "$env:APPDATA\cn.aisc.workbench"
+            New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+            $appDataMarker = Join-Path $dataDir "smoke-data-marker.txt"
+            Set-Content -Path $appDataMarker -Value "survive-upgrade" -Encoding utf8
+
+            $wsMarkerDir = Join-Path $env:TEMP "aisc-smoke-workspace\.aisc"
+            New-Item -ItemType Directory -Force -Path $wsMarkerDir | Out-Null
+            $wsMarker = Join-Path $wsMarkerDir "workspace-marker.txt"
+            Set-Content -Path $wsMarker -Value "survive-uninstall" -Encoding utf8
+
+            # KI-4: the REAL data root (Stage 7 layout) under
+            # %LOCALAPPDATA%\AISC. Silent uninstall never selects the
+            # confirm-page checkboxes (they only exist in GUI mode), so the
+            # data root must survive — deletion is strictly opt-in.
+            $dataRootCfg = Join-Path $env:LOCALAPPDATA "AISC\data\config"
+            New-Item -ItemType Directory -Force -Path $dataRootCfg | Out-Null
+            $dataRootMarker = Join-Path $dataRootCfg "data-root-marker.txt"
+            Set-Content -Path $dataRootMarker -Value "survive-silent-uninstall" -Encoding utf8
+
+            # Upgrade: re-run the same installer (same version -> add/reinstall
+            # maintenance flow; see PageReinstall in installer.nsi).
+            $proc2 = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($proc2.ExitCode -ne 0) { throw "upgrade install failed with exit $($proc2.ExitCode)" }
+            if (-not (Test-Path $appDataMarker)) { throw "app-data marker lost after upgrade install" }
+            if (-not (Test-Path $wsMarker)) { throw "workspace marker lost after upgrade install" }
+            if (-not (Test-Path "$appDir\aisc-bundle\VERSION")) { throw "aisc-bundle lost after upgrade install" }
+            if ((Count-InstDirEntries (Get-UserPath)) -ne 1) { throw "G-18: PATH entry count changed after upgrade" }
+            Write-Host "UPGRADE: PASSED"
+
+            # Uninstall: silent uninstaller, then verify app files removed while
+            # app-data + workspace markers and the other PATH entries survive.
+            $uninstaller = Join-Path $appDir "uninstall.exe"
+            if (-not (Test-Path $uninstaller)) { throw "uninstaller not found at $uninstaller" }
+            $proc3 = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
+            if ($proc3.ExitCode -ne 0) { throw "uninstall failed with exit $($proc3.ExitCode)" }
+            if (Test-Path "$appDir\aisc-bundle") { throw "aisc-bundle still present after uninstall" }
+            if (-not (Test-Path $appDataMarker)) { throw "app-data marker lost after uninstall" }
+            if (-not (Test-Path $wsMarker)) { throw "workspace marker lost after uninstall" }
+            if (-not (Test-Path $dataRootMarker)) { throw "KI-4: data-root marker lost in SILENT uninstall (deletion is opt-in via the GUI checkbox)" }
+            if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AISC Workbench") {
+              throw "uninstall registry key still present"
+            }
+            $final = Get-UserPath
+            if ((Count-InstDirEntries $final) -ne 0) { throw "G-18: INSTDIR entry not removed on uninstall" }
+            $finalRaw = (Get-Item "HKCU:\Environment").GetValue("Path", $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            if ($finalRaw -notlike "*%USERPROFILE%\AppData\Roaming\aisc-smoke-test*") { throw "G-18: unrelated PATH entry removed on uninstall (raw=$finalRaw)" }
+            Write-Host "UNINSTALL: PASSED"
+            Write-Host "S4.2 UPGRADE/UNINSTALL SMOKE: PASSED"
+          } finally {
+            # restore the runner's original user PATH
+            Set-UserPath $origPath
+            # KI-4: drop the smoke data root so the runner stays clean
+            Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA "AISC") -ErrorAction SilentlyContinue
+          }
