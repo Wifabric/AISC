@@ -43,7 +43,9 @@ AISC 以开发便利为优先，不是生产级安全沙箱：
 | Linux | x86_64（CLI 便携包） | Docker Engine；当前用户需有 daemon 权限 |
 | macOS | Apple Silicon arm64（CLI 便携包/PKG） | Docker Desktop |
 
-官方 Release **不提供** Linux arm64、Windows arm64 或 Intel macOS 产物。安装 AISC 本身不需要 Python、uv 或 Git；从源码构建需要 Python 3.11+ 和 Git，推荐使用 uv。
+官方 Release **不提供** Linux arm64、Windows arm64 或 Intel macOS 产物。安装器/便携包渠道不需要 Python、uv 或 Git；pip/pipx 渠道需要 Python 3.11+；从源码构建需要 Python 3.11+ 和 Git，推荐使用 uv。
+
+`aisc doctor` 可在明确确认后协助安装 Docker（需要确认与相应权限），除此之外 AISC 不会代装系统软件。
 
 安装 Docker 后验证：
 
@@ -127,6 +129,21 @@ uv tool install --editable .
 ```
 
 editable 安装记录仓库绝对路径，移动仓库前先 `uv tool uninstall aisc`。
+
+**pip / pipx（0.1.0 起）**：
+
+```bash
+pipx install aisc-cli        # 首选：自动隔离 + 独立 bin 目录（Windows 同样适用）
+# 或 uv tool install aisc-cli / 裸 pip（请在 venv 内）
+```
+
+三点须知：① 分发名是 `aisc-cli`，但命令仍是 `aisc`；② **需要自备 Docker**，装完先跑 `aisc doctor`；③ pip 安装**不含构建资源**——`aisc build` / `maintenance docker-rebuild` 前需先 `aisc bundle fetch`（从 GitHub Releases 拉同版本 bundle 到数据根）；此时 `aisc version` 的 `bundle_version=null` 与 `doctor` 的 aisc-bundle WARN 属预期。
+
+安装陷阱 FAQ：
+
+- **`EXTERNALLY-MANAGED`（PEP 668）**：系统 Python 拒绝裸装 → 改用 `pipx install aisc-cli`。
+- **Windows 裸 pip `--user`**：Scripts 目录（`%APPDATA%\Python\Scripts`）默认不在 PATH → 把它加入 PATH 或改用 pipx。
+- **`python -m aisc`**：永远可用，是 shim 失效时的诊断后门。
 
 ### 快速开始
 
@@ -270,13 +287,14 @@ Workbench 与 CLI 共享统一数据根：
 - 工作区状态在数据根（不在工作区目录内），「彻底忘记」才会清除。
 - 持久工具链：Agent 安装的用户级 npm/pip/cargo 工具跨容器、跨会话保留（挂载 `/opt/aisc/toolchain`）。
 - AISC 用户配置：`aisc config`（JSON，用户层 + 工作区层 `<workspace>/.aisc/config.json`，未知键告警忽略）。
-- 资源根（`aisc-bundle/`）须包含 `VERSION`、`container/Dockerfile`、`config/versions.env`；查找顺序 `--aisc-root` -> `AISC_ROOT` -> 可执行文件旁 `aisc-bundle/` -> Git 仓库向上查找 -> editable 源码祖先。
+- 资源根（`aisc-bundle/`）须包含 `VERSION`、`container/Dockerfile`、`config/versions.env`；查找顺序 `--aisc-root` -> `AISC_ROOT` -> 可执行文件旁 `aisc-bundle/` -> Git 仓库向上查找 -> **数据根 `bundles/<ver>/`（`aisc bundle fetch` 安装，0.1.0 起）** -> editable 源码祖先。pip 安装无前四项时落到 `bundles/`；都没有则 build 类命令报错并指引 `aisc bundle fetch`。
 
 ## 升级
 
 - **Windows Workbench**：运行新版安装器覆盖安装。安装器会先停止并删除 AISC 管理的容器，替换文件后对默认镜像执行**无缓存重建**（可能需要几分钟），成功后清理旧镜像；Docker 不可用时文件照常更新，镜像重建转为待办并给出手动命令。
 - **macOS PKG / 便携脚本**：覆盖安装或重新执行 `packaging/install.sh <new-archive>`。
 - **uv tool**：`git pull` 后 `uv tool upgrade aisc` 或重装；镜像内容变化时需重新 `aisc build`。
+- **pipx/pip**：`pipx upgrade aisc-cli`（或 venv 内 `pip install -U aisc-cli`）；新版 bundle 用 `aisc bundle fetch` 更新（更新镜像再 `aisc maintenance docker-rebuild`）。CLI 自身更新也可用 `aisc update`（冻结形态适用）。
 
 用户配置、工作区状态与持久工具链在升级中全部保留。
 
@@ -289,14 +307,20 @@ Workbench 与 CLI 共享统一数据根：
 | macOS PKG | `sudo /usr/local/lib/aisc/uninstall.sh` |
 | Linux/macOS `packaging/install.sh` | `bash packaging/uninstall.sh` |
 | uv tool | `uv tool uninstall aisc` |
+| pipx/pip | `pipx uninstall aisc-cli`（或 venv 内 `pip uninstall aisc-cli`）；**先**跑下面的 docker 清理，pip 卸载会把工具一起带走 |
 
 默认卸载会清理 **可证明属于 AISC 的** Docker 资源（容器 + 工作站镜像）；归属不明的仅报告不删除，绝不触碰非 AISC 容器/镜像、卷和网络。保留 Docker 资源：NSIS 卸载不勾选清理项（或 `/KEEPDOCKER`）；便携/POSIX 脚本加 `--keep-docker-resources`。
+
+排障：多个渠道并存后「升级了但版本没变」→ `aisc doctor` 的 channel 检查列出 PATH 上全部 `aisc` 命中与自身来源；`aisc version` 也输出安装渠道。
 
 卸载器不删除工作区与用户配置。需要彻底清理时（谨慎，含登录态/凭据）：
 
 ```bash
-aisc maintenance docker-cleanup --context uninstall --format json
-aisc maintenance docker-scan --context uninstall --format text   # 只读预览
+# 卸载顺序（pip 渠道尤其重要：pip uninstall 会把清理工具一起删掉）
+aisc maintenance docker-scan --context uninstall --format text   # ① 只读预览
+aisc maintenance docker-cleanup --context uninstall --format json # ② 清 Docker 资源
+# ③ 再卸载本体（安装器/pipx/uninstall 脚本）
+# ④ 手动删数据根（含凭据，三平台路径见上文「数据根」）
 ```
 
 ## 故障排查

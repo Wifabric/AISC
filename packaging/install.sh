@@ -323,8 +323,18 @@ do_install() {
     # Create symlink (or replace existing)
     local target="${INSTALL_DIR}/${EXE_NAME}"
     if [ -e "$BIN_LINK" ] || [ -L "$BIN_LINK" ]; then
-        info "Removing previous symlink: ${BIN_LINK}"
-        rm -f "$BIN_LINK" || warn "Failed to remove previous symlink"
+        # A8 (guide 3.5.5): never rm a link we don't own — pipx's shims
+        # (Linux) are symlinks into ~/.local/pipx/venvs/aisc-cli; an
+        # unconditional rm here silently uninstalled the pip channel.
+        # Ownership = the link resolves inside OUR install dir.
+        local link_real
+        link_real="$(readlink -f "$BIN_LINK" 2>/dev/null || true)"
+        if [ -n "$link_real" ] && [[ "$link_real" == "${INSTALL_DIR}"/* ]]; then
+            info "Removing previous symlink: ${BIN_LINK}"
+            rm -f "$BIN_LINK" || warn "Failed to remove previous symlink"
+        else
+            warn "Keeping foreign ~/${BIN_LINK#$HOME/} (resolves to ${link_real:-unknown}) — install yours, not the package manager's"
+        fi
     fi
 
     # Use relative symlink where possible

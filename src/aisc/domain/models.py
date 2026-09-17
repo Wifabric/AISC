@@ -117,6 +117,9 @@ class VersionInfo:
     declared_claude_version: Optional[str] = None
     image_version: Optional[str] = None
     contract_version: Optional[str] = None
+    # A8 (guide 3.5.5): text-mode provenance line only — NOT in to_dict
+    # (the JSON envelope keeps its 6 fixed keys + capabilities contract).
+    install_channel: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Return RFC-compliant dict with 6 fixed keys + Workbench capabilities."""
@@ -135,6 +138,8 @@ class VersionInfo:
             f"AISC CLI version  : {self.cli_version}",
             f"Python version     : {self.python_version}",
         ]
+        if self.install_channel:
+            lines.append(f"Install channel    : {self.install_channel}")
         if self.bundle_version is not None:
             lines.append(f"Bundle version     : {self.bundle_version}")
         else:

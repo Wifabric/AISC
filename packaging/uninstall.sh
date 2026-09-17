@@ -68,9 +68,17 @@ removed_any=false
 
 # 1. Remove symlink
 if [ -L "$BIN_LINK" ]; then
-    info "Removing symlink: ${BIN_LINK}"
-    rm -f "$BIN_LINK" || warn "Failed to remove symlink"
-    removed_any=true
+    # A8 (guide 3.5.5): pipx shims are symlinks too — only remove OURS
+    # (link target resolves inside the install dir). Foreign links get a
+    # warning, never a rm.
+    bin_real="$(readlink -f "$BIN_LINK" 2>/dev/null || true)"
+    if [ -n "$bin_real" ] && [[ "$bin_real" == "${INSTALL_DIR}"/* ]]; then
+        info "Removing symlink: ${BIN_LINK}"
+        rm -f "$BIN_LINK" || warn "Failed to remove symlink"
+        removed_any=true
+    else
+        warn "Symlink ${BIN_LINK} targets ${bin_real:-unknown} (not our install) — keeping"
+    fi
 elif [ -f "$BIN_LINK" ]; then
     # It exists but is a regular file, not a symlink. Check if it's our install.
     if [ -f "${INSTALL_DIR}/${EXE_NAME}" ]; then

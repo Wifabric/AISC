@@ -6,8 +6,8 @@
 
 | 引用 | 角色 | 自动化 |
 | --- | --- | --- |
-| `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Artifact 跨平台构建 |
-| `main` | 面向发布的稳定线；通过 PR 接收已验证变更 | 目标为 `main` 的 PR 触发 Artifact 构建 |
+| `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Workbench CI / cli-sidecar / Bundle / NSIS（按各自 paths 过滤）；Artifact 为 dispatch-only |
+| `main` | 面向发布的稳定线；通过 PR 接收已验证变更（0.1.0 起也是 PyPI pending publisher 绑定的默认分支） | 无自动构建 |
 | `v*` tag | 不可变发布标识，标签内容应与 `src/aisc/VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
 
 不要把三者混成同一种工作流：开发基于 `develop`，发布候选通过 PR 进入 `main`，发布 tag 指向已审核的发布提交。普通 push 到 `main` 不在当前 workflow 的分支触发列表中，也不会创建 Release；只有 `v*` tag 会进入 aggregate 和 release jobs。
@@ -680,7 +680,11 @@ CI 矩阵及唯一官方平台集合：
 
 ## 11. CI 与发布
 
-### 11.1 Artifact workflow
+### 11.1 Workflow 清单
+
+0.1.0 起共 7 个 workflow：`tests.yml`（manual dispatch）、`cli-sidecar.yml`、`workbench-ci.yml`、`nsis-installer.yml`、`bundle-linux-macos.yml`（四者 push + paths 过滤）、`artifact.yml`（**dispatch-only**，tag ref 上跑 build→aggregate→release）、`pypi-publish.yml`（**dispatch-only**，输入已存在 v* tag；见 ADR-002/§11.2 5b）。「唯一 workflow」时代的描述以本清单为准。
+
+### 11.1b Artifact workflow
 
 `.github/workflows/artifact.yml` 是当前唯一 GitHub Actions workflow：
 
@@ -724,7 +728,7 @@ tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为
 示例中的版本值必须从 `VERSION` 读取，避免手写漂移：
 
 ```bash
-VERSION_VALUE="$(python3 -c "from pathlib import Path; print(Path('VERSION').read_text().strip())")"
+VERSION_VALUE="$(python3 -c "from pathlib import Path; print(Path('src/aisc/VERSION').read_text().strip())")"
 git tag -a "v${VERSION_VALUE}" -m "Release v${VERSION_VALUE}"
 git push origin "v${VERSION_VALUE}"
 ```
@@ -732,13 +736,24 @@ git push origin "v${VERSION_VALUE}"
 创建 tag 前至少运行：
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+python -m pytest tests/ -q --ignore=tests/integration   # 全测（Windows 注意 TMP 短路径，见 2.7）
+python scripts/check-version-sync.py                    # 四件套一致性（0.1.0 起）
 bash tools/check-docs.sh
 bash tools/vendor-verify.sh
-python3 packaging/artifact.py stage --output /tmp/aisc-staging
-python3 packaging/artifact.py verify --bundle /tmp/aisc-staging/aisc-bundle
+python packaging/artifact.py stage --output /tmp/aisc-staging
+python packaging/artifact.py verify --bundle /tmp/aisc-staging/aisc-bundle
+pip install build pipx twine && python scripts/verify-cli-install.py   # clean-room 三腿 + off-checkout + twine（0.1.0 起）
 git diff --check
 ```
+
+**5b. PyPI 步骤（0.1.0 起，ADR-002）**：GitHub Release 完成后——
+
+1. `workflow_dispatch` 运行 `pypi-publish.yml`，输入该 tag；build 段跑全部守卫（tag==VERSION、check-version-sync、twine check、薄形负向、gitleaks、pip-audit）。
+2. TestPyPI 自动发布（environment `testpypi`，skip-existing）→ verify-testpypi（真实 index 安装验证，含传播重试）。
+3. **`pypi` environment 人工审批**（Required reviewers）→ 正式发布（final-only 正则门挡 dev/rc）→ verify-pypi → SBOM 附到同一 Release。
+4. 发布后紧跟一提交 bump 到 `X.Y.(Z+1).dev0`。
+
+dev 迭代（TestPyPI only）：每次上传前四件套 bump `.devN` → 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
 
 不要覆盖已发布 tag，不要 force-push 发布引用。Release Notes 缺失会使 release job 无法读取 `body_path`；平台 job 任一失败会阻止 aggregate/release。
 
@@ -776,7 +791,8 @@ git diff --check
 | --- | --- | --- |
 | `README.md` | 最终用户当前行为、安装、CLI、排障 | 用户文档事实入口 |
 | `DEVELOP_WIKI.md` | 当前开发架构、流程和契约 | 维护者事实入口 |
-| `docs/adr/001-python-stdlib-cli.md` | 使用 Python stdlib CLI 的决策 | 架构决策背景 |
+| `docs/adr/001-python-stdlib-cli.md` | 使用 Python stdlib CLI 的决策（分发/依赖部分被 002 取代） | 架构决策背景 |
+| `docs/adr/002-pypi-distribution.md` | 三轨分发、PyPI 瘦 wheel、六级解析链、fetch 信任模型 | 0.1.0 发布架构 |
 | `docs/rfc/aisc-cli-v1.md` | JSON envelope / JSONL 协议 | 机器接口契约 |
 | `docs/plans/` | 实施计划与历史设计 | 不能覆盖当前源码事实 |
 | `docs/devlog.md` | 变更历史 | 非命令参考 |
