@@ -17,6 +17,17 @@
   tests/、pip-audit 语法、产物顺序、Wifabric 改名致 publisher claim 失配、
   pipx --pip-args = 形式）。GitHub 账号已改名 wangyuncepu→Wifabric。
 - 发布后紧跟：四件套 bump 0.1.1.dev0；plans 归档 docs/archive/0.1.0-dev-plans/。
+- **发布窗口修复链（2026-09-17）**：v0.1.0 tag 在四个真雷上逐个落马、逐个修
+  （tag 在未产生任何公开产物期间移动三次，最终 1e433f2）：① wheel 守卫在
+  artifact.yml 无 build 模块环境 → 干净跳过（全量守卫在 workbench-ci）；
+  ② Inno `LoadStringFromFile` out-param 是 **AnsiString**——新版 Inno 严格
+  类型检查拒绝 String var（6.3.3 pin 是错误理论已撤；真修 = AnsiString 缓冲
+  + String() 消费转换）；③ choco 装旧版需 --allow-downgrade；④ pypi verify
+  spec 带 v 前缀（cli_version 0.1.0 != v0.1.0）→ 裸 PEP 440 + skip-existing
+  幂等 re-run；⑤ SBOM 脚本实参是 --out 不是 --output。GitHub 账号已改名
+  wangyuncepu→Wifabric（publisher claim 失配曾致演练失败，用户重注册收口）。
+  手工补附：SBOM（干净 PyPI 装机 venv 生成，integrity ok）与 Workbench NSIS
+  setup.exe（tag 构建）+ sha256。
 
 # v0.1.0-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
 
