@@ -27,9 +27,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def pep440_normalized(v: str) -> str:
     """dash form -> dot form: 0.1.0-dev == 0.1.0.dev0"""
-    m = re.match(r"^(\d+(?:\.\d+)*)-dev$", v.strip())
+    m = re.match(r"^(\d+(?:\.\d+)*)(?:-dev(\d+)?)$", v.strip())
     if m:
-        return f"{m.group(1)}.dev0"
+        return f"{m.group(1)}.dev{m.group(2) or 0}"
     return v.strip()
 
 

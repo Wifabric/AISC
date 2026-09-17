@@ -1,0 +1,14 @@
+# D-6 ruling: minimal sdist (tests/docs/repo scaffolding stay out;
+# downstream verification rides the GitHub Release SBOM + source tag).
+# Newer setuptools sdist defaults started grafting tests/ (A9 rehearsal
+# catch, run 35176638052) — the prunes make the contract mechanical.
+prune tests
+prune docs
+prune packaging
+prune container
+prune vendor
+prune workbench
+prune scripts
+prune tools
+prune .github
+prune .tools

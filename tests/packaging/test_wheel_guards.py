@@ -76,3 +76,38 @@ class WheelShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SdistShapeTests(unittest.TestCase):
+    """A9 rehearsal catch (run 35176638052): newer setuptools sdist
+    defaults grafted tests/ into the artifact; MANIFEST.in prunes make the
+    D-6 minimal-sdist ruling mechanical. This pins it."""
+
+    @classmethod
+    def setUpClass(cls):
+        import subprocess as _sp
+        import tempfile as _tf
+        cls.td = _tf.TemporaryDirectory(prefix="sdist-guard-")
+        proc = _sp.run(
+            [sys.executable, "-m", "build", "--sdist", "--outdir", cls.td.name],
+            cwd=str(REPO_ROOT), capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr[-800:]
+        cls.names = []
+        import tarfile as _tar
+        sd = sorted(Path(cls.td.name).glob("*.tar.gz"))[0]
+        with _tar.open(sd) as tf:
+            cls.names = tf.getnames()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.td.cleanup()
+
+    def test_no_tests_or_repo_scaffolding_in_sdist(self):
+        for bad in ("/tests/", "/docs/", "/packaging/", "/container/",
+                    "/vendor/", "/workbench/"):
+            leaked = [n for n in self.names if bad in f"/{n}"]
+            self.assertFalse(leaked, f"sdist leaked {bad}: {leaked[:3]}")
+
+    def test_package_tree_and_manifest_ride_along(self):
+        self.assertTrue(any(n.endswith("src/aisc/VERSION") for n in self.names))
+        self.assertTrue(any(n.endswith("MANIFEST.in") for n in self.names))
