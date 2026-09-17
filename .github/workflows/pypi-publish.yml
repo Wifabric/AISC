@@ -30,6 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      # dev/rc tags never even REQUEST the pypi environment approval —
+      # without this a dev rehearsal would ping the reviewer for a run
+      # the final gate then rejects (A9 fix).
+      is_final: ${{ steps.final.outputs.is_final }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +49,15 @@ jobs:
 
       - name: Tag/version guard (guide 3.4.2)
         run: '[ "v$(cat src/aisc/VERSION)" = "${{ inputs.tag }}" ] || { echo "tag ${{ inputs.tag }} != v$(cat src/aisc/VERSION)"; exit 1; }'
+
+      - name: Final-tag classification
+        id: final
+        run: |
+          if echo "${{ inputs.tag }}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "is_final=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_final=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Version consistency (VERSION == tauri.conf normalized == notes exist)
         run: python scripts/check-version-sync.py --tag "${{ inputs.tag }}"
@@ -118,9 +132,11 @@ jobs:
     permissions:
       id-token: write
       contents: write
-    # No workflow-level regex gate (GitHub `if` has no =~): the environment
-    # approval above is the human gate, the first step below the mechanical
-    # final-only gate. Dev tags die there without consuming the approval.
+    # A9: dev tags skip this job ENTIRELY (is_final output) — the pypi
+    # environment approval is never requested for a rehearsal. For final
+    # tags the environment approval remains the human gate, with the
+    # in-job final-only check as the mechanical backstop.
+    if: needs.build.outputs.is_final == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
