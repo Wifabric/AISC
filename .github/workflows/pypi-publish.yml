@@ -105,13 +105,14 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      # checkout CLEANS the workspace — download must come after it
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
       - name: Version (for the verify step)
         run: echo "AISC_VERSION=$(cat src/aisc/VERSION)" >> "$GITHUB_ENV"
       - name: Publish
