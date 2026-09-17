@@ -70,7 +70,9 @@ jobs:
       # ------------------------------------------------------------------
       - name: Install Inno Setup (Windows)
         if: matrix.platform == 'windows'
-        run: choco install innosetup --no-progress -y
+        # 0.1.0 release: newer Inno (6.5) rejects this legacy iss at
+        # line 296 (Type mismatch) — 6.3.3 is the last proven-good compiler.
+        run: choco install innosetup --version=6.3.3 --no-progress -y
 
       - name: Build setup.exe (Windows)
         if: matrix.platform == 'windows'

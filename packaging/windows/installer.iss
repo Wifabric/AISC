@@ -280,7 +280,7 @@ end;
 
 procedure UpgradeDockerLifecycle();
 var
-  Helper, ScanText, ScanCmd: string;
+  Helper, ScanText, ScanCmd, ScanFile: string;
   ResultCode: Integer;
 begin
   OldImageId := '';
@@ -293,7 +293,8 @@ begin
   if Exec(ExpandConstant('{cmd}'), ScanCmd, '', SW_HIDE, ewWaitUntilTerminated,
           ResultCode) and (ResultCode = 0) then
   begin
-    if LoadStringFromFile(ExpandConstant('{tmp}\aisc-scan.txt'), ScanText) then
+    ScanFile := ExpandConstant('{tmp}\aisc-scan.txt');
+    if LoadStringFromFile(ScanFile, ScanText) then
       OldImageId := ParseOldImageId(ScanText);
   end;
   // Containers-only cleanup (the tagged image survives until rebuild).
