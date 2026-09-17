@@ -66,9 +66,11 @@ def main() -> int:
 
         installed = False
         for attempt in range(1, RETRIES + 1):
-            proc = _run([pipx, "install", "--index-url", args.index_url, "--pip-args",
-                         f"--extra-index-url={args.extra_index_url}" if args.extra_index_url else "--no-cache-dir",
-                         spec], env=env)
+            # --pip-args VALUE starting with "--" must ride the = form —
+            # separate argv tokens make pipx's argparse eat it as its own flag.
+            pip_args = f"--extra-index-url={args.extra_index_url}" if args.extra_index_url else "--no-cache-dir"
+            proc = _run([pipx, "install", f"--index-url={args.index_url}",
+                         f"--pip-args={pip_args}", spec], env=env)
             if proc.returncode == 0 and bin_dir.exists():
                 installed = True
                 break
@@ -101,8 +103,16 @@ def main() -> int:
 
         doc = subprocess.run([aisc, "doctor", "--format", "json"],
                              capture_output=True, text=True, cwd=str(offco), env=env2)
-        if doc.returncode != 0:
-            print("FAIL: doctor crashed:", doc.stderr[-300:])
+        # Degrade contract: doctor EXITS NON-ZERO when checks fail (no
+        # Docker in this off-checkout env — expected). The crash contract
+        # is "a valid aisc.cli/v1 envelope still comes out"; exit code is
+        # not the criterion.
+        try:
+            doc_env = json.loads(doc.stdout)
+            assert doc_env["meta"]["protocol"] == "aisc.cli/v1"
+            assert doc_env["meta"]["command"] == "doctor"
+        except Exception:
+            print("FAIL: doctor crashed (no valid envelope):", doc.stderr[-300:])
             return 1
 
         print(f"PASS: {spec} installs from {args.index_url}; off-checkout "
