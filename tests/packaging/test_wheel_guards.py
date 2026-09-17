@@ -19,6 +19,16 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# The build module rides the dev extra; artifact.yml installs `-e .` plain.
+# Skip loudly rather than error: the full guard runs in workbench-ci
+# (which installs .[dev]) — this keeps the artifact pipeline self-contained.
+try:
+    import build  # noqa: F401
+    _HAS_BUILD = True
+except ImportError:
+    _HAS_BUILD = False
+_SKIP_NO_BUILD = unittest.skipIf(not _HAS_BUILD, "build module not installed (run under .[dev] for the full guard)")
+
 
 def _build_wheel(outdir: Path) -> Path:
     proc = subprocess.run(
@@ -30,6 +40,7 @@ def _build_wheel(outdir: Path) -> Path:
     return wheels[0]
 
 
+@_SKIP_NO_BUILD
 class WheelShapeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -78,6 +89,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@_SKIP_NO_BUILD
 class SdistShapeTests(unittest.TestCase):
     """A9 rehearsal catch (run 35176638052): newer setuptools sdist
     defaults grafted tests/ into the artifact; MANIFEST.in prunes make the
