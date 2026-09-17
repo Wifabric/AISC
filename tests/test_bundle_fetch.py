@@ -303,7 +303,8 @@ class DataRootLayer(unittest.TestCase):
         self.assertIn("manifest", skipped[0])
 
     def test_find_returns_compatible_first(self):
-        self._install("1.0", allow=["1.0", "9.9.9", "0.1.0.dev0"])
+        from aisc import __version__  # version-agnostic: the gate runs
+        self._install("1.0", allow=["1.0", "9.9.9", __version__])  # against the LIVE cli version
         roots, skipped = find_data_root_bundles(self.td / "data")
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0].parent.name, "1.0")
