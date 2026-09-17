@@ -138,6 +138,18 @@
   升级链（不引 tauri-plugin-updater 的全部理由落地）。UI：帮助菜单「检查更新」
   + 设置页「关于与更新」组（下载进度/就绪态/确认后安装）；sidecar 更新指引指
   aisc update（免重启）。cargo 318 / vitest 500 / vue-tsc 净。
+- **C 链调研批 + 镜像全量构建手测（2026-09-17，2a14af0）**：r1 provider 模板化
+  （上游 v5.10.4 源码逐文件核实：`--template` 存在 15 枚举、seed 薄、`--api-key`
+  走 argv 与 D8-09 冲突、`--config-file` 是合规委托路）+ r2 codex computer use
+  （正主在桌面应用，CLI 侧靠捆绑 MCP；三路线对比 + §12.1 安全章节；路线三永久
+  否决）。镜像手测连环抓雷：buildkit 对全部 GitHub 镜像 TLS 被掐（宿主正常）——
+  补 cc-switch downloads/ 预置口（对齐 mihomo/npm/yazi 模式，pinned 分支仍过
+  sha256 强校验）+ stage-cc-switch.sh + vendor manifest 组件；vendor-verify 对
+  CRLF 工作树免疫（checkout 舞蹈后 1515 全 MISS 的 \r 病）。全量构建实证：
+  super-claude:latest 2.29GB 全 69 层绿（预置路径 + npmmirror）。r1 两项容器
+  实测收口：claude app 无 deepseek 模板（v5.10.5 又漂出新枚举 pewayai）；
+  template+config-file 组合可用且 config 覆盖 seed。
+
 - **A8 文档与渠道治理（分支 a8-docs-channels，2026-09-17）**：README pip/pipx
   安装节（pipx 首选政策+三须知+陷阱 FAQ+卸载 SOP 顺序+升级/卸载表行+数据根链
   补 bundles/<ver> 级+doctor 代装披露+多渠道混淆排障行）；ADR 目录复活——001
