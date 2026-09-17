@@ -83,10 +83,14 @@ jobs:
 
       - name: pip-audit the built wheel (Critical/High block)
         run: |
+          # Install the wheel into the job env, then audit the ENVIRONMENT —
+          # pip-audit resolves exact installed versions (a bare-file audit
+          # would need --no-deps + -r and audit unpinned names instead).
+          # First-release policy: any known vulnerability blocks the
+          # publish; records-only once a triage process exists.
+          pip install ./dist/*.whl
           pip install pip-audit
-          # First-release policy: any known vulnerability in the dependency
-          # set blocks the publish; records-only once a triage process exists.
-          pip-audit --no-deps ./dist/*.whl
+          pip-audit
 
       - uses: actions/upload-artifact@v4
         with:
