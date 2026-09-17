@@ -426,11 +426,28 @@ ENV PATH="/opt/aisc/venv/bin:${PATH}"
 #   Stage 8b：resolver 注入 URL/SHA-256 时强校验（fail closed）；仅手动
 #   docker build（无 resolver 产物）走 tag 拼 URL 回退，无校验并显式警告。
 #   复用 mihomo 的 GH_PROXY 多镜像 fallback；musl 静态版兼容 glibc/musl。
+#   0.1.1：downloads/ 预置口（对齐 mihomo/npm/yazi 模式）——CN 网络 buildkit
+#   TLS 被掐时免网构建；预置文件在 pinned 分支仍过 sha256 强校验（与在线
+#   同强度），fallback 分支与在线回退同权无校验。
 # ==========================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
+    ccs_preset=""; \
     if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
+        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi; \
+    else \
+        ccs_preset="$(ls /tmp/dl/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz 2>/dev/null | head -1 || true)"; \
+    fi; \
+    if [ -n "$ccs_preset" ]; then \
+        echo "📦 使用本地预置 cc-switch: $ccs_preset"; \
+        if [ -n "${CC_SWITCH_ASSET_SHA256}" ]; then \
+            echo "${CC_SWITCH_ASSET_SHA256}  $ccs_preset" | sha256sum -c - || { echo "❌ cc-switch 预置文件 sha256 mismatch"; exit 1; }; \
+        else \
+            echo "⚠️  预置文件无 pin 校验（fallback 形态）"; \
+        fi; \
+        cp "$ccs_preset" /tmp/ccs.tar.gz; rm -f "$ccs_preset"; \
+    elif [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
         base="${CC_SWITCH_ASSET_URL}"; \
         case "${CC_SWITCH_ASSET_NAME}" in \
             *-linux-${cs_arch}-musl.tar.gz) ;; \
@@ -445,7 +462,7 @@ RUN set -eux; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
                     --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
         done; \
-        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
+        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 stage-cc-switch.sh 预下载到 downloads/ 或 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
         echo "${CC_SWITCH_ASSET_SHA256}  /tmp/ccs.tar.gz" | sha256sum -c - || { echo "❌ cc-switch sha256 mismatch"; exit 1; }; \
     else \
         echo "⚠️  手动构建回退：无 resolver 校验（aisc build 才有 sha256 pin）"; \
@@ -459,7 +476,7 @@ RUN set -eux; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
                     --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
         done; \
-        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
+        [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 stage-cc-switch.sh 预下载到 downloads/ 或 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
     fi; \
     tar -xzf /tmp/ccs.tar.gz -C /tmp; \
     mv /tmp/cc-switch /usr/local/bin/cc-switch-real; \

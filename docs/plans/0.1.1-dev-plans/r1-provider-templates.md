@@ -85,10 +85,19 @@
 3. **裁决三（D-24）**：赞助商返佣模板默认**不**出现在 AISC UI（除非用户显式开启开关）——确认或否决。
 4. 实施成本预估：adapter 改造 + preset 模块瘦身 + UI 双语 + 三层测试 ≈ 一个中型批次（对标 B3 体量）；vendor 门禁必过。
 
-## 未能验证项（建议容器内实测）
+## 容器内实测（2026-09-17 补充，镜像 cc-switch v5.10.5，super-claude:latest 全量构建成功后）
 
-- claude app 下 `cc-switch provider add --template deepseek` 是否被 `provider_add_template_choices(AppType::Claude)` 放行（源码初判不放行；实测命令：`docker run --rm <img> cc-switch provider add --app claude --template deepseek --help` 或直接执行看 InvalidInput）。
-- `--config-file` 与 `--template` 可否组合（源码无显式冲突声明，`conflicts_with` 只声明了 base_url/api_key/model 系列 vs config；实测确认组合语义：模板 seed 先应用再被 config-file 覆盖与否）。
+1. **claude app 下 `deepseek` 模板：实测确认不可用**。错误原文：
+   `Provider template 'deepseek' is not supported for claude. Supported templates: custom, claude-official, codex-oauth, aicodemirror, claudeapi, pewayai, cubence, openmodel, runapi, qiniu, fenno, packycode, dds`
+   ——同时证实上游漂移仍在继续：v5.10.5 的 claude 可用清单出现 **`pewayai`**（v5.10.4 源码尚无此枚举），`openai-official`/`google-oauth`/`deepseek` 均不在 claude 名单（codex/gemini 专属）。
+2. **`--template` + `--config-file` 组合：实测确认可用且 config-file 覆盖模板 seed**。`provider add --app claude --template claudeapi --config-file /tmp/t.json`（文件内 `ANTHROPIC_BASE_URL=r1test.example.com`）添加成功，list 显示该行 API URL 即配置文件值（模板 preset 的 base_url 被覆盖），且新行自动成为 current。**D8-09 合规委托路径实证成立**（密钥可走 config-file 临时文件，不进 argv）。
+3. 附带发现：非交互 add 裸用 `--base-url`（无 `--api-key`）会被拒：`non-interactive provider add is missing required flag --api-key`——argv 密钥是上游硬性设计，进一步坐实第 3 项结论。
+
+（实测命令记录：`docker run --rm --entrypoint /bin/bash -v cfg:/tmp/t.json super-claude:latest -c "cc-switch-real provider add ..."`；`provider list --format json` 在容器版不存在，用 TUI 表格 `provider list --app claude` 验证。）
+
+## 未能验证项
+
+（无——原两项均已实测收口，见上节。）
 
 ---
-*检索日期 2026-09-17；上游源码为 v5.10.4 tag 原文（gh api contents 拉取）。实施与否由用户另行裁决。*
+*检索日期 2026-09-17；上游源码为 v5.10.4 tag 原文（gh api contents 拉取）；容器实测基于 v5.10.5 镜像（resolver live 解析）。实施与否由用户另行裁决。*

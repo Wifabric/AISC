@@ -22,6 +22,7 @@ missing=0
 malformed=0
 
 while IFS= read -r line || [ -n "$line" ]; do
+  line=${line%$'\r'}
   [ -z "$line" ] && continue
   [[ "$line" == \#* ]] && continue
 
