@@ -111,6 +111,18 @@
   升级链（不引 tauri-plugin-updater 的全部理由落地）。UI：帮助菜单「检查更新」
   + 设置页「关于与更新」组（下载进度/就绪态/确认后安装）；sidecar 更新指引指
   aisc update（免重启）。cargo 318 / vitest 500 / vue-tsc 净。
+- **A8 文档与渠道治理（分支 a8-docs-channels，2026-09-17）**：README pip/pipx
+  安装节（pipx 首选政策+三须知+陷阱 FAQ+卸载 SOP 顺序+升级/卸载表行+数据根链
+  补 bundles/<ver> 级+doctor 代装披露+多渠道混淆排障行）；ADR 目录复活——001
+  自 git 历史取回并标注部分被取代，002 三轨分发新写（路线 B 否决含 exec-bit
+  非论据标记、六级解析链、依赖立场修订、fetch 信任模型、发布纪律、0.x 立场）；
+  DEVELOP_WIKI §1 分支表自动化实况（7 workflow）、§4.5 run argv 修正至 svc-5
+  形态、§11.2 pre-tag 门现代化 + 新 5b PyPI 步骤、文档地图补双 ADR；release
+  notes 模板加「安装与获取」节。渠道共存代码：`aisc version` 文本输出加
+  Install channel 行（JSON 契约不动）；doctor 加 channel-confusion（多 PATH
+  命中 WARN，只列路径不执行）与 platform-support（py3-none-any 装非支持组合
+  WARN）检查；install.sh/uninstall.sh pipx shim 归属判定守卫（外链解析不在
+  安装目录内即警告不删）。pytest 1295 / check-docs 39。
 
 # v2.1.11-dev (2026-09-10 ~) — Provider 体验 · UI 对标 · 历史生命周期（分支 p1-quick-batch）
 

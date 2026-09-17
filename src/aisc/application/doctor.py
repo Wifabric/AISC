@@ -317,6 +317,58 @@ def _check_bundle_store(root: Optional[Path]) -> CheckResult:
     )
 
 
+def _check_channel_confusion() -> CheckResult:
+    """Check 6c: multiple `aisc` hits on PATH -> WARN with the list.
+
+    Only lists paths + file info by default — running every hit's
+    `--version` is `--verbose` territory (never execute unknown binaries
+    unprompted)."""
+    import shutil as _shutil
+
+    hits: list = []
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not d:
+            continue
+        for cand in (Path(d) / "aisc", Path(d) / "aisc.exe"):
+            try:
+                if cand.is_file() and cand.stat().st_size > 0:
+                    hits.append(str(cand))
+            except OSError:
+                continue
+    if len(hits) > 1:
+        return CheckResult(
+            name="channel-confusion",
+            status=CheckStatus.WARN,
+            message=f"{len(hits)} aisc executables on PATH",
+            detail="; ".join(hits[:4]) + (" …" if len(hits) > 4 else ""),
+        )
+    if len(hits) == 1:
+        return CheckResult(name="channel-confusion", status=CheckStatus.PASS,
+                           message=hits[0])
+    return CheckResult(name="channel-confusion", status=CheckStatus.WARN,
+                       message="no aisc executable found on PATH")
+
+
+def _check_platform_support() -> CheckResult:
+    """Check 6d: py3-none-any wheel installs anywhere; payloads are
+    linux-amd64. Unsupported combos get a WARN (no install-time hook
+    exists for pure wheels — guide 3.5.5)."""
+    import platform as _platform
+
+    combo = f"{_platform.system().lower()}-{_platform.machine().lower()}"
+    supported = {"windows-amd64", "linux-x86_64", "darwin-arm64"}
+    if combo in supported:
+        return CheckResult(name="platform-support", status=CheckStatus.PASS,
+                           message=combo)
+    return CheckResult(
+        name="platform-support",
+        status=CheckStatus.WARN,
+        message=f"unsupported combination {combo}",
+        detail="official artifacts are windows-x86_64 / linux-x86_64 / "
+               "macos-arm64; builds may be extremely slow or unstable here",
+    )
+
+
 def _check_root_files(root: Optional[Path]) -> List[CheckResult]:
     """Check 7: Verify key root files exist."""
     if root is None:
@@ -729,6 +781,11 @@ def run_doctor(
     # the pip install form has no repo, so the aisc-root WARN above is
     # misleading there. This check names the fetch path explicitly.
     checks.append(_check_bundle_store(root))
+
+    # 6c. A8 (guide 3.5.5): channel + platform-support — multi-channel
+    # installs are the #1 "upgraded but still old version" confusion.
+    checks.append(_check_channel_confusion())
+    checks.append(_check_platform_support())
 
     # 7. root files
     checks.extend(_check_root_files(root))

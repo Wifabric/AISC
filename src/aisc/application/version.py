@@ -103,6 +103,8 @@ def gather_version_info(
         env = _parse_versions_env(root)
         declared_claude_version = env.get("CLAUDE_CODE_VERSION")
 
+    # A8 (guide 3.5.5): text-mode provenance line; JSON contract unchanged.
+    channel = _install_channel(root)
     # Always return 6 fixed keys per RFC; unknown → None
     return VersionInfo(
         cli_version=__version__,
@@ -111,4 +113,21 @@ def gather_version_info(
         declared_claude_version=declared_claude_version,
         image_version=None,
         contract_version=None,
+        install_channel=channel,
     )
+
+
+def _install_channel(root: Optional[Path]) -> str:
+    """Human-readable install provenance for the text `aisc version`."""
+    import sys as _sys
+
+    frozen = getattr(_sys, "frozen", False)
+    if frozen:
+        return f"frozen ({_sys.executable})"
+    if "site-packages" in str(Path(__file__).resolve()):
+        return "pip/pipx (site-packages)"
+    if root is not None:
+        if root.name == "aisc-bundle" and "bundles" in root.parts:
+            return f"bundle fetch ({root})"
+        return f"source ({root})"
+    return "unknown"
