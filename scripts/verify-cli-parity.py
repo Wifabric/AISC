@@ -36,6 +36,12 @@ PROTOCOL = "aisc.cli/v1"
 DYNAMIC_META = ("timestamp", "run_id")
 # Dynamic fields inside `data` (e.g. runtime list's "observed at" wall clock).
 DYNAMIC_DATA_FIELDS = ("observed_at",)
+# Text-mode labels whose value is per-binary by design. A8 (guide 3.5.5) added
+# the `Install channel` provenance line to text `aisc version`: the channel
+# (source/frozen/pip-pipx + path) differs between the two tracks exactly like
+# meta.timestamp in JSON. The label itself is kept, so a track that drops the
+# line entirely still fails parity.
+DYNAMIC_TEXT_LABELS = ("Install channel",)
 
 
 # (argv, expected_exit | None, expect_json)
@@ -84,6 +90,17 @@ def _run(cli: str, argv: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run([cli, *argv], capture_output=True, text=True)
 
 
+def _normalize_text(text: str) -> str:
+    """Mask text lines whose value legitimately differs per binary."""
+    masked = []
+    for line in text.splitlines():
+        label, sep, _value = line.partition(":")
+        if sep and label.strip() in DYNAMIC_TEXT_LABELS:
+            line = label + ": <masked>"
+        masked.append(line)
+    return "\n".join(masked)
+
+
 def _normalize(env: dict) -> dict:
     for key in DYNAMIC_META:
         env.get("meta", {}).pop(key, None)
@@ -121,6 +138,7 @@ def _compare(cmd: str, a: subprocess.CompletedProcess, b: subprocess.CompletedPr
         if a_code != b_code:
             return f"error-code mismatch for {cmd!r}: A={a_code!r} B={b_code!r}"
     else:
+        a_out, b_out = _normalize_text(a_out), _normalize_text(b_out)
         if a_out != b_out:
             return f"text stdout mismatch for {cmd!r}:\n  A={a_out[:200]!r}\n  B={b_out[:200]!r}"
         if a.stderr != b.stderr:
