@@ -166,6 +166,10 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           attestations: true
+          # Idempotent re-runs (guide §6.5 half-published state): a re-run
+          # after a verify-leg failure must not trip on the already-live
+          # upload; the verify step below still asserts the real index.
+          skip-existing: true
       - name: Verify installability from PyPI
         run: |
           pip install pipx
