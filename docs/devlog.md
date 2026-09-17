@@ -2,6 +2,22 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v0.1.0 final 发布（2026-09-17）
+
+- **AISC v0.1.0 正式发布**——三轨分发全部就位：
+  - GitHub Release `v0.1.0`（11+2 资产：三平台 CLI 档案+sha256、Windows Inno
+    setup、macOS PKG、SHA256SUMS、SBOM；Workbench NSIS 补附）
+  - **PyPI `aisc-cli` 0.1.0**（wheel+sdist，PEP 740 attestation；pipx 真实
+    index 安装验证 PASS）
+- 发布期修复链（tag 未产生任何公开产物期间移动，逐次重 dispatch）：wheel/sdist
+  守卫在无 build 模块环境干净跳过；Inno `LoadStringFromFile` out-param 是
+  AnsiString（新版严格类型检查，SO 78185104——6.3.3 pin 是错误理论已撤）；
+  choco --allow-downgrade；pypi verify spec 裸 PEP 440（v 前缀 bug）+ skip-
+  existing 幂等 re-run。TestPyPI 演练（0.1.0.dev3）先行抓掉 5 雷（sdist 含
+  tests/、pip-audit 语法、产物顺序、Wifabric 改名致 publisher claim 失配、
+  pipx --pip-args = 形式）。GitHub 账号已改名 wangyuncepu→Wifabric。
+- 发布后紧跟：四件套 bump 0.1.1.dev0；plans 归档 docs/archive/0.1.0-dev-plans/。
+
 # v0.1.0-dev (2026-09-16 ~) — pip 首发与自更新链 · Docker 管理产品化 · 调研批（分支 2.1.12-p0-pool-open）
 
 > 规划入口：`docs/plans/0.1.0-dev-plans/`（README 阶段表 + decisions.md
