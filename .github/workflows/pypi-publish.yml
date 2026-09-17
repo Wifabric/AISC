@@ -173,9 +173,12 @@ jobs:
       - name: Verify installability from PyPI
         run: |
           pip install pipx
+          # BARE PEP 440 spec — no v prefix: pip version specifiers and the
+          # CLI's cli_version both speak "0.1.0", never "v0.1.0" (run
+          # 35208884979 FAILed on exactly this).
           python scripts/verify-pypi-install.py \
             --index-url https://pypi.org/simple \
-            "v$(cat src/aisc/VERSION)"
+            "$(cat src/aisc/VERSION)"
       - name: Generate + attach SBOM to the release (guide 3.4.1)
         env:
           GH_TOKEN: ${{ github.token }}
