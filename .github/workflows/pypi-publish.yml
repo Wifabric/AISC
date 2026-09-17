@@ -185,5 +185,5 @@ jobs:
         run: |
           pip install .
           python scripts/verify-sbom.py --venv-python "$(which python)" \
-            --output "aisc-sbom.json" || true
+            --out aisc-sbom.json || true
           gh release upload "${{ inputs.tag }}" aisc-sbom.json --clobber
