@@ -590,7 +590,7 @@ PROXY_ENABLED=0|1
 - **CLI 轨**：`src/aisc/VERSION`（→ PyPI `aisc-cli`、`v*` tag、`docs/releases/`）自 **0.1.0** 起独立定版；版本迭代按需进行，**版本号由 Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
 - **Workbench 轨**：`workbench/src-tauri/tauri.conf.json` 不再随 CLI 版本联动，维持 2.1.12 版本号线独立演进。
 - **大阶段命名**：以 Workbench 版本号命名当前开发阶段（如 v2.1.12 阶段）；一个大阶段内可包含多个 CLI 版本迭代。
-- 过渡机械项（待实施）：版本四件套降为 CLI 三件套（`src/aisc/VERSION` + `tests/fixtures/cli/envelope-version.json` + `docs/releases/v<VERSION>.md`），`tauri.conf.json` 退出 `scripts/check-version-sync.py`；plans 目录按阶段（Workbench 版本）命名。
+- 过渡机械项（2026-09-18 已随 v0.1.1 发布后机械批落地）：版本四件套已降为 CLI 三件套（`src/aisc/VERSION` + `docs/releases/v<VERSION>.md` + 可选 tag 校验），`tauri.conf.json` 已退出 `scripts/check-version-sync.py`；plans 目录已按阶段命名（`docs/plans/2.1.12-dev-plans/`）。
 
 ### 8.5 外部依赖与可复现性
 
@@ -777,7 +777,7 @@ git diff --check
 3. **`pypi` environment 人工审批**（Required reviewers）→ 正式发布（final-only 正则门挡 dev/rc）→ verify-pypi → SBOM 附到同一 Release。
 4. 发布后紧跟一提交 bump 到 `X.Y.(Z+1).dev0`。
 
-dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-18 起 tauri.conf.json 退出联动，见 §8.4；`check-version-sync.py` 降级落地前仍需同步 bump tauri 版本）→ 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
+dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-18 起 tauri.conf.json 退出联动，见 §8.4）→ 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
 
 不要覆盖已发布 tag，不要 force-push 发布引用。Release Notes 缺失会使 release job 无法读取 `body_path`；平台 job 任一失败会阻止 aggregate/release。
 

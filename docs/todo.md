@@ -175,7 +175,7 @@
   - [x] cli update; workbench 热更新（R4：aisc update 热换 sidecar + Workbench 标准自更新，A4/A7 交付；pytest 1255/1297+ vitest 488/500）
   - [x] cli作为pip包发布准备（R3：A1-A3/A6/A8-A9 全链交付；PyPI aisc-cli 0.1.0 live，pypi.org/project/aisc-cli）
 - fix
-  - [x] provider行为优化调研（R6：r1 结论文档已交付 docs/plans/0.1.1-dev-plans/r1-provider-templates.md——推荐 --config-file 委托+扩展模板混合路；实施裁决门待用户拍板，转 0.1.1）
+  - [x] provider行为优化调研（R6：r1 结论文档已交付 docs/plans/2.1.12-dev-plans/r1-provider-templates.md——推荐 --config-file 委托+扩展模板混合路；实施裁决门待用户拍板，转 0.1.1）
     - [ ] 不再提供预配置，但是提供添加模板
     - [ ] 模板先完全映射cc-switch内置的
   - [x] 调研codex computer use 实现原理（R7：r2 结论文档已交付——CLI 侧能力依赖上游捆绑 MCP 插件；推荐暂不原生实施，路线三永久否决；实施裁决门待用户拍板，转 0.1.1）

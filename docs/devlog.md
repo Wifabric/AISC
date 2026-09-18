@@ -2,6 +2,23 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v0.1.1 发布（2026-09-18）
+
+- **v0.1.1 全渠道发布**（维护版，v2.1.12 阶段内）：GitHub Release `v0.1.1`
+  12 资产（三平台档案+sha256、Windows setup+sha256、macOS PKG+sha256、
+  SHA256SUMS、SBOM——NSIS 产物自 run 35309006586）；**PyPI `aisc-cli` 0.1.1
+  live**（final-only 门经用户审批，attestation 齐）；TestPyPI 0.1.1 先行。
+- 内容（相对 0.1.0）：cc-switch `downloads/` 预置口（CN 网络 buildkit curl
+  SSL 死亡的工程解；Dockerfile 两分支——pinned sha256 校验 / 版本模式回退）；
+  `stage-cc-switch.sh` + 预置 tarball 入 vendor（1516/1516）；vendor-verify
+  读循环剥 CR（工作树 CRLF 免疫）+ 覆盖率对账；r1/r2 调研文档。
+- 发布后机械批（同日，双轨规约落地）：`tauri.conf.json` 恢复 **2.1.12**
+  （退出 CLI 联动）；`check-version-sync.py` 降**三件套**；plans 目录改名
+  **`2.1.12-dev-plans`**（按阶段命名规约）；CLI bump **`0.1.2.dev0`**
+  （VERSION + envelope fixture + `v0.1.2.dev0.md` 占位）。
+- 记录：本版是「阶段收尾」按 0.1.0 惯例被解读为完整 final 发布的产物；
+  收尾=preview 的新规约（DEVELOP_WIKI §1.1）自此生效，后续不再重演。
+
 # 版本双轨与阶段开发流程规约（2026-09-18，用户裁定）
 
 - **CLI（`aisc-cli`）**：自 **0.1.0** 起独立定版。版本迭代按需进行，**版本号由
