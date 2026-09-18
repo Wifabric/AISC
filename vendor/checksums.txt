@@ -1513,3 +1513,4 @@ a8204ea07133369de9fc38394e6c91c01614224b7d4d12dc54407693bce1abcb  container/lib/
 53b345564aa3b0550b45df384a95a7fa775ba283897aac1e4c7764bd495311cc  container/lib/register_host_mcp.py
 456576b9551b12e66bcce8dfb789d553fd48febd93d5761e558cb2b1b34dd3b3  container/lib/writable.sh
 c46f8ec98b09206e18894760ad2a23fe1c08d088df42916c61502e160aa001da  container/mihomo-build-config.js
+feda4dca0ecf01ec90708141cc346972683c27c1097fba22235c5022143f80ed  container/downloads/cc-switch-cli-v5.10.5-linux-x64-musl.tar.gz
