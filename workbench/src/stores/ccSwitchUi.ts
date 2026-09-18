@@ -176,19 +176,33 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
 
   // --- D-6.8: the add-provider template manifest --------------------------
   /** FALLBACK (old image: adapter predates the `templates` op): the legacy
-   * preset ids as bare templates. The codesome pair (D-6) leads and stays
-   * the DEFAULT selection; ids/order mirror the module's PRESET_PROVIDERS. */
+   * preset ids as bare templates — WITH endpoints, so the add page's
+   * baseUrl prefill works even before/without a manifest fetch. The
+   * codesome pair (D-6) leads and stays the DEFAULT selection; ids/order
+   * mirror the module's PRESET_PROVIDERS. */
   const FALLBACK_TEMPLATES: CcSwitchTemplate[] = [
     { id: "codesome-v3", name: "Codesome V3", key_prefix: "sk-",
       acquire_url: "https://meta.codesome.cn/?aff=FAP2ASVX",
-      default_model: "gpt-5.6-terra" },
+      default_model: "gpt-5.6-terra",
+      claude_endpoint: "https://cc.codesome.ai",
+      codex_endpoint: "https://cc.codesome.ai" },
     { id: "codesome-2in1", name: "Codesome 二合一", key_prefix: "cr-",
       acquire_url: "https://meta.codesome.cn/?aff=FAP2ASVX",
-      default_model: "gpt-5.6-terra" },
-    { id: "deepseek", name: "deepseek" },
-    { id: "volcengine-ark", name: "volcengine-ark" },
-    { id: "zhipu", name: "zhipu" },
-    { id: "kimi", name: "kimi" },
+      default_model: "gpt-5.6-terra",
+      claude_endpoint: "https://v5.codesome.cn/api",
+      codex_endpoint: "https://v5.codesome.cn/api" },
+    { id: "deepseek", name: "deepseek",
+      claude_endpoint: "https://api.deepseek.com/anthropic",
+      codex_endpoint: "https://api.deepseek.com/anthropic" },
+    { id: "volcengine-ark", name: "volcengine-ark",
+      claude_endpoint: "https://ark.cn-beijing.volces.com/api/v3/anthropic",
+      codex_endpoint: "https://ark.cn-beijing.volces.com/api/v3/anthropic" },
+    { id: "zhipu", name: "zhipu",
+      claude_endpoint: "https://open.bigmodel.cn/api/anthropic",
+      codex_endpoint: "https://open.bigmodel.cn/api/anthropic" },
+    { id: "kimi", name: "kimi",
+      claude_endpoint: "https://api.moonshot.cn/anthropic",
+      codex_endpoint: "https://api.moonshot.cn/anthropic" },
   ];
   const templates = ref<CcSwitchTemplate[]>(FALLBACK_TEMPLATES);
   /** D-6.2: codesome leads (sponsor placement, no label) and is the

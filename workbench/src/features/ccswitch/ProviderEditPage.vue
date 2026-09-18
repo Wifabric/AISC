@@ -12,7 +12,7 @@
  * Save goes through the ccSwitchUi store (layer contract); the secret rides
  * the request only. Back with unsaved edits asks for confirmation.
  */
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -96,17 +96,26 @@ const templateEndpoint = computed(() => {
   const tpl = selectedTemplate.value;
   return (props.agent === "codex" ? tpl.codex_endpoint : tpl.claude_endpoint) ?? "";
 });
+/** D-6: baseUrl PREFILLS from the template (reactively — the manifest can
+ * land after mount) and the user may freely overwrite; once they type in
+ * the field, auto-prefill stands down (switching template re-arms it). */
+const baseUrlTouched = ref(props.provider !== null);
 function applyTemplateEndpoint(): void {
-  // D-6: the add page SHOWS the endpoint (prefilled from the template);
-  // the user may override it — the simple path honors request.base_url.
   // Edit mode never re-prefills (the row's own endpoint wins).
-  if (props.provider === null) form.baseUrl = templateEndpoint.value;
+  if (props.provider !== null || baseUrlTouched.value) return;
+  form.baseUrl = templateEndpoint.value;
 }
 applyTemplateEndpoint();
+watch([templateEndpoint, () => props.templates], applyTemplateEndpoint);
 function onPresetChange(): void {
   // Re-prefill the row id when untouched or colliding with another template.
   form.id = selectedTemplate.value.id;
+  baseUrlTouched.value = false; // a template switch re-arms the prefill
   applyTemplateEndpoint();
+  touch();
+}
+function onBaseUrlInput(): void {
+  baseUrlTouched.value = true;
   touch();
 }
 function openAcquire(): void {
@@ -343,7 +352,7 @@ function onSave(): void {
                the template, editable (the simple path honors the override). -->
           <label class="field">
             <span>{{ t("ccswitch.baseUrl") }}</span>
-            <input v-model="form.baseUrl" @input="touch" spellcheck="false" />
+            <input v-model="form.baseUrl" @input="onBaseUrlInput" spellcheck="false" />
           </label>
           <!-- D-6.2: 获取服务 rides the selected template (codesome only). -->
           <div v-if="selectedTemplate.acquire_url" class="field">
