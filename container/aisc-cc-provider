@@ -2033,7 +2033,11 @@ def _apply_codex_model_catalog(
         # (fail-open — a fetch miss leaves the static catalog untouched).
         # O4: the switch path passes live=False (no network in the critical
         # path) and refreshes in the background instead.
-        if live:
+        # 2026-09-18 user report: mapped ONE model, /model showed MANY — the
+        # merge ran behind curated rows. The mapping table IS the contract
+        # (the editor's hint says exactly that): live merge now fills an
+        # EMPTY catalog only; curated rows are never silently extended.
+        if live and not models:
             models = _merge_live_catalog_models(
                 models, _live_fetch_catalog_ids(text, row)
             )
@@ -2660,14 +2664,10 @@ def main(argv: list[str] | None = None) -> int:
                 error={"code": ERR_BAD_REQUEST, "message": "fetch-models requires --agent"},
             )))
             return 2
-        if not args.id:
-            print(json.dumps(_envelope(
-                args.op, False,
-                error={"code": ERR_BAD_REQUEST, "message": "fetch-models requires --id"},
-            )))
-            return 2
         try:
-            # PP r3: an optional request document on stdin may carry the
+            # The stdin request is read BEFORE the id gate: the ADD-mode
+            # inline probe (手测 r2#3) has NO --id — the form's base_url in
+            # this document IS the request. PP r3: it may also carry the
             # form's unsaved api_key (transient lookup override — the secret
             # channel only, matching add/edit semantics).
             fetch_request: dict[str, Any] = {}
@@ -2684,6 +2684,16 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 if isinstance(loaded, dict):
                     fetch_request = loaded
+            # 2026-09-18 user report: the add-page probe died here — the id
+            # gate ran before the stdin read. An id OR a probe base_url is
+            # required; with neither there is genuinely nothing to fetch.
+            if not args.id and not str(fetch_request.get("base_url") or "").strip():
+                print(json.dumps(_envelope(
+                    args.op, False,
+                    error={"code": ERR_BAD_REQUEST,
+                           "message": "fetch-models requires --id or a base_url probe on stdin"},
+                )))
+                return 2
             print(json.dumps(_envelope(
                 args.op, True,
                 fetch_models=op_fetch_models(args.agent, args.id, fetch_request),

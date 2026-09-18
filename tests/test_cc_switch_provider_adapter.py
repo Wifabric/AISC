@@ -1462,6 +1462,39 @@ class RoleEnvAndFetchModelsTests(AdapterTestCase):
         self.assertTrue(envelope["fetch_models"]["available"])
         self.assertEqual(envelope["fetch_models"]["models"][0], "deepseek-chat")
 
+    def test_fetch_models_add_probe_without_id_uses_stdin_base_url(self):
+        """2026-09-18 user report: the add-page probe died on the id gate
+        ("fetch-models requires --id") — the gate ran before the stdin read.
+        No --id + a stdin base_url IS the add-mode probe and must pass."""
+        from unittest import mock
+
+        seen: list[tuple] = []
+        with mock.patch.object(
+            A, "_openai_compatible_models",
+            side_effect=lambda base, key, **kw: (seen.append((base, key)) or ["m1", "m2"])
+        ):
+            buf = io.StringIO()
+            with redirect_stdout(buf), mock.patch.object(
+                sys, "stdin",
+                io.StringIO(json.dumps(
+                    {"base_url": "https://form.example", "api_key": "sk-form-1"})),
+            ):
+                code = A.main(["fetch-models", "--agent", "claude"])
+        self.assertEqual(code, 0)
+        envelope = json.loads(buf.getvalue().strip().splitlines()[-1])
+        self.assertTrue(envelope["ok"])
+        self.assertEqual(envelope["fetch_models"]["models"], ["m1", "m2"])
+        self.assertEqual(seen, [("https://form.example", "sk-form-1")])
+
+    def test_fetch_models_without_id_or_probe_fails_closed(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf), mock.patch.object(sys, "stdin", io.StringIO("")):
+            code = A.main(["fetch-models", "--agent", "claude"])
+        self.assertEqual(code, 2)
+        envelope = json.loads(buf.getvalue().strip().splitlines()[-1])
+        self.assertFalse(envelope["ok"])
+        self.assertIn("--id", envelope["error"]["message"])
+
     def test_fetch_models_main_reads_stdin_override_key(self):
         seed_provider(self.dir, "prov", {
             "ANTHROPIC_BASE_URL": "https://api.prov.example/anthropic",
@@ -1644,31 +1677,58 @@ class CodexModelCatalogHookTests(unittest.TestCase):
             'base_url = "https://api.deepseek.com"\n'
         )
 
-    def test_live_fetch_merges_new_ids_behind_curated_rows(self):
+    def test_curated_catalog_is_never_live_extended(self):
+        """2026-09-18 user report: mapped ONE model, /model showed MANY —
+        the live merge ran behind curated rows. The mapping table IS the
+        contract: curated rows are never silently extended (the live fetch
+        must not even fire)."""
         from unittest import mock
 
         self._config_with_base()
+        with mock.patch.object(
+            A, "_http_get_json", return_value=(200, {"data": [{"id": "deepseek-v4-next"}]})
+        ) as http:
+            A._apply_codex_model_catalog(self.LIVE_ROW)
+        self.assertEqual(http.call_count, 0)
+        catalog = json.loads(
+            (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
+        self.assertEqual(
+            [m["slug"] for m in catalog["models"]],
+            ["deepseek-v4-pro", "deepseek-v4-flash"],
+        )
+
+    def test_live_fetch_fills_an_empty_catalog(self):
+        """The live merge's remaining job: a provider with NO curated rows,
+        no template fallback, and no model line discovers its /model list
+        on first contact — merge fills from scratch."""
+        from unittest import mock
+
+        # Provider block only — no `model =` line, so the live-model
+        # fallback has nothing to pin and the merge owns the catalog.
+        self._config(
+            "[model_providers.custom-live]\n"
+            'name = "custom-live"\n'
+            'base_url = "https://api.deepseek.com"\n'
+        )
+        row = {
+            "id": "custom-live",  # not a template → no preset catalog fallback
+            "settings_config": {},
+            "settings": {"auth": {"OPENAI_API_KEY": "sk-live-9"}},
+        }
         payload = {"data": [
-            {"id": "deepseek-v4-pro"},          # dedupe against curated
-            {"id": "deepseek-v4-next"},          # NEW — appended
-            {"id": "text-embedding-3"},          # junk — dropped
+            {"id": "deepseek-v4-next"},
+            {"id": "text-embedding-3"},  # embedding junk — dropped
         ]}
         with mock.patch.object(
             A, "_http_get_json", return_value=(200, payload)
         ) as http:
-            A._apply_codex_model_catalog(self.LIVE_ROW)
+            A._apply_codex_model_catalog(row)
         self.assertEqual(http.call_count, 1)
-        auth_header = http.call_args[0][1]["Authorization"]
-        self.assertEqual(auth_header, "Bearer sk-live-9")
-        self.assertEqual(http.call_args[0][2], 6.0)  # switch-time budget (CN providers need DNS+TLS+API)
         catalog = json.loads(
             (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
         slugs = [m["slug"] for m in catalog["models"]]
-        self.assertEqual(
-            slugs, ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-next"]
-        )
-        # The appended row inherits the curated family window (1M).
-        self.assertEqual(catalog["models"][2]["context_window"], 1_000_000)
+        self.assertIn("deepseek-v4-next", slugs)
+        self.assertNotIn("text-embedding-3", slugs)
 
     def test_live_fetch_failure_keeps_the_static_catalog(self):
         from unittest import mock
