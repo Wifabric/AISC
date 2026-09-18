@@ -21,7 +21,7 @@ from aisc.domain.models import CliError, RuntimeExitCode
 PROTOCOL = "aisc.cc-switch-provider/v1"
 _ADAPTER_PATH = "/usr/local/bin/aisc-cc-provider"
 _AGENTS = ("claude", "codex")
-_OPS = ("list", "add", "edit", "switch", "delete", "fetch-models")
+_OPS = ("list", "add", "edit", "switch", "delete", "fetch-models", "templates")
 
 
 def _validate(runtime_id: str, agent: str, op: str) -> None:
@@ -158,6 +158,25 @@ def list_providers(runtime_id: str, agent: str, workspace: Optional[str], execut
         reveal_id=reveal_id,
     )
     return {"agent": agent, "providers": envelope.get("providers") or [],
+            "operation_id": envelope.get("operation_id")}
+
+
+def list_templates(runtime_id: str, agent: str, workspace: Optional[str],
+                   executor: Any) -> Dict[str, Any]:
+    """D-6.8: the add-provider template manifest (adapter `templates` op).
+
+    The op itself is agent-less; the transport keeps the uniform --agent
+    argument (validated, then ignored inside the adapter)."""
+    from aisc.application.data_root import workspace_state_dir
+    from pathlib import Path
+
+    ws_path = Path(workspace).resolve() if workspace else Path.cwd()
+    _validate(runtime_id, agent, "templates")
+    envelope = _exec_adapter(
+        runtime_id, workspace_state_dir(ws_path), executor, "templates", agent,
+        None, None,
+    )
+    return {"agent": agent, "templates": envelope.get("templates") or [],
             "operation_id": envelope.get("operation_id")}
 
 

@@ -347,6 +347,13 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Additionally emit the FULL api_key of this provider "
                           "(edit-time explicit view, 2.1.11 P1)")
 
+    # D-6.8 (2.1.12): the add-provider template manifest (agent-less op;
+    # --agent stays required for transport uniformity and is ignored).
+    cst = cssub.add_parser("templates",
+                           help="Emit the add-provider template manifest",
+                           allow_abbrev=False)
+    _cc_switch_common(cst)
+
     csa = cssub.add_parser("add", help="Add a provider (request JSON on stdin)",
                            allow_abbrev=False)
     _cc_switch_common(csa)
@@ -1726,6 +1733,8 @@ def _cmd_cc_switch(
     sub = getattr(args, "cc_switch_command", None)
     if sub == "list":
         data = cs_cmd.cmd_cc_switch_list(args)
+    elif sub == "templates":
+        data = cs_cmd.cmd_cc_switch_templates(args)
     elif sub == "add":
         data = cs_cmd.cmd_cc_switch_add(args)
     elif sub == "edit":

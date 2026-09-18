@@ -537,6 +537,10 @@ export interface CcSwitchRequest {
   base_url?: string;
   model?: string;
   api_key?: string;
+  /** D-7: codex thinking depth + auto-compact watermark (tokens).
+   * compact_threshold 0/absent = feature off. */
+  reasoning_effort?: string;
+  compact_threshold?: number;
   /** PP (D-12): extras accepted by add (top level) and edit (patch). */
   api_format?: "anthropic" | "openai_chat" | "openai_responses";
   notes?: string;
@@ -549,6 +553,9 @@ export interface CcSwitchRequest {
     base_url?: string;
     model?: string;
     env?: Record<string, string | null>;
+    /** D-7: same two knobs ride the edit patch. */
+    reasoning_effort?: string;
+    compact_threshold?: number;
     api_format?: "anthropic" | "openai_chat" | "openai_responses";
     notes?: string;
     website_url?: string;
@@ -556,6 +563,25 @@ export interface CcSwitchRequest {
     icon_color?: string;
     model_catalog?: { models: Array<{ model: string; contextWindow?: number; display_name?: string }> };
   };
+}
+
+/** D-6.8: one add-provider template (adapter `templates` op — display
+ * metadata only; the settings_config is composed container-side on add). */
+export interface CcSwitchTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  /** Expected API key prefix (codesome: sk-/cr-) — soft-warn only (D-6.9). */
+  key_prefix?: string;
+  /** D-6.2: 获取服务 button target (codesome only). */
+  acquire_url?: string;
+  default_model?: string;
+}
+
+export interface CcSwitchTemplatesResult {
+  agent: string;
+  templates: CcSwitchTemplate[];
+  operation_id: string;
 }
 
 // --- IDEA-2 (2d): subscription status + provider token usage ---

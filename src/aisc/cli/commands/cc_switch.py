@@ -55,6 +55,18 @@ def cmd_cc_switch_list(args: Any) -> Dict[str, Any]:
     )
 
 
+def cmd_cc_switch_templates(args: Any) -> Dict[str, Any]:
+    """D-6.8: the add-provider template manifest (agent-less adapter op)."""
+    from aisc.application.cc_switch_provider import list_templates
+
+    return list_templates(
+        runtime_id=args.runtime_id,
+        agent=args.agent,
+        workspace=args.workspace,
+        executor=None,
+    )
+
+
 def cmd_cc_switch_add(args: Any) -> Dict[str, Any]:
     from aisc.application.cc_switch_provider import add_provider
 

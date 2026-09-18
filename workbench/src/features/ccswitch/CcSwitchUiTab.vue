@@ -108,7 +108,9 @@ function switchAgent(a: "claude" | "codex"): void {
   void ui.switchAgent(a, store.workspace, store.runtimeId);
 }
 
-const PRESETS = ["deepseek", "volcengine-ark", "zhipu", "kimi"] as const;
+// D-6.8: the preset ids are gone from the frontend — the template manifest
+// (container-reported, codesome-led per D-6.2) feeds the add flow. The
+// store holds a static fallback for old-image adapters.
 
 function openAdd(): void {
   openAddPage();  // PP (D-12): dedicated page
@@ -182,7 +184,10 @@ const displayProviders = computed(() => [
 ]);
 
 onMounted(() => {
-  if (hasRuntime.value) void refresh();
+  if (hasRuntime.value) {
+    void refresh();
+    void ui.loadTemplates(store.workspace, store.runtimeId);
+  }
 });
 onBeforeUnmount(() => {
   if (rowFlashTimer !== null) window.clearTimeout(rowFlashTimer);
@@ -196,7 +201,7 @@ onBeforeUnmount(() => {
       v-if="editTarget !== undefined"
       :agent="agent"
       :provider="editTarget"
-      :presets="[...PRESETS]"
+      :templates="ui.templates"
       :busy="busyOp === 'add' || busyOp === 'edit'"
       :busy-op="busyOp"
       @save="saveFromEditPage"
