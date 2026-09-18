@@ -7,6 +7,6 @@
 - [r1-provider-templates.md](r1-provider-templates.md) — provider 模板化调研（**已裁决 D-1/D-2/D-3**：纯静态 AISC 自有模板路线；上游委托混合路否决；赞助商模板完全排除、codesome 例外；实施批待立）
 - [r2-codex-computer-use.md](r2-codex-computer-use.md) — codex computer use 调研（**已裁决 D-4**：暂不原生实施，闭环转观察；路线三永久否决）
 
-## 待开题
+## 已实施
 
-- **codesome 专项（D-5→D-6 已裁决）**：[codesome-templates.md](codesome-templates.md)——双订阅模板设计 + 九项裁定全落（含全局去预置升级：镜像不种任何 provider 卡片）；实施批待立（§4 四批拆分：preset 模块 / Workbench UI / 杂项 / 测试）。
+- **codesome 专项（D-5→D-6 已实施 2026-09-18）**：[codesome-templates.md](codesome-templates.md)——双模板 + 全局去预置 + provider 模板化 UI 全部并入 develop（merge 2.1.12，四流水线全绿）；**待手测**：重建镜像 → 添加两模板（前缀 warn/获取服务/行 ID 多实例）→ 思考深度/压缩阈值落盘 → 旧容器迁移提示。

@@ -91,9 +91,10 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 | **火山引擎 Ark** | 兼容 OpenAI 格式；需配置接入点 ID |
 | **智谱 GLM** | GLM-5.2 旗舰模型 |
 | **Kimi** | 月之暗面 Kimi K3 |
-| **Codesome-Group** | 二合一中转；Codex 默认模型 `gpt-5.6-sol`，Claude 侧 `https://v5.codesome.cn/api` |
+| **Codesome V3** | 月卡/按量中转（`sk-` Key，后台建 Key 选分组） |
+| **Codesome 二合一** | V5 月卡中转（`cr-` 卡密即 Key，Claude/GPT 双端通用） |
 
-所有预置供应商的 Codex 上游格式统一为 **OpenAI Responses API（原生直连）**，存量容器在下次启动时自动刷新（用户自定义值不受影响）。
+2.1.12 起（D-6.7）镜像**不再预置**任何 provider 行——以上为「添加 provider」的模板清单（Codesome 置顶默认）。所有模板的 Codex 上游走 S9a 形态（本地路由把 Responses 翻译为 Anthropic Messages，直连模板声明的 Anthropic 端点）；Codesome 两模板的 Claude 侧不含模型键（官方要求，模型由 Key 的服务端分组路由），并预填官方推荐的自动压缩水位（claude 150k / codex 900k）。
 
 ## CLI 使用指南
 
@@ -359,18 +360,18 @@ MIT License，详见 [LICENSE](https://github.com/wangyuncepu/AISC/blob/main/LIC
 
 ### Codesome｜Codex 与 Claude Code 二合一服务
 
-Codesome 提供 API 调用形式的二合一月卡：一张 `cr-...` API Key 可分别接入 Claude Code 和 Codex。这是 API 服务，不是 Claude 或 Codex 成品账号。
+Codesome 提供 API 调用形式的接入服务，有两条产品线：**V3**（Claude/GPT 月卡 + 按量，`sk-...` Key，在后台建 Key 并选分组）与**二合一/V5**（月卡，订单里的 `cr-...` 卡密直接就是 Key，Claude/GPT 双端通用，无分组）。这是 API 服务，不是 Claude 或 Codex 成品账号。
 
-**v2.1.7 起 AISC 镜像已内置 Codesome-Group 预置供应商**——Workbench 的 Providers 页或容器内 cc-switch 选择 Codesome-Group、填入 API Key 即可使用，无需手工配置端点。
+**2.1.12 起内置两个 Codesome 模板**（`codesome-v3` / `codesome-2in1`）——Workbench Providers 页「添加 provider」默认选中 Codesome，选对产品线、填入 Key 即可（表单下方「获取服务」直达注册/购买页）。两条线的地址不可混用，V3 的 `sk-` Key 不能配二合一，反之亦然。
 
-手动配置时的端点（二合一 Key 两端通用，URL 不同不可混用）：
+手动配置时的端点（两线各自两端通用，URL 不同不可混用）：
 
-| 使用端 | API URL |
-| --- | --- |
-| Claude Code / Claude | `https://v5.codesome.cn/api` |
-| Codex / OpenAI 格式客户端 | `https://v5.codesome.cn/openai` |
+| 产品线 | Claude 端 | Codex / OpenAI 格式端 |
+| --- | --- | --- |
+| V3（sk-） | `https://cc.codesome.ai` | `https://cc.codesome.ai/v1` |
+| 二合一（cr-） | `https://v5.codesome.cn/api` | `https://v5.codesome.cn/openai` |
 
-Claude Code 通过 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN` 配置；Codex 使用 OpenAI 格式配置。完整教程见 [Codesome 文档](https://doc.codesome.ai/)。
+Claude Code 通过 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN` 配置（加 `CLAUDE_CODE_ATTRIBUTION_HEADER=0`，官方核心三行之一）；Codex 使用 OpenAI 格式配置（模型统一 `gpt-5.6-terra`）。可选：自动压缩（claude `CLAUDE_AUTO_COMPACT_WINDOW`，codex `model_auto_compact_token_limit`）到值自动压缩历史。完整教程见 [Codesome 文档](https://doc.codesome.ai/)。
 
 购买与开通（注册/下单入口，非服务使用地址）：
 

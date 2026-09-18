@@ -176,7 +176,7 @@
   - [x] cli作为pip包发布准备（R3：A1-A3/A6/A8-A9 全链交付；PyPI aisc-cli 0.1.0 live，pypi.org/project/aisc-cli）
 - fix
   - [x] provider行为优化调研（R6：r1 结论文档已交付 docs/plans/2.1.12-dev-plans/r1-provider-templates.md——已裁决 2026-09-18 D-1/D-2/D-3：纯静态 AISC 自有模板路线、赞助商模板完全排除（codesome 例外）、存量一次性迁移；实施转 2.1.12 阶段）
-    - [ ] 不再提供预配置，但是提供添加模板（2.1.12 实施，D-1）
+    - [x] 不再提供预配置，但是提供添加模板（2.1.12 已实施：镜像零预置 + 模板清单，2026-09-18）
     - [x] 模板先完全映射cc-switch内置的（2026-09-18 D-1 裁决推翻：改 AISC 自有 5 家模板清单，不映射上游）
   - [x] 调研codex computer use 实现原理（R7：r2 结论文档已交付——CLI 侧能力依赖上游捆绑 MCP 插件；已裁决 2026-09-18 D-4：暂不原生实施，闭环转观察，路线三永久否决）
   - [x] 初次启动构建失败时，提供重新构建按钮（B1：BuildProgress failed/cancelled 态「重新构建」按钮，同 tag 复用 startBuild 链；B2 顺带 BUILD_TIMEOUT 600→1800s；手测 PASS 2026-09-16）

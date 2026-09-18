@@ -2,6 +2,30 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# 2.1.12 codesome 专项实施（2026-09-18）
+
+- **双模板 + 全局去预置**落地（D-1/D-2/D-6/D-7，分支 2.1.12-codesome-templates
+  并入 develop）：preset 模块改为模板数据源（codesome 拆 v3/2in1，claude_env
+  含官方核心三行、零模型键；S9a 端点分离；key_prefix/acquire_url 元数据；模型
+  目录镜像 OpenAI 官方页 + codesome 文档 terra/sol）；迁移 v10 指纹清除历史
+  预置行（6 个 retired id，用户行不动）；entrypoint seeding 退役、
+  AISC_PRESET_PROVIDERS 退役。
+- **provider 模板化 UI**：全链 `templates` op（CLI 子命令 → 应用层 → Rust
+  `cc_switch_templates` → ipc/store，旧镜像回退静态清单）；添加 provider
+  默认选中置顶的 codesome 模板、表单下「获取服务」直达（aff，无赞助字样）、
+  行 ID 可编辑（slug+查重，支持 codesome-v3-lite/-max 多分组多实例）、key
+  前缀醒目软 warn（不拦提交）、思考深度（codex `model_reasoning_effort`，
+  替换硬编码 high）与压缩阈值（claude `CLAUDE_AUTO_COMPACT_*` / codex
+  `model_auto_compact_token_limit`，预填 150000/900000，清空不启用）。
+- 官方事实（workflow 对抗验证后入档）：V3 端点 cc.codesome.ai（codex 原生
+  /v1）、二合一 /api 与 /openai、`CLAUDE_CODE_ATTRIBUTION_HEADER=0` 为官方
+  常见错误 #1、503→模型必须 gpt-5.6-terra、403→先查分组、倍率动态。
+- 门禁：pytest 1292 passed / vitest ccswitch 19/19（panelLayout 9 失败为本机
+  jsdom localStorage 环境问题，与改动无关，CI 全绿证实）/ cargo check ✓ /
+  vendor 1516/1516 / 远程四流水线全绿（35341697xxx）。
+- 待手测：重建镜像后走一遍添加 codesome 两模板（key 前缀 warn、获取服务
+  跳转、行 ID 多实例）、思考深度/压缩阈值落 TOML/env、旧容器迁移提示。
+
 # 2.1.12 阶段开题裁决（2026-09-18）
 
 - r1（provider 模板化）裁定 **D-1/D-2/D-3**：**纯静态 AISC 自有模板**路线——维持现有
