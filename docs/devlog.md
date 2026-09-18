@@ -2,6 +2,20 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# 版本双轨约定（2026-09-18，用户裁定）
+
+- **CLI（`aisc-cli`）**：自 **0.1.0** 起独立定版。版本迭代按需进行，**版本号由
+  Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
+- **Workbench**：退出 CLI 版本联动，**维持原 2.1.12 版本号线**独立演进
+  （`workbench/src-tauri/tauri.conf.json`）。
+- **大阶段命名**：以 Workbench 版本号命名当前大阶段（当前 = **v2.1.12 阶段**）；
+  一个大阶段内可包含多个 CLI 版本迭代（0.1.0、0.1.1、…）。
+- 连带机械项（待实施，随 0.1.1 发布处置一并落）：版本四件套降为 CLI 三件套
+  （`src/aisc/VERSION` + `tests/fixtures/cli/envelope-version.json` +
+  `docs/releases/v<VERSION>.md`）；`tauri.conf.json` 恢复 2.1.12 并退出
+  `scripts/check-version-sync.py`；plans 目录改按阶段命名
+  （`docs/plans/0.1.1-dev-plans/` → `2.1.12-dev-plans`）。
+
 # v0.1.0 final 发布（2026-09-17）
 
 - **AISC v0.1.0 正式发布**——三轨分发全部就位：

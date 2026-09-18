@@ -568,6 +568,13 @@ PROXY_ENABLED=0|1
 
 不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `src/aisc/VERSION`；Release Notes 文件名和 tag 从该值派生。
 
+**双轨版本约定（2026-09-18 用户裁定，长期有效）**：
+
+- **CLI 轨**：`src/aisc/VERSION`（→ PyPI `aisc-cli`、`v*` tag、`docs/releases/`）自 **0.1.0** 起独立定版；版本迭代按需进行，**版本号由 Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
+- **Workbench 轨**：`workbench/src-tauri/tauri.conf.json` 不再随 CLI 版本联动，维持 2.1.12 版本号线独立演进。
+- **大阶段命名**：以 Workbench 版本号命名当前开发阶段（如 v2.1.12 阶段）；一个大阶段内可包含多个 CLI 版本迭代。
+- 过渡机械项（待实施）：版本四件套降为 CLI 三件套（`src/aisc/VERSION` + `tests/fixtures/cli/envelope-version.json` + `docs/releases/v<VERSION>.md`），`tauri.conf.json` 退出 `scripts/check-version-sync.py`；plans 目录按阶段（Workbench 版本）命名。
+
 ### 8.5 外部依赖与可复现性
 
 `config/versions.env` 是外部依赖和镜像变量的声明位置（0.1.0 A5 起被构建消费：CLAUDE_CODE_VERSION/CODEX_VERSION 作为 build args 转发；用户层覆盖见 `<数据根>/config/versions.env`——`aisc update --pin-tool` 写入，按键覆盖出厂值，CLI 更新/NSIS 升级/bundle fetch 均不触碰，D-27）：
@@ -737,7 +744,7 @@ git push origin "v${VERSION_VALUE}"
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/integration   # 全测（Windows 注意 TMP 短路径，见 2.7）
-python scripts/check-version-sync.py                    # 四件套一致性（0.1.0 起）
+python scripts/check-version-sync.py                    # 版本一致性（0.1.0 起；2026-09-18 双轨裁定后 tauri.conf.json 退出联动、降三件套，见 §8.4）
 bash tools/check-docs.sh
 bash tools/vendor-verify.sh
 python packaging/artifact.py stage --output /tmp/aisc-staging
@@ -753,7 +760,7 @@ git diff --check
 3. **`pypi` environment 人工审批**（Required reviewers）→ 正式发布（final-only 正则门挡 dev/rc）→ verify-pypi → SBOM 附到同一 Release。
 4. 发布后紧跟一提交 bump 到 `X.Y.(Z+1).dev0`。
 
-dev 迭代（TestPyPI only）：每次上传前四件套 bump `.devN` → 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
+dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-18 起 tauri.conf.json 退出联动，见 §8.4；`check-version-sync.py` 降级落地前仍需同步 bump tauri 版本）→ 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
 
 不要覆盖已发布 tag，不要 force-push 发布引用。Release Notes 缺失会使 release job 无法读取 `body_path`；平台 job 任一失败会阻止 aggregate/release。
 
