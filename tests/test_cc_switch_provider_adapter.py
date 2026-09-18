@@ -403,12 +403,49 @@ class EditDanceTests(AdapterTestCase):
                          "https://open.bigmodel.cn/api/anthropic")
         self.assertFalse(rows[0]["is_current"])
 
-    def test_edit_of_sole_current_provider_fails_closed(self):
+    def test_edit_sole_current_dances_via_official_row(self):
+        """D-6.7 aftermath (2026-09-19 user report): de-seeding means the
+        edited provider may be the ONLY real row — the dance falls back to
+        the OFFICIAL placeholder (empty-config switch) instead of failing
+        closed, and the edited row ends current again."""
         seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
-        with self.assertRaises(A.AdapterError) as ctx:
-            A.op_edit("claude", "deepseek", {"patch": {"model": "x"}})
-        self.assertEqual(ctx.exception.code, A.ERR_NO_SWITCH_TARGET)
-        self.assertEqual(self.cli.calls, [])
+        A.op_edit("claude", "deepseek", {"patch": {"name": "DeepSeek 2"}})
+
+        def kind(call):
+            args = call.args
+            # The empty-config switch rides `script -qec "cc-switch … provider
+            # switch <id>" /dev/null` — unwrap the id from the command string.
+            if args and args[0] == "script" and len(args) > 2 \
+                    and "provider switch" in args[2]:
+                return ("switch", args[2].rsplit(" ", 1)[-1])
+            if "switch" in args:
+                return ("switch", args[-1])
+            if "add" in args:
+                return ("add", args[args.index("--id") + 1])
+            return None
+
+        kinds = [k for k in (kind(c) for c in self.cli.calls) if k]
+        self.assertEqual(kinds, [
+            ("switch", "claude-official"),   # dance-away via official (pty)
+            ("add", "deepseek"),
+            ("switch", "deepseek"),          # and back
+        ])
+        # The re-add carries the merged settings (the harness's fake add
+        # doesn't write the db — DB-state assertions live in the restore
+        # tests).
+        add_calls = [c for c in self.cli.calls if "add" in c.args]
+        sent = json.loads(add_calls[0].stdin_text)
+        self.assertEqual(
+            sent["env"]["ANTHROPIC_BASE_URL"], CLAUDE_ENV["ANTHROPIC_BASE_URL"])
+
+    def test_edit_sole_current_creates_official_row_when_missing(self):
+        seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
+        # No official row seeded — the dance inserts the placeholder itself.
+        A.op_edit("claude", "deepseek", {"patch": {"name": "DeepSeek 2"}})
+        rows = A.op_list("claude")
+        official = [r for r in rows if r["id"] == "claude-official"]
+        self.assertEqual(len(official), 1)
+        self.assertEqual(official[0]["base_url"], "")
 
     def test_edit_unknown_provider(self):
         self._seed_two()
@@ -1729,6 +1766,44 @@ class CodexModelCatalogHookTests(unittest.TestCase):
         slugs = [m["slug"] for m in catalog["models"]]
         self.assertIn("deepseek-v4-next", slugs)
         self.assertNotIn("text-embedding-3", slugs)
+
+    def test_catalog_default_reasoning_follows_config_effort(self):
+        """D-7 (2026-09-19 user report 思考深度没有生效): the 思考深度
+        dropdown writes config model_reasoning_effort — the generated
+        catalog's per-model default must follow it unless the mapping cell
+        declares its own default."""
+        self._config(
+            'model = "glm-5.3"\n'
+            'model_reasoning_effort = "medium"\n\n'
+            "[model_providers.zhipu]\n"
+            'name = "zhipu"\n'
+            'base_url = "https://open.bigmodel.cn/api/anthropic"\n'
+        )
+        row = {
+            "id": "zhipu",
+            "settings_config": {},
+            "settings": {
+                "auth": {"OPENAI_API_KEY": "sk-z-1"},
+                "modelCatalog": {"models": [
+                    {"model": "glm-5.3", "contextWindow": 1_000_000,
+                     "reasoning_levels": ["minimal", "low", "medium", "high"]},
+                ]},
+            },
+        }
+        A._apply_codex_model_catalog(row, live=False)
+        catalog = json.loads(
+            (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
+        entry = catalog["models"][0]
+        self.assertEqual([lv["effort"] for lv in entry["supported_reasoning_levels"]],
+                         ["minimal", "low", "medium", "high"])
+        # No explicit cell default → the config effort IS the default.
+        self.assertEqual(entry["default_reasoning_level"], "medium")
+        # An EXPLICIT cell default beats the config value.
+        row["settings"]["modelCatalog"]["models"][0]["default_reasoning_level"] = "low"
+        A._apply_codex_model_catalog(row, live=False)
+        catalog = json.loads(
+            (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
+        self.assertEqual(catalog["models"][0]["default_reasoning_level"], "low")
 
     def test_live_fetch_failure_keeps_the_static_catalog(self):
         from unittest import mock

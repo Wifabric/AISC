@@ -805,6 +805,45 @@ def _db_delete(agent: str, provider_id: str) -> None:
         conn.close()
 
 
+def _db_insert_official_row(agent: str, official_id: str) -> None:
+    """D-6.7: with pre-seeding gone, the edit dance's official fallback can
+    meet a volume whose official row is missing — insert the same
+    placeholder reconcile would (empty config; claude carries the settings
+    base). Idempotent via INSERT OR IGNORE."""
+    module = _preset_module()
+    base_loader = getattr(module, "load_claude_settings_base", None)
+    settings: dict[str, Any]
+    if agent == "claude":
+        base = base_loader() if callable(base_loader) else {}
+        settings = {"env": {}, **(base if isinstance(base, dict) else {})}
+    else:
+        settings = {"auth": {}, "config": ""}
+    conn = sqlite3.connect(_db_path(), timeout=15)
+    try:
+        conn.execute("PRAGMA busy_timeout=15000")
+        now = int(time.time() * 1000)
+        next_sort = conn.execute(
+            "SELECT COALESCE(MAX(sort_index), -1) + 1 FROM providers "
+            "WHERE app_type = ?",
+            (agent,),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT OR IGNORE INTO providers ("
+            "id, app_type, name, settings_config, website_url, category, "
+            "created_at, sort_index, notes, icon, icon_color, meta, "
+            "is_current, in_failover_queue) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                official_id, agent,
+                "Claude Official" if agent == "claude" else "OpenAI Official",
+                json.dumps(settings, ensure_ascii=False, separators=(",", ":")),
+                "", "custom", now, next_sort, "", None, None, "{}", 0, 0,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _db_capture_row(agent: str, provider_id: str) -> Optional[dict[str, Any]]:
     """Full raw row (every column, pre-mutation) — the edit dance's restore
     source. Read BEFORE anything deletes; None only if the row is gone."""
@@ -1498,7 +1537,19 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
     switch_back_to = ""
     if was_current:
         switch_back_to = provider_id
-        _cli_switch(agent, _switch_away_target(agent, snapshot, provider_id), secrets)
+        try:
+            _cli_switch(agent, _switch_away_target(agent, snapshot, provider_id), secrets)
+        except AdapterError as exc:
+            if exc.code != ERR_NO_SWITCH_TARGET:
+                raise
+            # D-6.7 aftermath (2026-09-19 user report): with pre-seeding
+            # gone, the edited provider may be the ONLY real row. Dance via
+            # the OFFICIAL placeholder instead — the empty-config switch
+            # path op_switch has always used for official targets.
+            away = _OFFICIAL_ROW_ID[agent]
+            if not any(r["id"] == away for r in snapshot):
+                _db_insert_official_row(agent, away)
+            _cli_switch_empty_config(agent, away)
     # PP r4: capture the FULL row before the delete — the guaranteed restore
     # source if the re-add fails (see _db_restore_row; the old
     # restore-via-upstream-add lost the row outright when the upstream CLI
@@ -1741,9 +1792,8 @@ def _codex_supported_reasoning_levels(levels):
     user-declared ids and attach the canonical descriptions. Unrecognized
     ids are dropped (codex rejects unknown efforts)."""
     declared = [str(x).strip() for x in (levels or []) if str(x).strip()]
-    chosen = [e for e, _ in _CODEX_REASONING_LEVEL_DESCRIPTIONS
-              if e in declared]
-    return [{"effort": e, "description": d} for e, d in chosen]
+    return [{"effort": e, "description": d}
+            for e, d in _CODEX_REASONING_LEVEL_DESCRIPTIONS if e in declared]
 
 
 def _codex_neutral_catalog_entry(model: str, context_window: int, priority: int,
@@ -1787,10 +1837,12 @@ def _codex_neutral_catalog_entry(model: str, context_window: int, priority: int,
     levels = _codex_supported_reasoning_levels(reasoning_levels)
     if levels:
         entry["supported_reasoning_levels"] = levels
+        # The default is EXPLICIT ONLY (mapping cell, else the config's
+        # model_reasoning_effort threaded in by the caller). The old silent
+        # "last of the chosen levels" default overrode the user's
+        # 思考深度 dropdown — 2026-09-19 user report "配置的思维深度没有生效".
         default = str(default_reasoning_level or "").strip()
-        if not default:
-            default = entry["supported_reasoning_levels"][-1]["effort"]
-        if default in {lv["effort"] for lv in levels}:
+        if default and default in {lv["effort"] for lv in levels}:
             entry["default_reasoning_level"] = default
     return entry
 
@@ -2044,13 +2096,22 @@ def _apply_codex_model_catalog(
 
         if models:
             slugs = {str(m["model"]) for m in models}
+            # The per-model default_reasoning_level falls back to the
+            # config's model_reasoning_effort — the 思考深度 dropdown writes
+            # that key, so the dropdown stays authoritative unless a mapping
+            # cell explicitly declares its own default.
+            effort_m = re.search(
+                r'^\s*model_reasoning_effort\s*=\s*"([^"]+)"', text, re.M)
+            config_effort = effort_m.group(1) if effort_m else ""
             entries = [
                 _codex_neutral_catalog_entry(
                     str(m["model"]),
                     int(m.get("contextWindow") or 128_000),
                     1000 + i,
                     reasoning_levels=m.get("reasoning_levels"),
-                    default_reasoning_level=str(m.get("default_reasoning_level") or ""),
+                    default_reasoning_level=(
+                        str(m.get("default_reasoning_level") or "")
+                        or config_effort),
                 )
                 for i, m in enumerate(models)
             ]
