@@ -169,16 +169,16 @@
   - [x] 热切换显示层边界：CLI 界面模型名仍停在启动值（两 CLI 显示层死结，功能已随切换实时变化；工作台侧以「实际模型」toast/卡片补真值）
 
 
-# V0.1.0-target（已收口 2026-09-17：v0.1.0 final 全渠道发布——GitHub Release 三平台+NSIS+SBOM、PyPI aisc-cli 0.1.0；plan 归档 docs/archive/0.1.0-dev-plans/，余项转 0.1.1）
+# V2.1.12-target（已收口 2026-09-17：v0.1.0 final 全渠道发布——GitHub Release 三平台+NSIS+SBOM、PyPI aisc-cli 0.1.0；plan 归档 docs/archive/0.1.0-dev-plans/，余项转 0.1.1）
 - new features
   - [x] docker管理的简易映射（R1 裁决 = Docker 资源管理简化 UI：maintenance scan/cleanup/rebuild 产品化入设置页 Docker 资源组，扫描前置门+悬浮提示；手测 PASS 2026-09-16）
   - [x] cli update; workbench 热更新（R4：aisc update 热换 sidecar + Workbench 标准自更新，A4/A7 交付；pytest 1255/1297+ vitest 488/500）
   - [x] cli作为pip包发布准备（R3：A1-A3/A6/A8-A9 全链交付；PyPI aisc-cli 0.1.0 live，pypi.org/project/aisc-cli）
 - fix
-  - [x] provider行为优化调研（R6：r1 结论文档已交付 docs/plans/2.1.12-dev-plans/r1-provider-templates.md——推荐 --config-file 委托+扩展模板混合路；实施裁决门待用户拍板，转 0.1.1）
-    - [ ] 不再提供预配置，但是提供添加模板
-    - [ ] 模板先完全映射cc-switch内置的
-  - [x] 调研codex computer use 实现原理（R7：r2 结论文档已交付——CLI 侧能力依赖上游捆绑 MCP 插件；推荐暂不原生实施，路线三永久否决；实施裁决门待用户拍板，转 0.1.1）
+  - [x] provider行为优化调研（R6：r1 结论文档已交付 docs/plans/2.1.12-dev-plans/r1-provider-templates.md——已裁决 2026-09-18 D-1/D-2/D-3：纯静态 AISC 自有模板路线、赞助商模板完全排除（codesome 例外）、存量一次性迁移；实施转 2.1.12 阶段）
+    - [ ] 不再提供预配置，但是提供添加模板（2.1.12 实施，D-1）
+    - [x] 模板先完全映射cc-switch内置的（2026-09-18 D-1 裁决推翻：改 AISC 自有 5 家模板清单，不映射上游）
+  - [x] 调研codex computer use 实现原理（R7：r2 结论文档已交付——CLI 侧能力依赖上游捆绑 MCP 插件；已裁决 2026-09-18 D-4：暂不原生实施，闭环转观察，路线三永久否决）
   - [x] 初次启动构建失败时，提供重新构建按钮（B1：BuildProgress failed/cancelled 态「重新构建」按钮，同 tag 复用 startBuild 链；B2 顺带 BUILD_TIMEOUT 600→1800s；手测 PASS 2026-09-16）
   - [x] claude、codex、cc-switch等内置工具，定期更新（R5 裁决 = 与 cli update 合一入口；A5 交付：--pin-tool 用户层+build args 消费+cc-switch 三处漂移修齐+node:22 基底）
   - [x] v2.1.11 bug：切换颜色主题后，历史会话视图的消息/终端输出块残留深色样式（深底+淡化字不随主题重绘，2026-09-16 用户截图报障，B0 修复——addon-webgl 图集不随 options.theme 重绘，切主题时重建 addon；手测 PASS 2026-09-16）

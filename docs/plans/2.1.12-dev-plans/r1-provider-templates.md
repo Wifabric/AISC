@@ -1,6 +1,6 @@
 # R1 调研：provider 模板化（cc-switch v5.10.4 基线）
 
-> 状态：初稿 / 2026-09-17 / 待用户验收（D-13 裁决门：评审通过前不写任何实施代码）
+> 状态：已裁决（2026-09-18，D-1/D-2/D-3，见 decisions.md）——纯静态 AISC 自有模板路线，上游委托混合路与赞助商模板被否决；实施批待立。
 > 版本基线：上游 [SaladDay/cc-switch-cli **v5.10.4**](https://github.com/SaladDay/cc-switch-cli/tree/v5.10.4)（与 `config/versions.env` / `config/cc-switch-manifest.json` 统一后的 pin 一致）；AISC 侧引用当前 develop。
 > 方法：上游 v5.10.4 tag 源码逐文件核实（`gh api` 拉取原文）+ 本仓库 file:line 证据。
 
@@ -84,6 +84,12 @@
 2. **裁决二（存量卷迁移）**：已有容器 DB 里的 5 个 preset 行（带 marker）如何处置？建议：marker 版本号 bump 一次性触发「去第三方行保留 official」迁移（PRESET_FORMAT_VERSION 机制现成）。
 3. **裁决三（D-24）**：赞助商返佣模板默认**不**出现在 AISC UI（除非用户显式开启开关）——确认或否决。
 4. 实施成本预估：adapter 改造 + preset 模块瘦身 + UI 双语 + 三层测试 ≈ 一个中型批次（对标 B3 体量）；vendor 门禁必过。
+
+## 实施裁决（2026-09-18，用户裁定，详见 decisions.md）
+
+1. **裁决一（形态）**：**否决**混合路线——采用**纯静态 AISC 自有模板**：维持现有「添加时选预设」形态与清单（5 家含 codesome），不委托上游 `--config-file`，不镜像上游内置清单。
+2. **裁决二（存量卷迁移）**：采纳推荐——marker 版本 bump 一次性迁移：去第三方预置行、保留 official、用户行不动（Claude 代定，可否决）。
+3. **裁决三（D-24 赞助商）**：**完全不出现**（比默认隐藏+开关更强：无开关）。codesome 为 AISC 自有赞助商例外保留，并立项本阶段专项修复（D-5）。
 
 ## 容器内实测（2026-09-17 补充，镜像 cc-switch v5.10.5，super-claude:latest 全量构建成功后）
 
