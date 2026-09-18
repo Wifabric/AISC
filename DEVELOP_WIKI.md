@@ -19,6 +19,23 @@ git branch --show-current
 git status --short
 ```
 
+### 1.1 阶段开发流程（2026-09-18 用户裁定，v2.1.12 阶段起生效）
+
+每个大阶段（以 Workbench 版本号命名，见 §8.4 双轨约定）按以下流程运转：
+
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（本阶段 = `2.1.12-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
+3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
+4. **收尾清单（Claude 执行）**：
+   - 全部开发与远程同步：develop 已推送、工作树干净、推送后远程 CI 全绿（补充）；
+   - 本阶段成果发布为 **preview 版本**：CLI tag 用 `.devN` 后缀 → GitHub 自动标 prerelease 的 Release（三平台 + NSIS 随附）+ TestPyPI；pypi-publish 的 final-only 门使其不触碰正式 PyPI（补充：preview 形态具体化）；
+   - `docs/todo.md` 当前版本条目全部标记完成；未完成项显式转期，不强制打勾（补充）；
+   - `docs/devlog.md` 更新到位；
+   - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档。
+5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
+
+注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（release job 仅命中 `-dev`/`.dev`）；preview 统一用 `.devN` 形态，如需 rc 形态先补该 workflow 的后缀判断。
+
 ## 2. 开发环境
 
 ### 2.1 你在构建什么

@@ -2,7 +2,7 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
-# 版本双轨约定（2026-09-18，用户裁定）
+# 版本双轨与阶段开发流程规约（2026-09-18，用户裁定）
 
 - **CLI（`aisc-cli`）**：自 **0.1.0** 起独立定版。版本迭代按需进行，**版本号由
   Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
@@ -15,6 +15,23 @@
   `docs/releases/v<VERSION>.md`）；`tauri.conf.json` 恢复 2.1.12 并退出
   `scripts/check-version-sync.py`；plans 目录改按阶段命名
   （`docs/plans/0.1.1-dev-plans/` → `2.1.12-dev-plans`）。
+- **阶段开发流程**（同日二次裁定）：
+  - **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/`
+    建阶段计划文件夹，按 vibe-coding-skill 标准文件组织（模板 PRD /
+    IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等，Full/Focused 分流按 skill 规则）。
+    **后续开发永远以文档为准开展**——代码与文档漂移时先改文档再改码。
+  - **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 有必要时随时
+    发版、变更版本号；不确定时提请用户裁定。
+  - **收尾由用户宣布**（本阶段 plan 全部闭环后）；Claude 收尾清单：①全部开发与
+    远程同步、推送后 CI 全绿（补充）；②本阶段成果发布为 **preview 版本**——CLI tag
+    用 `.devN` 后缀（artifact.yml 自动标 prerelease；pypi-publish final-only 门使其
+    止步 TestPyPI，不碰正式 PyPI）（补充：preview 形态具体化）；③todo 当前版本条目
+    全部标记完成（未完成项显式转期，不强制打勾）（补充）；④devlog 更新；⑤已完成
+    plans 移入 `docs/archive/` 按版本归档。
+  - **正式 final 发布不在收尾清单内**：时机由 Claude 判断（preview 验证通过后），
+    流程仍走 §11.2 + main 合并批准门（补充，填补流程空档）。
+  - 注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（仅 `-dev`/`.dev`
+    命中）；preview 统一用 `.devN` 形态，如需 rc 先补 workflow 判断。
 
 # v0.1.0 final 发布（2026-09-17）
 
