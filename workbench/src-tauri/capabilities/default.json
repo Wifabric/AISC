@@ -9,6 +9,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "opener:default",
     "core:window:allow-destroy",
     "core:window:allow-is-focused",
     "core:window:allow-is-minimized",

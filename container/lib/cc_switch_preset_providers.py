@@ -212,21 +212,40 @@ def _codex_model_catalog(official_ids: list[str], fixture: dict[str, Any]) -> li
 # 128k default; the live /models merge (fetch-models / catalog-sync --live)
 # tops the catalog up per key at runtime.
 _CODESOME_MODEL_CATALOG = [
-    {"model": "gpt-5.6-terra", "contextWindow": 1_000_000},
-    {"model": "gpt-5.6-sol", "contextWindow": 1_050_000},
-    {"model": "gpt-5.2"},
-    {"model": "gpt-5.2-codex"},
-    {"model": "gpt-5.2-pro"},
-    {"model": "gpt-5.1"},
-    {"model": "gpt-5.1-codex"},
-    {"model": "gpt-5.1-codex-max"},
-    {"model": "gpt-5.1-codex-mini"},
-    {"model": "gpt-5"},
-    {"model": "gpt-5-codex"},
-    {"model": "gpt-5-pro"},
-    {"model": "gpt-5-mini"},
-    {"model": "gpt-5-nano"},
-    {"model": "codex-mini-latest"},
+    {"model": "gpt-5.6-terra", "contextWindow": 1_000_000,
+     # D-6/D-7: per-model thinking levels (codex /model picks model, then
+     # level) — canonical ids from upstream cc-switch's effort table.
+     "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "high"},
+    {"model": "gpt-5.6-sol", "contextWindow": 1_050_000,
+     "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "high"},
+    {"model": "gpt-5.2", "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5.2-codex", "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5.2-pro", "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "high"},
+    {"model": "gpt-5.1", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5.1-codex", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5.1-codex-max", "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5.1-codex-mini", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "low"},
+    {"model": "gpt-5", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5-codex", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5-pro", "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
+     "default_reasoning_level": "high"},
+    {"model": "gpt-5-mini", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
+    {"model": "gpt-5-nano", "reasoning_levels": ["none", "minimal", "low", "medium"],
+     "default_reasoning_level": "low"},
+    {"model": "codex-mini-latest", "reasoning_levels": ["none", "minimal", "low", "medium", "high"],
+     "default_reasoning_level": "medium"},
 ]
 
 
@@ -439,6 +458,7 @@ def _codex_upstream_base(provider: dict[str, Any]) -> str:
 def _settings_config(
     agent: str, provider: dict[str, Any], *, api_key: str = "",
     reasoning_effort: str = "", compact_token_limit: int = 0,
+    base_url_override: str = "",
 ) -> dict[str, Any]:
     if agent == "claude":
         # Fixture-driven providers (Stage 8c) carry the full official env set.
@@ -458,6 +478,15 @@ def _settings_config(
             claude_model = provider.get("anthropic_model") or provider["model"]
             if claude_model:
                 env["ANTHROPIC_MODEL"] = claude_model
+        # D-6 (add-page endpoint field): an explicit form override wins over
+        # the template's declared endpoint.
+        if base_url_override:
+            env["ANTHROPIC_BASE_URL"] = base_url_override
+        # The ADD path (adapter simple-add) passes the user's token here —
+        # it rides the stdin request only and lands in the row env. Seeding
+        # never passes api_key, so the template data stays token-free.
+        if api_key:
+            env["ANTHROPIC_AUTH_TOKEN"] = api_key
         # D-7: claude-side auto-compact rides the provider env (official
         # compaction page: ENABLED + WINDOW, both strings).
         if compact_token_limit:
@@ -499,7 +528,7 @@ def _settings_config(
                 # OpenAI-side base_url, never the anthropic mirror. A provider
                 # still declaring an anthropic upstream keeps the translation
                 # shape (router talks Anthropic to anthropic_base_url).
-                f"base_url = {_toml_string(_codex_upstream_base(provider))}",
+                f"base_url = {_toml_string(base_url_override or _codex_upstream_base(provider))}",
                 'wire_api = "responses"',
                 "requires_openai_auth = true",
             ]
@@ -657,6 +686,11 @@ def provider_templates_manifest() -> list[dict[str, Any]]:
             if provider.get(field):
                 entry[field] = provider[field]
         entry["default_model"] = provider.get("model") or ""
+        # D-6 (add-page endpoint display): both agents' declared endpoints —
+        # the same values simple-add bakes into the settings_config.
+        entry["claude_endpoint"] = (
+            provider.get("anthropic_base_url") or provider["base_url"])
+        entry["codex_endpoint"] = _codex_upstream_base(provider)
         manifest.append(entry)
     return manifest
 

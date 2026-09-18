@@ -510,6 +510,10 @@ export interface CcSwitchCatalogEntry {
   model: string;
   display_name: string;
   context_window: number;
+  /** D-7: per-model thinking levels — codex /model offers exactly these
+   * after the model is picked; default_reasoning_level prefills the picker. */
+  reasoning_levels?: string[];
+  default_reasoning_level?: string;
 }
 
 /** `aisc cc-switch fetch-models` result — tier 1 of the mapping dropdown.
@@ -576,6 +580,9 @@ export interface CcSwitchTemplate {
   /** D-6.2: 获取服务 button target (codesome only). */
   acquire_url?: string;
   default_model?: string;
+  /** D-6 (add-page endpoint display): both agents' declared endpoints. */
+  claude_endpoint?: string;
+  codex_endpoint?: string;
 }
 
 export interface CcSwitchTemplatesResult {

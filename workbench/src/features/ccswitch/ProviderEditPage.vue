@@ -15,6 +15,7 @@
 import { computed, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRuntimeStore } from "../../stores/runtime";
 import { useCcSwitchUiStore } from "../../stores/ccSwitchUi";
 import type { CcSwitchCatalogEntry, CcSwitchProvider, CcSwitchTemplate } from "../../types";
@@ -62,10 +63,11 @@ const form = reactive({
   icon: props.provider?.icon ?? "",
   iconColor: props.provider?.icon_color ?? "",
 });
-/** D-7 add-mode prefill: the official recommended watermark per agent
- * (claude 150k / codex 900k@1M); edit mode stays empty = no change. */
+/** D-7 add-mode prefill: the auto-compact watermark per agent. Codex 1M
+ * catalogs → 900k; claude (1M-context era) → 800k. Edit mode stays empty =
+ * no change. */
 if (props.provider === null) {
-  form.compactThreshold = props.agent === "codex" ? "900000" : "150000";
+  form.compactThreshold = props.agent === "codex" ? "900000" : "800000";
 }
 const parsedCompact = computed<number>(() => {
   const n = Number(form.compactThreshold);
@@ -88,14 +90,28 @@ const rowIdError = computed(() => {
   if (uiStore.providers.some((p) => p.id === id)) return t("ccswitch.edit.rowIdDuplicate", { id });
   return "";
 });
+/** D-6: preset-mode row id — prefilled with the template id, user-editable
+ * for multi-instance setups (codesome-v3-lite / codesome-v3-max). */
+const templateEndpoint = computed(() => {
+  const tpl = selectedTemplate.value;
+  return (props.agent === "codex" ? tpl.codex_endpoint : tpl.claude_endpoint) ?? "";
+});
+function applyTemplateEndpoint(): void {
+  // D-6: the add page SHOWS the endpoint (prefilled from the template);
+  // the user may override it — the simple path honors request.base_url.
+  // Edit mode never re-prefills (the row's own endpoint wins).
+  if (props.provider === null) form.baseUrl = templateEndpoint.value;
+}
+applyTemplateEndpoint();
 function onPresetChange(): void {
   // Re-prefill the row id when untouched or colliding with another template.
   form.id = selectedTemplate.value.id;
+  applyTemplateEndpoint();
   touch();
 }
 function openAcquire(): void {
   const url = selectedTemplate.value.acquire_url;
-  if (url) window.open(url, "_blank", "noopener");
+  if (url) void openUrl(url);
 }
 const roles = reactive<Record<string, string>>({ ...(props.provider?.role_env ?? {}) });
 const catalog = ref<CcSwitchCatalogEntry[]>(
@@ -211,6 +227,7 @@ function buildRequest(): import("../../types").CcSwitchRequest {
   if (adding.value) {
     if (addMode.value === "preset") {
       return { mode: "simple", id: form.id.trim() || form.preset, provider: form.preset,
+               base_url: form.baseUrl.trim() || undefined,
                api_key: form.apiKey || undefined,
                ...d7 };
     }
@@ -225,7 +242,9 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       ...(props.agent === "codex"
         ? { model_catalog: { models: catalog.value.map((m) => ({
             model: m.model, contextWindow: m.context_window,
-            display_name: m.display_name || undefined })) } }
+            display_name: m.display_name || undefined,
+            reasoning_levels: m.reasoning_levels?.length ? m.reasoning_levels : undefined,
+            default_reasoning_level: m.default_reasoning_level || undefined })) } }
         : {}),
     };
   }
@@ -245,7 +264,9 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       ...(props.agent === "codex"
         ? { model_catalog: { models: catalog.value.map((m) => ({
             model: m.model, contextWindow: m.context_window,
-            display_name: m.display_name || undefined })) } }
+            display_name: m.display_name || undefined,
+            reasoning_levels: m.reasoning_levels?.length ? m.reasoning_levels : undefined,
+            default_reasoning_level: m.default_reasoning_level || undefined })) } }
         : {}),
     },
   };
@@ -318,6 +339,12 @@ function onSave(): void {
                    @input="touch" spellcheck="false" />
           </label>
           <p v-if="rowIdError" class="hint warn" role="alert">{{ rowIdError }}</p>
+          <!-- D-6: the endpoint rides the add page again — prefilled from
+               the template, editable (the simple path honors the override). -->
+          <label class="field">
+            <span>{{ t("ccswitch.baseUrl") }}</span>
+            <input v-model="form.baseUrl" @input="touch" spellcheck="false" />
+          </label>
           <!-- D-6.2: 获取服务 rides the selected template (codesome only). -->
           <div v-if="selectedTemplate.acquire_url" class="field">
             <span />
@@ -390,7 +417,7 @@ function onSave(): void {
         <label class="field">
           <span>{{ t("ccswitch.edit.compactThreshold") }}</span>
           <input v-model="form.compactThreshold" inputmode="numeric"
-                 :placeholder="agent === 'codex' ? '900000' : '150000'"
+                 :placeholder="agent === 'codex' ? '900000' : '800000'"
                  @input="touch" spellcheck="false" />
         </label>
         <p class="hint">{{ t("ccswitch.edit.compactHint") }}</p>

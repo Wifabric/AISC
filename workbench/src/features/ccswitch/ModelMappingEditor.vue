@@ -29,6 +29,24 @@ const props = defineProps<{
 
 const advancedOpen = ref(false);
 
+// D-7: per-model thinking levels — the canonical ids upstream cc-switch
+// understands; the mapping row declares WHICH of them codex's /model
+// picker offers for that model (multi-select) and which is default.
+const REASONING_LEVELS = [
+  "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+] as const;
+
+function toggleLevel(row: CcSwitchCatalogEntry, level: string): void {
+  const cur = row.reasoning_levels ?? [];
+  row.reasoning_levels = cur.includes(level)
+    ? cur.filter((x) => x !== level)
+    : [...cur, level];
+  // Keep the default inside the chosen set.
+  if (row.reasoning_levels.length && !row.reasoning_levels.includes(row.default_reasoning_level ?? "")) {
+    row.default_reasoning_level = row.reasoning_levels[row.reasoning_levels.length - 1];
+  }
+}
+
 const mainRoles = computed(() =>
   (props.roleSlots ?? []).filter((s) =>
     ["ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -106,10 +124,13 @@ function toggleOneM(key: string): void {
   <!-- codex: three-column catalog editor -->
   <div v-else class="mapping" role="group" :aria-label="t('ccswitch.mapping.title')">
     <p class="hint">{{ t("ccswitch.mapping.codexHint") }}</p>
+    <p class="hint">{{ t("ccswitch.mapping.levelsHint") }}</p>
     <div class="cat-head">
       <span>{{ t("ccswitch.mapping.colModel") }}</span>
       <span>{{ t("ccswitch.mapping.colName") }}</span>
       <span>{{ t("ccswitch.mapping.colWindow") }}</span>
+      <span>{{ t("ccswitch.mapping.colLevels") }}</span>
+      <span>{{ t("ccswitch.mapping.colDefault") }}</span>
       <span></span>
     </div>
     <div v-for="(row, i) in catalog" :key="i" class="cat-row">
@@ -124,6 +145,17 @@ function toggleOneM(key: string): void {
         :value="row.context_window || 128000"
         @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 128000"
       />
+      <div class="levels" role="group" :aria-label="t('ccswitch.mapping.colLevels')">
+        <button v-for="lv in REASONING_LEVELS" :key="lv" type="button"
+                class="lv" :class="{ on: (row.reasoning_levels ?? []).includes(lv) }"
+                :aria-pressed="(row.reasoning_levels ?? []).includes(lv)"
+                @click="toggleLevel(row, lv)">{{ lv }}</button>
+      </div>
+      <select v-model="row.default_reasoning_level"
+              :disabled="!(row.reasoning_levels ?? []).length">
+        <option value="">{{ t("ccswitch.mapping.defaultAuto") }}</option>
+        <option v-for="lv in (row.reasoning_levels ?? [])" :key="lv" :value="lv">{{ lv }}</option>
+      </select>
       <button class="icon del" :title="t('ccswitch.mapping.remove')"
               :aria-label="t('ccswitch.mapping.remove')"
               @click="removeCatalogRow(i)">×</button>
@@ -162,10 +194,25 @@ input {
  * everything in the grid and let tracks own the geometry. */
 .cat-row input { box-sizing: border-box; min-width: 0; }
 input[type="number"] { width: 100%; }
-.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 30px; gap: 8px;
+.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px; gap: 8px;
   align-items: center; font-size: var(--font-xs); color: var(--text-faint); }
-.cat-row { display: grid; grid-template-columns: 1fr 0.7fr 92px 30px; gap: 8px;
-  align-items: stretch; }
+.cat-row { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px;
+  gap: 8px; align-items: stretch; }
+/* D-7: the level chips — small toggle buttons, wrap inside their track. */
+.levels { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.levels .lv {
+  padding: 1px 6px; font-size: var(--font-xs); cursor: pointer;
+  background: var(--surface-3); color: var(--text-muted);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-sm); line-height: 1.4;
+}
+.levels .lv.on { background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent); font-weight: 600; }
+.cat-row select {
+  background: var(--surface-3); color: var(--text);
+  border: var(--border-w) solid var(--border-strong); border-radius: var(--radius-sm);
+  min-height: var(--control-h-sm); font-size: var(--font-xs);
+}
 button.icon { min-width: 24px; min-height: 24px; padding: 0; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: var(--font-md); }
 button.icon.del {
   box-sizing: border-box;

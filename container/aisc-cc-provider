@@ -442,6 +442,15 @@ def provider_view(agent: str, row: dict[str, Any],
                     "model": str(m.get("model") or ""),
                     "display_name": str(m.get("display_name") or ""),
                     "context_window": int(m.get("contextWindow") or 0),
+                    # D-7: per-model thinking levels round-trip to the
+                    # mapping editor (secret-free display data). Sparse —
+                    # empty/absent stays absent (view deep-equals).
+                    **({"reasoning_levels":
+                        [str(x) for x in m.get("reasoning_levels") or []]}
+                       if m.get("reasoning_levels") else {}),
+                    **({"default_reasoning_level":
+                        str(m["default_reasoning_level"])}
+                       if m.get("default_reasoning_level") else {}),
                 }
                 for m in stored_cat
                 if isinstance(m, dict) and m.get("model")
@@ -669,14 +678,12 @@ def build_add_settings(
     if agent == "claude":
         if mode == "simple":
             provider = _preset_provider(str(request.get("provider") or ""))
-            env = dict(provider.get("claude_env") or {
-                "ANTHROPIC_BASE_URL": provider.get("anthropic_base_url") or provider["base_url"],
-                **({"ANTHROPIC_MODEL": provider["anthropic_model"]} if provider.get("anthropic_model") else {}),
-            })
-            if api_key:
-                env["ANTHROPIC_AUTH_TOKEN"] = api_key
-            _apply_claude_compact(env, _validated_compact(request))
-            return provider["name"], {"env": env, **_claude_settings_base()}
+            settings = _preset_module()._settings_config(
+                "claude", provider, api_key=api_key,
+                compact_token_limit=_validated_compact(request),
+                base_url_override=str(request.get("base_url") or ""),
+            )
+            return provider["name"], settings
         # custom
         env: dict[str, str] = {}
         if request.get("base_url"):
@@ -701,6 +708,7 @@ def build_add_settings(
             "codex", provider, api_key=api_key,
             reasoning_effort=_validated_effort(request),
             compact_token_limit=_validated_compact(request),
+            base_url_override=str(request.get("base_url") or ""),
         )
         return provider["name"], settings
     base_url = str(request.get("base_url") or "")
@@ -1424,7 +1432,9 @@ def _merge_patch(
         if key_name not in result:
             result[key_name] = value  # e.g. codex "modelCatalog"
     # PP (D-12): an explicit mapping-table patch wins over the carried
-    # catalog. Shape: {"models": [{"model", "contextWindow", "display_name"?}]}
+    # catalog. Shape: {"models": [{"model", "contextWindow", "display_name"?,
+    # "reasoning_levels"?, "default_reasoning_level"?}]} — D-7: the per-model
+    # thinking levels ride along for the /model picker.
     raw_cat = patch.get("model_catalog")
     if isinstance(raw_cat, dict) and isinstance(raw_cat.get("models"), list):
         cleaned: list[dict[str, Any]] = []
@@ -1437,6 +1447,12 @@ def _merge_patch(
             }
             if m.get("display_name"):
                 entry["display_name"] = str(m["display_name"])
+            levels = m.get("reasoning_levels")
+            if isinstance(levels, list) and levels:
+                entry["reasoning_levels"] = [
+                    str(x) for x in levels if str(x).strip()]
+            if m.get("default_reasoning_level"):
+                entry["default_reasoning_level"] = str(m["default_reasoning_level"])
             cleaned.append(entry)
         result["modelCatalog"] = {"models": cleaned}
     return result
@@ -1704,14 +1720,46 @@ def _codex_config_dir() -> Path:
     return Path(root)
 
 
-def _codex_neutral_catalog_entry(model: str, context_window: int, priority: int) -> dict[str, Any]:
+# D-7 (mapping 思考等级): canonical effort levels codex understands, with
+# upstream cc-switch's own descriptions (codex_config.rs) — the mapping's
+# per-model declared levels are canonicalized against this table.
+_CODEX_REASONING_LEVEL_DESCRIPTIONS = (
+    ("none", "Disable Thinking"),
+    ("minimal", "Minimal reasoning"),
+    ("low", "Fast responses with lighter reasoning"),
+    ("medium", "Balances speed and reasoning depth for everyday tasks"),
+    ("high", "Greater reasoning depth for complex problems"),
+    ("xhigh", "Extra high reasoning depth for complex problems"),
+    ("max", "Maximum reasoning depth for the hardest problems"),
+    ("ultra", "Ultra reasoning depth"),
+)
+_CODEX_REASONING_LEVELS = frozenset(e for e, _ in _CODEX_REASONING_LEVEL_DESCRIPTIONS)
+
+
+def _codex_supported_reasoning_levels(levels):
+    """Port of upstream codex_supported_reasoning_levels: canonicalize the
+    user-declared ids and attach the canonical descriptions. Unrecognized
+    ids are dropped (codex rejects unknown efforts)."""
+    declared = [str(x).strip() for x in (levels or []) if str(x).strip()]
+    chosen = [e for e, _ in _CODEX_REASONING_LEVEL_DESCRIPTIONS
+              if e in declared]
+    return [{"effort": e, "description": d} for e, d in chosen]
+
+
+def _codex_neutral_catalog_entry(model: str, context_window: int, priority: int,
+                                 reasoning_levels=None,
+                                 default_reasoning_level: str = "") -> dict[str, Any]:
     """codex-rs protocol `ModelInfo` — serde-required fields only (probed
     from codex 0.148's bundled gpt-5.5 entry; the heavy optional harness
     fields are serde-defaulted and intentionally omitted). Beyond serde,
     codex validates every entry carries `base_instructions` OR
     `model_messages.instructions_template` — missing both is a fatal
-    startup error, so we mirror cc-switch's own catalog value."""
-    return {
+    startup error, so we mirror cc-switch's own catalog value.
+
+    D-7: when the mapping entry declares per-model reasoning levels, they
+    replace the historical single-"high" default — codex /model then offers
+    exactly those levels after the model is picked."""
+    entry = {
         "slug": model,
         "display_name": model,
         "description": None,
@@ -1736,6 +1784,15 @@ def _codex_neutral_catalog_entry(model: str, context_window: int, priority: int)
         "context_window": context_window,
         "max_context_window": context_window,
     }
+    levels = _codex_supported_reasoning_levels(reasoning_levels)
+    if levels:
+        entry["supported_reasoning_levels"] = levels
+        default = str(default_reasoning_level or "").strip()
+        if not default:
+            default = entry["supported_reasoning_levels"][-1]["effort"]
+        if default in {lv["effort"] for lv in levels}:
+            entry["default_reasoning_level"] = default
+    return entry
 
 
 def _codex_catalog_key_value(config_text: str) -> Optional[str]:
@@ -1988,6 +2045,8 @@ def _apply_codex_model_catalog(
                     str(m["model"]),
                     int(m.get("contextWindow") or 128_000),
                     1000 + i,
+                    reasoning_levels=m.get("reasoning_levels"),
+                    default_reasoning_level=str(m.get("default_reasoning_level") or ""),
                 )
                 for i, m in enumerate(models)
             ]

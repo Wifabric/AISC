@@ -40,6 +40,7 @@ tauri-plugin-notification = "2"
 # the only non-browser transport empirically passing airport TLS-fingerprint
 # walls (curl/openssl/python/.NET/curl_cffi all killed at the handshake).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tauri-plugin-opener = "2.5.5"
 
 # winreg is Windows-only (locale.rs reads the HKCU locale); it must not compile
 # on Linux/macOS where the CI rust job builds the workbench lib.
