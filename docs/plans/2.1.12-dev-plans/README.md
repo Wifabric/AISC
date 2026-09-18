@@ -9,4 +9,4 @@
 
 ## 待开题
 
-- **codesome 专项（D-5）**：系统性修复配置问题——UI 添加列表缺失（漂移实证）、历史预配置配置项错误、provider 页切换超时之 codesome 适配、显示异常；完整问题清单待用户补充。产出并入 r1 模板化实施。
+- **codesome 专项（D-5）**：[codesome-templates.md](codesome-templates.md)——双订阅模板设计已交付（V3/二合一配置矩阵全验证、现状差距 3 blocker + 6 major、双模板 seed 规格、实施批拆分）；§5 九项待拍板（D-6 起）。已知问题全数入档：UI 添加列表缺失、预置配置项错误（根因=两产品线交叉配置）、切换超时之 codesome 适配、显示异常。
