@@ -9,4 +9,4 @@
 
 ## 已实施
 
-- **codesome 专项（D-5→D-6 已实施 2026-09-18）**：[codesome-templates.md](codesome-templates.md)——双模板 + 全局去预置 + provider 模板化 UI 全部并入 develop（merge 2.1.12，四流水线全绿）；**待手测**：重建镜像 → 添加两模板（前缀 warn/获取服务/行 ID 多实例）→ 思考深度/压缩阈值落盘 → 旧容器迁移提示。
+- **codesome 专项（D-5→D-6 已实施并手测通过 2026-09-18）**：[codesome-templates.md](codesome-templates.md)——双模板 + 全局去预置 + provider 模板化 UI 全部并入 develop（四流水线全绿）；手测三轮修复（opener 外链 / baseUrl 响应式预填 / 端点跟随格式联动 / 每模型思考等级多选 / claude 压缩水位 800k）后**用户确认通过**。专项闭环。

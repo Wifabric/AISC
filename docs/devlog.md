@@ -16,15 +16,24 @@
   行 ID 可编辑（slug+查重，支持 codesome-v3-lite/-max 多分组多实例）、key
   前缀醒目软 warn（不拦提交）、思考深度（codex `model_reasoning_effort`，
   替换硬编码 high）与压缩阈值（claude `CLAUDE_AUTO_COMPACT_*` / codex
-  `model_auto_compact_token_limit`，预填 150000/900000，清空不启用）。
+  `model_auto_compact_token_limit`，预填 800k/900k，清空不启用）。
+- **手测修复三轮（同日，均 CI 全绿）**：①获取服务 window.open 在 Tauri 内
+  无效 → 接入 plugin-opener；②baseUrl 回补并响应式预填（清单异步到达后
+  回填，手改后停手，切模板/切格式重新武装）；③端点跟随上游格式联动
+  （anthropic→S9a 端点，openai 原生→OpenAI 侧基址；格式下拉成为权威值）；
+  ④每模型思考等级多选（8 级枚举 + 默认深度，adapter 目录写手
+  supported_reasoning_levels/default_reasoning_level 落盘，快照往返）；
+  ⑤claude 压缩水位 150k→800k（1M 时代）。期间踩坑记录：tauri-build 在
+  dev 实例运行时拷 sidecar 撞文件锁（关实例即过）；vendor 刷新两次漏跑
+  （容器文件改动后必须 refresh——已两度被 bundle CI 拦截）。
 - 官方事实（workflow 对抗验证后入档）：V3 端点 cc.codesome.ai（codex 原生
   /v1）、二合一 /api 与 /openai、`CLAUDE_CODE_ATTRIBUTION_HEADER=0` 为官方
   常见错误 #1、503→模型必须 gpt-5.6-terra、403→先查分组、倍率动态。
 - 门禁：pytest 1292 passed / vitest ccswitch 19/19（panelLayout 9 失败为本机
   jsdom localStorage 环境问题，与改动无关，CI 全绿证实）/ cargo check ✓ /
-  vendor 1516/1516 / 远程四流水线全绿（35341697xxx）。
-- 待手测：重建镜像后走一遍添加 codesome 两模板（key 前缀 warn、获取服务
-  跳转、行 ID 多实例）、思考深度/压缩阈值落 TOML/env、旧容器迁移提示。
+  vendor 1516/1516 / 远程四流水线全绿（35341697xxx、35350491xxx、35353638xxx）。
+- **手测结论：用户确认通过（2026-09-18）**——获取服务跳转、baseUrl 预填与
+  联动、思考等级多选、压缩阈值均验证 OK。
 
 # 2.1.12 阶段开题裁决（2026-09-18）
 

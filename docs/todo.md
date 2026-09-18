@@ -99,8 +99,8 @@
 - [x] zsh下help命令
 - [x] 提升dockerfile构建的稳定性
 - [x] provider页切换provider响应超时
-  - [ ] codesome适配
-  - [ ] 显示异常
+  - [x] codesome适配（2.1.12 codesome 专项闭环：双模板+S9a 端点分离+模板化 UI，2026-09-18 手测通过）
+  - [ ] 显示异常（模板化后未再报告；如复现请附截图）
 - [x] 分屏的×点不了
 - [x] cc-switch挂掉
 - [ ] 设备性能受限情况下，如何保证稳定运行
