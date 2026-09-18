@@ -1,6 +1,6 @@
 # Codesome 专项（D-5）：双订阅模板设计与现状差距
 
-> 状态：初稿 / 2026-09-18 / 待用户验收——§5 拍板前不写实施代码
+> 状态：已裁决（2026-09-18，D-6 九项，见 decisions.md）——实施批待立
 > 方法：ultracode workflow（8 页官方文档并行抽取 → 仓库实现差距分析 → 2 轮对抗验证逐条驳斥，11 agents）；doc.codesome.ai 为 docsify 站，经 `assets/route-slugs.js` 的 slug→`NN-*.md` 映射直取原文
 > 事实分级：✅ = 官方原文逐字证实；⚠️ = AISC 自有约定（官方无出处，模板内须标注）；❌ = 初稿被驳斥说法（已修正不入规格）
 
@@ -83,7 +83,7 @@
 - codex 侧同上 ⚠️：TOML 指 `/api` 仅在 S9a 本地代理翻译形态下成立，**裸配即复现官方常见错误 #3**——模板内显式标注，官方原生 = `v5.codesome.cn/openai`（回退项）。
 - hint 文案要点：cr- 卡密直接当 Key（勿兑换/勿建 Key/勿选分组）、粘纯卡密（防「二合一卡密：」前缀）、统一 1.5 倍、sk- 是 V3 的 Key 请换模板、卡密来源 meta.codesome.cn 订单页。
 
-两模板 UI 共有：API Key（password+reveal、前缀软 warn 不拦截）、行 ID 可编辑（预填模板 id，支持 `codesome-v3-lite`/`codesome-v3-max` 多实例）、分组 hint（仅 v3）、高级层沿用（上游格式/模型映射）。
+两模板 UI 共有（按 D-6 裁定修订）：**下拉默认选中置顶的 codesome 模板**；表单下方「**获取服务**」按钮按当前模板导航（`meta.codesome.cn` 带 aff，**界面无任何赞助商标明字样**）；API Key（password+reveal、前缀**软拦截 warn，样式醒目**、不拦提交）；行 ID 可编辑（预填模板 id，支持 `codesome-v3-lite`/`codesome-v3-max` 多实例）；分组 hint（仅 v3）；高级层沿用（上游格式/模型映射）。**modelCatalog 按 D-6.4 镜像 OpenAI 官方模型列表**（§3 seed 中单条 terra 为示意，落地时替换为官方列表快照，默认模型 `gpt-5.6-terra` 不变）。
 
 ## 4. 实施批拆分建议（拍板后立项）
 
@@ -92,17 +92,19 @@
 3. **杂项**：cr- 入脱敏正则、`/openai` 入后缀表或 codesome 关 live 合并、README/releases 文档同步
 4. **测试**：preset shape 断言重写、预置数断言更新、前端 vitest
 
-## 5. 待用户拍板（答复后记入 decisions.md 为 D-6+）
+## 5. 裁决结果（2026-09-18 用户裁定 = D-6，详见 decisions.md）
 
-1. **模板 id 命名**：`codesome-v3` + `codesome-2in1`（本设计；比官方 claude 侧名 codesome-v5 对用户更直白）？还是跟官方 `codesome-v3`/`codesome-v5`？
-2. **UI 外链范围**：doc.codesome.ai（文档）、v3 后台建键/兑换页建议放；**meta.codesome.cn 注册链带 `aff=FAP2ASVX` 是否允许进 Workbench 界面**（D-3 赞助位具体形态）？
-3. **双 agent 覆盖**：两模板均覆盖 claude+codex（官方各有独立教程）——确认？
-4. **模型目录**：官方指定 `gpt-5.6-terra`；`gpt-5.6-sol`（8-29 实测存在）是否保留为目录第二项？`contextWindow=1_000_000` 为 AISC 自选值（官方未载 terra 窗口）——可接受或改值？
-5. **`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`** 入 seed（官方核心三行外、方法 2 四件套内；容器内省流量有益）——保留还是严格对齐核心三行？
-6. **codex 默认形态**：沿用 S9a 翻译（你 8-29 裁定实测最稳，本设计默认）+ 官方原生作高级层回退——确认维持？
-7. **D-2 迁移交互**：旧 codesome 行指纹清除后由你在 UI 从新模板手动重加（容器不自动重种）——确认？
-8. **清单事实源机制**：镜像内清单文件 + 与 PRESET_PROVIDERS 平价测试（r1 §7 中庸项，本设计推荐）？还是 adapter `template-list` op（零漂移但三层+闸门成本）？
-9. **key 前缀校验力度**：软 warn 不拦截（粘错时给可读提示优于硬拦）——确认？
+| # | 问题 | 裁定 |
+| --- | --- | --- |
+| 1 | 模板 id 命名 | `codesome-v3` + `codesome-2in1`（显示名带产品线说明） |
+| 2 | UI 外链与 aff | **默认选中 codesome 模板 + 「获取服务」按钮**（按模板导航 meta.codesome.cn 带 aff）；**不标赞助商字样** |
+| 3 | 双 agent 覆盖 | 是（claude + codex） |
+| 4 | 模型目录 | **镜像 OpenAI 官方模型列表**（codesome 与 OpenAI 官方完全一致）；窗口 1M 量级可接受；默认模型 gpt-5.6-terra |
+| 5 | DISABLE_NONESSENTIAL_TRAFFIC | 入 seed |
+| 6 | codex 默认形态 | 维持 S9a 翻译 + 官方原生回退 |
+| 7 | 迁移交互 | 确认；**并升级：镜像不预置任何不带 key 的 provider 卡片（含 official 行），全由用户添加** |
+| 8 | 清单事实源 | A：镜像内清单文件 + 平价测试 |
+| 9 | key 前缀校验 | 软拦截（warn 不拦提交），提示醒目 |
 
 ---
 *调研 2026-09-18；官方文档 8 页原文直取（docsify slug 映射），对抗验证 2 轮驳斥 4 处初稿错误（固定倍率/401 绑定/「官方翻译路」表述/codex 认证形态）后定稿。实施与否由用户裁决。*
