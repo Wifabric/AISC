@@ -7,7 +7,7 @@
 import { defineStore } from "pinia";
 import { computed, reactive, ref } from "vue";
 import * as ipc from "../lib/ipc";
-import type { CcSwitchProvider, CcSwitchRequest, FetchModelsResult } from "../types";
+import type { CcSwitchProvider, CcSwitchRequest, CcSwitchTemplate, FetchModelsResult } from "../types";
 
 export type CcSwitchAgent = "claude" | "codex";
 
@@ -174,8 +174,46 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
    * longer freezes the whole panel. */
   const busyOp = computed(() => (busy.value ? busy.value.split(":")[0]! : ""));
 
+  // --- D-6.8: the add-provider template manifest --------------------------
+  /** FALLBACK (old image: adapter predates the `templates` op): the legacy
+   * preset ids as bare templates. The codesome pair (D-6) leads and stays
+   * the DEFAULT selection; ids/order mirror the module's PRESET_PROVIDERS. */
+  const FALLBACK_TEMPLATES: CcSwitchTemplate[] = [
+    { id: "codesome-v3", name: "Codesome V3", key_prefix: "sk-",
+      acquire_url: "https://meta.codesome.cn/?aff=FAP2ASVX",
+      default_model: "gpt-5.6-terra" },
+    { id: "codesome-2in1", name: "Codesome 二合一", key_prefix: "cr-",
+      acquire_url: "https://meta.codesome.cn/?aff=FAP2ASVX",
+      default_model: "gpt-5.6-terra" },
+    { id: "deepseek", name: "deepseek" },
+    { id: "volcengine-ark", name: "volcengine-ark" },
+    { id: "zhipu", name: "zhipu" },
+    { id: "kimi", name: "kimi" },
+  ];
+  const templates = ref<CcSwitchTemplate[]>(FALLBACK_TEMPLATES);
+  /** D-6.2: codesome leads (sponsor placement, no label) and is the
+   * add-flow's default selection; everything else keeps manifest order. */
+  function _orderTemplates(list: CcSwitchTemplate[]): CcSwitchTemplate[] {
+    const codesome = list.filter((t) => t.id.startsWith("codesome"));
+    const rest = list.filter((t) => !t.id.startsWith("codesome"));
+    return [...codesome, ...rest];
+  }
+  /** Never throws: an old-image adapter (no `templates` op) keeps the
+   * fallback list so the add flow still works (degraded display). */
+  async function loadTemplates(ws: string, rt: string): Promise<void> {
+    try {
+      const result = await ipc.ccSwitchTemplates(ws, rt, agent.value);
+      if (result.templates.length) {
+        templates.value = _orderTemplates(result.templates);
+      }
+    } catch {
+      templates.value = FALLBACK_TEMPLATES;
+    }
+  }
+
   return {
     agent, providers, loading, busy, busyOp, error, errorDetail, fetchedModels,
+    templates, loadTemplates,
     list, switchAgent, add, edit, activate, remove, fetchModels, revealKey,
   };
 });

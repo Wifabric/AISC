@@ -1,10 +1,13 @@
-"""Stage 8c (CS-03/CS-04, D8-06/D8-11): fixture-driven DeepSeek preset and
-ownership-aware refresh.
+"""Stage 8c (CS-03/CS-04, D8-06/D8-11) + 2.1.12 (D-1/D-6): fixture-driven
+DeepSeek template, the codesome dual product-line templates, the add-provider
+manifest, and the deprovision migration.
 
-The preset must generate the official Claude Code env set VERBATIM from
-``container/lib/deepseek-official-facts.json`` (never a hardcoded copy), never
-write the user's token keys, upgrade every historically-preset-written value
-on refresh, and preserve genuine user overrides.
+The DeepSeek template must generate the official Claude Code env set VERBATIM
+from ``container/lib/deepseek-official-facts.json`` (never a hardcoded copy)
+and never write the user's token keys. The codesome templates (D-6) split the
+two product lines apart (V3 sk- / 二合一 cr-). The migration (D-6.7) removes
+the historical seeded rows fingerprint-guarded and never touches repurposed
+user rows.
 """
 
 from __future__ import annotations
@@ -47,7 +50,8 @@ class FixtureDrivenPresetTests(unittest.TestCase):
 
     def test_agent_all_aggregates_both_agents_in_one_spawn(self):
         """PERF P9 (D-13): `--agent all` runs both agents and aggregates the
-        status (added > refreshed > current; any failure -> exit 1)."""
+        status (migrated > current; any failure -> exit 1). D-6.7: the
+        default action is the deprovision migration, not seeding."""
         import io
         import contextlib
 
@@ -55,7 +59,7 @@ class FixtureDrivenPresetTests(unittest.TestCase):
             config_dir = Path(tmp) / "cc"
             config_dir.mkdir()
             # Minimal providers table (same shape the runtime tests seed) —
-            # the preset path writes the db directly (daemon-independent).
+            # the migration writes the db directly (daemon-independent).
             db = sqlite3.connect(config_dir / "cc-switch.db")
             db.execute(
                 "CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, "
@@ -66,31 +70,23 @@ class FixtureDrivenPresetTests(unittest.TestCase):
             )
             db.commit()
             db.close()
-            log = Path(tmp) / "preset.log"
-            # Fresh db: both agents need presets -> "added".
+            log = Path(tmp) / "migrate.log"
+            # First run on an unmarked volume: the migration stamps markers
+            # (nothing seeded to remove -> "current" aggregate either way —
+            # the marker flip alone is not a "migrated" signal).
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 rc = H.main(["--agent", "all",
                              "--config-dir", str(config_dir),
-                             "--log", str(log),
-                             "--mode", "always"])
+                             "--log", str(log)])
             self.assertEqual(rc, 0)
-            self.assertEqual(out.getvalue().strip(), "added")
-            # Second run on the now-current config: "current".
+            self.assertIn(out.getvalue().strip(), {"current", "migrated"})
+            # Second run: markers current -> aggregate "current" (idempotent).
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 rc = H.main(["--agent", "all",
                              "--config-dir", str(config_dir),
-                             "--log", str(log),
-                             "--mode", "auto"])
+                             "--log", str(log)])
             self.assertEqual(rc, 0)
             self.assertEqual(out.getvalue().strip(), "current")
-            # off mode short-circuits to "off" without touching anything.
-            with contextlib.redirect_stdout(io.StringIO()) as out:
-                rc = H.main(["--agent", "all",
-                             "--config-dir", str(config_dir),
-                             "--log", str(log),
-                             "--mode", "off"])
-            self.assertEqual(rc, 0)
-            self.assertEqual(out.getvalue().strip(), "off")
 
     def test_agent_all_is_sequential_best_effort_on_partial_failure(self):
         """The aggregate is not atomic: rc 1 after a later-agent failure."""
@@ -100,20 +96,20 @@ class FixtureDrivenPresetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config_dir = Path(tmp) / "cc"
             config_dir.mkdir()
-            log = Path(tmp) / "preset.log"
+            log = Path(tmp) / "migrate.log"
             with mock.patch.object(
                 H,
-                "add_preset_providers",
-                side_effect=[(1, 0, 0), RuntimeError("codex failed")],
-            ) as add_providers:
+                "migrate_deprovisioned",
+                side_effect=[0, RuntimeError("codex failed")],
+            ) as migrate:
                 with contextlib.redirect_stdout(io.StringIO()) as out:
                     rc = H.main([
                         "--agent", "all", "--config-dir", str(config_dir),
-                        "--log", str(log), "--mode", "always",
+                        "--log", str(log),
                     ])
             self.assertEqual(rc, 1)
             self.assertEqual(out.getvalue().strip(), "failed")
-            self.assertEqual(add_providers.call_count, 2)
+            self.assertEqual(migrate.call_count, 2)
 
     def test_1m_suffix_rules_match_the_fixture(self):
         env = H._settings_config("claude", deepseek())["env"]
@@ -156,10 +152,10 @@ class FixtureDrivenPresetTests(unittest.TestCase):
             self.assertNotIn(key, env)
 
     def test_preset_format_bumped_and_revision_is_fixture_sensitive(self):
-        # v7 (S8g): codex upstream format flips to openai_responses +
-        # codesome joins — existing volumes must refresh, so the format
-        # version is part of the revision hash.
-        self.assertEqual(H.PRESET_FORMAT_VERSION, 9)
+        # v10 (D-6.7): de-seed — templates replace presets, the migration
+        # removes historical rows, so the format version is part of the
+        # revision hash (a bumped version re-runs the migration).
+        self.assertEqual(H.PRESET_FORMAT_VERSION, 10)
         base_revision = H.preset_revision("claude")
         # A mutated fixture must yield a different revision (refresh triggers).
         mutated = json.loads(json.dumps(deepseek()))
@@ -194,40 +190,6 @@ class FixtureDrivenPresetTests(unittest.TestCase):
         self.assertEqual(settings["auth"], {"OPENAI_API_KEY": "sk-x-1234"})
         self.assertIn('api_key = "sk-x-1234"', settings["config"])
         self.assertEqual(H._settings_config("codex", deepseek())["auth"], {})
-
-    def test_codex_refresh_recovers_key_from_auth_channel(self):
-        # Rows written by upstream's own TUI carry the key in auth only —
-        # extraction is auth-first so a refresh never drops it back to the
-        # placeholder-401 shape.
-        existing = json.dumps({
-            "auth": {"OPENAI_API_KEY": "sk-auth-chan-1"},
-            "config": ('model_provider = "deepseek"\n'
-                       '[model_providers.deepseek]\n'
-                       'base_url = "https://api.deepseek.com/anthropic"\n'),
-        })
-        merged = H._merged_settings("codex", deepseek(), existing)
-        self.assertEqual(merged["auth"].get("OPENAI_API_KEY"), "sk-auth-chan-1")
-
-    def test_codex_refresh_keeps_key_alongside_oauth_mirror(self):
-        existing = json.dumps({
-            "auth": {"tokens": {"id_token": "tok"}},
-            "config": ('model_provider = "deepseek"\n'
-                       '[model_providers.deepseek]\nbase_url = "x"\n'
-                       'api_key = "sk-toml-9"\n'),
-        })
-        merged = H._merged_settings("codex", deepseek(), existing)
-        self.assertEqual(merged["auth"]["tokens"], {"id_token": "tok"})
-        self.assertEqual(merged["auth"]["OPENAI_API_KEY"], "sk-toml-9")
-
-    def test_codex_refresh_upgrades_legacy_toml_key_into_auth(self):
-        existing = json.dumps({
-            "auth": {},
-            "config": ('model_provider = "deepseek"\n'
-                       '[model_providers.deepseek]\nbase_url = "x"\n'
-                       'api_key = "sk-old-2"\n'),
-        })
-        merged = H._merged_settings("codex", deepseek(), existing)
-        self.assertEqual(merged["auth"].get("OPENAI_API_KEY"), "sk-old-2")
 
     def test_bad_fixture_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,26 +281,60 @@ class S8gUpstreamFormatTests(unittest.TestCase):
         config = H._settings_config("codex", legacy)["config"]
         self.assertIn('base_url = "https://x.example/anthropic"', config)
 
-    def test_codesome_preset_shape(self):
-        codesome = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome")
-        # Codex side (S9a): unified on the anthropic endpoint — the SAME
-        # v5.codesome.cn/api the claude side uses; the router translates.
-        self.assertEqual(codesome["model"], "gpt-5.6-sol")
-        codex_config = H._settings_config("codex", codesome)["config"]
-        self.assertIn('base_url = "https://v5.codesome.cn/api"', codex_config)
-        self.assertIn('model = "gpt-5.6-sol"', codex_config)
-        # Claude row: env-based, Anthropic side URL, no token written.
-        self.assertEqual(codesome["anthropic_base_url"], "https://v5.codesome.cn/api")
-        claude = H._settings_config("claude", codesome)
+    def test_codesome_dual_template_shapes(self):
+        """D-6: two product-line templates — the cross-wired single row is
+        the root cause this split fixes."""
+        v3 = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome-v3")
+        two_in_one = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome-2in1")
+        self.assertNotIn("codesome", [p["id"] for p in H.PRESET_PROVIDERS])
+        # V3: one gateway domain for BOTH agents (claude speaks Anthropic
+        # there; codex S9a-translates to the same).
+        self.assertEqual(v3["model"], "gpt-5.6-terra")
+        self.assertEqual(v3["base_url"], "https://cc.codesome.ai")
+        v3_claude = H._settings_config("claude", v3)
+        self.assertEqual(v3_claude["env"]["ANTHROPIC_BASE_URL"], "https://cc.codesome.ai")
+        v3_codex = H._settings_config("codex", v3)["config"]
+        self.assertIn('base_url = "https://cc.codesome.ai"', v3_codex)
+        self.assertIn('model = "gpt-5.6-terra"', v3_codex)
+        # 二合一 (V5): claude on /api, codex S9a-translates to the same;
+        # the OpenAI-side base_url is the official native /openai.
+        self.assertEqual(two_in_one["base_url"], "https://v5.codesome.cn/openai")
+        self.assertEqual(two_in_one["anthropic_base_url"], "https://v5.codesome.cn/api")
+        self.assertEqual(two_in_one["model"], "gpt-5.6-terra")
+        two_claude = H._settings_config("claude", two_in_one)
         self.assertEqual(
-            claude["env"]["ANTHROPIC_BASE_URL"], "https://v5.codesome.cn/api"
+            two_claude["env"]["ANTHROPIC_BASE_URL"], "https://v5.codesome.cn/api"
         )
-        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", claude["env"])
+        two_codex = H._settings_config("codex", two_in_one)["config"]
+        self.assertIn('base_url = "https://v5.codesome.cn/api"', two_codex)
+        self.assertIn('model = "gpt-5.6-terra"', two_codex)
+
+    def test_codesome_claude_env_is_official_core_set(self):
+        """D-6.5 + the official core-three/method-2 facts: the attribution
+        header MUST be 0, NONESSENTIAL_TRAFFIC rides along, and — critically
+        — NO model keys (the official大扫除 requires clearing ANTHROPIC_MODEL
+        residues; the key's server-side group routes models)."""
+        for pid in ("codesome-v3", "codesome-2in1"):
+            provider = next(p for p in H.PRESET_PROVIDERS if p["id"] == pid)
+            claude = H._settings_config("claude", provider)
+            self.assertEqual(claude["env"]["CLAUDE_CODE_ATTRIBUTION_HEADER"], "0")
+            self.assertEqual(
+                claude["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"], "1")
+            for key in (
+                "ANTHROPIC_MODEL",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                "CLAUDE_CODE_SUBAGENT_MODEL",
+                "CLAUDE_CODE_EFFORT_LEVEL",
+            ):
+                self.assertNotIn(key, claude["env"], pid)
+            self.assertNotIn("ANTHROPIC_AUTH_TOKEN", claude["env"], pid)
 
     def test_preset_revision_bumped_for_the_format_migration(self):
-        # v9 (S9a): all codex upstreams -> anthropic endpoint + format;
-        # the chat daemon-seeded meta value now upgrades too.
-        self.assertEqual(H.PRESET_FORMAT_VERSION, 9)
+        # v10 (D-6.7): de-seed + dual codesome templates; existing volumes
+        # re-run the one-shot migration.
+        self.assertEqual(H.PRESET_FORMAT_VERSION, 10)
 
     def test_every_preset_carries_a_codex_model_catalog(self):
         # S8g-2 (user field report): without model_catalog the cc-switch
@@ -361,175 +357,6 @@ class S8gUpstreamFormatTests(unittest.TestCase):
             settings = H._settings_config("codex", provider)
             self.assertIn("modelCatalog", settings, provider["id"])
             self.assertIn("model_context_window", settings["config"], provider["id"])
-
-
-class LegacyModelOwnershipTests(unittest.TestCase):
-    """IDEA-5 (5c): legacy presets (zhipu/kimi/volcengine) give
-    ANTHROPIC_MODEL the same ownership merge — user mapping overrides
-    survive refresh; historical/absent values upgrade; BASE_URL keeps its
-    legacy reset semantics."""
-
-    def _merge(self, pid: str, existing_env: dict) -> dict:
-        raw = json.dumps({"env": existing_env})
-        return H._merged_settings("claude", legacy(pid), raw)["env"]
-
-    def test_zhipu_user_model_override_survives(self):
-        merged = self._merge("zhipu", {
-            "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
-            "ANTHROPIC_MODEL": "glm-5.2",          # historical preset value
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5.2-air",  # user-added role slot
-        })
-        # The preset-written 5.2 was superseded by 5.3 (both in history):
-        # refresh upgrades it, the way any preset value upgrade works.
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "glm-5.3")
-        # User-added role keys outside the owned set survive untouched.
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_HAIKU_MODEL"], "glm-5.2-air")
-
-    def test_zhipu_mapping_override_survives_refresh(self):
-        merged = self._merge("zhipu", {
-            "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
-            "ANTHROPIC_MODEL": "my-custom-glm",    # user override (not history)
-        })
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "my-custom-glm")
-
-    def test_zhipu_model_upgrades_when_preset_default_changes(self):
-        provider = legacy("zhipu")
-        provider["model"] = "glm-6.0"              # a future official default
-        raw = json.dumps({"env": {
-            "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
-            "ANTHROPIC_MODEL": "glm-5.2",          # old default (in history)
-        }})
-        merged = H._merged_settings("claude", provider, raw)["env"]
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "glm-6.0")
-
-    def test_volcengine_user_model_survives_and_base_url_resets(self):
-        merged = self._merge("volcengine-ark", {
-            "ANTHROPIC_BASE_URL": "https://user-endpoint.example",
-            "ANTHROPIC_MODEL": "ep-user-endpoint",  # user-set (preset has none)
-        })
-        # No preset model → the user's MODEL is never owned, never dropped.
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "ep-user-endpoint")
-        # BASE_URL keeps the legacy semantics: preset resets it (S9a: to the
-        # anthropic endpoint — volcengine now carries one).
-        self.assertEqual(
-            merged["ANTHROPIC_BASE_URL"],
-            "https://ark.cn-beijing.volces.com/api/v3/anthropic",
-        )
-
-
-class OwnershipRefreshTests(unittest.TestCase):
-    def _merge(self, existing_env: dict) -> dict:
-        raw = json.dumps({"env": existing_env})
-        return H._merged_settings("claude", deepseek(), raw)["env"]
-
-    def test_user_override_survives_refresh(self):
-        merged = self._merge({
-            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-            "ANTHROPIC_AUTH_TOKEN": "sk-user",
-            "ANTHROPIC_MODEL": "my-own-model",          # user override
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": "also-mine",  # user override
-            "CLAUDE_CODE_EFFORT_LEVEL": "low",           # key new in this rev
-        })
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "my-own-model")
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_SONNET_MODEL"], "also-mine")
-        # EFFORT_LEVEL has empty history → any existing value is the user's.
-        self.assertEqual(merged["CLAUDE_CODE_EFFORT_LEVEL"], "low")
-        # Untouched keys keep upgrading to the official set.
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_OPUS_MODEL"], "deepseek-v4-pro[1m]")
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_HAIKU_MODEL"], "deepseek-v4-flash")
-        # The user's token is never touched.
-        self.assertEqual(merged["ANTHROPIC_AUTH_TOKEN"], "sk-user")
-
-    def test_legacy_preset_values_are_upgraded(self):
-        merged = self._merge({
-            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/v1",   # legacy URL
-            "ANTHROPIC_MODEL": "deepseek-chat",                     # deprecated
-            "ANTHROPIC_AUTH_TOKEN": "sk-user",
-        })
-        self.assertEqual(merged["ANTHROPIC_BASE_URL"], "https://api.deepseek.com/anthropic")
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
-
-    def test_fanout_artifact_values_are_upgraded(self):
-        # cc-switch `provider add` fans ANTHROPIC_MODEL out to the DEFAULT_*
-        # keys — those artifact values must upgrade, not stick.
-        merged = self._merge({
-            "ANTHROPIC_MODEL": "deepseek-v4-pro",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-pro",
-        })
-        self.assertEqual(merged["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_OPUS_MODEL"], "deepseek-v4-pro[1m]")
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_SONNET_MODEL"], "deepseek-v4-pro[1m]")
-        self.assertEqual(merged["ANTHROPIC_DEFAULT_HAIKU_MODEL"], "deepseek-v4-flash")
-
-    def test_user_added_env_keys_survive(self):
-        merged = self._merge({
-            "ANTHROPIC_SMALL_FAST_MODEL": "my-fast",
-            "HTTP_PROXY": "http://127.0.0.1:7890",
-        })
-        self.assertEqual(merged["ANTHROPIC_SMALL_FAST_MODEL"], "my-fast")
-        self.assertEqual(merged["HTTP_PROXY"], "http://127.0.0.1:7890")
-
-    def test_retired_preset_keys_dropped(self):
-        provider = deepseek()
-        provider["_retired_env_keys"] = ["ANTHROPIC_SMALL_FAST_MODEL"]
-        raw = json.dumps({"env": {"ANTHROPIC_SMALL_FAST_MODEL": "stale"}})
-        merged = H._merged_settings("claude", provider, raw)["env"]
-        self.assertNotIn("ANTHROPIC_SMALL_FAST_MODEL", merged)
-
-    def test_end_to_end_db_refresh_preserves_user_state(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config_dir = Path(tmp)
-            db = sqlite3.connect(config_dir / "cc-switch.db")
-            db.execute(
-                "CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, "
-                "settings_config TEXT, website_url TEXT, category TEXT, "
-                "created_at INTEGER, sort_index INTEGER, notes TEXT, icon TEXT, "
-                "icon_color TEXT, meta TEXT, is_current INTEGER, "
-                "in_failover_queue INTEGER)"
-            )
-            old = json.dumps({"env": {
-                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-                "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
-                "ANTHROPIC_AUTH_TOKEN": "sk-live-user-key",
-            }})
-            db.execute(
-                "INSERT INTO providers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                ("deepseek", "claude", "DeepSeek", old, "https://api.deepseek.com",
-                 "custom", 1, 0, "", None, None, "{}", 1, 0),
-            )
-            db.commit()
-            db.close()
-
-            log = config_dir / "preset.log"
-            with log.open("w", encoding="utf-8") as log_io:
-                added, refreshed, removed = H.add_preset_providers(
-                    config_dir, "claude", H.preset_revision("claude"), log_io
-                )
-            # deepseek existed (refreshed); the other four were added
-            # (S8g: codesome joined the preset set).
-            self.assertEqual((added, refreshed, removed), (4, 1, 0))
-
-            db = sqlite3.connect(config_dir / "cc-switch.db")
-            raw = db.execute(
-                "SELECT settings_config FROM providers WHERE id='deepseek'"
-            ).fetchone()[0]
-            db.close()
-            env = json.loads(raw)["env"]
-            # Upgraded to the full official set…
-            self.assertEqual(env["ANTHROPIC_DEFAULT_SONNET_MODEL"], "deepseek-v4-pro[1m]")
-            self.assertEqual(env["CLAUDE_CODE_EFFORT_LEVEL"], "max")
-            # …while the user's key and current-selection state survive.
-            self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "sk-live-user-key")
-            check = sqlite3.connect(config_dir / "cc-switch.db")
-            try:
-                is_current = check.execute(
-                    "SELECT is_current FROM providers WHERE id='deepseek'"
-                ).fetchone()[0]
-            finally:
-                check.close()
-            self.assertEqual(is_current, 1)
 
 
 class ClaudeSettingsBaseTests(unittest.TestCase):
@@ -556,24 +383,174 @@ class ClaudeSettingsBaseTests(unittest.TestCase):
         settings = H._settings_config("claude", kimi)
         self.assertIn("statusLine", settings)
 
-    def test_refresh_seeds_base_only_when_absent(self):
-        custom_statusline = {"type": "command", "command": "user-custom"}
-        raw = json.dumps({
-            "env": {"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-                    "ANTHROPIC_AUTH_TOKEN": "sk-user"},
-            "statusLine": custom_statusline,
-        })
-        merged = H._merged_settings("claude", deepseek(), raw)
-        # The user's own statusLine survives every refresh…
-        self.assertEqual(merged["statusLine"], custom_statusline)
-        # …while base keys the row lacks are seeded.
-        self.assertIn("enabledPlugins", merged)
 
-    def test_refresh_upgrades_env_only_rows(self):
-        raw = json.dumps({"env": {"ANTHROPIC_AUTH_TOKEN": "sk-user"}})
-        merged = H._merged_settings("claude", deepseek(), raw)
-        self.assertIn("statusLine", merged)
-        self.assertIn("enabledPlugins", merged)
+class DeprovisionMigrationTests(unittest.TestCase):
+    """D-6.7: the one-shot migration removes the historical seeded rows
+    fingerprint-guarded; repurposed rows and anything else survive."""
+
+    def _mk_db(self, config_dir: Path) -> None:
+        db = sqlite3.connect(config_dir / "cc-switch.db")
+        db.execute(
+            "CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, "
+            "settings_config TEXT, website_url TEXT, category TEXT, "
+            "created_at INTEGER, sort_index INTEGER, notes TEXT, icon TEXT, "
+            "icon_color TEXT, meta TEXT, is_current INTEGER, "
+            "in_failover_queue INTEGER)"
+        )
+        db.commit()
+        db.close()
+
+    def _insert(self, config_dir: Path, agent: str, pid: str, settings: str) -> None:
+        db = sqlite3.connect(config_dir / "cc-switch.db")
+        db.execute(
+            "INSERT INTO providers (id, app_type, name, settings_config, "
+            "website_url, category, created_at, sort_index, notes, icon, "
+            "icon_color, meta, is_current, in_failover_queue) "
+            "VALUES (?, ?, ?, ?, '', 'custom', 0, 0, '', NULL, NULL, '{}', 0, 0)",
+            (pid, agent, pid, settings),
+        )
+        db.commit()
+        db.close()
+
+    def _ids(self, config_dir: Path, agent: str) -> set:
+        db = sqlite3.connect(config_dir / "cc-switch.db")
+        rows = db.execute(
+            "SELECT id FROM providers WHERE app_type = ?", (agent,)
+        ).fetchall()
+        db.close()
+        return {r[0] for r in rows}
+
+    def test_retired_preset_rows_are_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            self._mk_db(config_dir)
+            old_codesome = json.dumps({
+                "env": {"ANTHROPIC_BASE_URL": "https://v5.codesome.cn/api",
+                        "ANTHROPIC_MODEL": "gpt-5.6-sol"},
+            })
+            self._insert(config_dir, "claude", "codesome", old_codesome)
+            self._insert(config_dir, "claude", "kimi",
+                         json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://api.moonshot.cn/anthropic"}}))
+            log = config_dir / "m.log"
+            removed = H.migrate_deprovisioned(
+                config_dir, "claude", H.preset_revision("claude"), log.open("w", encoding="utf-8"))
+            self.assertEqual(removed, 2)
+            self.assertEqual(self._ids(config_dir, "claude"), set())
+
+    def test_repurposed_rows_survive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            self._mk_db(config_dir)
+            # Same id, but the config no longer carries the preset fingerprint —
+            # the user repurposed it; the migration must leave it alone.
+            self._insert(config_dir, "claude", "codesome",
+                         json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://my.own Relay".replace(" ", "")}}))
+            self._insert(config_dir, "claude", "user-row",
+                         json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://user.example"}}))
+            removed = H.migrate_deprovisioned(
+                config_dir, "claude", H.preset_revision("claude"),
+                (config_dir / "m.log").open("w", encoding="utf-8"))
+            self.assertEqual(removed, 0)
+            self.assertEqual(
+                self._ids(config_dir, "claude"), {"codesome", "user-row"})
+
+    def test_marker_makes_migration_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            self._mk_db(config_dir)
+            self._insert(config_dir, "codex", "codesome",
+                         json.dumps({"auth": {}, "config": 'base_url = "https://cc.codesome.ai"'}))
+            revision = H.preset_revision("codex")
+            removed = H.migrate_deprovisioned(
+                config_dir, "codex", revision, (config_dir / "m.log").open("w", encoding="utf-8"))
+            self.assertEqual(removed, 1)
+            # Second run: marker matches -> preset_required reports current.
+            required, _reason = H.preset_required(config_dir, "codex", revision)
+            self.assertFalse(required)
+
+    def test_missing_db_is_a_clean_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            removed = H.migrate_deprovisioned(
+                config_dir, "claude", H.preset_revision("claude"),
+                (config_dir / "m.log").open("w", encoding="utf-8"))
+            self.assertEqual(removed, 0)
+            self.assertTrue(H.marker_path(config_dir, "claude").is_file())
+
+
+class TemplateManifestTests(unittest.TestCase):
+    """D-6.8: the add-provider picker's data — derived from the same
+    PRESET_PROVIDERS payload as the simple-add seeds (no drift possible)."""
+
+    def test_manifest_lists_all_templates_with_metadata(self):
+        manifest = H.provider_templates_manifest()
+        self.assertEqual(
+            [t["id"] for t in manifest],
+            ["deepseek", "volcengine-ark", "zhipu", "kimi", "codesome-v3", "codesome-2in1"],
+        )
+        v3 = next(t for t in manifest if t["id"] == "codesome-v3")
+        self.assertEqual(v3["key_prefix"], "sk-")
+        self.assertIn("meta.codesome.cn", v3["acquire_url"])
+        two = next(t for t in manifest if t["id"] == "codesome-2in1")
+        self.assertEqual(two["key_prefix"], "cr-")
+        self.assertEqual(two["default_model"], "gpt-5.6-terra")
+        # Non-sponsor templates carry no acquire URL (D-3: no affiliate
+        # placement outside codesome).
+        for t in manifest:
+            if not t["id"].startswith("codesome"):
+                self.assertNotIn("acquire_url", t)
+
+    def test_manifest_is_secret_free(self):
+        blob = json.dumps(H.provider_templates_manifest())
+        for forbidden in ("api_key", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"):
+            self.assertNotIn(forbidden, blob)
+
+    def test_print_manifest_flag_emits_json(self):
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = H.main([
+                    "--agent", "claude",  # unused by the manifest path
+                    "--config-dir", str(Path(tmp)),
+                    "--log", str(Path(tmp) / "x.log"),
+                    "--print-manifest",
+                ])
+            self.assertEqual(rc, 0)
+            parsed = json.loads(out.getvalue())
+            self.assertEqual(parsed[0]["id"], "deepseek")
+
+
+class CodesomeCodexOptionsTests(unittest.TestCase):
+    """D-7: thinking depth + auto-compact watermark flow into the codex
+    TOML and the claude env."""
+
+    def test_codex_reasoning_effort_and_compact(self):
+        v3 = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome-v3")
+        settings = H._settings_config(
+            "codex", v3, api_key="sk-x", reasoning_effort="medium",
+            compact_token_limit=900_000)
+        config = settings["config"]
+        self.assertIn('model_reasoning_effort = "medium"', config)
+        self.assertIn("model_auto_compact_token_limit = 900000", config)
+        # Official order: context window, then auto-compact limit.
+        self.assertLess(
+            config.index("model_context_window"),
+            config.index("model_auto_compact_token_limit"))
+
+    def test_codex_defaults_unchanged_when_flags_absent(self):
+        v3 = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome-v3")
+        config = H._settings_config("codex", v3)["config"]
+        self.assertIn('model_reasoning_effort = "high"', config)
+        self.assertNotIn("model_auto_compact_token_limit", config)
+
+    def test_claude_compact_rides_env(self):
+        two = next(p for p in H.PRESET_PROVIDERS if p["id"] == "codesome-2in1")
+        env = H._settings_config("claude", two, compact_token_limit=150_000)["env"]
+        self.assertEqual(env["CLAUDE_AUTO_COMPACT_ENABLED"], "true")
+        self.assertEqual(env["CLAUDE_AUTO_COMPACT_WINDOW"], "150000")
 
 
 class ReconcileTests(unittest.TestCase):

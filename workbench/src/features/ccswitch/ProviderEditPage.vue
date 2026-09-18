@@ -17,7 +17,7 @@ import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useRuntimeStore } from "../../stores/runtime";
 import { useCcSwitchUiStore } from "../../stores/ccSwitchUi";
-import type { CcSwitchCatalogEntry, CcSwitchProvider } from "../../types";
+import type { CcSwitchCatalogEntry, CcSwitchProvider, CcSwitchTemplate } from "../../types";
 import ModelMappingEditor from "./ModelMappingEditor.vue";
 
 const { t } = useI18n();
@@ -25,7 +25,8 @@ const props = defineProps<{
   agent: "claude" | "codex";
   /** null = add mode. */
   provider: CcSwitchProvider | null;
-  presets: string[];
+  /** D-6.8: the container-reported template manifest (codesome-led). */
+  templates: CcSwitchTemplate[];
   busy: boolean;
   busyOp?: string;
 }>();
@@ -40,12 +41,19 @@ const tier = ref<"simple" | "advanced">("simple");
  * catalog, apiFormat all ride the simple path = the "按 preset 预填"
  * ruling) vs custom. */
 const addMode = ref<"preset" | "custom">("preset");
+/** D-6.2: the manifest is codesome-led — templates[0] IS the default
+ * selection of the add flow. */
+const selectedTemplate = computed<CcSwitchTemplate>(
+  () => props.templates.find((x) => x.id === form.preset) ?? props.templates[0] ?? { id: "", name: "" });
 const form = reactive({
-  id: "", // add mode only
-  preset: props.presets[0] ?? "deepseek",
+  id: props.templates[0]?.id ?? "", // add mode — D-6: prefilled, editable (multi-instance)
+  preset: props.templates[0]?.id ?? "",
   name: props.provider?.name ?? "",
   baseUrl: props.provider?.base_url ?? "",
   apiKey: "",
+  /** D-7: thinking depth (codex) + auto-compact watermark (tokens). */
+  reasoningEffort: "high",
+  compactThreshold: "",
   apiFormat: (props.provider?.api_format
     ?? (props.agent === "codex" ? "openai_responses" : "anthropic")) as
     "anthropic" | "openai_chat" | "openai_responses",
@@ -54,6 +62,41 @@ const form = reactive({
   icon: props.provider?.icon ?? "",
   iconColor: props.provider?.icon_color ?? "",
 });
+/** D-7 add-mode prefill: the official recommended watermark per agent
+ * (claude 150k / codex 900k@1M); edit mode stays empty = no change. */
+if (props.provider === null) {
+  form.compactThreshold = props.agent === "codex" ? "900000" : "150000";
+}
+const parsedCompact = computed<number>(() => {
+  const n = Number(form.compactThreshold);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+});
+/** D-6.9: key-prefix soft check — prominent WARN, never blocks submit. */
+const keyPrefixWarn = computed(() => {
+  const prefix = selectedTemplate.value.key_prefix;
+  if (!prefix || !form.apiKey) return "";
+  return form.apiKey.startsWith(prefix)
+    ? "" : prefix;
+});
+/** D-6: preset-mode row id — prefilled with the template id, user-editable
+ * for multi-instance setups (codesome-v3-lite / codesome-v3-max). */
+const rowIdError = computed(() => {
+  if (!adding.value || addMode.value !== "preset") return "";
+  const id = form.id.trim();
+  if (!id) return t("ccswitch.edit.rowIdRequired");
+  if (!/^[a-z0-9][a-z0-9\-_]{0,63}$/.test(id)) return t("ccswitch.edit.rowIdInvalid");
+  if (uiStore.providers.some((p) => p.id === id)) return t("ccswitch.edit.rowIdDuplicate", { id });
+  return "";
+});
+function onPresetChange(): void {
+  // Re-prefill the row id when untouched or colliding with another template.
+  form.id = selectedTemplate.value.id;
+  touch();
+}
+function openAcquire(): void {
+  const url = selectedTemplate.value.acquire_url;
+  if (url) window.open(url, "_blank", "noopener");
+}
 const roles = reactive<Record<string, string>>({ ...(props.provider?.role_env ?? {}) });
 const catalog = ref<CcSwitchCatalogEntry[]>(
   (props.provider?.model_catalog ?? []).map((m) => ({ ...m })));
@@ -159,10 +202,17 @@ function buildRequest(): import("../../types").CcSwitchRequest {
     icon: form.icon,
     icon_color: form.iconColor,
   };
+  /** D-7 knobs — compact 0/absent = off; effort rides only for codex. */
+  const d7 = {
+    ...(props.agent === "codex" && form.reasoningEffort
+      ? { reasoning_effort: form.reasoningEffort } : {}),
+    ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
+  };
   if (adding.value) {
     if (addMode.value === "preset") {
-      return { mode: "simple", id: form.preset, provider: form.preset,
-               api_key: form.apiKey || undefined };
+      return { mode: "simple", id: form.id.trim() || form.preset, provider: form.preset,
+               api_key: form.apiKey || undefined,
+               ...d7 };
     }
     return {
       mode: "custom",
@@ -170,6 +220,7 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       name: form.name.trim(),
       base_url: form.baseUrl.trim(),
       api_key: form.apiKey || undefined,
+      ...d7,
       ...extras,
       ...(props.agent === "codex"
         ? { model_catalog: { models: catalog.value.map((m) => ({
@@ -187,6 +238,9 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       ...(props.agent === "claude"
         ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
         : {}),
+      ...(props.agent === "codex" && form.reasoningEffort
+        ? { reasoning_effort: form.reasoningEffort } : {}),
+      ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
       ...extras,
       ...(props.agent === "codex"
         ? { model_catalog: { models: catalog.value.map((m) => ({
@@ -201,6 +255,7 @@ function onSave(): void {
   if (adding.value && addMode.value === "custom" && !form.id.trim()) return;
   if (adding.value && addMode.value === "custom" && !form.baseUrl.trim()) return;
   if (!adding.value && !form.baseUrl.trim()) return;
+  if (adding.value && addMode.value === "preset" && rowIdError.value) return;
   emit("save", buildRequest(), adding.value ? null : props.provider!.id);
 }
 </script>
@@ -247,11 +302,29 @@ function onSave(): void {
         <template v-if="addMode === 'preset'">
           <label class="field">
             <span>{{ t("ccswitch.preset") }}</span>
-            <select v-model="form.preset" @change="touch">
-              <option v-for="p in presets" :key="p" :value="p">{{ p }}</option>
+            <select v-model="form.preset" @change="onPresetChange">
+              <option v-for="tpl in templates" :key="tpl.id" :value="tpl.id">
+                {{ tpl.name || tpl.id }}
+              </option>
             </select>
           </label>
+          <p v-if="selectedTemplate.description" class="hint">{{ selectedTemplate.description }}</p>
           <p class="hint">{{ t("ccswitch.edit.presetHint") }}</p>
+          <!-- D-6: preset-mode row id — prefilled, editable for
+               multi-instance setups (codesome-v3-lite / -max). -->
+          <label class="field">
+            <span>{{ t("ccswitch.edit.rowId") }}</span>
+            <input v-model="form.id" :placeholder="selectedTemplate.id"
+                   @input="touch" spellcheck="false" />
+          </label>
+          <p v-if="rowIdError" class="hint warn" role="alert">{{ rowIdError }}</p>
+          <!-- D-6.2: 获取服务 rides the selected template (codesome only). -->
+          <div v-if="selectedTemplate.acquire_url" class="field">
+            <span />
+            <button type="button" class="acquire" @click="openAcquire">
+              {{ t("ccswitch.edit.acquireService") }} ↗
+            </button>
+          </div>
         </template>
       </template>
       <label v-if="adding && addMode === 'custom'" class="field">
@@ -287,6 +360,10 @@ function onSave(): void {
       <p v-if="revealError" class="hint warn" role="alert">
         {{ t("ccswitch.apiKeyRevealFailed", { message: revealError }) }}
       </p>
+      <!-- D-6.9: key-prefix soft check — PROMINENT warn, never blocks. -->
+      <p v-if="keyPrefixWarn" class="key-prefix-warn" role="alert">
+        ⚠ {{ t("ccswitch.edit.keyPrefixWarn", { prefix: keyPrefixWarn }) }}
+      </p>
       <p class="hint">{{ t("ccswitch.secretHint") }}</p>
 
       <template v-if="tier === 'advanced'">
@@ -301,6 +378,22 @@ function onSave(): void {
         <p v-if="form.apiFormat !== 'anthropic'" class="hint">
           {{ t("ccswitch.edit.formatRouteHint") }}
         </p>
+
+        <!-- D-7: thinking depth (codex) + auto-compact watermark. -->
+        <label v-if="agent === 'codex'" class="field">
+          <span>{{ t("ccswitch.edit.reasoningEffort") }}</span>
+          <select v-model="form.reasoningEffort" @change="touch">
+            <option v-for="e in ['minimal', 'low', 'medium', 'high', 'xhigh']"
+                    :key="e" :value="e">{{ e }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ t("ccswitch.edit.compactThreshold") }}</span>
+          <input v-model="form.compactThreshold" inputmode="numeric"
+                 :placeholder="agent === 'codex' ? '900000' : '150000'"
+                 @input="touch" spellcheck="false" />
+        </label>
+        <p class="hint">{{ t("ccswitch.edit.compactHint") }}</p>
 
         <h3>{{ t("ccswitch.mapping.title") }}</h3>
         <div v-if="provider || adding" class="field">
@@ -389,6 +482,28 @@ input, select {
 /* r3: failure hints (reveal error + fetch unavailable) must stand out —
  * `.warn` was referenced before but had no rule (rendered plain gray). */
 .hint.warn { color: var(--error-fg); }
+/* D-6.9: the prefix warn must be UNMISSABLE (user ruling) — solid warn
+ * surface with a border, not a faint gray hint row. */
+.key-prefix-warn {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border: 1px solid var(--warn-fg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+/* D-6.2: 获取服务 — sponsor-placed CTA (codesome only), no sponsor label. */
+button.acquire {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  font-weight: 600;
+}
 button { cursor: pointer; }
 button.primary { background: var(--accent); border: none; color: var(--accent-fg);
   min-height: var(--control-h-sm); padding: 0 var(--space-4); border-radius: var(--radius-sm);

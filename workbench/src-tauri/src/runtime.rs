@@ -595,6 +595,48 @@ pub struct CcSwitchProvidersResult {
     pub operation_id: String,
 }
 
+/// D-6.8 (2.1.12): one add-provider template from the manifest — display
+/// metadata only; the seed/settings_config is composed container-side at
+/// add time.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CcSwitchTemplate {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub key_prefix: String,
+    #[serde(default)]
+    pub acquire_url: String,
+    #[serde(default)]
+    pub default_model: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CcSwitchTemplatesResult {
+    pub agent: String,
+    pub templates: Vec<CcSwitchTemplate>,
+    pub operation_id: String,
+}
+
+fn cc_switch_templates_argv(op: &str, runtime_id: &str, agent: &str,
+                            workspace: &str) -> Vec<String> {
+    // The templates op is agent-less inside the adapter; the transport
+    // keeps the uniform --agent argument (validated, then ignored).
+    vec![
+        "cc-switch".into(),
+        op.into(),
+        "--runtime-id".into(),
+        runtime_id.into(),
+        "--agent".into(),
+        agent.into(),
+        "--workspace".into(),
+        workspace.into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
 fn cc_switch_argv(op: &str, runtime_id: &str, agent: &str, workspace: &str,
                   positional: Option<&str>) -> Vec<String> {
     let mut argv = vec![
@@ -718,6 +760,22 @@ pub async fn cc_switch_providers(
         argv.push(rid);
     }
     cc_switch_call(&app, &window, argv, None).await
+}
+
+/// D-6.8: the add-provider template manifest (adapter `templates` op).
+#[tauri::command]
+pub async fn cc_switch_templates(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    runtime_id: String,
+    agent: String,
+) -> Result<CcSwitchTemplatesResult, WorkbenchError> {
+    cc_switch_validate(&runtime_id, &agent)?;
+    let argv = cc_switch_templates_argv("templates", &runtime_id, &agent, &workspace);
+    let data = cc_switch_call_value(&app, &window, argv, None).await?;
+    serde_json::from_value::<CcSwitchTemplatesResult>(data)
+        .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("cc-switch parse: {e}")))
 }
 
 /// Add a provider. The request document (which may carry the API key) rides

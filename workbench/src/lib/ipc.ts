@@ -5,6 +5,7 @@ import type {
   BuildEvent,
   CapabilityReport,
   CcSwitchProvidersResult,
+  CcSwitchTemplatesResult,
   CcSwitchRequest,
   DiagnosticBundle,
   DiscoveryReport,
@@ -273,6 +274,11 @@ export const ccSwitchProviders = (
 ) =>
   invoke<CcSwitchProvidersResult>("cc_switch_providers",
     { workspace, runtimeId, agent, revealId: revealId ?? null });
+
+/** D-6.8: the add-provider template manifest (adapter `templates` op). */
+export const ccSwitchTemplates = (workspace: string, runtimeId: string, agent: string) =>
+  invoke<CcSwitchTemplatesResult>("cc_switch_templates",
+    { workspace, runtimeId, agent });
 
 export const ccSwitchAdd = (
   workspace: string, runtimeId: string, agent: string, request: CcSwitchRequest,

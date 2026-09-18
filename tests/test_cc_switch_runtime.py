@@ -386,62 +386,37 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
         db.commit()
         db.close()
 
-    def test_presets_use_v5_schema_and_independent_agent_markers(self):
+    def test_migration_stamps_independent_agent_markers(self):
+        """D-6.7: the default action is the deprovision migration — it
+        stamps per-agent markers and never inserts provider rows."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
             self._create_v5_database(config_dir)
             log = io.StringIO()
 
-            claude_revision = PROVIDER_HELPER.preset_revision("claude")
-            codex_revision = PROVIDER_HELPER.preset_revision("codex")
-            claude_added, _, _ = PROVIDER_HELPER.add_preset_providers(
-                config_dir, "claude", claude_revision, log
-            )
-            codex_required_before, _ = PROVIDER_HELPER.preset_required(
-                config_dir, "codex", codex_revision
-            )
-            codex_added, _, _ = PROVIDER_HELPER.add_preset_providers(
-                config_dir, "codex", codex_revision, log
-            )
+            for agent in ("claude", "codex"):
+                removed = PROVIDER_HELPER.migrate_deprovisioned(
+                    config_dir, agent, PROVIDER_HELPER.preset_revision(agent), log
+                )
+                self.assertEqual(removed, 0)
 
             db = sqlite3.connect(config_dir / "cc-switch.db")
             rows = db.execute(
-                """
-                SELECT app_type, settings_config, is_current
-                FROM providers ORDER BY app_type, id
-                """
+                "SELECT app_type FROM providers"
             ).fetchall()
             db.close()
 
             claude_marker = PROVIDER_HELPER.marker_path(config_dir, "claude")
             codex_marker = PROVIDER_HELPER.marker_path(config_dir, "codex")
 
-        self.assertEqual(claude_added, len(PROVIDER_HELPER.PRESET_PROVIDERS))
-        self.assertTrue(codex_required_before)
-        self.assertEqual(codex_added, len(PROVIDER_HELPER.PRESET_PROVIDERS))
-        self.assertEqual(len(rows), 2 * len(PROVIDER_HELPER.PRESET_PROVIDERS))
-        self.assertTrue(claude_marker.name.endswith("-claude.sha256"))
-        self.assertTrue(codex_marker.name.endswith("-codex.sha256"))
-        self.assertTrue(all(is_current == 0 for _, _, is_current in rows))
-
-        claude_settings = [json.loads(raw) for app, raw, _ in rows if app == "claude"]
-        codex_settings = [json.loads(raw) for app, raw, _ in rows if app == "codex"]
-        self.assertTrue(all("env" in settings for settings in claude_settings))
-        # IDEA-4: codex rows MUST carry an auth object (upstream provider
-        # switch refuses rows without one).
-        self.assertTrue(all("auth" in settings for settings in codex_settings))
-        self.assertTrue(
-            all("wire_api = \"responses\"" in settings["config"]
-                for settings in codex_settings)
-        )
-        self.assertTrue(
-            all("disable_response_storage" not in settings["config"]
-                for settings in codex_settings)
-        )
+            self.assertEqual(rows, [])  # nothing seeded — templates are add-only
+            self.assertTrue(claude_marker.name.endswith("-claude.sha256"))
+            self.assertTrue(codex_marker.name.endswith("-codex.sha256"))
+            self.assertTrue(claude_marker.is_file() and codex_marker.is_file())
 
     def test_claude_presets_point_at_anthropic_endpoints(self):
         # DeepSeek/Zhipu/Kimi expose a dedicated /anthropic endpoint distinct
-        # from their OpenAI base_url; the claude preset must prefer it so
+        # from their OpenAI base_url; the claude template must prefer it so
         # Claude Code speaks the Messages API to the right URL.
         expected = {
             "deepseek": "https://api.deepseek.com/anthropic",
@@ -454,7 +429,7 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             self.assertEqual(settings["env"]["ANTHROPIC_BASE_URL"], anthropic_url)
 
         # S9a: volcengine now HAS a documented anthropic endpoint; the
-        # claude side points at it like every other preset.
+        # claude side points at it like every other template.
         volc = by_id["volcengine-ark"]
         settings = PROVIDER_HELPER._settings_config("claude", volc)
         self.assertEqual(
@@ -463,7 +438,7 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
         )
 
     def test_codex_presets_speak_responses_to_the_local_router(self):
-        # S9a (2026-08-29 ruling): every preset's codex upstream is the
+        # S9a (2026-08-29 ruling): every template's codex upstream is the
         # ANTHROPIC endpoint — codex still speaks Responses to the local
         # router, which translates to Anthropic Messages upstream.
         for provider in PROVIDER_HELPER.PRESET_PROVIDERS:
@@ -478,10 +453,21 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             settings = PROVIDER_HELPER._settings_config("codex", provider)
             self.assertNotIn("disable_response_storage", settings["config"])
 
-    def test_codex_claude_preset_is_removed(self):
+    def test_template_set_is_six_with_dual_codesome(self):
+        """D-1/D-6: six templates; codesome splits into two product lines;
+        the old single 'codesome' row id and 'codex-claude' are gone from
+        the template set (they live only in the migration's retired map)."""
         ids = {p["id"] for p in PROVIDER_HELPER.PRESET_PROVIDERS}
-        self.assertNotIn("codex-claude", ids)
-        self.assertEqual(len(PROVIDER_HELPER.PRESET_PROVIDERS), 5)  # S8g: codesome
+        self.assertEqual(
+            ids,
+            {"deepseek", "volcengine-ark", "zhipu", "kimi",
+             "codesome-v3", "codesome-2in1"},
+        )
+        self.assertEqual(len(PROVIDER_HELPER.PRESET_PROVIDERS), 6)
+        # The migration's retired map carries the full historical set.
+        for retired in ("codex-claude", "deepseek", "volcengine-ark",
+                        "zhipu", "kimi", "codesome"):
+            self.assertIn(retired, PROVIDER_HELPER.RETIRED_PROVIDER_IDS)
 
     def _seed_provider(self, config_dir, agent, provider_id, name,
                        settings_json, *, is_current=0, notes="",
@@ -499,21 +485,24 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
         db.close()
         return settings_json
 
-    def test_refresh_updates_model_and_endpoints_but_preserves_api_key(self):
-        # Simulate an existing user: deepseek with the OLD model + their key.
+    def test_migration_removes_seeded_rows_but_keeps_user_rows(self):
+        """D-6.7: the historical seeded third-party rows die (users re-add
+        from templates); a genuinely user-owned row survives untouched."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
             self._create_v5_database(config_dir)
-            old_claude = self._seed_provider(
-                config_dir, "claude", "deepseek", "DeepSeek Old",
+            # Old seeded deepseek rows (both agents) still carrying the
+            # preset endpoint fingerprint.
+            self._seed_provider(
+                config_dir, "claude", "deepseek", "DeepSeek",
                 json.dumps({"env": {
                     "ANTHROPIC_BASE_URL": "https://api.deepseek.com/v1",
                     "ANTHROPIC_MODEL": "deepseek-chat",
                     "ANTHROPIC_API_KEY": "sk-user-claude-secret",
                 }}), is_current=1, notes="old",
             )
-            old_codex = self._seed_provider(
-                config_dir, "codex", "deepseek", "DeepSeek Old",
+            self._seed_provider(
+                config_dir, "codex", "deepseek", "DeepSeek",
                 json.dumps({"config": (
                     'model_provider = "deepseek"\n'
                     'model = "deepseek-chat"\n'
@@ -522,67 +511,38 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
                     'base_url = "https://api.deepseek.com/v1"\n'
                     'wire_api = "responses"\n'
                     'api_key = "sk-user-codex-secret"\n'
-                ), "auth": {"token": "oauth-mirror"}}),
+                ), "auth": {"OPENAI_API_KEY": "sk-user-codex-secret"}}),
                 is_current=1, notes="old",
+            )
+            # A row the user created themselves — never a preset id.
+            self._seed_provider(
+                config_dir, "claude", "my-relay", "My Relay",
+                json.dumps({"env": {
+                    "ANTHROPIC_BASE_URL": "https://user.example/anthropic",
+                }}), notes="mine",
             )
 
             log = io.StringIO()
             for agent in ("claude", "codex"):
-                added, refreshed, removed = PROVIDER_HELPER.add_preset_providers(
-                    config_dir, agent, PROVIDER_HELPER.preset_revision(agent), log
+                removed = PROVIDER_HELPER.migrate_deprovisioned(
+                    config_dir, agent,
+                    PROVIDER_HELPER.preset_revision(agent), log,
                 )
-                # deepseek existed -> refreshed (not re-added); the other three
-                # presets were missing -> added; nothing retired.
-                self.assertEqual(refreshed, 1)
-                self.assertEqual(removed, 0)
-                self.assertEqual(added, len(PROVIDER_HELPER.PRESET_PROVIDERS) - 1)
+                self.assertEqual(removed, 1)
 
             db = sqlite3.connect(config_dir / "cc-switch.db")
-            rows = {
-                r[1]: (r[2], r[3], r[4]) for r in db.execute(
-                    "SELECT id, app_type, settings_config, is_current, notes "
-                    "FROM providers WHERE id='deepseek' ORDER BY app_type"
+            remaining = {
+                (r[0], r[1]): r[2] for r in db.execute(
+                    "SELECT id, app_type, notes FROM providers"
                 )
             }
             db.close()
 
-            # Claude: new anthropic endpoint + new model, key preserved,
-            # is_current preserved.
-            claude_env = json.loads(rows["claude"][0])["env"]
-            self.assertEqual(
-                claude_env["ANTHROPIC_BASE_URL"],
-                "https://api.deepseek.com/anthropic",
-            )
-            self.assertEqual(claude_env["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
-            self.assertEqual(
-                claude_env["ANTHROPIC_API_KEY"], "sk-user-claude-secret"
-            )
-            self.assertEqual(rows["claude"][1], 1)
-            self.assertNotEqual(rows["claude"][2], "old")  # notes refreshed
+        self.assertNotIn(("deepseek", "claude"), remaining)
+        self.assertNotIn(("deepseek", "codex"), remaining)
+        self.assertEqual(remaining[("my-relay", "claude")], "mine")
 
-            # Codex: new model + anthropic base (S9a unified), api_key +
-            # auth mirror preserved, is_current preserved. The key also rides
-            # auth.OPENAI_API_KEY — the live channel auth.json is written from
-            # (2026-08-21 probe; without it a refresh silently reverts the row
-            # to the placeholder-401 shape).
-            codex_sc = json.loads(rows["codex"][0])
-            self.assertIn('model = "deepseek-v4-pro"', codex_sc["config"])
-            self.assertIn('wire_api = "responses"', codex_sc["config"])
-            self.assertIn(
-                'base_url = "https://api.deepseek.com/anthropic"',
-                codex_sc["config"],
-            )
-            self.assertIn(
-                'api_key = "sk-user-codex-secret"', codex_sc["config"]
-            )
-            self.assertEqual(
-                codex_sc["auth"],
-                {"token": "oauth-mirror",
-                 "OPENAI_API_KEY": "sk-user-codex-secret"},
-            )
-            self.assertEqual(rows["codex"][1], 1)
-
-    def test_refresh_removes_retired_codex_claude(self):
+    def test_migration_removes_retired_codex_claude(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
             self._create_v5_database(config_dir)
@@ -595,8 +555,9 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             )
 
             log = io.StringIO()
-            added, refreshed, removed = PROVIDER_HELPER.add_preset_providers(
-                config_dir, "claude", PROVIDER_HELPER.preset_revision("claude"), log
+            removed = PROVIDER_HELPER.migrate_deprovisioned(
+                config_dir, "claude",
+                PROVIDER_HELPER.preset_revision("claude"), log,
             )
             db = sqlite3.connect(config_dir / "cc-switch.db")
             remaining = {
@@ -608,11 +569,10 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
 
         self.assertEqual(removed, 1)
         self.assertNotIn("codex-claude", remaining)
-        self.assertEqual(
-            remaining, {p["id"] for p in PROVIDER_HELPER.PRESET_PROVIDERS}
-        )
+        # No seeding: nothing else appears after the migration.
+        self.assertEqual(remaining, set())
 
-    def test_refresh_keeps_repurposed_retired_id(self):
+    def test_migration_keeps_repurposed_retired_id(self):
         # A user who repurposed the codex-claude id with their own relay must
         # not have it deleted (fingerprint no longer matches codex.so).
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -626,8 +586,9 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             )
 
             log = io.StringIO()
-            _, _, removed = PROVIDER_HELPER.add_preset_providers(
-                config_dir, "claude", PROVIDER_HELPER.preset_revision("claude"), log
+            removed = PROVIDER_HELPER.migrate_deprovisioned(
+                config_dir, "claude",
+                PROVIDER_HELPER.preset_revision("claude"), log,
             )
             db = sqlite3.connect(config_dir / "cc-switch.db")
             row = db.execute(
@@ -650,7 +611,7 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             db.close()
 
             with self.assertRaisesRegex(RuntimeError, "schema is incompatible"):
-                PROVIDER_HELPER.add_preset_providers(
+                PROVIDER_HELPER.migrate_deprovisioned(
                     config_dir,
                     "claude",
                     PROVIDER_HELPER.preset_revision("claude"),
@@ -661,29 +622,6 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
                 config_dir, "claude"
             ).exists()
 
-        self.assertFalse(marker_exists)
-
-    def test_failed_insert_rolls_back_all_presets_and_marker(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_dir = Path(temp_dir)
-            self._create_v5_database(config_dir, reject_id="zhipu")
-
-            with self.assertRaises(sqlite3.IntegrityError):
-                PROVIDER_HELPER.add_preset_providers(
-                    config_dir,
-                    "claude",
-                    PROVIDER_HELPER.preset_revision("claude"),
-                    io.StringIO(),
-                )
-
-            db = sqlite3.connect(config_dir / "cc-switch.db")
-            count = db.execute("SELECT COUNT(*) FROM providers").fetchone()[0]
-            db.close()
-            marker_exists = PROVIDER_HELPER.marker_path(
-                config_dir, "claude"
-            ).exists()
-
-        self.assertEqual(count, 0)
         self.assertFalse(marker_exists)
 
 

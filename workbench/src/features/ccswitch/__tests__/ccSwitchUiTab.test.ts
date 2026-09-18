@@ -17,6 +17,7 @@ import type { CcSwitchProvidersResult } from "../../../types";
 vi.mock("../../../lib/ipc", () => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   ccSwitchProviders: vi.fn(),
+  ccSwitchTemplates: vi.fn(),
   ccSwitchAdd: vi.fn(),
   ccSwitchEdit: vi.fn(),
   ccSwitchSwitch: vi.fn(),
@@ -91,8 +92,11 @@ describe("CcSwitchUiTab (Stage 8e)", () => {
 
     await vi.waitFor(() => expect(ipc.ccSwitchAdd).toHaveBeenCalledTimes(1));
     const arg = vi.mocked(ipc.ccSwitchAdd).mock.calls[0]![3];
+    // D-6.2: the manifest is codesome-led — codesome-v3 IS the default
+    // selection of the add flow.
     expect(arg.mode).toBe("simple");
-    expect(arg.id).toBe("deepseek");
+    expect(arg.id).toBe("codesome-v3");
+    expect(arg.provider).toBe("codesome-v3");
     expect(arg.api_key).toBe("sk-very-secret-1");
     // Success closes the page back to the list.
     await vi.waitFor(() => expect(w.find(".edit-page").exists()).toBe(false));
