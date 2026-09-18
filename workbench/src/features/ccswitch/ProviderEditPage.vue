@@ -55,8 +55,7 @@ const form = reactive({
   /** D-7: thinking depth (codex) + auto-compact watermark (tokens). */
   reasoningEffort: "high",
   compactThreshold: "",
-  apiFormat: (props.provider?.api_format
-    ?? (props.agent === "codex" ? "openai_responses" : "anthropic")) as
+  apiFormat: (props.provider?.api_format ?? "anthropic") as
     "anthropic" | "openai_chat" | "openai_responses",
   notes: props.provider?.notes ?? "",
   website: props.provider?.website_url ?? "",
@@ -90,11 +89,15 @@ const rowIdError = computed(() => {
   if (uiStore.providers.some((p) => p.id === id)) return t("ccswitch.edit.rowIdDuplicate", { id });
   return "";
 });
-/** D-6: preset-mode row id — prefilled with the template id, user-editable
- * for multi-instance setups (codesome-v3-lite / codesome-v3-max). */
+/** D-6/D-7: the endpoint FOLLOWS the upstream format — anthropic (S9a
+ * translation) → the template's anthropic endpoint; native Responses/chat →
+ * the OpenAI-side base. Mixing the two is the classic cross-wired config. */
 const templateEndpoint = computed(() => {
   const tpl = selectedTemplate.value;
-  return (props.agent === "codex" ? tpl.codex_endpoint : tpl.claude_endpoint) ?? "";
+  if (props.agent === "claude") return tpl.claude_endpoint ?? "";
+  return form.apiFormat === "anthropic"
+    ? (tpl.codex_endpoint ?? "")
+    : (tpl.codex_endpoint_native ?? tpl.codex_endpoint ?? "");
 });
 /** D-6: baseUrl PREFILLS from the template (reactively — the manifest can
  * land after mount) and the user may freely overwrite; once they type in
@@ -107,6 +110,14 @@ function applyTemplateEndpoint(): void {
 }
 applyTemplateEndpoint();
 watch([templateEndpoint, () => props.templates], applyTemplateEndpoint);
+function onApiFormatChange(): void {
+  // A format flip is explicit intent — re-prefill the matching endpoint.
+  if (props.provider === null && addMode.value === "preset") {
+    baseUrlTouched.value = false;
+    applyTemplateEndpoint();
+  }
+  touch();
+}
 function onPresetChange(): void {
   // Re-prefill the row id when untouched or colliding with another template.
   form.id = selectedTemplate.value.id;
@@ -238,6 +249,9 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       return { mode: "simple", id: form.id.trim() || form.preset, provider: form.preset,
                base_url: form.baseUrl.trim() || undefined,
                api_key: form.apiKey || undefined,
+               // D-7: the dropdown is authoritative for the wire format —
+               // it wins over the template declaration (meta.apiFormat).
+               ...(props.agent === "codex" ? { api_format: form.apiFormat } : {}),
                ...d7 };
     }
     return {
@@ -405,7 +419,7 @@ function onSave(): void {
       <template v-if="tier === 'advanced'">
         <label class="field">
           <span>{{ t("ccswitch.edit.apiFormat") }}</span>
-          <select v-model="form.apiFormat" @change="touch">
+          <select v-model="form.apiFormat" @change="onApiFormatChange">
             <option value="anthropic">{{ t("ccswitch.edit.fmtAnthropic") }}</option>
             <option value="openai_chat">{{ t("ccswitch.edit.fmtChat") }}</option>
             <option value="openai_responses">{{ t("ccswitch.edit.fmtResponses") }}</option>

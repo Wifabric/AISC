@@ -582,7 +582,12 @@ export interface CcSwitchTemplate {
   default_model?: string;
   /** D-6 (add-page endpoint display): both agents' declared endpoints. */
   claude_endpoint?: string;
+  /** S9a translation endpoint (anthropic format). */
   codex_endpoint?: string;
+  /** OpenAI-side base — the endpoint behind the native Responses format. */
+  codex_endpoint_native?: string;
+  /** Declared upstream wire format (S9a: anthropic for every template). */
+  codex_api_format?: string;
 }
 
 export interface CcSwitchTemplatesResult {

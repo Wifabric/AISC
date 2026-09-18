@@ -691,6 +691,11 @@ def provider_templates_manifest() -> list[dict[str, Any]]:
         entry["claude_endpoint"] = (
             provider.get("anthropic_base_url") or provider["base_url"])
         entry["codex_endpoint"] = _codex_upstream_base(provider)
+        # The provider's OpenAI-side base — the endpoint behind the NATIVE
+        # Responses format (when the user flips the upstream format off the
+        # S9a anthropic translation, the URL must switch with it).
+        entry["codex_endpoint_native"] = provider["base_url"]
+        entry["codex_api_format"] = provider.get("codex_api_format") or "anthropic"
         manifest.append(entry)
     return manifest
 
