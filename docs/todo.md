@@ -67,7 +67,7 @@
 - [x] 安装向导增加语言选择（英/简中），全中文安装（2026-08-08）：languages + displayLanguageSelector + LangString DEP_* 本地化，见 devlog S4.1.b
 - [x] 安装器依赖检测修复 + winget 隐藏终端（2026-08-09）：Docker 查真实路径/卸载键、Python 枚举 PythonCore 版本键（32/64 视图）、ExecWait→nsExec::ExecToLog（进度进安装日志）+ 非 0 退出重检测，见 devlog S4.1.b
 - [x] 临时模式下，cc-switch不可用
-- [ ] aisc run命令解耦，引导混乱，用户感到费解
+- [x] aisc run命令解耦，引导混乱，用户感到费解（2026-09-18 用户标记完成）
 - [ ] agent加上Pi/opencode
 - [x] aisc cli的更新命令优化（2026-09-16 关闭：无实施记录、语义不可考，由 V0.1.0-target cli update 吸收，D-21）
 - [x] 预配置的deepseek配置项错误，修复
