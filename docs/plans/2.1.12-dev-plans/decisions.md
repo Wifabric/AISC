@@ -17,3 +17,6 @@
   7. D-2 迁移确认，并**升级为全局去预置**：后续镜像**不预置任何不带 key 的 provider 卡片（含 official 行）**——provider 行完全由用户经「添加 provider」创建；preset 模块瘦身为「模板数据源 + 存量迁移」（official seeding、pristine 清扫、proxy 对账等预置职能一并退役；实施时核验 cc-switch 对空 provider 表无隐藏依赖）。
   8. 模板清单事实源 = **镜像内清单文件 + 与模板数据的平价测试**（方案 A；adapter `template-list` op 否决）。
   9. key 前缀校验 = **软拦截**（前缀不符 warn 不拦提交），提示样式须**醒目**。
+- **D-7（模型映射区两项补充，2026-09-18 用户裁定）**：
+  1. **思考深度**：codex 模型映射区加配置项（仿 cc-switch 桌面版效果）——落 codex TOML 顶层 `model_reasoning_effort`。仓库现状硬编码 `"high"`（`aisc-cc-provider:667/:1321`、preset builder），改为用户可配；枚举以 codex CLI 0.154 实测为准（至少 low/medium/high，skills 内已用 high/medium）。
+  2. **压缩阈值**：语义确认 = **上下文到该 token 值即自动 compact 一次历史对话**（为窗口上限留余量）。claude 侧落 env `CLAUDE_AUTO_COMPACT_ENABLED="true"` + `CLAUDE_AUTO_COMPACT_WINDOW`（官方推荐默认 150000，长对话可 200000，过小致频繁压缩）；codex 侧落 TOML `model_auto_compact_token_limit`（1M 窗口官方示例 900000，须 ≤ `model_context_window` 留余量）。位置 = provider 编辑页模型映射附近，**所有 provider 通用**（非 codesome 专属）；模板 seed 预填官方推荐值，用户清空 = 不写入（不启用）。

@@ -14,6 +14,7 @@
 | 分组规则 | ✅ 建 Key 时后台绑定（平台预设不可自建）：Kiro 来源→`lite`/`pro`；Max 来源→当天后台可用具体分组（max 2.2 暂下架，**仅 Claude Code 可用**）；Codex/GPT→`codex`；Grok→`grok`；月卡→`产品-金额-month`（如 claude-50-month；选错扣按量余额）；**倍率动态，以当天后台为准**（❌初稿写死 1x/1.5x/3.5x 已删） | ✅ **无分组**，统一 1.5 倍；cr- Key 不能也不用在 V3 切分组（ccswitch 桌面端教程对比表「二合一分组」措辞与分组专文不一致，以专文为准） |
 | claude env | ✅ 核心三行：`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_ATTRIBUTION_HEADER=0`（未设 0 = 官方常见错误 #1）；`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 在「方法 2 手动配置」四件套内（核心块外） | ✅ 同左（地址换 `/api`；token 未替换占位文本 = 常见错误） |
 | 模型 | ✅ codex 侧官方指定 `gpt-5.6-terra`（选「自定义」会 503）；claude 侧**不设任何模型键**——官方「大扫除」清单要求清理 `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*_MODEL` / `CLAUDE_CODE_SUBAGENT_MODEL` / `CLAUDE_CODE_EFFORT_LEVEL` 残留 | ✅ 同左 |
+| 思考深度 / 自动压缩（D-7 补充，两线配置相同） | ✅ 思考深度 = codex TOML `model_reasoning_effort`；压缩阈值：claude env `CLAUDE_AUTO_COMPACT_ENABLED="true"` + `CLAUDE_AUTO_COMPACT_WINDOW`（官方默认推荐 150000，可 200000，过小频繁压缩）；codex TOML `model_auto_compact_token_limit`（1M 窗口示例 900000）——**到值自动 compact 历史对话** | ✅ 同左（官方明示两种版本配置完全相同） |
 | 混用禁忌 | ✅ 二合一禁用 `cc.codesome.ai`；`sk-`/`cr-` 不可混用（sk- 配二合一 = codex 官方常见错误 #5）；`v3.codesome.cn` 与 `cc.codesome.ai` 同站（.cn 登不进用 .ai） | 同左 |
 | 排查口径 | ✅ 403→先查分组；503→模型 ID 须 gpt-5.6-terra；ERR_BAD_REQUEST→地址/教程用错线、token 仍是占位、旧变量残留（❌「401」全站无出处已删）；重连循环→代理规则中 `cc.codesome.ai`/`v5.codesome.cn` 须直连（FAQ §15）；配置后须新开窗口（**切 Max 分组后必须**）；ccswitch 代理开关须开且开完新开终端 | 同左 |
 | 官方 CC Switch 供应商名 | ✅ claude：`codesome-v3`；codex：`codesome` | ✅ claude：`codesome-v5`；codex：`codesome-二合一` |
@@ -83,12 +84,12 @@
 - codex 侧同上 ⚠️：TOML 指 `/api` 仅在 S9a 本地代理翻译形态下成立，**裸配即复现官方常见错误 #3**——模板内显式标注，官方原生 = `v5.codesome.cn/openai`（回退项）。
 - hint 文案要点：cr- 卡密直接当 Key（勿兑换/勿建 Key/勿选分组）、粘纯卡密（防「二合一卡密：」前缀）、统一 1.5 倍、sk- 是 V3 的 Key 请换模板、卡密来源 meta.codesome.cn 订单页。
 
-两模板 UI 共有（按 D-6 裁定修订）：**下拉默认选中置顶的 codesome 模板**；表单下方「**获取服务**」按钮按当前模板导航（`meta.codesome.cn` 带 aff，**界面无任何赞助商标明字样**）；API Key（password+reveal、前缀**软拦截 warn，样式醒目**、不拦提交）；行 ID 可编辑（预填模板 id，支持 `codesome-v3-lite`/`codesome-v3-max` 多实例）；分组 hint（仅 v3）；高级层沿用（上游格式/模型映射）。**modelCatalog 按 D-6.4 镜像 OpenAI 官方模型列表**（§3 seed 中单条 terra 为示意，落地时替换为官方列表快照，默认模型 `gpt-5.6-terra` 不变）。
+两模板 UI 共有（按 D-6/D-7 裁定修订）：**下拉默认选中置顶的 codesome 模板**；表单下方「**获取服务**」按钮按当前模板导航（`meta.codesome.cn` 带 aff，**界面无任何赞助商标明字样**）；API Key（password+reveal、前缀**软拦截 warn，样式醒目**、不拦提交）；行 ID 可编辑（预填模板 id，支持 `codesome-v3-lite`/`codesome-v3-max` 多实例）；分组 hint（仅 v3）；高级层沿用（上游格式/模型映射）。**D-7 两项（所有 provider 通用）**：模型映射区加「思考深度」（codex `model_reasoning_effort`，替换现硬编码 high）与「压缩阈值」（claude `CLAUDE_AUTO_COMPACT_WINDOW`+ENABLED / codex `model_auto_compact_token_limit`；模板预填 150000/900000，清空=不启用）。**modelCatalog 按 D-6.4 镜像 OpenAI 官方模型列表**（§3 seed 中单条 terra 为示意，落地时替换为官方列表快照，默认模型 `gpt-5.6-terra` 不变）。
 
 ## 4. 实施批拆分建议（拍板后立项）
 
 1. **preset 模块**：双模板数据 + 去预配置改造（D-1）+ D-2 迁移（marker v10、指纹清旧 codesome 行、AISC_PRESET_PROVIDERS 退役）——vendor 门禁必过
-2. **Workbench UI**：清单事实源统一（镜像内清单文件+平价测试）、下拉双语标签+描述+置顶赞助位、行 ID 编辑、key 前缀软 warn、分组 hint+外链、i18n 双语
+2. **Workbench UI**：清单事实源统一（镜像内清单文件+平价测试）、下拉双语标签+描述+默认选中 codesome 置顶、获取服务按钮（带 aff、无赞助字样）、行 ID 编辑、key 前缀醒目软 warn、分组 hint+外链、**思考深度+压缩阈值两项（D-7，全 provider 通用）**、i18n 双语
 3. **杂项**：cr- 入脱敏正则、`/openai` 入后缀表或 codesome 关 live 合并、README/releases 文档同步
 4. **测试**：preset shape 断言重写、预置数断言更新、前端 vitest
 
