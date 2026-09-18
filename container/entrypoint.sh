@@ -477,35 +477,27 @@ if command -v cc-switch >/dev/null 2>&1; then
             echo "⚠️  cc-switch skills 离线安装失败；日志: $CC_SWITCH_SKILLS_LOG" >&2
         fi
 
-        # 预配置常见 AI 供应商 provider（不包含 API Key）
-        # PERF P9 (D-13): --agent all = ONE python3 spawn for both agents
-        # (was two full interpreter+import chains back to back).
-        # Aggregate is sequential best-effort: a later failure leaves earlier
-        # agents applied; the next startup retries the idempotent refresh.
-        CC_SWITCH_PRESET_LOG="/tmp/cc-switch-preset-providers.log"
-        if CC_SWITCH_PRESET_RESULT="$(
+        # 2.1.12 (D-6.7, 2026-09-18): images no longer pre-seed keyless
+        # provider cards. One-shot migration removes the historical preset
+        # rows from existing volumes (fingerprint-guarded — repurposed rows
+        # stay); fresh volumes get nothing: providers come from
+        # 「添加 provider」 (template picker).
+        # PERF P9 (D-13): --agent all = ONE python3 spawn for both agents.
+        CC_SWITCH_MIGRATE_LOG="/tmp/cc-switch-preset-migrate.log"
+        if CC_SWITCH_MIGRATE_RESULT="$(
             python3 /usr/local/bin/lib/cc_switch_preset_providers.py \
                 --config-dir "$CC_SWITCH_CONFIG_DIR" \
                 --agent all \
-                --log "$CC_SWITCH_PRESET_LOG" \
-                --mode "${AISC_PRESET_PROVIDERS:-auto}"
+                --log "$CC_SWITCH_MIGRATE_LOG"
         )"; then
-            case "$CC_SWITCH_PRESET_RESULT" in
-                added)
-                    echo "✅ cc-switch 已为 Claude/Codex 预配置 DeepSeek、火山引擎、智谱、Kimi"
+            case "$CC_SWITCH_MIGRATE_RESULT" in
+                migrated)
+                    echo "✅ cc-switch 已移除历史预置 provider 行（你的自定义行保留；新 provider 请从「添加 provider」模板创建）"
                     ;;
-                refreshed)
-                    echo "✅ cc-switch 已为 Claude/Codex 刷新预置 provider（已保留你的 API Key 与当前选择）"
-                    ;;
-                current)
-                    echo "ℹ️  cc-switch Claude/Codex 预设 provider 已是最新，跳过。"
-                    ;;
-                off)
-                    echo "ℹ️  AISC_PRESET_PROVIDERS=off，已跳过 provider 预配置。"
-                    ;;
+                current) ;;  # silent — the steady state
             esac
         else
-            echo "⚠️  cc-switch provider 预配置失败；日志: $CC_SWITCH_PRESET_LOG" >&2
+            echo "⚠️  cc-switch 预置行迁移失败；日志: $CC_SWITCH_MIGRATE_LOG" >&2
         fi
 
         # 复测第 2 轮（2026-08-21）：provider 页的选择拥有两个 agent 的

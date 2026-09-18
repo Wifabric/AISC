@@ -66,7 +66,9 @@ _MS_EPOCH_THRESHOLD = 10 ** 11
 
 # Claude env keys that hold credentials (never emitted in full).
 _CLAUDE_SECRET_KEYS = ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
-_GENERIC_SECRET_RE = re.compile(r"sk-[A-Za-z0-9_\-]{6,}")
+# D-6: cr- is the codesome 二合一 card-secret prefix — same masking duty
+# as sk- (non-snapshot CLI output must never carry either in full).
+_GENERIC_SECRET_RE = re.compile(r"(?:sk|cr)-[A-Za-z0-9_\-]{6,}")
 
 #: IDEA-5 (5c): the five model-role slots the mapping UI edits, plus their
 #: companions — the SECRET-FREE whitelist `role_env` may carry. Credential
@@ -613,6 +615,50 @@ def _claude_settings_base() -> dict[str, Any]:
 # settings_config builders
 # ---------------------------------------------------------------------------
 
+# D-7 (2026-09-18): user-configurable codex thinking depth (cc-switch
+# desktop parity) — validated union of the effort enums seen across codex
+# CLI builds; an unsupported pick fails at codex itself, not here.
+_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+
+
+def _validated_effort(payload: dict[str, Any]) -> str:
+    effort = str(payload.get("reasoning_effort") or "").strip()
+    if not effort:
+        return ""
+    if effort not in _REASONING_EFFORTS:
+        raise AdapterError(
+            ERR_BAD_REQUEST,
+            f"reasoning_effort must be one of {_REASONING_EFFORTS}, got: {effort!r}",
+        )
+    return effort
+
+
+def _validated_compact(payload: dict[str, Any]) -> int:
+    """D-7: auto-compact watermark in tokens. 0/absent = feature off."""
+    raw = payload.get("compact_threshold")
+    if raw in (None, "", 0, "0"):
+        return 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise AdapterError(
+            ERR_BAD_REQUEST, "compact_threshold must be an integer token count")
+    if not 1_000 <= value <= 10_000_000:
+        raise AdapterError(
+            ERR_BAD_REQUEST,
+            "compact_threshold must be within 1000..10000000 tokens",
+        )
+    return value
+
+
+def _apply_claude_compact(env: dict[str, str], compact: int) -> None:
+    """D-7: claude-side auto-compact rides the provider env (official
+    doc.codesome.ai compaction page: ENABLED + WINDOW as strings)."""
+    if compact:
+        env["CLAUDE_AUTO_COMPACT_ENABLED"] = "true"
+        env["CLAUDE_AUTO_COMPACT_WINDOW"] = str(compact)
+
+
 def build_add_settings(
     agent: str, request: dict[str, Any]
 ) -> tuple[str, dict[str, Any]]:
@@ -629,6 +675,7 @@ def build_add_settings(
             })
             if api_key:
                 env["ANTHROPIC_AUTH_TOKEN"] = api_key
+            _apply_claude_compact(env, _validated_compact(request))
             return provider["name"], {"env": env, **_claude_settings_base()}
         # custom
         env: dict[str, str] = {}
@@ -644,13 +691,16 @@ def build_add_settings(
                 env[str(key)] = str(value)
         if not env.get("ANTHROPIC_BASE_URL"):
             raise AdapterError(ERR_BAD_REQUEST, "custom claude add requires base_url")
+        _apply_claude_compact(env, _validated_compact(request))
         return str(request.get("name") or ""), {"env": env, **_claude_settings_base()}
 
     # codex
     if mode == "simple":
         provider = _preset_provider(str(request.get("provider") or ""))
         settings = _preset_module()._settings_config(
-            "codex", provider, api_key=api_key
+            "codex", provider, api_key=api_key,
+            reasoning_effort=_validated_effort(request),
+            compact_token_limit=_validated_compact(request),
         )
         return provider["name"], settings
     base_url = str(request.get("base_url") or "")
@@ -662,9 +712,12 @@ def build_add_settings(
     ]
     if request.get("model"):
         lines.append(f'model = "{request["model"]}"')
+    compact = _validated_compact(request)
+    if compact:
+        lines.append(f"model_auto_compact_token_limit = {compact}")
     lines.extend(
         [
-            'model_reasoning_effort = "high"',
+            f'model_reasoning_effort = "{_validated_effort(request) or "high"}"',
             "",
             f"[model_providers.{pid}]",
             f'name = "{pid}"',
@@ -1205,6 +1258,13 @@ def _artifact_signal(raw: str | None) -> str:
     return json.dumps(settings, ensure_ascii=False)
 
 
+def op_templates() -> list[dict[str, Any]]:
+    """D-6.8: the add-provider template manifest — self-reported by the
+    preset module (single fact source: the picker and the simple-add seeds
+    are the same payload, so they cannot drift)."""
+    return _preset_module().provider_templates_manifest()
+
+
 def op_list(agent: str, reveal_id: str | None = None) -> list[dict[str, Any]]:
     _sweep_import_artifacts(agent)
     return [provider_view(agent, row, reveal=(reveal_id is not None
@@ -1279,6 +1339,9 @@ def _merge_patch(
                     env[str(key)] = str(value)
         if api_key:
             env["ANTHROPIC_AUTH_TOKEN"] = api_key
+        # D-7: claude-side auto-compact rides env (a fresh non-zero value
+        # wins; absent/0 leaves whatever the row already carries).
+        _apply_claude_compact(env, _validated_compact(patch))
         # Live-probed 2026-08-21: claude switch replaces settings.json with
         # the row's settings_config WHOLESALE — the rebuilt settings must
         # carry every non-env key (statusLine/enabledPlugins/...) the row
@@ -1310,15 +1373,33 @@ def _merge_patch(
         if isinstance(entry, dict):
             provider_block = entry
     wire_api = str(provider_block.get("wire_api") or "chat")
+    # D-7: thinking depth + auto-compact watermark — an explicit patch value
+    # wins; otherwise the row's existing TOML value carries (effort keeps
+    # its historical "high" default when neither is present).
+    effort = str(patch.get("reasoning_effort")
+                 or existing_toml.get("model_reasoning_effort") or "high")
+    if patch.get("reasoning_effort") and str(patch["reasoning_effort"]) not in _REASONING_EFFORTS:
+        raise AdapterError(
+            ERR_BAD_REQUEST,
+            f"reasoning_effort must be one of {_REASONING_EFFORTS}, "
+            f"got: {patch['reasoning_effort']!r}",
+        )
+    compact_raw = patch.get("compact_threshold")
+    if compact_raw in (None, "", 0, "0"):
+        compact = int(existing_toml.get("model_auto_compact_token_limit") or 0)
+    else:
+        compact = _validated_compact(patch)
     lines = [f'model_provider = "{row_id}"']
     if model:
         lines.append(f'model = "{model}"')
     context_window = existing_toml.get("model_context_window")
     if isinstance(context_window, int):
         lines.append(f"model_context_window = {context_window}")
+    if compact:
+        lines.append(f"model_auto_compact_token_limit = {compact}")
     lines.extend(
         [
-            'model_reasoning_effort = "high"',
+            f'model_reasoning_effort = "{effort}"',
             "",
             f"[model_providers.{row_id}]",
             f'name = "{row_id}"',
@@ -2250,7 +2331,9 @@ def _http_get_json(url: str, headers: dict[str, str], timeout: float) -> tuple[i
 
 # Mirrors upstream cc-switch services/model_fetch.rs: anthropic-compat base
 # suffixes whose stripped root also serves OpenAI-style model lists.
-_KNOWN_COMPAT_SUFFIXES = ("/api/anthropic", "/apps/anthropic", "/anthropic")
+# D-6: /openai joins — codesome 二合一's OpenAI-side base
+# (v5.codesome.cn/openai) is exactly this shape.
+_KNOWN_COMPAT_SUFFIXES = ("/api/anthropic", "/apps/anthropic", "/anthropic", "/openai")
 
 
 def _models_url_candidates(base_url: str) -> list[str]:
@@ -2409,6 +2492,7 @@ def _envelope(op: str, ok: bool, *, providers: Optional[list] = None,
               usage: Optional[dict] = None,
               fetch_models: Optional[dict] = None,
               provider: Optional[str] = None,
+              templates: Optional[list] = None,
               error: Optional[dict] = None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "schema": PROTOCOL,
@@ -2424,6 +2508,8 @@ def _envelope(op: str, ok: bool, *, providers: Optional[list] = None,
         out["fetch_models"] = fetch_models
     if provider is not None:
         out["provider"] = provider
+    if templates is not None:
+        out["templates"] = templates
     if error is not None:
         out["error"] = error
     return out
@@ -2433,7 +2519,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-cc-provider")
     parser.add_argument("op", choices=["list", "add", "edit", "switch", "delete",
                                        "usage", "fetch-models", "catalog-sync",
-                                       "shim-heal"])
+                                       "shim-heal", "templates"])
     parser.add_argument("--agent", default=None, choices=list(AGENTS),
                         help="agent (required for every op except usage)")
     parser.add_argument("--id", default=None, help="provider id (add/edit/delete)")
@@ -2489,6 +2575,11 @@ def main(argv: list[str] | None = None) -> int:
             # catalog so codex falls back to its built-in list.
             _apply_codex_model_catalog(None, live=args.live, override_foreign=True)
             print(json.dumps(_envelope("catalog-sync", True, provider=None)))
+        return 0
+
+    if args.op == "templates":
+        # D-6.8: agent-less read-only op — the template picker's data.
+        print(json.dumps(_envelope("templates", True, templates=op_templates())))
         return 0
 
     if args.op == "usage":

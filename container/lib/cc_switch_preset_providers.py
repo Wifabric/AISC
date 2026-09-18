@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Preconfigure cc-switch providers without storing API keys.
+"""cc-switch provider TEMPLATES — the add-provider fact source.
 
-Stage 8c (CS-03/CS-04, D8-06/D8-11): the DeepSeek preset is driven by the
+2.1.12 (D-1/D-6, 2026-09-18): the module no longer PRE-SEEDS provider rows
+(images stop writing keyless cards — provider rows come exclusively from
+「添加 provider」). It is the data source for the template picker (the
+adapter's `templates` op reports ``provider_templates_manifest()``) and
+composes each template's full settings_config at simple-add time. A
+one-shot migration (``migrate_deprovisioned``) removes the historical
+preset rows from existing volumes, fingerprint-guarded.
+
+Stage 8c legacy (CS-03/CS-04, D8-06/D8-11): the DeepSeek template is driven by the
 official-docs fixture (``deepseek-official-facts.json`` next to this module)
 — nothing about models, endpoints or the ``[1m]`` suffix is hardcoded here.
-Refresh is ownership-aware: preset-written values are upgraded, values the
-USER set on top of the preset survive every refresh.
 """
 
 from __future__ import annotations
@@ -196,6 +202,34 @@ def _codex_model_catalog(official_ids: list[str], fixture: dict[str, Any]) -> li
     return [{"model": m, "contextWindow": context_window} for m in ordered]
 
 
+# D-6.4 (2026-09-18): codesome serves the same model list as OpenAI
+# official. The static seed mirrors the official models page
+# (platform.openai.com/docs/models, fetched 2026-09-18) plus the two
+# codesome-documented relay ids first (terra is the tutorial-mandated
+# default; sol carries the official 1,050,000 window from the codesome
+# 1M-context doc — terra's window is ⚠️ AISC-chosen 1M, unrecorded
+# upstream). Entries without a sourced window fall back to the pipeline's
+# 128k default; the live /models merge (fetch-models / catalog-sync --live)
+# tops the catalog up per key at runtime.
+_CODESOME_MODEL_CATALOG = [
+    {"model": "gpt-5.6-terra", "contextWindow": 1_000_000},
+    {"model": "gpt-5.6-sol", "contextWindow": 1_050_000},
+    {"model": "gpt-5.2"},
+    {"model": "gpt-5.2-codex"},
+    {"model": "gpt-5.2-pro"},
+    {"model": "gpt-5.1"},
+    {"model": "gpt-5.1-codex"},
+    {"model": "gpt-5.1-codex-max"},
+    {"model": "gpt-5.1-codex-mini"},
+    {"model": "gpt-5"},
+    {"model": "gpt-5-codex"},
+    {"model": "gpt-5-pro"},
+    {"model": "gpt-5-mini"},
+    {"model": "gpt-5-nano"},
+    {"model": "codex-mini-latest"},
+]
+
+
 def build_preset_providers(fixture_path: Path = FIXTURE_PATH) -> list[dict[str, Any]]:
     fixture = load_deepseek_fixture(fixture_path)
     return [
@@ -247,24 +281,62 @@ def build_preset_providers(fixture_path: Path = FIXTURE_PATH) -> list[dict[str, 
             "description": "Moonshot Kimi K3 model service",
         },
         {
-            # S8g (2026-08-29, user-supplied official shape): the codex side
-            # is the vendor's Codesome-Group gateway — base cc.codesome.ai
-            # (probed live: /responses exists with Bearer auth; every other
-            # path falls through to the web console), Responses-native, default
-            # model gpt-5.6-sol. The claude side stays on the Anthropic-
-            # compatible v5 domain the user pinned. The API key never rides
-            # the preset (user-owned, by design).
-            "id": "codesome",
-            "name": "Codesome-Group",
+            # D-6 (2026-09-18): codesome splits into TWO product-line
+            # templates (was one mixed "codesome" row — the root cause of
+            # the cross-wired configs: V3 gateway on the codex side, V5
+            # /api on the claude side, in ONE row). V3 (Claude/GPT 月卡 +
+            # 按量): sk- keys created in the V3 dashboard (redeem code
+            # first — the redeem code is NOT the key; group bound at key
+            # creation, rates dynamic per the day's backend). One gateway
+            # domain serves both agents: claude speaks Anthropic to
+            # cc.codesome.ai; codex rides the S9a translation to the same
+            # endpoint (official native fallback: cc.codesome.ai/v1).
+            "id": "codesome-v3",
+            "name": "Codesome V3",
             "base_url": "https://cc.codesome.ai",
-            "anthropic_base_url": "https://v5.codesome.cn/api",
-            "model": "gpt-5.6-sol",
-            "_model_history": ["gpt-5.6-sol"],
+            "anthropic_base_url": "https://cc.codesome.ai",
+            "claude_env": {
+                "ANTHROPIC_BASE_URL": "https://cc.codesome.ai",
+                # Official "core three" (doc.codesome.ai v3-claude): the
+                # attribution header MUST be 0 (their #1 common error);
+                # NONESSENTIAL_TRAFFIC rides the method-2 quartet (D-6.5).
+                "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            },
+            # NO claude-side model keys: the official「大扫除」list requires
+            # clearing ANTHROPIC_MODEL etc. — the key's server-side group
+            # routes models.
+            "model": "gpt-5.6-terra",
+            "_model_history": ["gpt-5.6-sol", "gpt-5.6-terra"],
             "codex_api_format": "anthropic",
-            # GPT-5.6 Sol: ~1.05M native context; the Codex-side convention
-            # pins model_context_window = 1_000_000 (community 3-line config).
-            "model_catalog": [{"model": "gpt-5.6-sol", "contextWindow": 1_000_000}],
-            "description": "Codesome relay (OpenAI Responses API native)",
+            "model_catalog": _CODESOME_MODEL_CATALOG,
+            "description": "Codesome V3 relay (月卡/按量; sk- key)",
+            "key_prefix": "sk-",
+            "acquire_url": "https://meta.codesome.cn/?aff=FAP2ASVX",
+        },
+        {
+            # 二合一 (V5): the cr- card secret from the order IS the key —
+            # no redemption, no key creation, no group (flat 1.5x, both
+            # model families). Claude speaks Anthropic to /api; codex
+            # S9a-translates to the same (official native fallback:
+            # v5.codesome.cn/openai). Mixing the V3 domain or an sk- key
+            # here is the documented common-error pair.
+            "id": "codesome-2in1",
+            "name": "Codesome 二合一",
+            "base_url": "https://v5.codesome.cn/openai",
+            "anthropic_base_url": "https://v5.codesome.cn/api",
+            "claude_env": {
+                "ANTHROPIC_BASE_URL": "https://v5.codesome.cn/api",
+                "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            },
+            "model": "gpt-5.6-terra",
+            "_model_history": ["gpt-5.6-sol", "gpt-5.6-terra"],
+            "codex_api_format": "anthropic",
+            "model_catalog": _CODESOME_MODEL_CATALOG,
+            "description": "Codesome 二合一 (V5) relay (cr- key)",
+            "key_prefix": "cr-",
+            "acquire_url": "https://meta.codesome.cn/?aff=FAP2ASVX",
         },
     ]
 
@@ -288,13 +360,24 @@ MARKER_TEMPLATE = ".aisc-preset-providers-{agent}.sha256"
 # "native Responses" experiment is retired). The meta migration also learns
 # "chat" — cc-switch's own daemon/proxy-enable seeds it and the v8 upgrade
 # rule wrongly treated it as a user choice (fresh-workspace field report).
-PRESET_FORMAT_VERSION = 9
-# Preset provider ids removed from PRESET_PROVIDERS, mapped to a fingerprint
-# that identifies the old preset's settings_config. On refresh an id is deleted
-# only if its stored config still carries the fingerprint, so a user who
-# repurposed the id with their own config is left alone. codex-claude pointed
-# at the non-resolvable api.codex.so and is gone.
-RETIRED_PROVIDER_IDS = {"codex-claude": "codex.so"}
+# v10 (2.1.12, D-6.7, 2026-09-18): de-seed. Images stop pre-seeding keyless
+# provider cards entirely — templates replace presets as the add-provider
+# data source, and the one-shot migration removes the historical third-
+# party preset rows (fingerprint-guarded) from existing volumes.
+PRESET_FORMAT_VERSION = 10
+# Provider ids that no longer exist as templates, mapped to a fingerprint
+# that identifies the old preset's settings_config. The migration deletes
+# an id only if its stored config still carries the fingerprint, so a user
+# who repurposed the id with their own config is left alone. v10 retires
+# the whole seeded third-party set (D-6.7): users re-add from templates.
+RETIRED_PROVIDER_IDS = {
+    "codex-claude": "codex.so",
+    "deepseek": "api.deepseek.com",
+    "volcengine-ark": "ark.cn-beijing.volces.com",
+    "zhipu": "open.bigmodel.cn",
+    "kimi": "api.moonshot.cn",
+    "codesome": "codesome",
+}
 REQUIRED_PROVIDER_COLUMNS = {
     "id",
     "app_type",
@@ -354,23 +437,32 @@ def _codex_upstream_base(provider: dict[str, Any]) -> str:
 
 
 def _settings_config(
-    agent: str, provider: dict[str, Any], *, api_key: str = ""
+    agent: str, provider: dict[str, Any], *, api_key: str = "",
+    reasoning_effort: str = "", compact_token_limit: int = 0,
 ) -> dict[str, Any]:
     if agent == "claude":
         # Fixture-driven providers (Stage 8c) carry the full official env set.
         if "claude_env" in provider:
-            return {"env": dict(provider["claude_env"]), **load_claude_settings_base()}
-        # Third-party providers expose a separate Anthropic-compatible endpoint
-        # (e.g. /anthropic) distinct from their OpenAI base_url. Prefer it when
-        # present so Claude Code speaks the Messages API to the right URL.
-        base_url = provider.get("anthropic_base_url") or provider["base_url"]
-        env = {"ANTHROPIC_BASE_URL": base_url}
-        # A provider may expose a Claude-specific model name (e.g. DeepSeek's
-        # docs recommend deepseek-v4-pro[1m] for Claude Code) distinct from the
-        # OpenAI model used by codex; prefer it when present.
-        claude_model = provider.get("anthropic_model") or provider["model"]
-        if claude_model:
-            env["ANTHROPIC_MODEL"] = claude_model
+            env = dict(provider["claude_env"])
+        else:
+            # Third-party providers expose a separate Anthropic-compatible
+            # endpoint (e.g. /anthropic) distinct from their OpenAI base_url.
+            # Prefer it when present so Claude Code speaks the Messages API
+            # to the right URL.
+            base_url = provider.get("anthropic_base_url") or provider["base_url"]
+            env = {"ANTHROPIC_BASE_URL": base_url}
+            # A provider may expose a Claude-specific model name (e.g.
+            # DeepSeek's docs recommend deepseek-v4-pro[1m] for Claude Code)
+            # distinct from the OpenAI model used by codex; prefer it when
+            # present.
+            claude_model = provider.get("anthropic_model") or provider["model"]
+            if claude_model:
+                env["ANTHROPIC_MODEL"] = claude_model
+        # D-7: claude-side auto-compact rides the provider env (official
+        # compaction page: ENABLED + WINDOW, both strings).
+        if compact_token_limit:
+            env["CLAUDE_AUTO_COMPACT_ENABLED"] = "true"
+            env["CLAUDE_AUTO_COMPACT_WINDOW"] = str(int(compact_token_limit))
         return {"env": env, **load_claude_settings_base()}
 
     if agent == "codex":
@@ -389,9 +481,16 @@ def _settings_config(
             lines.append(
                 f"model_context_window = {int(catalog_rows[0]['contextWindow'])}"
             )
+        # D-7 (2026-09-18): user-configurable thinking depth (cc-switch
+        # desktop parity) and auto-compact watermark. Empty effort keeps the
+        # historical "high" default; a zero/absent limit omits the key
+        # entirely (auto-compact off). Official codex order: model,
+        # context window, auto-compact limit.
+        if compact_token_limit:
+            lines.append(f"model_auto_compact_token_limit = {int(compact_token_limit)}")
         lines.extend(
             [
-                'model_reasoning_effort = "high"',
+                f'model_reasoning_effort = {_toml_string(reasoning_effort or "high")}',
                 "",
                 f"[model_providers.{provider_id}]",
                 f"name = {_toml_string(provider_id)}",
@@ -431,11 +530,6 @@ def _settings_config(
     raise ValueError(f"unsupported agent: {agent}")
 
 
-# Env keys the legacy (non-fixture) claude presets own; refresh overwrites
-# these but leaves any other env var (notably the user's token keys) alone.
-_CLAUDE_PRESET_ENV_KEYS = frozenset({"ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"})
-
-
 def _parse_json_settings(raw: str | None) -> dict[str, Any]:
     if not raw:
         return {}
@@ -444,143 +538,6 @@ def _parse_json_settings(raw: str | None) -> dict[str, Any]:
     except (json.JSONDecodeError, TypeError):
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def _merged_claude_env(
-    provider: dict[str, Any], existing_env: dict[str, Any]
-) -> dict[str, str]:
-    """Ownership-aware claude env refresh (Stage 8c, CS-04).
-
-    For each preset-owned key:
-    - absent, or still carrying a value the PRESET (or cc-switch's MODEL
-      fan-out) historically wrote → upgrade to the new official value;
-    - carrying anything else → the USER changed it; keep their value.
-    Keys outside the owned set are user-owned and always kept; keys retired
-    from the preset are dropped.
-    """
-    owned: dict[str, str] = dict(provider["claude_env"])
-    history: dict[str, list[str]] = provider.get("_env_history", {})
-    retired: set[str] = set(provider.get("_retired_env_keys", []))
-
-    merged = {
-        k: v
-        for k, v in existing_env.items()
-        if k not in owned and k not in retired
-    }
-    for key, new_value in owned.items():
-        existing_value = existing_env.get(key)
-        if (
-            existing_value is not None
-            and existing_value != new_value
-            and existing_value not in history.get(key, [])
-        ):
-            merged[key] = existing_value  # user override wins (D8-07)
-        else:
-            merged[key] = new_value
-    return merged
-
-
-def _extract_codex_api_key(existing_raw: str | None) -> str:
-    """Pull the user's api_key out of an existing codex settings_config.
-
-    auth.OPENAI_API_KEY is the live channel (synced to ~/.codex/auth.json);
-    the model_providers.<id>.api_key TOML line is the legacy mirror kept
-    for rows written before the auth channel existed.
-    """
-    existing = _parse_json_settings(existing_raw)
-    auth = existing.get("auth")
-    if isinstance(auth, dict) and auth.get("OPENAI_API_KEY"):
-        return str(auth["OPENAI_API_KEY"])
-    config_text = existing.get("config", "")
-    if not isinstance(config_text, str) or not config_text:
-        return ""
-    try:
-        toml = tomllib.loads(config_text)
-    except Exception:
-        return ""
-    providers = toml.get("model_providers")
-    if not isinstance(providers, dict):
-        return ""
-    for entry in providers.values():
-        if isinstance(entry, dict) and entry.get("api_key"):
-            return str(entry["api_key"])
-    return ""
-
-
-def _merged_settings(
-    agent: str,
-    provider: dict[str, Any],
-    existing_raw: str | None,
-) -> dict[str, Any]:
-    """Build fresh settings for a provider, preserving user-owned fields.
-
-    On a fresh install (existing_raw is None) this is just the preset config.
-    On refresh it overlays the new preset-managed fields (base_url, model,
-    wire_api, ...) while keeping the user's API key and any non-preset keys
-    (e.g. codex OAuth auth mirror) carried on the existing settings_config.
-    """
-    if existing_raw is None:
-        return _settings_config(agent, provider)
-
-    existing = _parse_json_settings(existing_raw)
-
-    if agent == "claude":
-        existing_env = existing.get("env")
-        existing_env = existing_env if isinstance(existing_env, dict) else {}
-        if "claude_env" in provider:
-            merged_env = _merged_claude_env(provider, existing_env)
-        else:
-            # IDEA-5 (5c): ANTHROPIC_MODEL rides the same ownership merge as
-            # the claude_env presets — a user mapping override survives
-            # refresh, while an absent/historical preset value upgrades.
-            # BASE_URL keeps its legacy semantics (preset resets it).
-            preset_env = _settings_config(agent, provider)["env"]
-            preset_model = preset_env.get("ANTHROPIC_MODEL")
-            synth = {
-                "claude_env": ({"ANTHROPIC_MODEL": preset_model}
-                               if preset_model is not None else {}),
-                "_env_history": {
-                    "ANTHROPIC_MODEL": list(provider.get("_model_history") or []),
-                },
-            }
-            strip = {"ANTHROPIC_BASE_URL"}
-            if preset_model is not None:
-                strip.add("ANTHROPIC_MODEL")
-            merged_env = {
-                k: v for k, v in existing_env.items() if k not in strip
-            }
-            merged_env.update(_merged_claude_env(synth, existing_env))
-            merged_env.update(
-                {k: v for k, v in preset_env.items() if k != "ANTHROPIC_MODEL"}
-            )
-        result: dict[str, Any] = {"env": merged_env}
-        # Seed-style base ownership (retest round 2): base keys are added
-        # only when the stored row doesn't carry them — a row the user
-        # customized in the TUI keeps its own statusLine/enabledPlugins on
-        # every refresh; the tail loop below carries any other existing
-        # keys forward untouched.
-        for key, value in load_claude_settings_base().items():
-            if key not in existing:
-                result[key] = value
-    elif agent == "codex":
-        api_key = _extract_codex_api_key(existing_raw)
-        result = _settings_config(agent, provider, api_key=api_key)
-        # Preserve a non-empty existing auth object (e.g. the codex OAuth
-        # mirror) — only absent/empty auth gets the fresh {} placeholder.
-        # A key recovered from the row must ride along even here, or a
-        # refresh would silently drop it back to placeholder-401.
-        if isinstance(existing.get("auth"), dict) and existing["auth"]:
-            result["auth"] = dict(existing["auth"])
-            if api_key and not result["auth"].get("OPENAI_API_KEY"):
-                result["auth"]["OPENAI_API_KEY"] = api_key
-    else:
-        raise ValueError(f"unsupported agent: {agent}")
-
-    # Preserve any top-level keys the preset doesn't own (e.g. codex "auth").
-    for key, value in existing.items():
-        if key not in result:
-            result[key] = value
-    return result
 
 
 def _validate_schema(conn: sqlite3.Connection) -> None:
@@ -638,155 +595,70 @@ def _remove_retired_providers(
     return count
 
 
-def add_preset_providers(
-    config_dir: Path,
-    agent: str,
-    revision: str,
-    log: TextIO,
-) -> tuple[int, int, int]:
-    """Add or refresh presets in one transaction and update the agent marker.
+def migrate_deprovisioned(
+    config_dir: Path, agent: str, revision: str, log: TextIO
+) -> int:
+    """D-6.7 one-shot: remove retired preset rows, then stamp the marker.
 
-    Existing preset providers are refreshed in place: preset-managed fields
-    (name, settings_config, website_url, notes, sort_index) are overwritten
-    with current values while user-owned fields (API key, is_current,
-    in_failover_queue) are preserved. Retired preset ids are removed.
-    Returns (added, refreshed, removed) counts.
+    Rows are deleted only when their stored settings_config still carries
+    the retired preset's fingerprint — a user who repurposed an id keeps
+    their row (RETIRED_PROVIDER_IDS semantics, applied to the whole seeded
+    third-party set). Returns the number of rows removed.
     """
     db_path = config_dir / "cc-switch.db"
     if not db_path.is_file():
-        raise FileNotFoundError(f"cc-switch database does not exist: {db_path}")
-
-    conn = sqlite3.connect(db_path, timeout=10)
-    added = 0
-    refreshed = 0
-    removed = 0
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        _validate_schema(conn)
-        existing = {
-            row[0]: (row[1], row[2])
-            for row in conn.execute(
-                "SELECT id, settings_config, meta FROM providers WHERE app_type = ?",
-                (agent,),
-            )
-        }
-        now = int(time.time() * 1000)
-
-        def _merged_meta(provider: dict[str, Any], raw_meta: str | None) -> str:
-            """codex-adapt: presets declare the upstream wire format
-            (``codex_api_format`` → cc-switch ``meta.apiFormat`` — the local
-            router's translation selector). Ownership: the key is only set
-            when ABSENT; a user/TUI-written meta (e.g. their mapping-page
-            saves) always wins, other meta keys are preserved verbatim.
-            S9a migration: ``anthropic`` and ``chat`` were both PRESET- or
-            daemon-written values — they upgrade to the declared format like
-            any other preset-owned value; a user's own choice of any OTHER
-            value still wins."""
-            declared = provider.get("codex_api_format")
-            meta: dict[str, Any] = {}
-            if raw_meta:
-                try:
-                    parsed = json.loads(raw_meta)
-                    if isinstance(parsed, dict):
-                        meta = parsed
-                except json.JSONDecodeError:
-                    meta = {}
-            if declared and (
-                "apiFormat" not in meta
-                or meta.get("apiFormat") in ("anthropic", "chat")
-            ):
-                meta["apiFormat"] = declared
-            return json.dumps(meta, ensure_ascii=False, separators=(",", ":"))
-
-        for sort_index, provider in enumerate(PRESET_PROVIDERS):
-            provider_id = provider["id"]
-            settings = json.dumps(
-                _merged_settings(agent, provider, existing.get(provider_id, ("", None))[0]),
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            if provider_id in existing:
-                conn.execute(
-                    """
-                    UPDATE providers
-                    SET name = ?, settings_config = ?, website_url = ?,
-                        notes = ?, sort_index = ?, meta = ?
-                    WHERE id = ? AND app_type = ?
-                    """,
-                    (
-                        provider["name"],
-                        settings,
-                        provider["base_url"],
-                        provider["description"],
-                        sort_index,
-                        _merged_meta(provider, existing[provider_id][1]),
-                        provider_id,
-                        agent,
-                    ),
+        # Fresh volume (or cc-switch not yet initialized): nothing seeded,
+        # nothing to remove — stamp the marker so this never runs twice.
+        removed = 0
+    else:
+        conn = sqlite3.connect(db_path, timeout=10)
+        removed = 0
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            _validate_schema(conn)
+            existing = {
+                str(row[0]): (row[1] if row[1] is not None else "")
+                for row in conn.execute(
+                    "SELECT id, settings_config FROM providers WHERE app_type = ?",
+                    (agent,),
                 )
-                print(
-                    f"Refreshed provider: {provider_id} ({provider['name']})",
-                    file=log,
-                )
-                refreshed += 1
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO providers (
-                        id, app_type, name, settings_config, website_url,
-                        category, created_at, sort_index, notes, icon,
-                        icon_color, meta, is_current, in_failover_queue
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        provider_id,
-                        agent,
-                        provider["name"],
-                        settings,
-                        provider["base_url"],
-                        "custom",
-                        now,
-                        sort_index,
-                        provider["description"],
-                        None,
-                        None,
-                        _merged_meta(provider, None),
-                        0,
-                        0,
-                    ),
-                )
-                print(f"Added provider: {provider_id} ({provider['name']})", file=log)
-                added += 1
-
-        removed = _remove_retired_providers(
-            conn, agent, {k: v[0] for k, v in existing.items()}, log
-        )
-
-        expected = {provider["id"] for provider in PRESET_PROVIDERS}
-        persisted = {
-            row[0]
-            for row in conn.execute(
-                "SELECT id FROM providers WHERE app_type = ?",
-                (agent,),
-            )
-        }
-        missing = expected - persisted
-        if missing:
-            raise RuntimeError(
-                "provider insertion did not persist: " + ", ".join(sorted(missing))
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
+            }
+            removed = _remove_retired_providers(conn, agent, existing, log)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     marker = marker_path(config_dir, agent)
     temp_marker = marker.with_name(f"{marker.name}.tmp")
     temp_marker.write_text(f"{revision}\n", encoding="utf-8")
     temp_marker.replace(marker)
-    return added, refreshed, removed
+    return removed
+
+
+# Manifest fields beyond id/name the add-provider picker consumes
+# (TEMPLATE-level metadata; secrets are structurally absent — the key only
+# ever rides the simple-add request's stdin channel).
+TEMPLATE_MANIFEST_FIELDS = ("description", "key_prefix", "acquire_url")
+
+
+def provider_templates_manifest() -> list[dict[str, Any]]:
+    """The add-provider template manifest (adapter `templates` op, D-6.8).
+
+    Single-source guarantee: the manifest is derived from the very same
+    PRESET_PROVIDERS payload that composes each template's settings_config
+    at simple-add time — the picker and the seeds cannot drift.
+    """
+    manifest: list[dict[str, Any]] = []
+    for provider in PRESET_PROVIDERS:
+        entry: dict[str, Any] = {"id": provider["id"], "name": provider["name"]}
+        for field in TEMPLATE_MANIFEST_FIELDS:
+            if provider.get(field):
+                entry[field] = provider[field]
+        entry["default_model"] = provider.get("model") or ""
+        manifest.append(entry)
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -1070,22 +942,31 @@ def reconcile_runtime_state(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Preconfigure cc-switch providers without API keys"
+        description="cc-switch provider templates + deprovision migration"
     )
     parser.add_argument("--config-dir", type=Path, required=True)
     parser.add_argument("--agent", choices=SUPPORTED_AGENTS + ("all",), default="claude")
     parser.add_argument("--log", type=Path, required=True)
-    parser.add_argument("--mode", default="auto")
     parser.add_argument(
         "--reconcile", action="store_true",
         help="post-init invariant pass only (official rows, pristine default "
-             "import, proxy on/off per current provider); no preset refresh",
+             "import, proxy on/off per current provider)",
+    )
+    parser.add_argument(
+        "--print-manifest", action="store_true",
+        help="emit the provider template manifest as JSON (stdout) and exit",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
+
+    if args.print_manifest:
+        print(json.dumps(provider_templates_manifest(),
+                         ensure_ascii=False, separators=(",", ":")))
+        return 0
+
     args.config_dir.mkdir(parents=True, exist_ok=True)
     args.log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1101,14 +982,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  - {action}", file=log)
             return 0
 
-    # PERF P9 (D-13): `--agent all` runs both agents in ONE python3 spawn
-    # (the entrypoint used to pay the interpreter+import chain twice).
-    # Aggregated status: the most informative single word wins; the sub
-    # calls' stdout is captured (never leaks into the aggregate line).
-    # Contract: this is sequential best-effort, NOT atomic. Each agent is
-    # committed independently; if a later agent fails, earlier agents stay
-    # applied and the aggregate returns 1. The next container start retries
-    # the idempotent refresh rather than rolling back user-visible state.
+    # PERF P9 (D-13): `--agent all` runs both agents in ONE python3 spawn.
+    # Contract: sequential best-effort, NOT atomic — a later failure leaves
+    # earlier agents migrated; the next container start retries the
+    # idempotent migration rather than rolling back user-visible state.
     if args.agent == "all":
         import contextlib
         import io
@@ -1119,63 +996,35 @@ def main(argv: list[str] | None = None) -> int:
             with contextlib.redirect_stdout(buf):
                 sub = main(["--agent", agent,
                             "--config-dir", str(args.config_dir),
-                            "--log", str(args.log),
-                            "--mode", args.mode])
+                            "--log", str(args.log)])
             if sub != 0:
                 print("failed")
                 return 1
             statuses.append(buf.getvalue().strip())
-        if "off" in statuses:
-            print("off")
-        else:
-            # added > refreshed > current (per the single-agent vocabulary).
-            print("added" if "added" in statuses else
-                  ("refreshed" if "refreshed" in statuses else "current"))
+        # migrated > current (per the single-agent vocabulary).
+        print("migrated" if "migrated" in statuses else "current")
         return 0
 
     revision = preset_revision(args.agent)
-
-    mode = args.mode.lower()
     with args.log.open("a", encoding="utf-8") as log:
-        if mode not in {"auto", "always", "off"}:
-            print(f"Unknown AISC_PRESET_PROVIDERS={args.mode!r}; using auto", file=log)
-            mode = "auto"
-
-        if mode == "off":
-            print("off")
-            return 0
-
         try:
             required, reason = preset_required(args.config_dir, args.agent, revision)
-            if mode == "always":
-                required, reason = True, "forced by AISC_PRESET_PROVIDERS=always"
-
             if not required:
                 print("current")
                 return 0
 
-            print(f"Preconfiguring {args.agent} providers: {reason}", file=log)
-            added, refreshed, removed = add_preset_providers(
+            print(f"Deprovision migration for {args.agent}: {reason}", file=log)
+            removed = migrate_deprovisioned(
                 config_dir=args.config_dir,
                 agent=args.agent,
                 revision=revision,
                 log=log,
             )
-            if added:
-                status = "added"
-            elif refreshed or removed:
-                status = "refreshed"
-            else:
-                status = "current"
-            print(status)
-            print(
-                f"Added {added}, refreshed {refreshed}, removed {removed} "
-                f"preset providers",
-                file=log,
-            )
+            print("migrated" if removed else "current")
+            print(f"Removed {removed} retired preset rows", file=log)
             return 0
         except Exception as exc:
-            print(f"Provider preconfiguration failed: {exc}", file=log)
+            print(f"Deprovision migration failed: {exc}", file=log)
             return 1
 
 
