@@ -92,7 +92,7 @@ function close(): void {
 .dd {
   position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
   background: var(--surface); border: var(--border-w) solid var(--border-strong);
-  border-radius: var(--radius-md); box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,.35));
+  border-radius: var(--radius-md); box-shadow: var(--shadow-2);
   max-height: 280px; overflow: auto; padding: 6px;
 }
 .search {
