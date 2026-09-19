@@ -20,7 +20,6 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useCcSwitchUiStore } from "../../stores/ccSwitchUi";
 import type { CcSwitchCatalogEntry, CcSwitchProvider, CcSwitchTemplate } from "../../types";
 import ModelMappingEditor from "./ModelMappingEditor.vue";
-import ReasoningLevelsCombo from "./ReasoningLevelsCombo.vue";
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -53,12 +52,8 @@ const form = reactive({
   name: props.provider?.name ?? "",
   baseUrl: props.provider?.base_url ?? "",
   apiKey: "",
-  /** D-7: provider-level thinking levels (cc-switch desktop parity — the
-   * combo multi-select) + auto-compact watermark (tokens). Edit mode
-   * prefills the STORED values (snapshot round-trip); add starts empty
-   * (levels) / recommended watermark (compact). */
-  reasoningLevels: [...(props.provider?.reasoning_levels ?? [])],
-  defaultReasoningLevel: props.provider?.default_reasoning_level ?? "",
+  /** D-7: auto-compact watermark (tokens). Thinking levels live PER MODEL
+   * ROW in the mapping table (cc-switch desktop parity — 2026-09-19). */
   compactThreshold: props.provider?.compact_threshold
     ? String(props.provider.compact_threshold) : "",
   apiFormat: (props.provider?.api_format ?? "anthropic") as
@@ -142,7 +137,10 @@ function openAcquire(): void {
 }
 const roles = reactive<Record<string, string>>({ ...(props.provider?.role_env ?? {}) });
 const catalog = ref<CcSwitchCatalogEntry[]>(
-  (props.provider?.model_catalog ?? []).map((m) => ({ ...m })));
+  (props.provider?.model_catalog ?? []).map((m) => ({
+    ...m,
+    reasoning_levels: [...(m.reasoning_levels ?? [])],
+  })));
 
 const ROLE_SLOTS = [
   { key: "ANTHROPIC_MODEL", labelKey: "ccswitch.role.model", oneM: true },
@@ -245,15 +243,8 @@ function buildRequest(): import("../../types").CcSwitchRequest {
     icon: form.icon,
     icon_color: form.iconColor,
   };
-  /** D-7 knobs: provider-level level set (+ default) rides the row meta;
-   * the explicit default also syncs config model_reasoning_effort so the
-   * config fallback agrees. compact 0/absent = off. */
+  /** D-7 knob: auto-compact watermark. compact 0/absent = off. */
   const d7 = {
-    ...(props.agent === "codex" && form.reasoningLevels.length
-      ? { reasoning_levels: [...form.reasoningLevels] } : {}),
-    ...(props.agent === "codex" && form.defaultReasoningLevel
-      ? { default_reasoning_level: form.defaultReasoningLevel,
-          reasoning_effort: form.defaultReasoningLevel } : {}),
     ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
   };
   if (adding.value) {
@@ -292,11 +283,6 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       ...(props.agent === "claude"
         ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
         : {}),
-      ...(props.agent === "codex" && form.reasoningLevels.length
-        ? { reasoning_levels: [...form.reasoningLevels] } : {}),
-      ...(props.agent === "codex" && form.defaultReasoningLevel
-        ? { default_reasoning_level: form.defaultReasoningLevel,
-            reasoning_effort: form.defaultReasoningLevel } : {}),
       ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
       ...extras,
       ...(props.agent === "codex"
@@ -444,24 +430,8 @@ function onSave(): void {
           {{ t("ccswitch.edit.formatRouteHint") }}
         </p>
 
-        <!-- D-7: thinking levels (codex, cc-switch desktop parity combo)
-             + auto-compact watermark. -->
-        <label v-if="agent === 'codex'" class="field">
-          <span>{{ t("ccswitch.edit.reasoningLevels") }}</span>
-          <ReasoningLevelsCombo
-            v-model="form.reasoningLevels"
-            :placeholder="t('ccswitch.mapping.levelsPh')"
-            @update:model-value="touch"
-          />
-        </label>
-        <label v-if="agent === 'codex'" class="field">
-          <span>{{ t("ccswitch.mapping.colDefault") }}</span>
-          <select v-model="form.defaultReasoningLevel" @change="touch"
-                  :disabled="!form.reasoningLevels.length">
-            <option value="">{{ t("ccswitch.mapping.defaultAuto") }}</option>
-            <option v-for="lv in form.reasoningLevels" :key="lv" :value="lv">{{ lv }}</option>
-          </select>
-        </label>
+        <!-- D-7: auto-compact watermark (thinking levels live per mapping
+             row — cc-switch desktop parity). -->
         <label class="field">
           <span>{{ t("ccswitch.edit.compactThreshold") }}</span>
           <input v-model="form.compactThreshold" inputmode="numeric"

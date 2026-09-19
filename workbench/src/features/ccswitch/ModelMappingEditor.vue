@@ -13,6 +13,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { CcSwitchCatalogEntry } from "../../types";
+import ReasoningLevelsCombo from "./ReasoningLevelsCombo.vue";
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -29,21 +30,13 @@ const props = defineProps<{
 
 const advancedOpen = ref(false);
 
-// D-7: per-model thinking levels — the canonical ids upstream cc-switch
-// understands; the mapping row declares WHICH of them codex's /model
-// picker offers for that model (multi-select) and which is default.
-const REASONING_LEVELS = [
-  "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
-] as const;
-
-function toggleLevel(row: CcSwitchCatalogEntry, level: string): void {
-  const cur = row.reasoning_levels ?? [];
-  row.reasoning_levels = cur.includes(level)
-    ? cur.filter((x) => x !== level)
-    : [...cur, level];
-  // Keep the default inside the chosen set.
-  if (row.reasoning_levels.length && !row.reasoning_levels.includes(row.default_reasoning_level ?? "")) {
-    row.default_reasoning_level = row.reasoning_levels[row.reasoning_levels.length - 1];
+// D-7: per-model thinking levels — the ReasoningLevelsCombo (cc-switch
+// desktop parity) writes the row's level set; the default follows it.
+function onLevelsChanged(row: CcSwitchCatalogEntry): void {
+  // Keep the default inside the chosen set (empty set → 自动).
+  if ((row.reasoning_levels ?? []).length
+      && !row.reasoning_levels!.includes(row.default_reasoning_level ?? "")) {
+    row.default_reasoning_level = row.reasoning_levels![row.reasoning_levels!.length - 1];
   }
 }
 
@@ -58,7 +51,10 @@ const advRoles = computed(() =>
 );
 
 function addCatalogRow(): void {
-  (props.catalog ?? []).push({ model: "", display_name: "", context_window: 128000 });
+  (props.catalog ?? []).push({
+    model: "", display_name: "", context_window: 128000,
+    reasoning_levels: [], default_reasoning_level: "",
+  });
 }
 
 function removeCatalogRow(i: number): void {
@@ -145,14 +141,16 @@ function toggleOneM(key: string): void {
         :value="row.context_window || 128000"
         @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 128000"
       />
-      <div class="levels" role="group" :aria-label="t('ccswitch.mapping.colLevels')">
-        <button v-for="lv in REASONING_LEVELS" :key="lv" type="button"
-                class="lv" :class="{ on: (row.reasoning_levels ?? []).includes(lv) }"
-                :aria-pressed="(row.reasoning_levels ?? []).includes(lv)"
-                @click="toggleLevel(row, lv)">{{ lv }}</button>
-      </div>
-      <select v-model="row.default_reasoning_level"
-              :disabled="!(row.reasoning_levels ?? []).length">
+      <!-- D-7: cc-switch desktop parity — the per-model level set is a
+           searchable checkbox dropdown (multi-select), plus the row's
+           default level ("自动" = follow the config default). -->
+      <ReasoningLevelsCombo
+        :model-value="row.reasoning_levels ?? []"
+        @update:model-value="(v) => { row.reasoning_levels = v; onLevelsChanged(row); }"
+      />
+      <select :value="row.default_reasoning_level ?? ''"
+              :disabled="!(row.reasoning_levels ?? []).length"
+              @change="row.default_reasoning_level = ($event.target as HTMLSelectElement).value">
         <option value="">{{ t("ccswitch.mapping.defaultAuto") }}</option>
         <option v-for="lv in (row.reasoning_levels ?? [])" :key="lv" :value="lv">{{ lv }}</option>
       </select>
