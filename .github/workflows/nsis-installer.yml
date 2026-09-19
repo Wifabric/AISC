@@ -284,9 +284,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          VER="${GITHUB_REF_NAME#v}"
+          SETUP="AISC-Workbench-${VER}-setup.exe"
+          SHA="AISC-Workbench-${VER}-setup.exe.sha256"
           NOTES="docs/releases/${GITHUB_REF_NAME}.md"
           if [ -f "$NOTES" ]; then
-            gh release create "$GITHUB_REF_NAME"               --prerelease --target "$GITHUB_SHA"               --title "$GITHUB_REF_NAME (preview)"               --notes-file "$NOTES"               "AISC-Workbench-${VER}-setup.exe" "AISC-Workbench-${VER}-setup.exe.sha256"
+            gh release create "$GITHUB_REF_NAME" --prerelease --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME (preview)" --notes-file "$NOTES" "$SETUP" "$SHA"
           else
-            gh release create "$GITHUB_REF_NAME"               --prerelease --target "$GITHUB_SHA"               --title "$GITHUB_REF_NAME (preview)"               --generate-notes               "AISC-Workbench-${VER}-setup.exe" "AISC-Workbench-${VER}-setup.exe.sha256"
+            gh release create "$GITHUB_REF_NAME" --prerelease --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME (preview)" --generate-notes "$SETUP" "$SHA"
           fi
