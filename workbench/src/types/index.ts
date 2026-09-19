@@ -500,7 +500,6 @@ export interface CcSwitchProvider {
    * not configured). Codex: config.toml keys; claude: compact env only. */
   reasoning_effort?: string;
   compact_threshold?: number;
-  api_format?: "anthropic" | "openai_chat" | "openai_responses";
   /** PP (D-12): display columns (db-backed; survive the edit dance). */
   notes?: string;
   website_url?: string;
