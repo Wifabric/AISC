@@ -20,3 +20,10 @@
 - **D-7（模型映射区两项补充，2026-09-18 用户裁定）**：
   1. **思考深度**：codex 模型映射区加配置项（仿 cc-switch 桌面版效果）——落 codex TOML 顶层 `model_reasoning_effort`。仓库现状硬编码 `"high"`（`aisc-cc-provider:667/:1321`、preset builder），改为用户可配；枚举以 codex CLI 0.154 实测为准（至少 low/medium/high，skills 内已用 high/medium）。
   2. **压缩阈值**：语义确认 = **上下文到该 token 值即自动 compact 一次历史对话**（为窗口上限留余量）。claude 侧落 env `CLAUDE_AUTO_COMPACT_ENABLED="true"` + `CLAUDE_AUTO_COMPACT_WINDOW`（官方推荐默认 150000，长对话可 200000，过小致频繁压缩）；codex 侧落 TOML `model_auto_compact_token_limit`（1M 窗口官方示例 900000，须 ≤ `model_context_window` 留余量）。位置 = provider 编辑页模型映射附近，**所有 provider 通用**（非 codesome 专属）；模板 seed 预填官方推荐值，用户清空 = 不写入（不启用）。
+- **D-8（发布模型重构：双安装器 + 发布版本以 Workbench 为准，2026-09-19 用户裁定）**：
+  1. **每个 release 附两个安装器**：①CLI 安装器（现有 Inno 包，改名 `aisc-cli-<CLI版本>-installer.exe`——让出 `-setup.exe` 后缀）；②**Workbench NSIS 安装器** `AISC-Workbench-<版本>-setup.exe`（nsis-installer.yml 产物，自带打包时最新 CLI = 装 UI 顺带装 CLI）。
+  2. **发布版本号以 Workbench 为准**：release tag = Workbench 版本线（如 `v2.1.12`）；自更新比较语义随之恢复（tag 与安装的 UI 版本同线，`version_gt` 不改）。
+  3. **自更新修复**：更新器资产匹配改为「`AISC-Workbench-` 前缀 + `-setup.exe` 后缀」；下载运行 Workbench NSIS（UI + CLI 同时更新）。
+  4. **PyPI 解耦**：CLI 版本发布走 pip 通道独立节奏，CLI tag 改 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`，不误建 GitHub Release）；pip 用户更新 CLI 后经 `aisc update` 更镜像（A5 既有链路）。
+  5. 背景：A7 自更新实测发现 release 里的 `-setup.exe` 是 Inno CLI 安装器（Workbench NSIS 从未附到 release）——自更新端到端从未成立；且双轨版本号使 `version_gt(CLI, Workbench)` 恒假。本裁定同时修复两者。
+  6. 实施批：update.rs 资产匹配 + artifact.yml/nsis-installer.yml 资产命名与附加 + pypi-publish 的 cli-v 前缀 + §11.2 发布步骤重写 + 双版本对（0.1.0 老 NSIS 装 → 升当前）端到端测试。
