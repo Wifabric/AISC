@@ -175,10 +175,12 @@ class ActivationArgvTests(unittest.TestCase):
 
 
 class ReactivationReplaceTests(unittest.TestCase):
-    """r1 #2 (revised): same-workspace activation is IDEMPOTENT. A LIVE
-    older container is reused (told, not churned); a DEAD one is swept
-    before the new start. Never --label slots, never owner=workbench (the
-    GUI's lease-guarded singletons), never other workspaces."""
+    """cli-run-guard (2026-09-19): same-workspace activation REFUSES while a
+    live container exists for the workspace — any name series, CLI- or
+    workbench-owned (AISC_ERR_CONTAINER_EXISTS, exit 6). DEAD CLI-owned
+    containers are still swept before the new start; a dead different-series
+    sweep is the rename path (r2 #C). Never --label slots; dead workbench
+    singletons stay untouched; other workspaces are ignored."""
 
     def _fixtures(self, ps_stdout):
         import json as _json
@@ -226,8 +228,9 @@ class ReactivationReplaceTests(unittest.TestCase):
         ex.run_captured.side_effect = routed
         return ws, reg, ex
 
-    def test_live_same_workspace_container_is_reused_not_churned(self):
+    def test_live_same_series_refuses(self):
         from aisc.cli.commands.run import plan_run, run_container
+        from aisc.domain.models import CliError
 
         ws, reg, ex = self._fixtures(
             "super-claude-station-live\tUp 3 hours\nold-lab\tUp 1 hour\n"
@@ -236,21 +239,47 @@ class ReactivationReplaceTests(unittest.TestCase):
                         interactive=False, keep_alive=True)
         with patch("aisc.application.data_root.workspace_state_dir",
                    return_value=reg):
-            result = run_container(plan, executor=ex)
+            with self.assertRaises(CliError) as ctx:
+                run_container(plan, executor=ex)
 
-        self.assertEqual(result.reused, "super-claude-station-live")
-        self.assertFalse(result.executed)
-        self.assertIn("reused", result.to_dict())
+        exc = ctx.exception
+        self.assertEqual(exc.error_code, "AISC_ERR_CONTAINER_EXISTS")
+        self.assertEqual(exc.exit_code, 6)
+        self.assertFalse(exc.data.get("executed"))
         argvs = [c[0][0] for c in ex.run_captured.call_args_list]
-        self.assertNotIn(["stop", "super-claude-station-live"], argvs)
-        self.assertNotIn(["rm", "-f", "super-claude-station-live"], argvs)
-        self.assertTrue(all(a[0] != "run" for a in argvs))  # nothing started
+        # nothing started, nothing torn down
+        self.assertTrue(all(a[0] != "run" for a in argvs))
+        for protected in ("super-claude-station-live", "old-lab", "old-wb"):
+            self.assertNotIn(["stop", protected], argvs)
+            self.assertNotIn(["rm", "-f", protected], argvs)
+        self.assertIn("super-claude-station-live", exc.message)
 
-    def test_rename_intent_rebuilds_under_the_new_name(self):
-        """r2 #C: a live container of a DIFFERENT name series is a rename —
-        sweep and rebuild (alias and container name must stay one story)."""
-        import json as _json
+    def test_live_workbench_runtime_blocks_run(self):
         from aisc.cli.commands.run import plan_run, run_container
+        from aisc.domain.models import CliError
+
+        ws, reg, ex = self._fixtures("old-wb\tUp 2 hours\n")
+        plan = plan_run(image="super-claude:latest", workspace=ws,
+                        interactive=False, keep_alive=True)
+        with patch("aisc.application.data_root.workspace_state_dir",
+                   return_value=reg):
+            with self.assertRaises(CliError) as ctx:
+                run_container(plan, executor=ex)
+
+        self.assertEqual(ctx.exception.error_code, "AISC_ERR_CONTAINER_EXISTS")
+        # the message names the GUI runtime and says so
+        self.assertIn("old-wb", ctx.exception.message)
+        self.assertIn("Workbench", ctx.exception.message)
+        argvs = [c[0][0] for c in ex.run_captured.call_args_list]
+        self.assertTrue(all(a[0] != "run" for a in argvs))
+        self.assertNotIn(["stop", "old-wb"], argvs)
+
+    def test_live_different_series_refuses(self):
+        """r2 #C revised: a live container of a DIFFERENT name series used to
+        be a rename-rebuild; under the guard it refuses like any other live
+        container."""
+        from aisc.cli.commands.run import plan_run, run_container
+        from aisc.domain.models import CliError
 
         ws, reg, ex = self._fixtures(
             "super-claude-station-live\tUp 3 hours\nother-ws\tUp 1 hour\n")
@@ -258,13 +287,33 @@ class ReactivationReplaceTests(unittest.TestCase):
                         name="beta", interactive=False, keep_alive=True)
         with patch("aisc.application.data_root.workspace_state_dir",
                    return_value=reg):
+            with self.assertRaises(CliError) as ctx:
+                run_container(plan, executor=ex)
+
+        self.assertEqual(ctx.exception.error_code, "AISC_ERR_CONTAINER_EXISTS")
+        argvs = [c[0][0] for c in ex.run_captured.call_args_list]
+        self.assertNotIn(["stop", "super-claude-station-live"], argvs)
+        self.assertTrue(all(a[0] != "run" for a in argvs))
+
+    def test_dead_different_series_is_swept_and_rebuilt(self):
+        """r2 #C rename path survives for DEAD containers: a dead
+        different-series container is swept and the new start uses the new
+        name."""
+        from aisc.cli.commands.run import plan_run, run_container
+
+        ws, reg, ex = self._fixtures(
+            "super-claude-station-live\tExited (0) 5 minutes ago\n")
+        plan = plan_run(image="super-claude:latest", workspace=ws,
+                        name="beta", interactive=False, keep_alive=True)
+        with patch("aisc.application.data_root.workspace_state_dir",
+                   return_value=reg):
             result = run_container(plan, executor=ex)
 
-        self.assertIsNone(result.reused)
         self.assertEqual(result.replaced, ["super-claude-station-live"])
+        self.assertTrue(result.executed)
         argvs = [c[0][0] for c in ex.run_captured.call_args_list]
         self.assertIn(["stop", "super-claude-station-live"], argvs)
-        self.assertTrue(any(a[0] == "run" for a in argvs))  # rebuilt
+        self.assertTrue(any(a[0] == "run" for a in argvs))
 
     def test_label_activation_never_steals_default_pointer(self):
         """r2 #A: --label is a bypass slot — it must not steal the
@@ -295,7 +344,6 @@ class ReactivationReplaceTests(unittest.TestCase):
             result = run_container(plan, executor=ex)
 
         self.assertEqual(result.replaced, ["super-claude-station-live"])
-        self.assertIsNone(result.reused)
         self.assertTrue(result.executed)
         argvs = [c[0][0] for c in ex.run_captured.call_args_list]
         self.assertIn(["stop", "super-claude-station-live"], argvs)
