@@ -7,6 +7,5 @@ under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-pl
 
 ## Current active plan
 
-- (none yet — v2.1.12 closed 2026-09-19, see `../archive/2.1.12-dev-plans/`;
-  the `2.1.13` plan folder opens after the stage kickoff discussion with the
-  user, per `DEVELOP_WIKI` §1.1.)
+- v2.1.13（2026-09-19 开池；范围 = docs/todo.md「v2.1.13-target」12 条，
+  见 `2.1.13-dev-plans/README.md`；各条立项时再落标准计划文件。）
