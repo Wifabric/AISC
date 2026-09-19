@@ -10,7 +10,9 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import * as ipc from "../lib/ipc";
-import { applyLocale } from "../i18n";
+import { applyLocale, i18n } from "../i18n";
+import { useToastStore } from "./toast";
+import { useWorkspacesStore } from "./workspaces";
 import type { SaveOutcome, SettingsDocument, SettingsPatch, TargetInfo } from "../types";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -29,6 +31,54 @@ export const useSettingsStore = defineStore("settings", () => {
   // creation; switching rides target_set/target_clear.
   const targetRef = ref<TargetInfo | null>(null);
   const targetError = ref<string | null>(null);
+
+  // --- v2.1.13 remote CLI pairing: per-machine soft version probe ---
+  // The serve_protocol hard gate is separate and untouched; this is the
+  // "needs update" hint layer (remote-cli-pairing.md).
+  const remoteVersions = ref<Record<string, ipc.RemoteCliInfo>>({});
+  const versionBusy = ref<Record<string, boolean>>({});
+  const lastToasted = ref<Record<string, true>>({});
+  function maybeToastBehind(machine: string, info: ipc.RemoteCliInfo): void {
+    if (info.verdict !== "behind") return;
+    const key = `${machine}:${info.remoteVersion}`;
+    if (lastToasted.value[key]) return; // once per machine+version
+    lastToasted.value = { ...lastToasted.value, [key]: true };
+    const toast = useToastStore();
+    toast.push(
+      i18n.global.t("settings.machines.behindToast", {
+        machine,
+        remote: info.remoteVersion || "?",
+        local: info.localVersion || "?",
+      }),
+      {
+        kind: "info",
+        action: {
+          label: i18n.global.t("settings.machines.behindToastAction"),
+          run: () => void useWorkspacesStore().openSettingsTab(),
+        },
+      },
+    );
+  }
+  async function checkRemoteCliVersion(machine: string): Promise<void> {
+    if (versionBusy.value[machine]) return;
+    versionBusy.value = { ...versionBusy.value, [machine]: true };
+    try {
+      const info = await ipc.remoteCliInfo(machine);
+      remoteVersions.value = { ...remoteVersions.value, [machine]: info };
+      maybeToastBehind(machine, info);
+    } catch {
+      // soft hint: a failed probe degrades to "unknown" — never a blocker
+      remoteVersions.value = {
+        ...remoteVersions.value,
+        [machine]: {
+          machine, remoteVersion: "", localVersion: "",
+          verdict: "unknown", serveProtocol: 0,
+        },
+      };
+    } finally {
+      versionBusy.value = { ...versionBusy.value, [machine]: false };
+    }
+  }
   void (async () => {
     try {
       targetRef.value = await ipc.targetGet();
@@ -257,6 +307,10 @@ export const useSettingsStore = defineStore("settings", () => {
     // --- R4b: the drive target ---
     target: computed((): TargetInfo | null => targetRef.value),
     targetError,
+    // --- v2.1.13 remote CLI pairing ---
+    remoteVersions,
+    versionBusy,
+    checkRemoteCliVersion,
     async refreshTarget(): Promise<void> {
       try {
         targetRef.value = await ipc.targetGet();
@@ -272,7 +326,12 @@ export const useSettingsStore = defineStore("settings", () => {
       } catch (e) {
         targetError.value = (e as { message?: string; technical_detail?: string })
           ?.technical_detail || (e as { message?: string })?.message || String(e);
+        return;
       }
+      // v2.1.13 pairing: switching to a remote machine is the natural
+      // "about to use it" moment — probe once (dedupe lives in the store)
+      // so a stale remote CLI surfaces without anyone opening settings.
+      if (name) void checkRemoteCliVersion(name);
     },
 
     lastSaved,

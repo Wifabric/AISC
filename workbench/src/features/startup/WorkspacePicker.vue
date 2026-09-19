@@ -408,6 +408,12 @@ async function confirmForget(): Promise<void> {
         </option>
       </select>
       <span v-if="target?.kind === 'remote'" class="target-badge">{{ t("picker.target.remoteOn", { name: target.machine?.name }) }}</span>
+      <!-- v2.1.13 remote CLI pairing: soft "needs update" badge (verdict from
+           the settings store's probe cache; switchTarget probes once). -->
+      <span
+        v-if="target?.kind === 'remote' && settings.remoteVersions[target.machine?.name ?? '']?.verdict === 'behind'"
+        class="target-badge needs-update"
+      >{{ t("picker.target.needsUpdate") }}</span>
     </div>
     <p v-if="targetError" class="forget-error" role="alert">{{ targetError }}</p>
 
@@ -556,6 +562,7 @@ async function confirmForget(): Promise<void> {
   min-height: var(--control-h-sm); padding: 0 var(--space-2);
 }
 .target-badge {
+.target-badge.needs-update { color: var(--warn); border-color: var(--warn); }
   color: var(--info); font-size: var(--font-xs);
   border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 6px;
 }
