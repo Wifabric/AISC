@@ -6,6 +6,20 @@
 > 与 D-6（变更页仿 vscode git 页、纯显示零操作）。当日完成立项研究（ultracode workflow：
 > 研究员 + 独立证据核验）并落全部计划文档。开发严格以本文档集为准（DEVELOP_WIKI §1.1）。
 
+## 交付状态（2026-09-19 批 1–6 自动化完成，待统一手测）
+
+| 批 | 内容 | 分支 | 状态 |
+| --- | --- | --- | --- |
+| 1 | 发布链准备（CI 版本戳 + 文案三处 + run 防重入） | 2.1.13-b1-release-chain | 已合入 develop，CI 绿；E2E 实测等首个 preview |
+| 2 | zip 恢复工作区 | 2.1.13-b2-zip-restore | 已合入，CI 绿；待手测 |
+| 3 | 远程 CLI 配对提示 | 2.1.13-b3-remote-pairing | 已合入，CI 绿；待 NAS 手测 |
+| 4 | docker 检测精细化 | 2.1.13-b4-docker-inspect | 已合入，CI 绿；待真机手测 |
+| 5 | 变更页（git 双源+树+diff）+ D-11 预览移除 | 2.1.13-b5-changes-page | 已合入，CI 绿；待手测 |
+| 6 | 拖图/粘贴图给 agent | 2.1.13-b6-image-drag | 已合入，CI 绿；待手测 |
+
+统一手测清单：[HANDTEST.md](HANDTEST.md)。历史会话重构（批 7，压轴大特性）
+待手测轮后按 history-worklog.md 四批计划启动。
+
 ## 计划文档索引
 
 | 文档 | 条目 | 状态 |
@@ -18,7 +32,8 @@
 | [changes-page.md](changes-page.md) | 变更页（git 双源 + 变更树 + diff） | 计划待验收 |
 | [workspace-zip-restore.md](workspace-zip-restore.md) | 导出 zip 恢复工作区到新路径 | 计划待验收 |
 | [docker-scan-fidelity.md](docker-scan-fidelity.md) | docker 资源检测精细化 | 计划待验收 |
-| [pi-opencode.md](pi-opencode.md) | agent 加上 Pi/opencode（免安装） | **已作废**（用户澄清本阶段不做，备查） |
+| [pi-opencode.md](pi-opencode.md) | （已作废）agent 加上 Pi/opencode | 作废备查 |
+| [HANDTEST.md](HANDTEST.md) | 批 1–6 统一手测清单 | 手测进行中 |
 | [image-drag-to-agent.md](image-drag-to-agent.md) | 拖动图片给 agent（含剪贴板粘贴） | 计划待验收 |
 
 流程项（无开发计划文档）：**final 发布时机**——按 D-8(2.1.12) 规约仅经用户明确要求。
