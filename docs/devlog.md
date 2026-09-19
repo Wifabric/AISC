@@ -16,9 +16,14 @@
   「Workbench 前缀 + `-setup.exe` 后缀」双条件；④PyPI 解耦——CLI 版本
   发布走 pip 独立节奏，CLI tag 改 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配
   `v*` 不误建 Release），pip 用户更新 CLI 后 `aisc update` 更镜像。
-- 实施批已拆（decisions.md D-8.6）：update.rs 匹配 / 双 workflow 资产
-  命名与附加 / pypi-publish cli-v 前缀 / §11.2 重写 / 0.1.0→当前端到端
-  自更新测试。待开工。
+- 实施批已落地（09-19）：nsis-installer.yml v* tag 触发 + release-preview
+  job（prerelease，AISC-Workbench-<tag>-setup.exe + sha256，notes 取
+  docs/releases/<tag>.md）；update.rs preview 通道重写（资产匹配
+  AISC-Workbench-* 前缀双条件，CLI 安装器永不匹配）；pypi-publish 接受
+  cli-v 前缀 tag；aisc update 在线热换退役（重定向 pip/Workbench）。
+  **首个 preview 已发布：v2.1.12-preview.1**（prerelease，双资产就位）。
+  错发的 v0.1.0/v0.1.1 release 已删；陈旧远程分支清理被权限拦截，
+  命令已交付用户执行。
 
 # 2.1.12 codesome 专项实施（2026-09-18）
 
