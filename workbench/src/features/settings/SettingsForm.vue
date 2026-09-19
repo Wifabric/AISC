@@ -215,6 +215,29 @@ async function onCopyUpgradeCmd(): Promise<void> {
   }
 }
 
+// --- v2.1.13 (docker-scan-fidelity): per-item inspection presentation ---
+function formatBytes(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let v = n;
+  let u = 0;
+  while (v >= 1000 && u < units.length - 1) {
+    v /= 1000;
+    u += 1;
+  }
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
+}
+const inspectTotals = computed(() => {
+  const cats = store.inspectReport?.categories ?? {};
+  let reclaimable = 0;
+  let items = 0;
+  for (const cat of Object.values(cats)) {
+    reclaimable += cat?.summary.reclaimable_bytes ?? 0;
+    items += cat?.summary.count ?? 0;
+  }
+  return { reclaimable, items };
+});
+
 /** PERF P8 (D-13): performance working copy (load/edit/save like hostTools;
  *  defaults mirror the Rust sanitizer). */
 const perf = computed(() => store.doc?.performance);
@@ -633,6 +656,54 @@ async function reopenOnboarding() {
             <button class="primary" :disabled="store.cacheBusy" :title="t('settings.disk.cleanupTip')" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
           </div>
           <p v-for="(line, i) in store.cacheLog" :key="i" class="note">{{ line }}</p>
+
+          <!-- v2.1.13 (docker-scan-fidelity): read-only per-item inspection.
+               Detect finer + report accurately; NO cleanup here, NO auto
+               trigger — the user presses the button every single time (D-2).
+               will_be_cleaned mirrors what the CURRENT manual cleanup would
+               hit; the disclaimer carries the shared-layer caveat. -->
+          <p class="group">{{ t("settings.disk.inspect.group") }}</p>
+          <div class="field">
+            <button :disabled="store.inspectBusy" @click="store.loadDockerInspect()">
+              {{ store.inspectBusy ? t("settings.disk.inspect.busy") : t("settings.disk.inspect.open") }}
+            </button>
+            <span v-if="store.inspectReport" class="effect">
+              {{ t("settings.disk.inspect.totals", {
+                items: inspectTotals.items,
+                reclaimable: formatBytes(inspectTotals.reclaimable) }) }}
+            </span>
+          </div>
+          <p v-if="store.inspectError" class="err-text">{{ store.inspectError }}</p>
+          <div v-if="store.inspectReport" class="inspect-groups">
+            <p class="note">{{ store.inspectReport.disclaimer }}</p>
+            <details
+              v-for="(cat, key) in store.inspectReport.categories"
+              :key="key"
+              class="inspect-cat"
+            >
+              <summary>
+                {{ t("settings.disk.inspect.cat." + key) }}
+                <span class="effect">
+                  {{ cat?.summary.count ?? 0 }} · {{ formatBytes(cat?.summary.reclaimable_bytes ?? null) }}
+                </span>
+              </summary>
+              <div
+                v-for="row in cat?.rows ?? []"
+                :key="String(row.id) + String(row.name)"
+                class="field disk-row inspect-row"
+              >
+                <span class="label" :title="String(row.id)">{{ row.name || row.id }}</span>
+                <span class="val">{{ row.size ?? row.unique_size ?? "—" }}</span>
+                <span class="effect">
+                  <template v-if="row.will_be_cleaned">{{ t("settings.disk.inspect.willClean") }}</template>
+                  <template v-else-if="row.dangling">{{ t("settings.disk.inspect.dangling") }}</template>
+                  <template v-else-if="row.in_use">{{ t("settings.disk.inspect.inUse") }}</template>
+                  <template v-else>—</template>
+                </span>
+              </div>
+              <p v-if="!(cat?.rows ?? []).length" class="note">{{ t("settings.disk.inspect.empty") }}</p>
+            </details>
+          </div>
 
           <!-- B3 (2.1.12): docker resource admin — scan preview -> confirm ->
                act. Rebuild is LOCAL-only (remote machines manage their own
