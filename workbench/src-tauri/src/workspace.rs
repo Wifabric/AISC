@@ -574,7 +574,17 @@ pub async fn workspace_export_lifecycle(
         return Err(WorkbenchError::workspace_not_found()
             .with_detail("no lifecycle data exists for this workspace"));
     }
-    let file = fs::File::create(&dest).map_err(|e| {
+    export_lifecycle_core(ws_path, &ws_dir, Path::new(&dest))
+}
+
+/// Zip-walk shared by the command above and the roundtrip tests: `ws_dir`
+/// is resolved by the caller (command: data root; tests: a temp dir).
+fn export_lifecycle_core(
+    ws_path: &Path,
+    ws_dir: &Path,
+    dest: &Path,
+) -> Result<u32, WorkbenchError> {
+    let file = fs::File::create(dest).map_err(|e| {
         WorkbenchError::workspace_io().with_detail(format!("create zip: {e}"))
     })?;
     let mut zip = zip::ZipWriter::new(file);
@@ -584,7 +594,7 @@ pub async fn workspace_export_lifecycle(
         &crate::data_root::workspace_hash_v1(ws_path));
 
     let mut count = 0u32;
-    let mut stack: Vec<(PathBuf, String)> = vec![(ws_dir.clone(), root_name)];
+    let mut stack: Vec<(PathBuf, String)> = vec![(ws_dir.to_path_buf(), root_name.clone())];
     while let Some((dir, prefix)) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
             Ok(it) => it,
@@ -616,10 +626,210 @@ pub async fn workspace_export_lifecycle(
             }
         }
     }
+    // v2.1.13 zip-restore: provenance manifest in the zip root. Optional
+    // end-to-end — pre-manifest (v0) zips import identically.
+    let exported_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let manifest = serde_json::json!({
+        "schema": "aisc.lifecycle-export/v1",
+        "source_path": crate::data_root::canonical_workspace_path(ws_path),
+        "workspace_key": root_name,
+        "exported_at": exported_at,
+        "workbench_version": env!("CARGO_PKG_VERSION"),
+        "file_count": count,
+    });
+    if zip
+        .start_file(format!("{root_name}/manifest.json"), options)
+        .is_ok()
+    {
+        if let Ok(bytes) = serde_json::to_vec_pretty(&manifest) {
+            // provenance metadata, deliberately not counted in `count`
+            let _ = std::io::copy(&mut bytes.as_slice(), &mut zip);
+        }
+    }
     zip.finish().map_err(|e| {
         WorkbenchError::workspace_io().with_detail(format!("finish zip: {e}"))
     })?;
     Ok(count)
+}
+
+/// v2.1.13 (zip-restore): result of `workspace_import_lifecycle`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceImportResult {
+    /// New lifecycle dir name under the data root (`sha256-v1-<hex>` of the
+    /// TARGET path — the hash contract keeps holding for the new path).
+    pub workspace_key: String,
+    pub files: u32,
+    pub skipped: u32,
+    /// Manifest provenance (None for pre-manifest v0 zips).
+    pub source_path: Option<String>,
+    pub exported_at: Option<i64>,
+}
+
+/// Lifecycle entries that describe the OLD machine rather than user data —
+/// recorded by the old host, dropped at import (workspace-zip-restore.md).
+fn import_skip(rel: &str) -> bool {
+    const SKIP_FILES: &[&str] = &[
+        "runtime-lease.json",
+        "runtime/containers.json",
+        "runtime/runtime/daemon.pid",
+        "runtime/runtime/daemon.sock",
+    ];
+    if SKIP_FILES.contains(&rel) {
+        return true;
+    }
+    // lock siblings anywhere under runtime (workspace-locks/<key>.lock, …)
+    if let Some(name) = rel.rsplit('/').next() {
+        if rel.starts_with("runtime/") && name.ends_with(".lock") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Import walk shared by the command and the tests: `ws_dir_override`
+/// replaces the data-root resolution (tests point it at a temp dir).
+fn import_lifecycle_core(
+    zip_path: &Path,
+    target_path: &Path,
+    ws_dir_override: Option<PathBuf>,
+) -> Result<WorkspaceImportResult, WorkbenchError> {
+    if target_path.is_file() {
+        return Err(WorkbenchError::usage(format!(
+            "target path is a file: {}",
+            target_path.display()
+        )));
+    }
+    let key = crate::data_root::workspace_dir_name(
+        &crate::data_root::workspace_hash_v1(target_path));
+    let ws_dir = match ws_dir_override {
+        Some(dir) => dir,
+        None => {
+            let resolved = crate::data_root::resolve_data_root(target_path)
+                .map_err(|e| WorkbenchError::workspace_io().with_detail(e.message()))?;
+            resolved.workspace_dir()
+        }
+    };
+    // One lifecycle slot per workspace path: importing over an existing one
+    // would silently mix two machines' agent state (D-b2: refuse, never merge).
+    if ws_dir.exists() {
+        return Err(WorkbenchError::workspace_conflict().with_detail(format!(
+            "lifecycle data already exists for this path: {}",
+            ws_dir.display()
+        )));
+    }
+
+    let file = fs::File::open(zip_path).map_err(|e| {
+        WorkbenchError::workspace_io().with_detail(format!("open zip: {e}"))
+    })?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        WorkbenchError::usage(format!("not a readable zip: {e}"))
+    })?;
+
+    let io_err = |e: std::io::Error| {
+        WorkbenchError::workspace_io().with_detail(format!("unzip: {e}"))
+    };
+    let mut files = 0u32;
+    let mut skipped = 0u32;
+    let mut source_path: Option<String> = None;
+    let mut exported_at: Option<i64> = None;
+    let mut root: Option<String> = None;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| {
+            WorkbenchError::usage(format!("corrupt zip entry: {e}"))
+        })?;
+        // zip-slip gate: a crafted `../` or absolute entry aborts the whole
+        // import (workspace-zip-restore.md — reject, never sanitize silently).
+        let Some(rel_path) = entry.enclosed_name() else {
+            return Err(WorkbenchError::usage(format!(
+                "zip entry has an unsafe path: {}",
+                entry.name()
+            )));
+        };
+        let mut comps = rel_path.components();
+        let Some(first) = comps.next() else { continue };
+        let first_str = first.as_os_str().to_string_lossy().to_string();
+        if first_str.is_empty() {
+            continue;
+        }
+        match &root {
+            None => root = Some(first_str),
+            Some(r) if *r == first_str => {}
+            Some(_) => {
+                return Err(WorkbenchError::usage(
+                    "zip has multiple root directories",
+                ))
+            }
+        }
+        let rel = comps
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join("/");
+        if rel.is_empty() {
+            continue; // the root directory entry itself
+        }
+        let dest = ws_dir.join(&rel);
+        if entry.is_dir() {
+            fs::create_dir_all(&dest).map_err(io_err)?;
+            continue;
+        }
+        if entry.is_symlink() {
+            skipped += 1;
+            continue;
+        }
+        if import_skip(&rel) {
+            skipped += 1;
+            continue;
+        }
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut buf).map_err(io_err)?;
+        if rel == "manifest.json" {
+            // provenance, best-effort: a malformed manifest never blocks
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&buf) {
+                source_path = v
+                    .get("source_path")
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string);
+                exported_at = v.get("exported_at").and_then(|x| x.as_i64());
+            }
+        }
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(io_err)?;
+        }
+        fs::write(&dest, &buf).map_err(io_err)?;
+        files += 1;
+    }
+    let Some(_) = root else {
+        return Err(WorkbenchError::usage("empty zip"));
+    };
+    // The user-visible workspace directory must exist before `runtime start`
+    // (AISC_ERR_WORKSPACE_INVALID otherwise) — create it, never its contents.
+    fs::create_dir_all(target_path).map_err(io_err)?;
+    Ok(WorkspaceImportResult {
+        workspace_key: key,
+        files,
+        skipped,
+        source_path,
+        exported_at,
+    })
+}
+
+/// v2.1.13 (zip-restore): restore an exported lifecycle zip as a NEW
+/// workspace. The zip's single root (the OLD path's hash dir — SHA256 is
+/// not reverseable) is stripped; contents land in
+/// `<data-root>/workspaces/<hash(target)>/` so the resolver's hash contract
+/// holds for the new path. Machine-local ephemera (lease, container
+/// registry, workspace locks, daemon pid/sock) are dropped; the target
+/// workspace directory is created if absent and never otherwise touched.
+#[tauri::command]
+pub async fn workspace_import_lifecycle(
+    zip_path: String,
+    target_path: String,
+) -> Result<WorkspaceImportResult, WorkbenchError> {
+    import_lifecycle_core(Path::new(&zip_path), Path::new(&target_path), None)
 }
 
 /// Read-only preview for the confirm dialog: what WOULD be deleted, what is
@@ -2701,6 +2911,195 @@ mod s2_forget_tests {
         )
         .unwrap();
         assert_eq!(g.blocked_reason.as_deref(), Some("open-here"));
+    }
+
+    // --- v2.1.13 zip-restore (workspace_import_lifecycle / export manifest) ---
+
+    /// Build a lifecycle zip in `dir` from flat (name, bytes) entries;
+    /// names ending in `/` become directory entries.
+    fn write_test_zip(dir: &Path, entries: &[(&str, &str)]) -> PathBuf {
+        let path = dir.join("lifecycle.zip");
+        let file = fs::File::create(&path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, body) in entries {
+            if name.ends_with('/') {
+                zip.add_directory(*name, options).unwrap();
+            } else {
+                zip.start_file(*name, options).unwrap();
+                std::io::Write::write_all(&mut zip, body.as_bytes()).unwrap();
+            }
+        }
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn import_happy_path_strips_root_and_drops_machine_local() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = write_test_zip(
+            tmp.path(),
+            &[
+                ("sha256-v1-old/claude/projects/", ""),
+                ("sha256-v1-old/claude/projects/s1.jsonl", "{\"m\":1}"),
+                ("sha256-v1-old/codex/sessions/", ""),
+                ("sha256-v1-old/codex/sessions/rollout-x.jsonl", "{}"),
+                ("sha256-v1-old/runtime/containers.json", "{\"stale\":true}"),
+                ("sha256-v1-old/runtime-lease.json", "{}"),
+                ("sha256-v1-old/runtime/workspace-locks/ab.lock", "x"),
+                (
+                    "sha256-v1-old/manifest.json",
+                    "{\"schema\":\"aisc.lifecycle-export/v1\",\"source_path\":\"C:\\\\old\\\\ws\",\"workspace_key\":\"sha256-v1-old\",\"exported_at\":1700000000,\"file_count\":2}",
+                ),
+            ],
+        );
+        let target = tmp.path().join("new-ws");
+        let ws_dir = tmp.path().join("state");
+        let out =
+            import_lifecycle_core(&zip, &target, Some(ws_dir.clone())).unwrap();
+        assert_eq!(out.files, 3); // two session files + the manifest
+        assert_eq!(out.skipped, 3); // containers.json + lease + lock
+        assert_eq!(out.source_path.as_deref(), Some("C:\\old\\ws"));
+        assert_eq!(out.exported_at, Some(1700000000));
+        assert!(ws_dir.join("claude/projects/s1.jsonl").is_file());
+        assert!(ws_dir.join("codex/sessions/rollout-x.jsonl").is_file());
+        assert!(ws_dir.join("manifest.json").is_file());
+        assert!(!ws_dir.join("runtime/containers.json").exists());
+        assert!(!ws_dir.join("runtime-lease.json").exists());
+        // hash contract: the key names the TARGET path, not the zip root
+        assert_eq!(
+            out.workspace_key,
+            crate::data_root::workspace_dir_name(
+                &crate::data_root::workspace_hash_v1(&target)
+            )
+        );
+        // the user-visible workspace dir was created (runtime start needs it)
+        assert!(target.is_dir());
+    }
+
+    #[test]
+    fn import_rejects_multi_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = write_test_zip(
+            tmp.path(),
+            &[("root-a/x.txt", "a"), ("root-b/y.txt", "b")],
+        );
+        let err = import_lifecycle_core(
+            &zip,
+            &tmp.path().join("t"),
+            Some(tmp.path().join("s")),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "WB_ERR_USAGE");
+    }
+
+    #[test]
+    fn import_rejects_zip_slip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("slip.zip");
+        let file = fs::File::create(&path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        if zip.start_file("sha256-v1-old/../../evil.txt", options).is_err() {
+            // this writer version refuses traversal names — the read-side
+            // gate can't be exercised from here (mirrors stale-lease skip)
+            return;
+        }
+        std::io::Write::write_all(&mut zip, b"nope").unwrap();
+        zip.finish().unwrap();
+        let err = import_lifecycle_core(
+            &path,
+            &tmp.path().join("t"),
+            Some(tmp.path().join("s")),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "WB_ERR_USAGE");
+        assert!(err.technical_detail.unwrap_or_default().contains("unsafe path"));
+    }
+
+    #[test]
+    fn import_rejects_when_state_dir_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = write_test_zip(tmp.path(), &[("sha256-v1-old/x.txt", "x")]);
+        let ws_dir = tmp.path().join("s");
+        fs::create_dir_all(&ws_dir).unwrap();
+        let err = import_lifecycle_core(
+            &zip,
+            &tmp.path().join("t"),
+            Some(ws_dir),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "WB_ERR_WORKSPACE_CONFLICT");
+    }
+
+    #[test]
+    fn import_rejects_file_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = write_test_zip(tmp.path(), &[("sha256-v1-old/x.txt", "x")]);
+        let file_target = tmp.path().join("a-file");
+        fs::write(&file_target, "x").unwrap();
+        let err = import_lifecycle_core(
+            &zip,
+            &file_target,
+            Some(tmp.path().join("s")),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "WB_ERR_USAGE");
+    }
+
+    #[test]
+    fn import_accepts_v0_zip_without_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = write_test_zip(
+            tmp.path(),
+            &[
+                ("sha256-v1-old/claude/", ""),
+                ("sha256-v1-old/claude/a.jsonl", "x"),
+            ],
+        );
+        let out = import_lifecycle_core(
+            &zip,
+            &tmp.path().join("t"),
+            Some(tmp.path().join("s")),
+        )
+        .unwrap();
+        assert_eq!(out.files, 1);
+        assert!(out.source_path.is_none());
+        assert!(out.exported_at.is_none());
+    }
+
+    #[test]
+    fn export_import_roundtrip_restores_lifecycle_and_provenance() {
+        let tmp = tempfile::tempdir().unwrap();
+        // fake OLD workspace lifecycle dir
+        let old_ws = tmp.path().join("old-ws-src");
+        fs::create_dir_all(old_ws.join("claude/projects")).unwrap();
+        fs::create_dir_all(old_ws.join("runtime/workspace-locks")).unwrap();
+        fs::write(old_ws.join("claude/projects/s1.jsonl"), "{\"m\":1}").unwrap();
+        fs::write(old_ws.join("runtime/containers.json"), "{}").unwrap();
+        fs::write(old_ws.join("runtime/workspace-locks/k.lock"), "l").unwrap();
+        let zip_path = tmp.path().join("export.zip");
+        let count = export_lifecycle_core(&old_ws, &old_ws, &zip_path).unwrap();
+        assert_eq!(count, 3); // session + containers.json + lock
+
+        let new_target = tmp.path().join("restored");
+        let new_state = tmp.path().join("restored-state");
+        let out =
+            import_lifecycle_core(&zip_path, &new_target, Some(new_state.clone()))
+                .unwrap();
+        assert!(new_state.join("claude/projects/s1.jsonl").is_file());
+        assert!(!new_state.join("runtime/containers.json").exists());
+        assert!(!new_state.join("runtime/workspace-locks/k.lock").exists());
+        assert_eq!(
+            out.source_path.as_deref(),
+            Some(
+                crate::data_root::canonical_workspace_path(&old_ws)
+                    .as_str()
+            )
+        );
+        // export: 3 lifecycle files; import: those minus 2 skipped, plus manifest
+        assert_eq!(out.files, 2);
+        assert_eq!(out.skipped, 2);
     }
 
     #[test]

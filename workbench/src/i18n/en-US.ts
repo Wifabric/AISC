@@ -86,6 +86,14 @@ export const enUS: Record<string, string> = {
   "picker.invalidClear": "Clear record",
   "picker.invalidPurge": "Also purge this workspace's lifecycle files (agent memories, configs, state — user files are never touched)",
   "picker.exportLifecycle": "Export first (zip)",
+  "picker.import.open": "Restore from zip…",
+  "picker.import.title": "Restore a workspace from an exported zip",
+  "picker.import.zipPh": "pick the exported lifecycle .zip",
+  "picker.import.pickZip": "Pick zip",
+  "picker.import.targetPh": "new workspace path (created if absent)",
+  "picker.import.go": "Restore",
+  "picker.import.hint": "Restore lands the exported lifecycle data (agent memories, provider configs, session state) at a new path; your original files are untouched and machine-local state (leases/locks/registry) never travels. The restore itself writes no history entry — the workspace enters recents only after its first successful launch.",
+  "picker.import.done": "Restored {files} files (skipped {skipped} machine-local items). The path is prefilled above — press Next to launch it.",
 
   // --- launch summary (LaunchSummary.vue) ---
   "summary.title": "Launch summary",

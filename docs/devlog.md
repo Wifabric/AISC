@@ -2,6 +2,24 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 2：工作区 zip 恢复（2026-09-19，分支 2.1.13-b2-zip-restore）
+
+- **导入半边落地（规格 workspace-zip-restore.md，方案 A+C）**：新 Tauri 命令
+  `workspace_import_lifecycle(zip_path, target_path)`——按**新路径**重算 hash 落新
+  目录（`workspaces/<hash(target)>/`，hash 契约不破）；剥离 zip 单一根（旧 hash
+  不可逆）；zip-slip/多根/symlink 拒绝或跳过；机器本地易腐产物（lease/containers
+  注册表/workspace-locks/daemon.pid/sock/*.lock）不入新家；目标工作区目录不存在
+  则创建（runtime start 硬要求）；冲突（该路径已有生命周期数据）拒绝不合并。
+- **导出补 manifest（方案 C）**：`workspace_export_lifecycle` 在 zip 根写
+  `aisc.lifecycle-export/v1`（source_path/workspace_key/exported_at/版本/文件数）；
+  导入端容错读取展示来源，v0 无 manifest 旧 zip 照常导入（R4：恢复不写 history，
+  首次成功启动才入 recent）。
+- **前端**：ipc `workspaceImportLifecycle` + store `importLifecycle`/
+  `pickZipFile`/`pickDirectory`（F-A01 路由）+ WorkspacePicker「从 zip 恢复…」
+  折叠面板（远程 target 隐藏；成功后预填路径不自动 preflight）+ zh/en 全键。
+- 测试：Rust 7 用例（happy/多根/zip-slip/冲突/文件 target/v0/导出导入往返）+
+  vitest store 2 用例 + picker 3 用例；local-gates 全绿。
+
 # v2.1.13 批 1：发布链准备 + run 防重入（2026-09-19，分支 2.1.13-b1-release-chain）
 
 - **CI 版本戳（D-4，selfupdate-e2e.md 选项 B）**：nsis-installer.yml 构建步在

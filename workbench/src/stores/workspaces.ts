@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, markRaw, ref, shallowRef } from "vue";
-import { confirm, save } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import type {
   ForgetResult,
   ForgetPreview,
@@ -489,6 +489,34 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
     return await ipc.workspaceExportLifecycle(path, dest);
   }
 
+  /** v2.1.13 (zip-restore): import an exported lifecycle zip as a NEW
+   * workspace at targetPath. Routed through the store per the layer
+   * contract (F-A01). Deliberately writes NO history entry (R4): the
+   * restored workspace enters recents only after its first successful
+   * launch. */
+  async function importLifecycle(
+    zipPath: string,
+    targetPath: string,
+  ): Promise<ipc.WorkspaceImportResult> {
+    return await ipc.workspaceImportLifecycle(zipPath, targetPath);
+  }
+
+  /** v2.1.13 (zip-restore): pick the exported lifecycle zip to restore. */
+  async function pickZipFile(): Promise<string | null> {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "zip", extensions: ["zip"] }],
+    });
+    return typeof picked === "string" ? picked : null;
+  }
+
+  /** v2.1.13 (zip-restore): pick the target directory for a restore. */
+  async function pickDirectory(): Promise<string | null> {
+    const picked = await open({ multiple: false, directory: true });
+    return typeof picked === "string" ? picked : null;
+  }
+
   /** ⑧ "clear the moved/deleted record": drops the history entry only. */
   async function clearHistoryEntry(path: string): Promise<void> {
     try {
@@ -586,6 +614,9 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
     forgetPreview,
     forgetWorkspace,
     exportLifecycle,
+    importLifecycle,
+    pickZipFile,
+    pickDirectory,
     clearHistoryEntry,
     workspacePathExists,
     closeWindowScoped,

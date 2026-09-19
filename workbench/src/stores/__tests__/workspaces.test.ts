@@ -38,6 +38,7 @@ const mockIpc = vi.hoisted(() => ({
     cleanup: { attempted: false, stopped: false, removed: false, registry_pruned: false },
     observed_at: "", error_code: null, technical_detail: null,
   }),
+  workspaceImportLifecycle: vi.fn(),
 }));
 
 vi.mock("../../lib/ipc", () => mockIpc);
@@ -265,5 +266,30 @@ describe("aggregated exit gate (3c)", () => {
     ws.runtimes[1].runtimeId.value = "";
     const targets = ws.shutdownTargets();
     expect(targets).toEqual([{ workspace: "C:/a", runtimeId: "rid-C:/a" }]);
+  });
+});
+
+describe("zip-restore import (v2.1.13)", () => {
+  it("routes importLifecycle through ipc and writes no history (R4)", async () => {
+    mockIpc.workspaceImportLifecycle.mockResolvedValue({
+      workspaceKey: "sha256-v1-new", files: 3, skipped: 2,
+      sourcePath: null, exportedAt: null,
+    });
+    const store = useWorkspacesStore();
+    const r = await store.importLifecycle("D:/a.zip", "D:/ws");
+    expect(r.files).toBe(3);
+    expect(mockIpc.workspaceImportLifecycle).toHaveBeenCalledWith("D:/a.zip", "D:/ws");
+    expect(mockIpc.saveHistory).not.toHaveBeenCalled();
+  });
+
+  it("picks a zip file and a target directory via the dialog plugin", async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    (open as ReturnType<typeof vi.fn>).mockImplementation(
+      async (opts?: { directory?: boolean }) =>
+        opts?.directory ? "D:/dir" : "D:/a.zip",
+    );
+    const store = useWorkspacesStore();
+    expect(await store.pickZipFile()).toBe("D:/a.zip");
+    expect(await store.pickDirectory()).toBe("D:/dir");
   });
 });
