@@ -20,6 +20,7 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useCcSwitchUiStore } from "../../stores/ccSwitchUi";
 import type { CcSwitchCatalogEntry, CcSwitchProvider, CcSwitchTemplate } from "../../types";
 import ModelMappingEditor from "./ModelMappingEditor.vue";
+import ReasoningLevelsCombo from "./ReasoningLevelsCombo.vue";
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -52,8 +53,12 @@ const form = reactive({
   name: props.provider?.name ?? "",
   baseUrl: props.provider?.base_url ?? "",
   apiKey: "",
-  /** D-7: thinking depth (codex) + auto-compact watermark (tokens). */
-  reasoningEffort: props.provider?.reasoning_effort ?? "high",
+  /** D-7: provider-level thinking levels (cc-switch desktop parity — the
+   * combo multi-select) + auto-compact watermark (tokens). Edit mode
+   * prefills the STORED values (snapshot round-trip); add starts empty
+   * (levels) / recommended watermark (compact). */
+  reasoningLevels: [...(props.provider?.reasoning_levels ?? [])],
+  defaultReasoningLevel: props.provider?.default_reasoning_level ?? "",
   compactThreshold: props.provider?.compact_threshold
     ? String(props.provider.compact_threshold) : "",
   apiFormat: (props.provider?.api_format ?? "anthropic") as
@@ -240,10 +245,15 @@ function buildRequest(): import("../../types").CcSwitchRequest {
     icon: form.icon,
     icon_color: form.iconColor,
   };
-  /** D-7 knobs — compact 0/absent = off; effort rides only for codex. */
+  /** D-7 knobs: provider-level level set (+ default) rides the row meta;
+   * the explicit default also syncs config model_reasoning_effort so the
+   * config fallback agrees. compact 0/absent = off. */
   const d7 = {
-    ...(props.agent === "codex" && form.reasoningEffort
-      ? { reasoning_effort: form.reasoningEffort } : {}),
+    ...(props.agent === "codex" && form.reasoningLevels.length
+      ? { reasoning_levels: [...form.reasoningLevels] } : {}),
+    ...(props.agent === "codex" && form.defaultReasoningLevel
+      ? { default_reasoning_level: form.defaultReasoningLevel,
+          reasoning_effort: form.defaultReasoningLevel } : {}),
     ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
   };
   if (adding.value) {
@@ -282,8 +292,11 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       ...(props.agent === "claude"
         ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
         : {}),
-      ...(props.agent === "codex" && form.reasoningEffort
-        ? { reasoning_effort: form.reasoningEffort } : {}),
+      ...(props.agent === "codex" && form.reasoningLevels.length
+        ? { reasoning_levels: [...form.reasoningLevels] } : {}),
+      ...(props.agent === "codex" && form.defaultReasoningLevel
+        ? { default_reasoning_level: form.defaultReasoningLevel,
+            reasoning_effort: form.defaultReasoningLevel } : {}),
       ...(parsedCompact.value ? { compact_threshold: parsedCompact.value } : {}),
       ...extras,
       ...(props.agent === "codex"
@@ -431,12 +444,22 @@ function onSave(): void {
           {{ t("ccswitch.edit.formatRouteHint") }}
         </p>
 
-        <!-- D-7: thinking depth (codex) + auto-compact watermark. -->
+        <!-- D-7: thinking levels (codex, cc-switch desktop parity combo)
+             + auto-compact watermark. -->
         <label v-if="agent === 'codex'" class="field">
-          <span>{{ t("ccswitch.edit.reasoningEffort") }}</span>
-          <select v-model="form.reasoningEffort" @change="touch">
-            <option v-for="e in ['minimal', 'low', 'medium', 'high', 'xhigh']"
-                    :key="e" :value="e">{{ e }}</option>
+          <span>{{ t("ccswitch.edit.reasoningLevels") }}</span>
+          <ReasoningLevelsCombo
+            v-model="form.reasoningLevels"
+            :placeholder="t('ccswitch.mapping.levelsPh')"
+            @update:model-value="touch"
+          />
+        </label>
+        <label v-if="agent === 'codex'" class="field">
+          <span>{{ t("ccswitch.mapping.colDefault") }}</span>
+          <select v-model="form.defaultReasoningLevel" @change="touch"
+                  :disabled="!form.reasoningLevels.length">
+            <option value="">{{ t("ccswitch.mapping.defaultAuto") }}</option>
+            <option v-for="lv in form.reasoningLevels" :key="lv" :value="lv">{{ lv }}</option>
           </select>
         </label>
         <label class="field">

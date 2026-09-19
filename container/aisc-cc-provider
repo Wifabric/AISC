@@ -494,6 +494,15 @@ def provider_view(agent: str, row: dict[str, Any],
         # D-7 edit-page prefill (sparse: absent = not configured).
         **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
         **({"compact_threshold": compact_threshold} if compact_threshold else {}),
+        # D-7 provider-level thinking levels (cc-switch desktop parity):
+        # stored in the row meta, applied to catalog rows without their own
+        # explicit set. Sparse.
+        **({"reasoning_levels":
+            [str(x) for x in ((row.get("meta") or {}).get("reasoningLevels") or [])]}
+           if (row.get("meta") or {}).get("reasoningLevels") else {}),
+        **({"default_reasoning_level":
+            str((row.get("meta") or {}).get("defaultReasoningLevel"))}
+           if (row.get("meta") or {}).get("defaultReasoningLevel") else {}),
         "notes": str(row.get("notes") or ""),
         "website_url": str(row.get("website_url") or ""),
         "icon": str(row.get("icon") or ""),
@@ -1344,6 +1353,18 @@ def op_add(agent: str, request: dict[str, Any]) -> list[dict[str, Any]]:
         declared = provider.get("codex_api_format")
         if declared:
             extra["meta"] = {"apiFormat": declared}
+    # D-7: provider-level thinking levels ride the row meta (cc-switch
+    # desktop parity — mapping rows without their own set inherit these).
+    levels = request.get("reasoning_levels")
+    if isinstance(levels, list) and levels:
+        meta = dict(extra.get("meta") or {})
+        meta["reasoningLevels"] = [str(x) for x in levels if str(x).strip()]
+        default = str(request.get("default_reasoning_level") or "").strip()
+        if default:
+            meta["defaultReasoningLevel"] = default
+        else:
+            meta.pop("defaultReasoningLevel", None)
+        extra["meta"] = meta
     _db_merge_row_extra(agent, provider_id, extra)
     return op_list(agent)
 
@@ -1519,6 +1540,21 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
                 f"api_format must be one of {API_FORMATS}, got: {fmt!r}",
             )
         extra["meta"] = {**(extra.get("meta") or {}), "apiFormat": fmt}
+    # D-7: provider-level thinking levels (patch form). Empty list clears.
+    levels = patch.get("reasoning_levels")
+    if isinstance(levels, list):
+        meta = dict(extra.get("meta") or {})
+        if levels:
+            meta["reasoningLevels"] = [str(x) for x in levels if str(x).strip()]
+            default = str(patch.get("default_reasoning_level") or "").strip()
+            if default:
+                meta["defaultReasoningLevel"] = default
+            else:
+                meta.pop("defaultReasoningLevel", None)
+        else:
+            meta.pop("reasoningLevels", None)
+            meta.pop("defaultReasoningLevel", None)
+        extra["meta"] = meta
 
     was_current = row["is_current"]
     switch_back_to = ""
@@ -2085,20 +2121,25 @@ def _apply_codex_model_catalog(
         if models:
             slugs = {str(m["model"]) for m in models}
             # The per-model default_reasoning_level falls back to the
-            # config's model_reasoning_effort — the 思考深度 dropdown writes
-            # that key, so the dropdown stays authoritative unless a mapping
-            # cell explicitly declares its own default.
+            # provider-level meta set, then the config's
+            # model_reasoning_effort (the 思考深度 dropdown's storage).
             effort_m = re.search(
                 r'^\s*model_reasoning_effort\s*=\s*"([^"]+)"', text, re.M)
             config_effort = effort_m.group(1) if effort_m else ""
+            meta_levels = (row.get("meta") or {}).get("reasoningLevels") \
+                if row else None
+            meta_default = (row.get("meta") or {}).get("defaultReasoningLevel") \
+                if row else ""
             entries = [
                 _codex_neutral_catalog_entry(
                     str(m["model"]),
                     int(m.get("contextWindow") or 128_000),
                     1000 + i,
-                    reasoning_levels=m.get("reasoning_levels"),
+                    reasoning_levels=(m.get("reasoning_levels")
+                                      or meta_levels),
                     default_reasoning_level=(
                         str(m.get("default_reasoning_level") or "")
+                        or (str(meta_default) if meta_default else "")
                         or config_effort),
                 )
                 for i, m in enumerate(models)

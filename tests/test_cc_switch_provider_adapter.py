@@ -453,6 +453,24 @@ class EditDanceTests(AdapterTestCase):
         self.assertEqual(set(after), {"zhipu", "codex-official"})
         self.assertEqual(after["codex-official"], before["codex-official"])
 
+    def test_provider_level_reasoning_meta_round_trip(self):
+        """D-7 combo: provider-level levels ride the row meta, the snapshot
+        surfaces them for the edit-page prefill, and an empty list clears."""
+        seed_provider(self.dir, "zhipu", {}, agent="codex", is_current=True,
+                      settings={"auth": {"OPENAI_API_KEY": "sk-z-9"},
+                                "config": 'base_url = "https://x"\n'})
+        self._install_dance_cli()
+        A.op_edit("codex", "zhipu", {"patch": {
+            "reasoning_levels": ["low", "high"],
+            "default_reasoning_level": "high"}})
+        rows = {r["id"]: r for r in A.op_list("codex")}
+        self.assertEqual(rows["zhipu"]["reasoning_levels"], ["low", "high"])
+        self.assertEqual(rows["zhipu"]["default_reasoning_level"], "high")
+        # Empty list clears the provider-level set.
+        A.op_edit("codex", "zhipu", {"patch": {"reasoning_levels": []}})
+        rows = {r["id"]: r for r in A.op_list("codex")}
+        self.assertNotIn("reasoning_levels", rows["zhipu"])
+
     def test_edit_unknown_provider(self):
         self._seed_two()
         with self.assertRaises(A.AdapterError) as ctx:
@@ -1811,6 +1829,35 @@ class CodexModelCatalogHookTests(unittest.TestCase):
         catalog = json.loads(
             (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
         self.assertEqual(catalog["models"][0]["default_reasoning_level"], "low")
+
+    def test_catalog_inherits_provider_meta_levels(self):
+        """D-7 combo: mapping cells without their own set inherit the
+        provider-level meta levels (and meta default beats config effort)."""
+        self._config(
+            'model = "glm-5.3"\n'
+            'model_reasoning_effort = "high"\n\n'
+            "[model_providers.zhipu]\n"
+            'name = "z"\n'
+            'base_url = "https://open.bigmodel.cn/api/anthropic"\n'
+        )
+        row = {
+            "id": "zhipu",
+            "settings_config": {},
+            "settings": {
+                "auth": {"OPENAI_API_KEY": "sk-z"},
+                "modelCatalog": {"models": [
+                    {"model": "glm-5.3", "contextWindow": 1_000_000}]},
+            },
+            "meta": {"reasoningLevels": ["low", "medium", "high"],
+                     "defaultReasoningLevel": "medium"},
+        }
+        A._apply_codex_model_catalog(row, live=False)
+        catalog = json.loads(
+            (self.dir / ".codex" / A._CODEX_CATALOG_FILENAME).read_text(encoding="utf-8"))
+        entry = catalog["models"][0]
+        self.assertEqual([lv["effort"] for lv in entry["supported_reasoning_levels"]],
+                         ["low", "medium", "high"])
+        self.assertEqual(entry["default_reasoning_level"], "medium")
 
     def test_live_fetch_failure_keeps_the_static_catalog(self):
         from unittest import mock

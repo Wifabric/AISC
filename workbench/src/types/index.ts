@@ -500,6 +500,10 @@ export interface CcSwitchProvider {
    * not configured). Codex: config.toml keys; claude: compact env only. */
   reasoning_effort?: string;
   compact_threshold?: number;
+  /** D-7 provider-level thinking levels (row meta; catalog rows without
+   * their own set inherit). Sparse. */
+  reasoning_levels?: string[];
+  default_reasoning_level?: string;
   /** PP (D-12): display columns (db-backed; survive the edit dance). */
   notes?: string;
   website_url?: string;

@@ -576,6 +576,16 @@ pub struct CcSwitchProvider {
     pub icon_color: String,
     #[serde(default)]
     pub model_catalog: Vec<CcSwitchCatalogEntry>,
+    // D-7 edit-page prefill: the stored thinking knobs (sparse — absent =
+    // not configured; the mapping cells and provider-level meta levels).
+    #[serde(default)]
+    pub reasoning_effort: String,
+    #[serde(default)]
+    pub compact_threshold: i64,
+    #[serde(default)]
+    pub reasoning_levels: Vec<String>,
+    #[serde(default)]
+    pub default_reasoning_level: String,
 }
 
 /// One codex mapping row (PP D-12; the /model list source).
@@ -586,6 +596,11 @@ pub struct CcSwitchCatalogEntry {
     pub display_name: String,
     #[serde(default)]
     pub context_window: i64,
+    // D-7: per-model thinking levels (the /model picker's allowed set).
+    #[serde(default)]
+    pub reasoning_levels: Vec<String>,
+    #[serde(default)]
+    pub default_reasoning_level: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
