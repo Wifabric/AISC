@@ -505,6 +505,45 @@ export const cacheUsage = () => invoke<CacheUsage>("cache_usage");
 export const cacheCleanup = (minAgeHours: number) =>
   invoke<CacheCleanupResult>("cache_cleanup", { minAgeHours });
 
+// --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
+export interface CacheInspectRow {
+  id: string;
+  name: string;
+  image?: string;
+  state?: string;
+  kind?: string;
+  size?: string;
+  unique_size?: string;
+  shared?: boolean;
+  dangling?: boolean;
+  in_use?: boolean;
+  size_bytes?: number | null;
+  reclaimable_bytes?: number | null;
+  will_be_cleaned?: boolean;
+  last_used_at?: string;
+  usage_count?: unknown;
+  [key: string]: unknown;
+}
+
+export interface CacheInspectCategory {
+  rows: CacheInspectRow[];
+  summary: { count: number; reclaimable_bytes: number; unknown_count: number };
+}
+
+export interface CacheInspectReport {
+  dockerAvailable: boolean;
+  categories: Record<
+    string,
+    CacheInspectCategory | undefined
+  >;
+  capabilities: Record<string, unknown> | null;
+  warnings: string[];
+  disclaimer: string;
+}
+
+export const cacheInspect = () =>
+  invoke<CacheInspectReport>("cache_inspect");
+
 // --- B3 (2.1.12): docker resource admin (maintenance scan/cleanup/rebuild) ---
 
 /** One classified container/image row (aisc.docker-scan/v1 projection). */

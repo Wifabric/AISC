@@ -2,6 +2,23 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 4：docker 资源检测精细化（2026-09-19，分支 2.1.13-b4-docker-inspect）
+
+- **只读深扫 `aisc maintenance cache-inspect`**（D-2，规格 docker-scan-fidelity.md）：
+  新 envelope `aisc.docker-cache-inspect/v1`，五类逐项（镜像/容器/卷/构建缓存/网络），
+  每行大小+will_be_cleaned 徽标+每类合计；采集矩阵以 `system df -v --format json`
+  为主源（Docker 29.x 实测可用、官方未记载，能力探测兜底），buildx du 回退，
+  卷大小默认 unknown（逐卷 du 分钟级）；可回收口径=未用镜像 ΣUniqueSize（去重，
+  非 docker 的高估 RECLAIMABLE）+停容器可写层+可回收 cache；「现有一键清理会命中」
+  徽标近似（不含 24h 龄过滤，disclaimer 明示）。
+- **只读铁律**：采集仅 ls/df/du/ps，argv 契约测试钉死永不 prune/rmi/rm、prune
+  永不带 -a/--all；cleanup/rebuild 链路零改动；无任何自动触发。
+- **前端**：设置页磁盘组「详细检测」按钮 → 分组手风琴（行级+徽标+合计+免责）；
+  首屏 df 摘要与全部手动按钮原样不动。
+- 测试：python 17 断言（argv 只读钉死/尺寸解析/五类降级/回退）+ Rust 3 用例；
+  真机冒烟：Docker daemon 未运行时优雅降级（docker_available=false）——主路径
+  真机验证归入手测清单。local-gates 全绿。
+
 # v2.1.13 批 3：远程 CLI 版本配对提示（2026-09-19，分支 2.1.13-b3-remote-pairing）
 
 - **比较器**：serve.rs `compare_cli_versions`——strip `.devN` 后取前 3 段数字

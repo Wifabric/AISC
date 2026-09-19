@@ -4,6 +4,7 @@
 //! `-a`); this layer is transport + envelope validation only (doctor.rs
 //! pattern).
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -175,6 +176,142 @@ pub async fn cache_cleanup(
     })
 }
 
+// -- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ----------
+//
+// D-2: detect finer + report accurately; the CLI owns every invariant here
+// too (cache_inspect collects ls/df/du only — never prune/rmi/rm). Transport
+// + typed projection below, same as cache_usage above. Rows degrade to
+// unknown when a category's collector fails; nothing blocks anything else.
+
+pub fn cache_inspect_argv() -> Vec<String> {
+    vec![
+        "maintenance".into(),
+        "cache-inspect".into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+const INSPECT_TIMEOUT: Duration = Duration::from_secs(120);
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct CacheInspectRow {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unique_size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dangling: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_use: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reclaimable_bytes: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub will_be_cleaned: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_used_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_count: Option<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct CacheInspectSummary {
+    #[serde(default)]
+    pub count: u32,
+    #[serde(default)]
+    pub reclaimable_bytes: i64,
+    #[serde(default)]
+    pub unknown_count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct CacheInspectCategory {
+    #[serde(default)]
+    pub rows: Vec<CacheInspectRow>,
+    #[serde(default)]
+    pub summary: CacheInspectSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CacheInspectReport {
+    #[serde(rename = "dockerAvailable")]
+    pub docker_available: bool,
+    pub categories: HashMap<String, CacheInspectCategory>,
+    pub capabilities: Value,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub disclaimer: String,
+}
+
+/// Pure envelope → report projection (unit-tested; the command adds only
+/// transport + envelope validation).
+pub fn inspect_report_from(data: Value) -> CacheInspectReport {
+    let mut categories: HashMap<String, CacheInspectCategory> = HashMap::new();
+    if let Some(map) = data.get("categories").and_then(Value::as_object) {
+        for (key, raw) in map {
+            if let Ok(cat) = serde_json::from_value::<CacheInspectCategory>(raw.clone()) {
+                categories.insert(key.clone(), cat);
+            }
+        }
+    }
+    CacheInspectReport {
+        docker_available: data
+            .get("docker_available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        categories,
+        capabilities: data.get("capabilities").cloned().unwrap_or(Value::Null),
+        warnings: data
+            .get("warnings")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        disclaimer: data
+            .get("disclaimer")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+    }
+}
+
+/// Read-only per-item Docker inspection (D-2). No cleanup semantics here:
+/// the existing manual cleanup buttons stay the only destructive paths.
+#[tauri::command]
+pub async fn cache_inspect(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+) -> Result<CacheInspectReport, WorkbenchError> {
+    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let env = run_control_target(
+        &target,
+        cache_inspect_argv(),
+        INSPECT_TIMEOUT,
+        CancellationToken::new(),
+    )
+    .await?;
+    let data = envelope_data(env, "maintenance")?;
+    Ok(inspect_report_from(data))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +362,51 @@ mod tests {
     fn df_rows_tolerate_missing_map() {
         assert!(df_rows_from(Value::Null).is_empty());
         assert!(df_rows_from(serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn inspect_argv_is_read_only() {
+        assert_eq!(
+            cache_inspect_argv(),
+            vec!["maintenance", "cache-inspect", "--format", "json"]
+        );
+    }
+
+    #[test]
+    fn inspect_report_parses_categories_tolerantly() {
+        let data: Value = serde_json::json!({
+            "docker_available": true,
+            "categories": {
+                "images": {
+                    "rows": [{
+                        "id": "abc", "name": "<none>:<none>", "in_use": false,
+                        "dangling": true, "size": "120MB",
+                        "reclaimable_bytes": 110_000_000, "will_be_cleaned": true
+                    }],
+                    "summary": { "count": 1, "reclaimable_bytes": 110_000_000, "unknown_count": 0 }
+                },
+                "garbage": "not-an-object"
+            },
+            "capabilities": { "df_verbose_json": true },
+            "warnings": ["df-verbose-json-unavailable"],
+            "disclaimer": "estimates"
+        });
+        let report = inspect_report_from(data);
+        assert!(report.docker_available);
+        let images = report.categories.get("images").unwrap();
+        assert_eq!(images.rows.len(), 1);
+        assert_eq!(images.rows[0].reclaimable_bytes, Some(110_000_000));
+        assert_eq!(images.rows[0].will_be_cleaned, Some(true));
+        assert_eq!(images.summary.count, 1);
+        assert!(report.categories.get("garbage").is_none()); // tolerated out
+        assert_eq!(report.warnings, vec!["df-verbose-json-unavailable"]);
+    }
+
+    #[test]
+    fn inspect_report_defaults_on_null_data() {
+        let report = inspect_report_from(Value::Null);
+        assert!(!report.docker_available);
+        assert!(report.categories.is_empty());
+        assert_eq!(report.disclaimer, "");
     }
 }

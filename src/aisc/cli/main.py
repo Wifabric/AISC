@@ -523,6 +523,10 @@ def _build_parser() -> _AiscArgumentParser:
     mtu = mtsub.add_parser("cache-usage", help="Read-only docker system df summary",
                            allow_abbrev=False)
     _add_global_args(mtu, is_subparser=True)
+    mtci = mtsub.add_parser("cache-inspect",
+                            help="Read-only per-item Docker resource inspection (D-2)",
+                            allow_abbrev=False)
+    _add_global_args(mtci, is_subparser=True)
 
     mtcc = mtsub.add_parser("cache-cleanup",
                             help="Prune builder cache + dangling images (until-filtered)",
@@ -1957,6 +1961,10 @@ def _cmd_maintenance(
     if sub == "cache-usage":
         from aisc.application.docker_lifecycle import cache_usage
         return cache_usage(executor), 0, []
+    if sub == "cache-inspect":
+        # D-2 read-only per-item inspection — never chained into cleanup
+        from aisc.application.docker_lifecycle import cache_inspect
+        return cache_inspect(executor), 0, []
     if sub == "cache-cleanup":
         from aisc.application.docker_lifecycle import docker_cache_cleanup
         data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)

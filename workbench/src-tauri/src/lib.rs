@@ -97,7 +97,7 @@ use session::{
     ack_session_exit, close_session, open_session, resize_session, session_read_spool,
     shutdown_workbench, shutdown_workbench_v2, write_session, SessionRegistry,
 };
-use cache::{cache_cleanup, cache_usage};
+use cache::{cache_cleanup, cache_inspect, cache_usage};
 use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
 use update::{app_check_update, app_download_update, app_install_update};
 use settings::{load_settings, reset_gui_settings, save_settings};
@@ -154,6 +154,7 @@ pub fn run(cli_arg: Option<String>) {
             app_download_update,
             app_install_update,
             cache_cleanup,
+            cache_inspect,
             close_session,
             ack_session_exit,
             shutdown_workbench,

@@ -31,6 +31,7 @@ Stage C wires the installers' rebuild flow.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -541,6 +542,371 @@ def _log_tail(stdout: str, lines: int = 20) -> str:
 
 CACHE_USAGE_SCHEMA = "aisc.docker-cache-usage/v1"
 CACHE_CLEANUP_SCHEMA = "aisc.docker-cache-cleanup/v1"
+CACHE_INSPECT_SCHEMA = "aisc.docker-cache-inspect/v1"
+
+
+# --- v2.1.13 (docker-scan-fidelity): read-only per-resource inspection -----
+#
+# D-2 (2026-09-19): detect FINER and report ACCURATELY; never clean anything
+# automatically, never add new prune paths. Primary size/detail source is
+# `docker system df -v --format json` (Docker 29.x returns structured
+# per-item JSON there — verified on 29.8.0; officially undocumented, so
+# callers must tolerate absence). Fallbacks degrade per-category and mark
+# rows unknown; nothing here blocks anything else.
+#
+# Accuracy notes (the "更准确" half):
+# - Image RECLAIMABLE aggregates over-count shared layers; the accurate
+#   per-image figure is UNIQUE SIZE, summed over images with Containers==0.
+# - `image prune` (no -a) only ever removes DANGLING images, so rows also
+#   carry will_be_cleaned to show what the CURRENT manual cleanup would hit.
+# - Build cache has no Reclaimable boolean in df -v; it is derived from
+#   InUse. buildx du (fallback) carries it natively.
+
+_SIZE_UNITS: Dict[str, int] = {
+    "": 1, "B": 1,
+    "K": 10**3, "KI": 2**10,
+    "M": 10**6, "MI": 2**20,
+    "G": 10**9, "GI": 2**30,
+    "T": 10**12, "TI": 2**40,
+}
+
+
+def _size_bytes(value: Any) -> Optional[int]:
+    """Best-effort docker size strings (`35.6 kB`, `1.2GB`, ints) → bytes.
+    None for N/A / unparseable — the row is reported as unknown."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    s = str(value).strip()
+    if not s or s.upper() in ("N/A", "UNKNOWN"):
+        return None
+    m = re.match(r"^([\d.]+)\s*([A-Za-z]*)$", s)
+    if not m:
+        return None
+    try:
+        num = float(m.group(1))
+    except ValueError:
+        return None
+    unit = m.group(2).upper().rstrip("B") if m.group(2) else ""
+    if unit not in _SIZE_UNITS:
+        return None
+    return int(num * _SIZE_UNITS[unit])
+
+
+def _container_rw_size(value: Any) -> Optional[int]:
+    """`ps -s` size strings: `35.6 kB (virtual 109 MB)` → writable layer."""
+    if value is None:
+        return None
+    head = str(value).split("(virtual")[0].strip()
+    return _size_bytes(head)
+
+
+def _json_lines(stdout: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            out.append(row)
+    return out
+
+
+def _df_verbose(executor: Any) -> Optional[Dict[str, Any]]:
+    """`docker system df -v --format json` → {Images, Containers, Volumes,
+    BuildCache} (no Networks section). None when unavailable."""
+    try:
+        result = executor.run_captured(
+            ["system", "df", "-v", "--format", "json"], timeout=60.0
+        )
+    except Exception:
+        return None
+    if getattr(result, "exit_code", 1) != 0:
+        return None
+    text = (result.stdout or "").strip()
+    if not text:
+        return None
+    try:
+        doc = json.loads(text)
+        if isinstance(doc, dict):
+            return doc
+    except ValueError:
+        pass
+    merged: Dict[str, Any] = {}
+    for row in _json_lines(text):
+        merged.update(row)
+    return merged or None
+
+
+def _buildx_du(executor: Any) -> Optional[List[Dict[str, Any]]]:
+    """`docker buildx du --format json` (NDJSON records). None when the
+    buildx plugin is absent/old (Docker Desktop's `docker builder` aliases
+    to buildx; classic CLIs lack du entirely)."""
+    try:
+        result = executor.run_captured(
+            ["buildx", "du", "--format", "json"], timeout=60.0
+        )
+    except Exception:
+        return None
+    if getattr(result, "exit_code", 1) != 0:
+        return None
+    rows = _json_lines(result.stdout or "")
+    return rows or None
+
+
+def _images_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Image rows. df -v Images is the ONLY real Unique/Shared source on
+    Docker 29 (image ls --format json reports N/A placeholders there); the
+    ls pass adds dangling classification for older daemons. Reclaimable =
+    Σ UniqueSize over images with no containers; dangling is the subset the
+    current manual cleanup would remove (its 24h age filter is NOT applied
+    per-row — the disclaimer says so)."""
+    rows: List[Dict[str, Any]] = []
+    ls = executor.run_captured(["images", "--format", "{{json .}}"], timeout=30.0)
+    fallback: List[Dict[str, Any]] = []
+    if getattr(ls, "exit_code", 1) == 0:
+        for row in _json_lines(ls.stdout or ""):
+            repo = str(row.get("Repository") or "")
+            fallback.append({
+                "id": str(row.get("ID") or ""),
+                "name": f"{repo}:{row.get('Tag')}",
+                "in_use": None,
+                "dangling": repo == "<none>",
+                "size": row.get("Size"),
+                "size_bytes": _size_bytes(row.get("Size")),
+                "unique_size": None,
+                "shared": None,
+                "reclaimable_bytes": None,
+                "will_be_cleaned": repo == "<none>",
+            })
+    dv = (df_v or {}).get("Images")
+    if not isinstance(dv, list) or not dv:
+        return fallback
+    for row in dv:
+        if not isinstance(row, dict):
+            continue
+        containers = str(row.get("Containers") or "").strip()
+        in_use = containers not in ("", "0", "N/A")
+        repo = str(row.get("Repository") or "")
+        dangling = repo == "<none>"
+        unique = _size_bytes(row.get("UniqueSize"))
+        rows.append({
+            "id": str(row.get("ID") or ""),
+            "name": f"{repo}:{row.get('Tag')}",
+            "in_use": in_use,
+            "dangling": dangling,
+            "size": row.get("Size"),
+            "size_bytes": _size_bytes(row.get("Size")),
+            "unique_size": row.get("UniqueSize"),
+            "shared": row.get("SharedSize"),
+            "reclaimable_bytes": (0 if in_use else unique),
+            "will_be_cleaned": dangling,
+        })
+    return rows
+
+
+def _container_rows(executor: Any) -> List[Dict[str, Any]]:
+    """Stopped containers' writable layers are the reclaimable part; running
+    ones report unknown (they cannot be reclaimed without stopping)."""
+    ps = executor.run_captured(
+        ["ps", "-a", "--size", "--format", "{{json .}}"], timeout=30.0
+    )
+    rows: List[Dict[str, Any]] = []
+    if getattr(ps, "exit_code", 1) != 0:
+        return rows
+    for row in _json_lines(ps.stdout or ""):
+        names = row.get("Names") or row.get("Name") or ""
+        name = ", ".join(str(n) for n in names) if isinstance(names, list) else str(names)
+        state = str(row.get("State") or "")
+        running = state == "running"
+        rw = _container_rw_size(row.get("Size"))
+        rows.append({
+            "id": str(row.get("ID") or ""),
+            "name": name,
+            "image": str(row.get("Image") or ""),
+            "state": state,
+            "size": row.get("Size"),
+            "size_bytes": None if running else _container_rw_size(row.get("Size")),
+            "in_use": running,
+            "reclaimable_bytes": (None if running else rw),
+            "will_be_cleaned": False,  # AISC never removes user containers here
+        })
+    return rows
+
+
+def _volume_rows(executor: Any) -> List[Dict[str, Any]]:
+    """Named/anonymous × in-use/dangling. Sizes stay unknown by default
+    (per-volume du can take minutes); AISC NEVER deletes volumes (02 §5) —
+    every row is will_be_cleaned=False and the UI says so."""
+    ls = executor.run_captured(["volume", "ls", "--format", "{{json .}}"], timeout=30.0)
+    if getattr(ls, "exit_code", 1) != 0:
+        return []
+    dang = executor.run_captured(
+        ["volume", "ls", "--filter", "dangling=true", "--format", "{{json .}}"],
+        timeout=30.0,
+    )
+    dangling: set = set()
+    if getattr(dang, "exit_code", 1) == 0:
+        for row in _json_lines(dang.stdout or ""):
+            name = str(row.get("Name") or "")
+            if name:
+                dangling.add(name)
+    rows: List[Dict[str, Any]] = []
+    for row in _json_lines(ls.stdout or ""):
+        name = str(row.get("Name") or "")
+        if not name:
+            continue
+        rows.append({
+            "id": name,
+            "name": name,
+            "dangling": name in dangling,
+            "in_use": name not in dangling,
+            "size": row.get("Size"),
+            "size_bytes": _size_bytes(row.get("Size")),
+            "reclaimable_bytes": None,  # volumes are never reclaimed by AISC
+            "will_be_cleaned": False,
+        })
+    return rows
+
+
+def _cache_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+    """Build-cache rows + whether the buildx fallback ran. Primary: df -v
+    BuildCache (daemon-wide, deduped; Reclaimable derived from InUse).
+    Fallback: buildx du (Reclaimable natively; single builder)."""
+    rows: List[Dict[str, Any]] = []
+    dv = (df_v or {}).get("BuildCache")
+    if isinstance(dv, list) and dv:
+        for row in dv:
+            if not isinstance(row, dict):
+                continue
+            in_use = bool(row.get("InUse"))
+            size_bytes = _size_bytes(row.get("Size"))
+            rows.append({
+                "id": str(row.get("ID") or ""),
+                "kind": str(row.get("CacheType") or row.get("Type") or ""),
+                "in_use": in_use,
+                "shared": bool(row.get("Shared")),
+                "size": row.get("Size"),
+                "size_bytes": size_bytes,
+                "reclaimable_bytes": (0 if in_use else (size_bytes or 0)),
+                "will_be_cleaned": not in_use,
+                "last_used_at": row.get("LastUsedAt"),
+                "usage_count": row.get("UsageCount"),
+            })
+        return rows, False
+    bx = _buildx_du(executor)
+    if bx is not None:
+        for row in bx:
+            reclaimable = bool(row.get("Reclaimable"))
+            size_bytes = _size_bytes(row.get("Size"))
+            rows.append({
+                "id": str(row.get("ID") or ""),
+                "kind": str(row.get("Type") or row.get("CacheType") or ""),
+                "in_use": not reclaimable,
+                "shared": bool(row.get("Shared")),
+                "size": row.get("Size"),
+                "size_bytes": size_bytes,
+                "reclaimable_bytes": ((size_bytes or 0) if reclaimable else 0),
+                "will_be_cleaned": reclaimable,
+                "last_used_at": row.get("LastUsedAt"),
+                "usage_count": row.get("UsageCount"),
+            })
+        return rows, True
+    return rows, False
+
+
+def _network_rows(executor: Any) -> List[Dict[str, Any]]:
+    """Networks are 0-byte; only the count/reference picture matters."""
+    ls = executor.run_captured(["network", "ls", "--format", "{{json .}}"], timeout=30.0)
+    rows: List[Dict[str, Any]] = []
+    if getattr(ls, "exit_code", 1) != 0:
+        return rows
+    for row in _json_lines(ls.stdout or ""):
+        name = str(row.get("Name") or "")
+        if not name:
+            continue
+        rows.append({
+            "id": name,
+            "name": name,
+            "kind": str(row.get("Driver") or ""),
+            "in_use": None,  # reference counting rides the containers pass
+            "size_bytes": 0,
+            "reclaimable_bytes": 0,
+            "will_be_cleaned": False,
+        })
+    return rows
+
+
+def _category_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    reclaimable = 0
+    unknown = 0
+    for row in rows:
+        value = row.get("reclaimable_bytes")
+        if value is None:
+            unknown += 1
+        else:
+            reclaimable += int(value)
+    return {
+        "count": len(rows),
+        "reclaimable_bytes": reclaimable,
+        "unknown_count": unknown,
+    }
+
+
+def cache_inspect(executor: Any, *, cleanup_min_age_hours: int = 24) -> Dict[str, Any]:
+    """Read-only per-resource inspection (D-2). Detects images / containers /
+    volumes / build cache / networks item-by-item, reports the deduped
+    (UNIQUE-size) reclaimable picture, and flags what the CURRENT manual
+    cleanup would hit. Absolutely no prune/rmi/rm anywhere in here, and no
+    caller ever chains this into cleanup."""
+    df = _system_df(executor)
+    docker_available = bool(df)
+    warnings: List[str] = []
+    df_v: Optional[Dict[str, Any]] = None
+    buildx_used = False
+    if docker_available:
+        df_v = _df_verbose(executor)
+        if df_v is None:
+            warnings.append("df-verbose-json-unavailable")
+        buildx_used = _buildx_du(executor) is None
+    images = _images_rows(executor, df_v)
+    containers = _container_rows(executor)
+    volumes = _volume_rows(executor)
+    cache_rows, buildx_used = _cache_rows(executor, df_v)
+    networks = _network_rows(executor)
+
+    def cat(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return {"rows": rows, "summary": _category_summary(rows)}
+
+    return {
+        "schema_version": CACHE_INSPECT_SCHEMA,
+        "action": "cache-inspect",
+        "docker_available": docker_available,
+        "categories": {
+            "images": cat(images),
+            "containers": cat(containers),
+            "volumes": cat(volumes),
+            "build_cache": cat(cache_rows),
+            "networks": cat(networks),
+        },
+        "capabilities": {
+            "df_verbose_json": df_v is not None,
+            "buildx_du": buildx_used,
+        },
+        "cleanup_min_age_hours": cleanup_min_age_hours,
+        "warnings": warnings,
+        "disclaimer": (
+            "Reclaimable figures are estimates (UNIQUE-size based, deduped); "
+            "actual freed space can be lower. will_be_cleaned approximates "
+            "the current manual cleanup (dangling images / not-in-use build "
+            "cache) without its age filter."
+        ),
+    }
 
 
 def _cache_cleanup_argv(kind: str, min_age_hours: int) -> List[str]:

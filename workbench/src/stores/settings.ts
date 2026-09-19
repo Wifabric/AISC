@@ -302,6 +302,25 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
+  // Manual only (D-2): nothing here ever runs on a timer or hooks a build;
+  // the user presses the button, the CLI collects ls/df/du, nothing more.
+  const inspectReport = ref<ipc.CacheInspectReport | null>(null);
+  const inspectBusy = ref(false);
+  const inspectError = ref<string | null>(null);
+  async function loadDockerInspect(): Promise<void> {
+    if (inspectBusy.value) return;
+    inspectBusy.value = true;
+    inspectError.value = null;
+    try {
+      inspectReport.value = await ipc.cacheInspect();
+    } catch (e) {
+      inspectError.value = (e as { message?: string })?.message ?? String(e);
+    } finally {
+      inspectBusy.value = false;
+    }
+  }
+
   return {
     doc,
     // --- R4b: the drive target ---
@@ -311,6 +330,11 @@ export const useSettingsStore = defineStore("settings", () => {
     remoteVersions,
     versionBusy,
     checkRemoteCliVersion,
+    // --- v2.1.13 docker-scan-fidelity ---
+    inspectReport,
+    inspectBusy,
+    inspectError,
+    loadDockerInspect,
     async refreshTarget(): Promise<void> {
       try {
         targetRef.value = await ipc.targetGet();
