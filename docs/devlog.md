@@ -2,6 +2,20 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.12 收官（2026-09-19）
+
+- **阶段收官，进入 v2.1.13**。用户裁定：软件未稳，v2.1.12 **保持 preview 不发
+  final**（final 经明确要求再发）——v2.1.12-preview.1 维持在架即为阶段发布物。
+- 阶段成果：provider 模板化 + codesome 专项（手测通过）、每模型思考等级 +
+  压缩阈值、编辑删除链路健壮化（DB-only 舞步）、D-8 发布模型重构（preview
+  渠道自动化发布链）、版本双轨规约、阶段开发流程规约（DEVELOP_WIKI §1.1）。
+  详见下方 codesome 专项实施条目与 `docs/archive/2.1.12-dev-plans/`。
+- 收官状态：develop 全绿（pytest 1297 / vitest / cargo / vendor 1516）；
+  plans 归档 `docs/archive/2.1.12-dev-plans/`；转期清单固化于 todo
+  v2.1.12 收官段（自更新端到端、旧卷迁移、r2 观察、Slurm 阻塞项等）。
+- 版本切换：Workbench 线 2.1.12 → **2.1.13**（tauri.conf + package.json）；
+  CLI 线 0.1.2.dev0 不变。
+
 # D-8 发布模型重构裁定（2026-09-19）
 
 - **背景**：用户实测 Workbench 自更新（A7）发现端到端从未成立——release 里的
