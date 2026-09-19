@@ -2,6 +2,24 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# D-8 发布模型重构裁定（2026-09-19）
+
+- **背景**：用户实测 Workbench 自更新（A7）发现端到端从未成立——release 里的
+  `-setup.exe` 是 artifact.yml 用 Inno 打的 **CLI 安装器**，Workbench NSIS
+  （nsis-installer.yml 产物）从未附到 release；且双轨版本号使
+  `version_gt(CLI 版本, Workbench 版本)` 恒假（0.1.x 永远 < 2.1.x）。
+- **裁定（全文见 decisions.md D-8）**：①每个 release 附双安装器——CLI 包
+  改名 `aisc-cli-<版本>-installer.exe`（让出 `-setup.exe` 后缀）+
+  **Workbench NSIS** `AISC-Workbench-<版本>-setup.exe`（自带打包时最新
+  CLI，装 UI 顺带装 CLI）；②**发布版本号以 Workbench 为准**（release tag
+  = Workbench 版本线，自更新比较语义随之恢复）；③更新器资产匹配改
+  「Workbench 前缀 + `-setup.exe` 后缀」双条件；④PyPI 解耦——CLI 版本
+  发布走 pip 独立节奏，CLI tag 改 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配
+  `v*` 不误建 Release），pip 用户更新 CLI 后 `aisc update` 更镜像。
+- 实施批已拆（decisions.md D-8.6）：update.rs 匹配 / 双 workflow 资产
+  命名与附加 / pypi-publish cli-v 前缀 / §11.2 重写 / 0.1.0→当前端到端
+  自更新测试。待开工。
+
 # 2.1.12 codesome 专项实施（2026-09-18）
 
 - **双模板 + 全局去预置**落地（D-1/D-2/D-6/D-7，分支 2.1.12-codesome-templates
@@ -34,6 +52,21 @@
   vendor 1516/1516 / 远程四流水线全绿（35341697xxx、35350491xxx、35353638xxx）。
 - **手测结论：用户确认通过（2026-09-18）**——获取服务跳转、baseUrl 预填与
   联动、思考等级多选、压缩阈值均验证 OK。
+- **手测修复轮二/三（09-19，CI 全绿，用户复测确认通过）**：①添加页拉模型
+  requires --id——adapter 的 id 门先于 stdin 读取，重排后放行内联探测；
+  ②「映射 1 个 /model 出来一堆」——S9 在线目录合并收敛为只填充空目录
+  （映射表即契约）；③每模型思考等级 cc-switch 桌面版多选下拉（可搜索勾选
+  + 默认等级自动）落位模型映射行内（首版误做成 provider 级字段已撤）；
+  ④快照回显思考深度/压缩阈值（此前表单硬编码默认，存了看不见）；⑤编辑
+  唯一 provider 报「无路可切」——去预置连带回归，舞步改 DB-only（删/建走
+  数据库，尾部切换回写 live）；⑥上游 5.10.5 拒绝空配置 codex 行热切换
+  （bearer 写入守卫空文本，上游源码实锤）——官方行保底最小合法配置
+  `model = "gpt-5.2"`（插入/补写/创建种子三处一致）。踩坑：上游 codex
+  热切换会把 live 配置（含密钥）写进切换目标行存储——任何借道上游切换的
+  实现都会克隆用户配置（实测实锤后定案 DB-only 舞步）；`aisc build` 不带
+  --events 会在后台无 TTY 时交互问 tag 直接 Cancelled；vendor 刷新两次
+  漏跑均被 bundle CI 校验门拦截。手测污染容器已清理（default 克隆删除、
+  official 复位）。
 
 # 2.1.12 阶段开题裁决（2026-09-18）
 
@@ -66,22 +99,6 @@
   （VERSION + envelope fixture + `v0.1.2.dev0.md` 占位）。
 - 记录：本版是「阶段收尾」按 0.1.0 惯例被解读为完整 final 发布的产物；
   收尾=preview 的新规约（DEVELOP_WIKI §1.1）自此生效，后续不再重演。
-
-# 2.1.12 codesome 专项实施（2026-09-18）
-
-- **手测修复轮三（09-19，CI 全绿，用户确认通过）**：⑤编辑唯一 provider 报
-  「无路可切」——去预置连带回归，舞步改 DB-only（删/建走数据库，尾部切换
-  回写 live）；⑥上游 5.10.5 拒绝空配置 codex 行热切换（bearer 写入守卫
-  空文本，上游源码实锤）——官方行保底最小合法配置 `model = "gpt-5.2"`
-  （插入/补写/创建种子三处一致）；⑦思考等级 cc-switch 桌面版多选下拉
-  （可搜索勾选 + 默认等级自动）落位模型映射行内（首版误做成 provider 级
-  字段已撤）；⑧快照回显思考深度/压缩阈值（此前表单硬编码默认，存了看不见）；
-  ⑨添加页拉模型 requires --id（id 门先于 stdin 读取，已重排）；⑩在线目录
-  合并收敛为只填充空目录（映射表即契约）。踩坑：上游 codex 热切换会把
-  live 配置（含密钥）写进切换目标行存储——任何借道上游切换的实现都会克隆
-  用户配置（实锤后定案 DB-only 舞步）；`aisc build` 不带 --events 会在
-  后台无 TTY 时交互问 tag 直接 Cancelled；vendor 刷新两次漏跑均被 bundle
-  CI 校验门拦截。手测污染容器已清理（default 克隆删除、official 复位）。
 
 # 版本双轨与阶段开发流程规约（2026-09-18，用户裁定）
 

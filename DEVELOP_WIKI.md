@@ -743,6 +743,8 @@ tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为
 
 ### 11.2 发布步骤
 
+> **D-8 发布模型重构（2026-09-19 裁定，实施批进行中）**：release 版本号**以 Workbench 为准**（tag = `v2.1.12` 线），每个 release 附**双安装器**——`AISC-Workbench-<版本>-setup.exe`（Workbench NSIS，自带打包时最新 CLI，装 UI 顺带装 CLI）+ `aisc-cli-<CLI版本>-installer.exe`（CLI 包，让出 `-setup.exe` 后缀）。自更新资产匹配 =「`AISC-Workbench-` 前缀 + `-setup.exe` 后缀」双条件。**PyPI 解耦**：CLI 版本发布走 pip 独立节奏，tag 用 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`）。下方步骤为旧形态（CLI 版本号 tag），D-8 实施批落地时同步重写。
+
 1. 在 `develop` 完成功能和完整验证，通过 PR 将候选变更合入 `main`。
 2. 发布变更只修改根 `VERSION`，并新增 `docs/releases/v<VERSION>.md`；保持 `docs/devlog.md` 新到旧。
 3. 确认发布提交中的 `VERSION`、Release Notes 文件名和计划 tag 完全一致。

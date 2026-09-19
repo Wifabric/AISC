@@ -182,8 +182,8 @@
   - [x] 初次启动构建失败时，提供重新构建按钮（B1：BuildProgress failed/cancelled 态「重新构建」按钮，同 tag 复用 startBuild 链；B2 顺带 BUILD_TIMEOUT 600→1800s；手测 PASS 2026-09-16）
   - [x] claude、codex、cc-switch等内置工具，定期更新（R5 裁决 = 与 cli update 合一入口；A5 交付：--pin-tool 用户层+build args 消费+cc-switch 三处漂移修齐+node:22 基底）
   - [x] v2.1.11 bug：切换颜色主题后，历史会话视图的消息/终端输出块残留深色样式（深底+淡化字不随主题重绘，2026-09-16 用户截图报障，B0 修复——addon-webgl 图集不随 options.theme 重绘，切主题时重建 addon；手测 PASS 2026-09-16）
-  - [ ] Provider目前看来应该就是上下文后面加个自动compact；
-  - [ ] codex只选模型，无法选择思考深度
+  - [x] 上下文后面加个自动compact阈值；
+  - [x] codex只选模型，无法选择思考深度
 
 
 
@@ -196,4 +196,4 @@
 - [ ] 变更页
   - [ ] vscode的git插件的体验
   - [ ] 展示变化文件用文件树
-- [ ] 
+- [ ] 导出的工作区zip恢复为工作区，且指向新路径
