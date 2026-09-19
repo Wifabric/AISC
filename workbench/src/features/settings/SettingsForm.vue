@@ -202,6 +202,19 @@ const issuesByField = computed(() => {
 const saving = computed(() => store.saveState === "saving");
 const savedFlash = ref(false);
 
+// --- v2.1.13 remote CLI pairing (soft hint; hard gate unchanged) ---
+const upgradeCmd = "pip install -U aisc-cli";
+function onCheckVersion(name: string): void {
+  void store.checkRemoteCliVersion(name);
+}
+async function onCopyUpgradeCmd(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(upgradeCmd);
+  } catch {
+    /* clipboard denied — the command text is visible next to the button */
+  }
+}
+
 /** PERF P8 (D-13): performance working copy (load/edit/save like hostTools;
  *  defaults mirror the Rust sanitizer). */
 const perf = computed(() => store.doc?.performance);
@@ -516,6 +529,47 @@ async function reopenOnboarding() {
                this note a password-auth user just sees "Permission denied"
                with no clue why no prompt ever appeared. -->
           <p class="note">{{ t("settings.machines.authNote") }}</p>
+          <!-- v2.1.13 remote CLI pairing: per-machine soft version probe.
+               Compares the remote serve banner's cli_version against the
+               local pinned CLI (never the Workbench version). -->
+          <div v-if="store.doc?.remoteMachines?.length" class="machine-versions">
+            <p class="help">{{ t("settings.machines.versionTitle") }}</p>
+            <div
+              v-for="m in store.doc.remoteMachines"
+              :key="'mv-' + m.name"
+              class="field machine-version-row"
+            >
+              <span class="mv-name">{{ m.name }}</span>
+              <span v-if="store.remoteVersions[m.name]" class="mv-detail">
+                {{ t("settings.machines.versionDetail", {
+                  remote: store.remoteVersions[m.name].remoteVersion || "?",
+                  local: store.remoteVersions[m.name].localVersion || "?",
+                }) }}
+                <b v-if="store.remoteVersions[m.name].verdict === 'behind'" class="mv-behind">
+                  {{ t("settings.machines.needsUpdate") }}
+                </b>
+                <span v-else-if="store.remoteVersions[m.name].verdict === 'equal'">
+                  {{ t("settings.machines.upToDate") }}
+                </span>
+                <span v-else-if="store.remoteVersions[m.name].verdict === 'ahead'">
+                  {{ t("settings.machines.ahead") }}
+                </span>
+                <span v-else>{{ t("settings.machines.versionUnknown") }}</span>
+              </span>
+              <span v-else class="mv-detail mv-muted">{{ t("settings.machines.notChecked") }}</span>
+              <button
+                class="ui-button"
+                :disabled="!!store.versionBusy[m.name]"
+                @click="onCheckVersion(m.name)"
+              >{{ t("settings.machines.check") }}</button>
+              <template v-if="store.remoteVersions[m.name]?.verdict === 'behind'">
+                <code class="mv-cmd">{{ upgradeCmd }}</code>
+                <button class="ui-button" @click="onCopyUpgradeCmd()">
+                  {{ t("settings.machines.copyCmd") }}
+                </button>
+              </template>
+            </div>
+          </div>
         </template>
 
         <!-- PERF P8 (D-13): performance / low-spec mode. lowSpec gates the
@@ -767,6 +821,20 @@ input:disabled, select:disabled { opacity: 0.5; }
   align-items: center; margin: 6px 0 0; font-size: var(--font-xs); color: var(--text-faint); }
 .machine-row { display: grid; grid-template-columns: 110px 160px 90px 72px 1fr 26px; gap: 8px; align-items: stretch; }
 .machine-row input { box-sizing: border-box; min-width: 0; }
+/* v2.1.13 remote CLI pairing rows */
+.machine-versions { margin-top: 4px; }
+.machine-version-row {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  font-size: var(--font-sm); color: var(--text-2);
+}
+.machine-version-row .mv-name { font-weight: 600; color: var(--text); min-width: 90px; }
+.machine-version-row .mv-muted { color: var(--text-muted); }
+.machine-version-row .mv-behind { color: var(--warn); }
+.machine-version-row .mv-cmd {
+  font-family: var(--font-mono); font-size: var(--font-sm);
+  background: var(--surface-2, rgba(128, 128, 128, 0.12));
+  padding: 2px 6px; border-radius: var(--radius-sm, 4px);
+}
 .m-host { font-family: var(--font-mono); font-size: var(--font-sm); }
 .loading { color: var(--text-muted); font-size: var(--font-md); }
 .foot {

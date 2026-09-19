@@ -2,6 +2,24 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 3：远程 CLI 版本配对提示（2026-09-19，分支 2.1.13-b3-remote-pairing）
+
+- **比较器**：serve.rs `compare_cli_versions`——strip `.devN` 后取前 3 段数字
+  （对齐 update.py `_version_key` 语义）；任一侧不可解析返回 None（UI 静默，
+  宁缺勿误报）。Workbench 2.1.x 轨永不参与比较。
+- **探针命令**：`remote_cli_info(machine)`——按名查 settings.remoteMachines →
+  to_ssh_target → 池化 serve 会话读 ready banner 的 cli_version（2.1.10 起一直
+  在传、首次被消费）vs 本机 pin 的 `aisc version`（negotiate）；返回
+  {remote, local, verdict: behind/equal/ahead/unknown, serve_protocol}。
+  建池即探测：verdict 与实际服务的驻留会话一致。
+- **UI 三落点**：设置页 machines 组「远程机器 CLI 版本」块（每台检测按钮 +
+  判定 + behind 时展示/一键复制 `pip install -U aisc-cli`）；WorkspacePicker
+  target 行「CLI 需更新」角标；switchTarget 到远程机器自动探测一次，behind
+  弹 toast（每 machine+版本去重，action 跳设置页）。
+- **硬门不动**：serve_protocol≠3 仍是硬错（四层兼容模型的 L4 软提示层）。
+- 测试：Rust 比较器 8 断言 + vitest settings 3 用例（缓存/去重/降级/自动探测）。
+  local-gates 全绿。
+
 # v2.1.13 批 2：工作区 zip 恢复（2026-09-19，分支 2.1.13-b2-zip-restore）
 
 - **导入半边落地（规格 workspace-zip-restore.md，方案 A+C）**：新 Tauri 命令

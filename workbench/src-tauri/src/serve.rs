@@ -751,8 +751,94 @@ fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+// -- v2.1.13 remote CLI pairing: soft version hint -------------------------
+//
+// The serve_protocol hard gate (handshake) is untouched; this layer only
+// reports whether the remote CLI looks older than the local one so the UI
+// can hint at `pip install -U aisc-cli`. cli_version rides the ready banner
+// (recorded since 2.1.10, never consumed until now).
+
+/// CLI-track comparison: strip a trailing `.devN` build suffix, then compare
+/// the first three numeric segments (mirrors
+/// `src/aisc/application/update.py::_version_key`). The Workbench track
+/// (2.1.x) must never enter this comparison. Returns None when either side
+/// is unparseable (empty banner, garbage) - the UI stays silent, no guess.
+pub fn compare_cli_versions(remote: &str, local: &str) -> Option<std::cmp::Ordering> {
+    fn key(v: &str) -> Option<[u64; 3]> {
+        let base = v.split(".dev").next().unwrap_or(v);
+        let mut out = [0u64; 3];
+        for (i, seg) in base.split('.').take(3).enumerate() {
+            out[i] = seg.parse::<u64>().ok()?;
+        }
+        Some(out)
+    }
+    Some(key(remote)?.cmp(&key(local)?))
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCliInfo {
+    pub machine: String,
+    pub remote_version: String,
+    pub local_version: String,
+    /// "behind" | "equal" | "ahead" | "unknown"
+    pub verdict: String,
+    pub serve_protocol: u64,
+}
+
+/// Version probe for one remote machine: pooled serve banner (remote side)
+/// vs a fresh `aisc version` on the pinned local CLI. Establishing the pool
+/// is intentional - the same resident session the fs ops use is what gets
+/// probed, so the verdict matches what actually serves.
+#[tauri::command]
+pub async fn remote_cli_info(
+    app: tauri::AppHandle,
+    machine: String,
+) -> Result<RemoteCliInfo, WorkbenchError> {
+    let rm = crate::target::machine_by_name(&app, &machine)?;
+    let target = rm.to_ssh_target();
+    let session = pooled_session(global_pool(), &target).await?;
+    let banner = session.banner();
+    let remote_version = banner.cli_version.clone();
+    let serve_protocol = banner.serve_protocol;
+    let cancel = CancellationToken::new();
+    let exe = crate::session::resolve_cli(&app).await?;
+    let report = crate::cli::negotiate(&exe, cancel).await;
+    let local_version = report
+        .version_info
+        .and_then(|v| v.cli_version)
+        .unwrap_or_default();
+    let verdict = match compare_cli_versions(&remote_version, &local_version) {
+        Some(std::cmp::Ordering::Less) => "behind",
+        Some(std::cmp::Ordering::Equal) => "equal",
+        Some(std::cmp::Ordering::Greater) => "ahead",
+        None => "unknown",
+    };
+    Ok(RemoteCliInfo {
+        machine,
+        remote_version,
+        local_version,
+        verdict: verdict.to_string(),
+        serve_protocol,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn cli_version_compare_normalizes_dev_and_rejects_garbage() {
+        use super::compare_cli_versions;
+        use std::cmp::Ordering::*;
+        assert_eq!(compare_cli_versions("0.1.1", "0.1.2.dev0"), Some(Less));
+        assert_eq!(compare_cli_versions("0.1.2.dev0", "0.1.2"), Some(Equal));
+        assert_eq!(compare_cli_versions("0.1.2.dev3", "0.1.2.dev0"), Some(Equal));
+        assert_eq!(compare_cli_versions("0.1.3", "0.1.2"), Some(Greater));
+        assert_eq!(compare_cli_versions("0.2.0", "0.1.9"), Some(Greater));
+        assert_eq!(compare_cli_versions("", "0.1.2"), None);
+        assert_eq!(compare_cli_versions("dev", "0.1.2"), None);
+        assert_eq!(compare_cli_versions("0.1", "0.1.0"), Some(Equal));
+    }
     use super::*;
     use serde_json::json;
     use tokio::io::duplex;

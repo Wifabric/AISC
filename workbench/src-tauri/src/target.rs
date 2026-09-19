@@ -154,7 +154,7 @@ fn set_window_target(
     Ok(())
 }
 
-fn machine_by_name(app: &tauri::AppHandle, name: &str) -> Result<RemoteMachine, WorkbenchError> {
+pub(crate) fn machine_by_name(app: &tauri::AppHandle, name: &str) -> Result<RemoteMachine, WorkbenchError> {
     let dir = crate::session::config_dir(app)
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("settings dir: {e:?}")))?;
     let doc = crate::settings::load_settings_document(&dir)

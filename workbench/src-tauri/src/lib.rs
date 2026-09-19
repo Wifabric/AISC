@@ -59,6 +59,7 @@ pub fn ensure_sidecar_utf8() {
 use artifact::{artifact_inspect, artifact_list, artifact_refresh};
 use tauri::Emitter;
 use cli::{cli_clear_pin, cli_discover, cli_pin, negotiate_capabilities, CliArg};
+use serve::remote_cli_info;
 use watcher::{workspace_rescan, workspace_watch_start, workspace_watch_stop, WatcherState};
 use workspace::{
     remote_browse,
@@ -225,6 +226,7 @@ pub fn run(cli_arg: Option<String>) {
             workspace_history_remove,
             workspace_path_exists,
             remote_browse,
+            remote_cli_info,
             workspace_reveal_data_file,
             workspace_copy_path,
             workspace_create_file,

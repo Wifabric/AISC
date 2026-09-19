@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import { useToastStore } from "../toast";
 import type { SettingsDocument } from "../../types";
 import { useSettingsStore } from "../settings";
 
@@ -18,6 +19,10 @@ const mockIpc = vi.hoisted(() => ({
   dockerScan: vi.fn(),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
+  targetGet: vi.fn().mockResolvedValue(null),
+  targetSet: vi.fn(),
+  targetClear: vi.fn().mockResolvedValue(null),
+  remoteCliInfo: vi.fn(),
 }));
 
 vi.mock("../../lib/ipc", () => mockIpc);
@@ -242,5 +247,47 @@ describe("docker admin panel (2.1.12 B3)", () => {
     await s.runDockerRebuild();
     expect(s.dockerError).toBeNull();
     expect(s.dockerLog.some((l) => l.includes("sha256:abcdef0123456789".slice(0, 19)))).toBe(true);
+  });
+});
+
+describe("v2.1.13 remote CLI pairing", () => {
+  it("checkRemoteCliVersion caches the probe and toasts once per machine+version", async () => {
+    const toast = useToastStore();
+    const pushSpy = vi.spyOn(toast, "push");
+    mockIpc.remoteCliInfo.mockResolvedValue({
+      machine: "nas", remoteVersion: "0.1.1", localVersion: "0.1.2.dev0",
+      verdict: "behind", serveProtocol: 3,
+    });
+    const s = useSettingsStore();
+    await s.load();
+    await s.checkRemoteCliVersion("nas");
+    expect(s.remoteVersions["nas"].verdict).toBe("behind");
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    await s.checkRemoteCliVersion("nas");
+    expect(pushSpy).toHaveBeenCalledTimes(1); // deduped
+  });
+
+  it("a failed probe degrades to unknown without throwing", async () => {
+    mockIpc.remoteCliInfo.mockRejectedValue(new Error("ssh dead"));
+    const s = useSettingsStore();
+    await s.load();
+    await s.checkRemoteCliVersion("nas");
+    expect(s.remoteVersions["nas"].verdict).toBe("unknown");
+  });
+
+  it("switchTarget to a remote machine fires one probe", async () => {
+    mockIpc.remoteCliInfo.mockResolvedValue({
+      machine: "nas", remoteVersion: "0.1.2", localVersion: "0.1.2.dev0",
+      verdict: "equal", serveProtocol: 3,
+    });
+    mockIpc.targetSet.mockResolvedValue({
+      kind: "remote",
+      machine: { name: "nas", host: "nas", user: "tv", port: 22, keyPath: "" },
+    });
+    const s = useSettingsStore();
+    await s.load();
+    await s.switchTarget("nas");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockIpc.remoteCliInfo).toHaveBeenCalledWith("nas");
   });
 });

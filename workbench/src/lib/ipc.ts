@@ -317,6 +317,19 @@ export const targetGet = () =>
   invoke<import("../types").TargetInfo>("target_get");
 export const targetSet = (name: string) =>
   invoke<import("../types").TargetInfo>("target_set", { name });
+
+/** v2.1.13 remote CLI pairing: soft version probe (the
+ * serve_protocol hard gate is unchanged). verdict:
+ * "behind" | "equal" | "ahead" | "unknown" (unparseable). */
+export interface RemoteCliInfo {
+  machine: string;
+  remoteVersion: string;
+  localVersion: string;
+  verdict: string;
+  serveProtocol: number;
+}
+export const remoteCliInfo = (machine: string) =>
+  invoke<RemoteCliInfo>("remote_cli_info", { machine });
 export const targetClear = () =>
   invoke<import("../types").TargetInfo>("target_clear");
 
