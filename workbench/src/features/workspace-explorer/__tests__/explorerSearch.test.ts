@@ -150,7 +150,7 @@ describe("files tab: flat search over loaded dirs (S5c)", () => {
   });
 });
 
-describe("changes tab: flat list + search (2.1.9 T6)", () => {
+describe("changes tab: projection tree + search (v2.1.13 D-6)", () => {
   async function seedChanges() {
     const w = await mountExplorer();
     const explorer = useWorkspaceExplorerStore();
@@ -163,35 +163,37 @@ describe("changes tab: flat list + search (2.1.9 T6)", () => {
     return w;
   }
 
-  it("renders ONE flat change list — no groups, no chips", async () => {
+  it("renders a projection tree — directories group, no chips", async () => {
     const w = await seedChanges();
     expect(w.findAll(".artifacts-group-head")).toHaveLength(0);
     expect(w.find(".artifact-chips").exists()).toBe(false);
-    expect(w.findAll(".artifact-row")).toHaveLength(3);
-    expect(w.text()).toContain("report.md");
-    expect(w.text()).toContain("changed.ts");
+    // collapsed dirs only: docs / notes / src
+    expect(w.findAll(".change-row")).toHaveLength(3);
+    expect(w.text()).toContain("docs");
+    expect(w.text()).not.toContain("changed.ts");
   });
 
-  it("the shared search filters the flat list (substring)", async () => {
+  it("the shared search filters the tree (substring, auto-expands)", async () => {
     const w = await seedChanges();
     await w.find('[data-testid="explorer-search"]').setValue("report");
-    expect(w.findAll(".artifact-row")).toHaveLength(1);
+    // matching file auto-expanded under its dir: 2 rows (dir + leaf)
+    expect(w.findAll(".change-row")).toHaveLength(2);
     expect(w.text()).toContain("report.md");
     expect(w.text()).not.toContain("changed.ts");
 
     await w.find('[data-testid="explorer-search"]').setValue("");
-    expect(w.findAll(".artifact-row")).toHaveLength(3);
+    expect(w.findAll(".change-row")).toHaveLength(3);
   });
 
-  it("fuzzy subsequence and /regex/ modes still work on the flat list", async () => {
+  it("fuzzy subsequence and /regex/ modes still work on the tree", async () => {
     const w = await seedChanges();
     // Subsequence: chars in order, gaps allowed.
     await w.find('[data-testid="explorer-search"]').setValue("rpt");
-    expect(w.findAll(".artifact-row").length).toBeGreaterThanOrEqual(1);
+    expect(w.findAll(".change-row").length).toBeGreaterThanOrEqual(1);
     expect(w.text()).toContain("report.md");
     // Regex form.
     await w.find('[data-testid="explorer-search"]').setValue("/^src\\//");
-    expect(w.findAll(".artifact-row")).toHaveLength(1);
+    expect(w.findAll(".change-row")).toHaveLength(2);
     expect(w.text()).toContain("changed.ts");
     // No match message.
     await w.find('[data-testid="explorer-search"]').setValue("/^zzz/")

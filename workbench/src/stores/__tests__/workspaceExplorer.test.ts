@@ -51,14 +51,6 @@ vi.mock("../../lib/ipc", () => ({
     relative_path: "renamed.md",
     kind: "file",
   }),
-  workspacePreview: vi.fn().mockResolvedValue({
-    relative_path: "a.md",
-    media_type: "text/markdown",
-    size: 3,
-    text: "hi",
-    base64: null,
-    truncated: false,
-  }),
   workspaceReveal: vi.fn().mockResolvedValue(undefined),
   workspaceCopyPath: vi.fn().mockResolvedValue({ relative_path: "a.md", absolute_path: "/ws/a.md" }),
   workspaceWatchStart: vi.fn().mockResolvedValue(undefined),
@@ -138,14 +130,6 @@ describe("workspaceExplorer store", () => {
     expect(s.artifactSourceChanges).toHaveLength(0);
   });
 
-  it("preview captures the preview result", async () => {
-    const s = useWorkspaceExplorerStore();
-    s.setWorkspace("/ws");
-    await s.previewFile("a.md");
-    expect(s.preview?.text).toBe("hi");
-    s.clearPreview();
-    expect(s.preview).toBeNull();
-  });
 
   it("switch workspace resets tree", async () => {
     const s = useWorkspaceExplorerStore();

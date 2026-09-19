@@ -419,6 +419,35 @@ export const workspaceImportLifecycle = (zipPath: string, targetPath: string) =>
     targetPath,
   });
 
+// --- v2.1.13 (changes-page): read-only git integration (local repos only;
+// no stage/commit/discard — display-only SCM semantics per D-6). ---
+export interface WorkspaceGitInfo {
+  available: boolean;
+  branch: string;
+}
+
+export interface WorkspaceGitStatusEntry {
+  path: string;
+  x: string;
+  y: string;
+  renameFrom?: string;
+}
+
+export interface WorkspaceGitDiff {
+  unified: string;
+  binary: boolean;
+  truncated: boolean;
+}
+
+export const workspaceGitInfo = (workspace: string) =>
+  invoke<WorkspaceGitInfo>("workspace_git_info", { workspace });
+
+export const workspaceGitStatus = (workspace: string) =>
+  invoke<WorkspaceGitStatusEntry[]>("workspace_git_status", { workspace });
+
+export const workspaceGitDiff = (workspace: string, relativePath: string) =>
+  invoke<WorkspaceGitDiff>("workspace_git_diff", { workspace, relativePath });
+
 export const workspaceHistoryRemove = (path: string, expectedHistoryRevision: number) =>
   invoke<number>("workspace_history_remove", { path, expectedHistoryRevision });
 
@@ -666,11 +695,6 @@ export const workspaceList = (
 export const workspaceOpen = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_open", { workspace, relativePath });
 
-export const workspacePreview = (workspace: string, relativePath: string) =>
-  invoke<import("../types").WorkspacePreviewResult>("workspace_preview", {
-    workspace,
-    relativePath,
-  });
 
 export const workspaceReveal = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_reveal", { workspace, relativePath });

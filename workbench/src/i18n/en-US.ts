@@ -85,6 +85,9 @@ export const enUS: Record<string, string> = {
   "picker.invalidBody": "The path below no longer exists on disk. You can clear this history entry (removes only the record, never any data):",
   "picker.invalidClear": "Clear record",
   "picker.invalidPurge": "Also purge this workspace's lifecycle files (agent memories, configs, state — user files are never touched)",
+  "changes.source.git": "git · {branch} · {n} changes",
+  "changes.source.watcher": "session changes · {n}",
+  "changes.diff.binary": "Binary file - no text diff (double-click to open with the system app).",
   "picker.exportLifecycle": "Export first (zip)",
   "picker.target.needsUpdate": "CLI update",
   "settings.machines.versionTitle": "Remote CLI versions (soft hint, blocks nothing; compared against the local CLI, never the Workbench version)",
@@ -729,8 +732,6 @@ export const enUS: Record<string, string> = {
   "explorer.open": "Open",
   "explorer.reveal": "Show in file manager",
   "explorer.copy": "Copy path",
-  "explorer.preview.truncated": "preview truncated",
-  "explorer.preview.unsupported": "Preview is not supported for this file type; open with the system app.",
   // --- workspace explorer operations (Stage 11, 11c) ---
   "explorer.toolbar.newFile": "New File",
   "explorer.toolbar.newFolder": "New Folder",
