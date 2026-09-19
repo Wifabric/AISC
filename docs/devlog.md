@@ -2,6 +2,37 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 1：发布链准备 + run 防重入（2026-09-19，分支 2.1.13-b1-release-chain）
+
+- **CI 版本戳（D-4，selfupdate-e2e.md 选项 B）**：nsis-installer.yml 构建步在
+  v* tag 触发时以 tag 版本覆盖 conf.version（--config 临时 JSON merge；分支构建
+  不受影响）——修复「tag 版本 ≠ 嵌入版本」导致同 base preview/final 永不可自
+  更新达的语义坑（preview.1 实嵌 2.1.12）。首刷观测点：DisplayVersion 对
+  semver prerelease 的处理（装机后看注册表）。
+- **自更新文案三处修正**：update.rs note「no final release published yet」→
+  「no newer published version available」；zh/en hint 去「仅正式版通道」（preview
+  与正式版均在检测范围）+「最新正式版/Latest final」→「最新版本/Latest version」；
+  「安装并重启 / Install & restart」→「退出并安装 / Exit and install」（实际
+  不自动重启，与 ready 文案对齐）。
+- **cli run 防重入（批内小项，规格 cli-run-guard.md）**：label-less 的 `aisc run`
+  在该工作区存在任意**运行中**容器（CLI 或 workbench 属主、任意系列）时硬拒绝——
+  `AISC_ERR_CONTAINER_EXISTS`、exit 6、消息含进入/生命周期/多实例指引；移除旧
+  静默复用路径（RunResult.reused 退役，main.py 摘要分支删除）；dead CLI 容器
+  清扫与改名重建（r2#C）保留且仅限 dead；dead workbench 单例不动；
+  `--label`/`--dry-run` 语义不变。测试：ReactivationReplaceTests 重写（6 用例）。
+- 门禁：local-gates 全绿（pytest / cargo --lib / vitest 500 / vue-tsc）。
+
+# v2.1.13 开工纪律事件记录（2026-09-19）
+
+- **事件**：批 1 开工时 Claude 两处违规——①未切分支直接在 develop 工作树动码；
+  ②把 todo「# 待处理」里的未排期项（cli run 防重入）自行拔高进本版本范围。
+  用户纠正并裁定：项目确随批 1 实施，但三条规约固化（DEVELOP_WIKI §1.2）。
+- **规约固化（DEVELOP_WIKI §1.2 开工纪律）**：①实施类开工前必须从 develop 切出
+  工作分支；②计划外项不得自行入版——先经用户排期落入 todo target 再立文档；
+  ③小项实施前同样先汇报处理方案与文档依据。
+- 本条对应实施：`aisc run` 防重入守卫（规格
+  `docs/plans/2.1.13-dev-plans/cli-run-guard.md`），分支 `2.1.13-b1-release-chain`。
+
 # v2.1.12 收官（2026-09-19）
 
 - **阶段收官，进入 v2.1.13**。用户裁定：软件未稳，v2.1.12 **保持 preview 不发

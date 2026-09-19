@@ -206,7 +206,7 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
                 setup_url: None,
                 sha256_url: None,
                 release_url: None,
-                note: "no final release published yet".into(),
+                note: "no newer published version available".into(),
             },
         },
         Err(e) => UpdateInfo {

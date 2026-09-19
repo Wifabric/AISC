@@ -87,7 +87,21 @@ jobs:
 
       - name: Build NSIS installer (tauri downloads NSIS 3.11 automatically)
         working-directory: workbench
-        run: npm run tauri build -- --bundles nsis
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -like 'v*') {
+            # D-4 version stamp: tag builds embed the tag version (e.g.
+            # 2.1.13-preview.1) instead of the develop conf version, so
+            # preview-to-preview / preview-to-final self-update comparisons
+            # work (update.rs compares package_info against release tags).
+            $ver = $env:GITHUB_REF_NAME.Substring(1)
+            Write-Host "D-4 version stamp: $ver"
+            $override = Join-Path $env:RUNNER_TEMP 'tauri.version.json'
+            Set-Content -Path $override -Value ('{"version":"' + $ver + '"}') -Encoding utf8
+            npm run tauri build -- --bundles nsis --config $override
+          } else {
+            npm run tauri build -- --bundles nsis
+          }
 
       - name: Verify installer artifact
         shell: pwsh

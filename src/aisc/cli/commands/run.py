@@ -155,12 +155,6 @@ def plan_run(
 # Run result (structured outcome)
 # ---------------------------------------------------------------------------
 
-def _name_series(container_name: str) -> str:
-    """Container names are ``<alias>-<hash8>``; the alias may itself contain
-    dashes, the hash never does — strip the last segment to get the series
-    (rename detection keys off it, r2 #C)."""
-    return container_name.rsplit("-", 1)[0]
-
 
 @dataclass
 class RunResult:
@@ -177,9 +171,6 @@ class RunResult:
     # r1 #2: older same-workspace containers this activation swept
     # (stopped+removed+unregistered before the new one started).
     replaced: List[str] = field(default_factory=list)
-    # r1 #2 (revised): a LIVE same-workspace container was REUSED — nothing
-    # was started; the summary tells the user it is already open.
-    reused: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         out = {
@@ -194,8 +185,6 @@ class RunResult:
             out["web_gateway"] = dict(self.web_gateway)
         if self.replaced:
             out["replaced"] = list(self.replaced)
-        if self.reused:
-            out["reused"] = self.reused
         return out
 
 
@@ -353,21 +342,21 @@ def run_container(
         )
     # EXISTS → proceed
 
-    # --- r1 #2 (revised) + r2 #C: same-workspace activation is IDEMPOTENT;
-    # a DIFFERENT --name is a rename intent and rebuilds ---
-    # A default (label-less) activation owns the workspace's single CLI
-    # slot. A LIVE older container of the SAME name series is REUSED — the
-    # user chose to run a workspace that is already open, so tell them
-    # (and how to reach or rebuild it) instead of churning containers under
-    # them. A live container of a DIFFERENT series (explicit --name that
-    # disagrees with the existing one) is a rename: rebuild under the new
-    # name (alias and container name must stay one story). Only DEAD ones
-    # (Exited/gone — nobody is using them) are swept (stop+rm+unregister)
-    # before the new start. GUI runtimes (owner=workbench, lease-guarded)
-    # and --label multi-container slots are never touched. If docker does
-    # not answer the liveness probe, judge nothing: fall through to the
-    # normal start path rather than risk tearing down a live container we
-    # could not see.
+    # --- r1 #2 + r2 #C, revised 2026-09-19 (cli-run-guard): `aisc run` is
+    # FORBIDDEN while a live container exists for this workspace. Previously
+    # a live same-series container was silently reused, a rename intent
+    # rebuilt around live containers, and workbench-owned runtimes were
+    # bypassed (stacking a one-shot on top of a managed runtime). Now any
+    # LIVE label-less container of this workspace (CLI- or workbench-owned,
+    # any name series) refuses the run with guidance. DEAD CLI-owned
+    # containers are still swept (stop+rm+unregister) before the new start —
+    # sweeping a dead different-series container is the rename path (r2 #C).
+    # Dead workbench singletons stay untouched (the Workbench/reconcile owns
+    # their lifecycle). --label slots remain a bypass activation: neither
+    # checked nor touched. If docker does not answer the liveness probe,
+    # judge nothing: fall through to the normal start path rather than risk
+    # tearing down a live container we could not see.
+    live_blockers: List[tuple] = []
     if not plan.dry_run and not plan.label:
         from aisc.adapters.container_registry import list_containers as _lc
         from aisc.adapters.container_registry import unregister
@@ -386,8 +375,6 @@ def run_container(
                         _states[_nm2] = _st
                 for _nm, _meta in _lc(_reg).items():
                     _meta = _meta if isinstance(_meta, dict) else {}
-                    if _meta.get("owner") == "workbench":
-                        continue
                     if _meta.get("label"):
                         continue
                     try:
@@ -395,13 +382,16 @@ def run_container(
                             continue
                     except OSError:
                         continue
-                    if (_states.get(str(_nm), "").startswith("Up")
-                            and _name_series(str(_nm)) == _name_series(plan.name)):
-                        if result.reused is None:
-                            result.reused = str(_nm)
+                    if (_states.get(str(_nm), "") or "").startswith("Up"):
+                        live_blockers.append(
+                            (str(_nm), str(_meta.get("owner") or "cli")))
                         continue
-                    # dead, unknown-to-docker, or a different name series
-                    # (rename intent) → sweep and rebuild
+                    if _meta.get("owner") == "workbench":
+                        # dead GUI singleton: the Workbench/reconcile owns its
+                        # lifecycle — never swept from the CLI path
+                        continue
+                    # dead or unknown-to-docker CLI-owned (any series — a
+                    # different series is the rename path) → sweep and rebuild
                     exec_.run_captured(["stop", _nm], timeout=30.0)
                     _rm = exec_.run_captured(["rm", "-f", _nm], timeout=30.0)
                     if _rm.exit_code == 0 or "no such" in (_rm.stderr or "").lower():
@@ -413,9 +403,21 @@ def run_container(
         except Exception:
             pass
 
-    if result.reused is not None:
-        result.executed = False
-        return result
+    if live_blockers:
+        # raise OUTSIDE the sweeping try/except — a CliError must not be
+        # swallowed by the best-effort guard above
+        _nm, _owner = live_blockers[0]
+        _who = "Workbench 管理的运行时" if _owner == "workbench" else "容器"
+        raise CliError(
+            message=(
+                f"该工作区已存在运行中的{_who}「{_nm}」，aisc run 禁止重复创建。\n"
+                f"  进入容器: aisc claude / aisc codex / aisc shell\n"
+                f"  生命周期: aisc runtime stop（或 Workbench）停止后再运行\n"
+                f"  多实例: aisc run --label <槽位名>"
+            ),
+            exit_code=6, error_code="AISC_ERR_CONTAINER_EXISTS",
+            data=result.to_dict(),
+        )
 
     # --- register container in the multi-container index ---
     # F2-C: the registry root is the WORKSPACE's state dir (workspaces/<h>/
