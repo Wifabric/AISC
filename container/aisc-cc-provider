@@ -455,6 +455,29 @@ def provider_view(agent: str, row: dict[str, Any],
                 for m in stored_cat
                 if isinstance(m, dict) and m.get("model")
             ]
+    # D-7: round-trip the thinking-depth knobs so the edit page PREFILLS
+    # what's stored (secret-free; 2026-09-19 user report: reopening the
+    # editor showed the hardcoded default, not the saved value).
+    reasoning_effort = ""
+    compact_threshold = 0
+    if agent == "codex":
+        try:
+            cfg_text = settings.get("config") or ""
+            toml = tomllib.loads(cfg_text) if isinstance(cfg_text, str) and cfg_text else {}
+            effort = toml.get("model_reasoning_effort")
+            reasoning_effort = str(effort) if effort else ""
+            limit = toml.get("model_auto_compact_token_limit")
+            compact_threshold = int(limit) if limit else 0
+        except Exception:
+            pass
+    else:
+        env = settings.get("env")
+        if isinstance(env, dict):
+            effort = env.get("CLAUDE_AUTO_COMPACT_WINDOW")
+            try:
+                compact_threshold = int(effort) if effort else 0
+            except (TypeError, ValueError):
+                compact_threshold = 0
     return {
         "id": row["id"],
         "name": row["name"],
@@ -468,6 +491,9 @@ def provider_view(agent: str, row: dict[str, Any],
         "role_env": role_env,
         "known_models": known_models,
         "api_format": resolve_api_format(agent, row),
+        # D-7 edit-page prefill (sparse: absent = not configured).
+        **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
+        **({"compact_threshold": compact_threshold} if compact_threshold else {}),
         "notes": str(row.get("notes") or ""),
         "website_url": str(row.get("website_url") or ""),
         "icon": str(row.get("icon") or ""),
@@ -803,69 +829,6 @@ def _db_delete(agent: str, provider_id: str) -> None:
         raise AdapterError(ERR_DELETE_FAILED, f"db delete failed: {exc}") from exc
     finally:
         conn.close()
-
-
-def _db_ensure_official_switchable(
-    agent: str, official_id: str, snapshot: list[dict[str, Any]]
-) -> None:
-    """Edit-dance fallback guarantee: the official row EXISTS and, for
-    codex, carries a config upstream's hot-switch accepts (a minimal valid
-    toml — empty text is hard-rejected, see _OFFICIAL_CODEX_CONFIG).
-    Insert when missing; upgrade an existing empty-config codex row."""
-    existing = next((r for r in snapshot if r["id"] == official_id), None)
-    module = _preset_module()
-    base_loader = getattr(module, "load_claude_settings_base", None)
-
-    if existing is None:
-        settings: dict[str, Any]
-        if agent == "claude":
-            base = base_loader() if callable(base_loader) else {}
-            settings = {"env": {}, **(base if isinstance(base, dict) else {})}
-        else:
-            settings = {"auth": {}, "config": _OFFICIAL_CODEX_CONFIG}
-        conn = sqlite3.connect(_db_path(), timeout=15)
-        try:
-            conn.execute("PRAGMA busy_timeout=15000")
-            now = int(time.time() * 1000)
-            next_sort = conn.execute(
-                "SELECT COALESCE(MAX(sort_index), -1) + 1 FROM providers "
-                "WHERE app_type = ?",
-                (agent,),
-            ).fetchone()[0]
-            conn.execute(
-                "INSERT OR IGNORE INTO providers ("
-                "id, app_type, name, settings_config, website_url, category, "
-                "created_at, sort_index, notes, icon, icon_color, meta, "
-                "is_current, in_failover_queue) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    official_id, agent,
-                    "Claude Official" if agent == "claude" else "OpenAI Official",
-                    json.dumps(settings, ensure_ascii=False, separators=(",", ":")),
-                    "", "custom", now, next_sort, "", None, None, "{}", 0, 0,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        return
-    if agent == "codex":
-        stored = existing.get("settings") or {}
-        if not str(stored.get("config") or "").strip():
-            conn = sqlite3.connect(_db_path(), timeout=15)
-            try:
-                conn.execute("PRAGMA busy_timeout=15000")
-                merged = {"auth": stored.get("auth") or {},
-                          "config": _OFFICIAL_CODEX_CONFIG}
-                conn.execute(
-                    "UPDATE providers SET settings_config = ? "
-                    "WHERE id = ? AND app_type = ?",
-                    (json.dumps(merged, ensure_ascii=False,
-                                separators=(",", ":")),
-                     official_id, agent),
-                )
-                conn.commit()
-            finally:
-                conn.close()
 
 
 def _db_capture_row(agent: str, provider_id: str) -> Optional[dict[str, Any]]:
@@ -1561,19 +1524,13 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
     switch_back_to = ""
     if was_current:
         switch_back_to = provider_id
-        try:
-            _cli_switch(agent, _switch_away_target(agent, snapshot, provider_id), secrets)
-        except AdapterError as exc:
-            if exc.code != ERR_NO_SWITCH_TARGET:
-                raise
-            # D-6.7 aftermath (2026-09-19 user report): with pre-seeding
-            # gone, the edited provider may be the ONLY real row. Dance via
-            # the OFFICIAL placeholder instead — and make sure that row is
-            # actually SWITCHABLE (upstream codex hot-switch rejects empty
-            # configs; insert-or-upgrade a minimal valid config first).
-            away = _OFFICIAL_ROW_ID[agent]
-            _db_ensure_official_switchable(agent, away, snapshot)
-            _cli_switch_empty_config(agent, away)
+    # NOTE: deliberately NO upstream switch-away before the delete. Upstream
+    # 5.10.5's codex hot-switch writes the CURRENT live config (bearer token
+    # included) into the switch target's stored row — with pre-seeding gone
+    # that target is official/default, so the old dance-away CLONED the
+    # edited provider into those rows (2026-09-19 user report: every card
+    # turned zhipu + a phantom "default"). The delete is DB-direct and the
+    # tail switch re-arms the live files from the re-added row.
     # PP r4: capture the FULL row before the delete — the guaranteed restore
     # source if the re-add fails (see _db_restore_row; the old
     # restore-via-upstream-add lost the row outright when the upstream CLI
@@ -2409,7 +2366,17 @@ def op_delete(agent: str, provider_id: str) -> list[dict[str, Any]]:
         raise AdapterError(ERR_NOT_FOUND, f"provider not found: {provider_id}")
     secrets = snapshot_secrets(agent, snapshot)
     if row["is_current"]:
-        _cli_switch(agent, _switch_away_target(agent, snapshot, provider_id), secrets)
+        try:
+            _cli_switch(agent, _switch_away_target(agent, snapshot, provider_id), secrets)
+        except AdapterError as exc:
+            if exc.code != ERR_NO_SWITCH_TARGET:
+                raise
+            # D-6.7: deleting the LAST provider — no upstream switch-away
+            # exists (and switching to the empty official row would pollute
+            # it with the live config). DB-only delete; live files stay as
+            #-is until the user adds the next provider (the start-time
+            # proxy invariant disables the route for the configless state).
+            pass
     _db_delete(agent, provider_id)
     return op_list(agent)
 

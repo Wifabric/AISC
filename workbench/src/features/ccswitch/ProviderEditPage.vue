@@ -53,8 +53,9 @@ const form = reactive({
   baseUrl: props.provider?.base_url ?? "",
   apiKey: "",
   /** D-7: thinking depth (codex) + auto-compact watermark (tokens). */
-  reasoningEffort: "high",
-  compactThreshold: "",
+  reasoningEffort: props.provider?.reasoning_effort ?? "high",
+  compactThreshold: props.provider?.compact_threshold
+    ? String(props.provider.compact_threshold) : "",
   apiFormat: (props.provider?.api_format ?? "anthropic") as
     "anthropic" | "openai_chat" | "openai_responses",
   notes: props.provider?.notes ?? "",
@@ -63,8 +64,9 @@ const form = reactive({
   iconColor: props.provider?.icon_color ?? "",
 });
 /** D-7 add-mode prefill: the auto-compact watermark per agent. Codex 1M
- * catalogs → 900k; claude (1M-context era) → 800k. Edit mode stays empty =
- * no change. */
+ * catalogs → 900k; claude (1M-context era) → 800k. EDIT mode already
+ * prefilled the STORED values in the form init (2026-09-19 user report:
+ * reopening the editor showed the hardcoded default, not the saved knob). */
 if (props.provider === null) {
   form.compactThreshold = props.agent === "codex" ? "900000" : "800000";
 }

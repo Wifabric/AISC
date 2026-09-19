@@ -496,6 +496,11 @@ export interface CcSwitchProvider {
   /** PP (D-12): the upstream wire format (the local router's protocol
    * selector) — read-side priority meta > preset > agent default. */
   api_format?: "anthropic" | "openai_chat" | "openai_responses";
+  /** D-7 edit-page prefill: the stored thinking knobs (sparse — absent =
+   * not configured). Codex: config.toml keys; claude: compact env only. */
+  reasoning_effort?: string;
+  compact_threshold?: number;
+  api_format?: "anthropic" | "openai_chat" | "openai_responses";
   /** PP (D-12): display columns (db-backed; survive the edit dance). */
   notes?: string;
   website_url?: string;

@@ -348,7 +348,11 @@ class EditDanceTests(AdapterTestCase):
         self.assertEqual(sent["env"]["ANTHROPIC_BASE_URL"],
                          "https://open.bigmodel.cn/api/anthropic")
 
-    def test_edit_current_switches_away_and_back(self):
+    def test_edit_current_readd_then_switch_back(self):
+        """2026-09-19: NO upstream switch-away — the codex hot-switch writes
+        the live config (keys included) into the switch target's row, which
+        polluted official/default (user report: every card turned zhipu).
+        The dance is DB-delete + add + one tail switch."""
         self._seed_two()
         A.op_edit("claude", "deepseek", {"patch": {"name": "DeepSeek 2"}})
 
@@ -365,12 +369,11 @@ class EditDanceTests(AdapterTestCase):
         kinds = [k for k in (kind(c) for c in self.cli.calls) if k]
         # Delete is the adapter's DB transaction (no CLI call).
         self.assertEqual(kinds, [
-            ("switch", "zhipu"),
             ("add", "deepseek"),
             ("switch", "deepseek"),
         ])
         # The re-add carries the FULL preserved settings (incl. old token).
-        sent = json.loads(self.cli.calls[1].stdin_text)
+        sent = json.loads(self.cli.calls[0].stdin_text)
         self.assertEqual(sent["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-live-abcdef123456")
 
     def test_edit_failure_restores_previous_state(self):
@@ -403,21 +406,15 @@ class EditDanceTests(AdapterTestCase):
                          "https://open.bigmodel.cn/api/anthropic")
         self.assertFalse(rows[0]["is_current"])
 
-    def test_edit_sole_current_dances_via_official_row(self):
-        """D-6.7 aftermath (2026-09-19 user report): de-seeding means the
-        edited provider may be the ONLY real row — the dance falls back to
-        the OFFICIAL placeholder (empty-config switch) instead of failing
-        closed, and the edited row ends current again."""
+    def test_edit_sole_current_is_db_only_dance(self):
+        """De-seeded volume: the edited provider is the ONLY row. The dance
+        must not touch any other row (no official creation, no upstream
+        switch-away) — the tail switch re-arms live from the re-add."""
         seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
         A.op_edit("claude", "deepseek", {"patch": {"name": "DeepSeek 2"}})
 
         def kind(call):
             args = call.args
-            # The empty-config switch rides `script -qec "cc-switch … provider
-            # switch <id>" /dev/null` — unwrap the id from the command string.
-            if args and args[0] == "script" and len(args) > 2 \
-                    and "provider switch" in args[2]:
-                return ("switch", args[2].rsplit(" ", 1)[-1])
             if "switch" in args:
                 return ("switch", args[-1])
             if "add" in args:
@@ -426,31 +423,17 @@ class EditDanceTests(AdapterTestCase):
 
         kinds = [k for k in (kind(c) for c in self.cli.calls) if k]
         self.assertEqual(kinds, [
-            ("switch", "claude-official"),   # dance-away via official (pty)
             ("add", "deepseek"),
-            ("switch", "deepseek"),          # and back
+            ("switch", "deepseek"),
         ])
-        # The re-add carries the merged settings (the harness's fake add
-        # doesn't write the db — DB-state assertions live in the restore
-        # tests).
-        add_calls = [c for c in self.cli.calls if "add" in c.args]
-        sent = json.loads(add_calls[0].stdin_text)
-        self.assertEqual(
-            sent["env"]["ANTHROPIC_BASE_URL"], CLAUDE_ENV["ANTHROPIC_BASE_URL"])
-
-    def test_edit_sole_current_creates_official_row_when_missing(self):
-        seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
-        # No official row seeded — the dance inserts the placeholder itself.
-        A.op_edit("claude", "deepseek", {"patch": {"name": "DeepSeek 2"}})
         rows = A.op_list("claude")
-        official = [r for r in rows if r["id"] == "claude-official"]
-        self.assertEqual(len(official), 1)
-        self.assertEqual(official[0]["base_url"], "")
+        self.assertNotIn("claude-official", [r["id"] for r in rows])
 
-    def test_edit_dance_upgrades_empty_official_codex_config(self):
-        """Upstream 5.10.5 rejects the codex hot-switch into an EMPTY config
-        row (bearer-token write guards on empty text) — the dance must
-        upgrade the official row's config before switching to it."""
+    def test_edit_does_not_pollute_other_rows(self):
+        """2026-09-19 user report: official/default rows turned into zhipu
+        clones (the old dance's upstream switch-away wrote the live config
+        into the switch target). The DB-only dance leaves every other row
+        byte-identical."""
         seed_provider(self.dir, "zhipu", {}, agent="codex", is_current=True,
                       settings={"auth": {"OPENAI_API_KEY": "sk-z-9"},
                                 "config": ('model_provider = "zhipu"\n'
@@ -458,22 +441,17 @@ class EditDanceTests(AdapterTestCase):
                                            'base_url = "https://open.bigmodel.cn/api/anthropic"\n')})
         seed_provider(self.dir, "codex-official", {}, agent="codex",
                       settings={"auth": {}, "config": ""})
+        # The dance-observing fake: provider-add REALLY writes the db row
+        # (the real CLI would), so the re-added row is visible via op_list.
+        self._install_dance_cli()
+        before = {r["id"]: json.dumps(r["settings"], sort_keys=True)
+                  for r in A.read_snapshot("codex")}
         A.op_edit("codex", "zhipu", {"patch": {"name": "Zhipu 2"}})
-        db = sqlite3.connect(self.dir / "cc-switch.db")
-        raw = db.execute(
-            "SELECT settings_config FROM providers "
-            "WHERE id='codex-official' AND app_type='codex'"
-        ).fetchone()[0]
-        db.close()
-        stored = json.loads(raw)
-        self.assertIn("model =", stored["config"])  # minimal valid config
-        # The re-add (fake upstream) carries the user's merged config —
-        # the harness's fake add doesn't write the db, so this is where the
-        # row-survival proof lives (same convention as the claude dance test).
-        add_calls = [c for c in self.cli.calls if "add" in c.args]
-        self.assertEqual(len(add_calls), 1)
-        sent = json.loads(add_calls[0].stdin_text)
-        self.assertIn("open.bigmodel.cn", sent["config"])
+        after = {r["id"]: json.dumps(r["settings"], sort_keys=True)
+                 for r in A.read_snapshot("codex")}
+        # Only the edited row changed; official untouched; nothing new.
+        self.assertEqual(set(after), {"zhipu", "codex-official"})
+        self.assertEqual(after["codex-official"], before["codex-official"])
 
     def test_edit_unknown_provider(self):
         self._seed_two()
@@ -1131,13 +1109,14 @@ class DeleteTests(AdapterTestCase):
         )
         self.assertNotIn("deepseek", {r["id"] for r in A.op_list("claude")})
 
-    def test_delete_requires_confirm_at_host_but_sole_current_fails_here(self):
+    def test_delete_sole_current_is_db_only(self):
+        """D-6.7: deleting the LAST provider has no switch-away target —
+        DB-only delete succeeds; live files stay until the next provider
+        (the start-time proxy invariant handles the configless state)."""
         seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
-        with self.assertRaises(A.AdapterError):
-            A.op_delete("claude", "deepseek")
+        rows = A.op_delete("claude", "deepseek")
+        self.assertEqual(rows, [])
 
-
-class EnvelopeTests(AdapterTestCase):
     def test_main_list_envelope_shape(self):
         seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
         buf = io.StringIO()
