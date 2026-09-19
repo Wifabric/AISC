@@ -826,7 +826,10 @@ def reconcile_runtime_state(
                 settings = (
                     {"env": {}, **load_claude_settings_base()}
                     if agent == "claude"
-                    else {"auth": {}, "config": ""}
+                    # Upstream 5.10.5 rejects the codex hot-switch into an
+                    # empty config (bearer-token write guards on empty text)
+                    # — seed the official row with a minimal VALID config.
+                    else {"auth": {}, "config": 'model = "gpt-5.2"\n'}
                 )
                 next_sort = conn.execute(
                     "SELECT COALESCE(MAX(sort_index), -1) + 1 FROM providers "

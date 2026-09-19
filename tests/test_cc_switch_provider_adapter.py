@@ -447,6 +447,34 @@ class EditDanceTests(AdapterTestCase):
         self.assertEqual(len(official), 1)
         self.assertEqual(official[0]["base_url"], "")
 
+    def test_edit_dance_upgrades_empty_official_codex_config(self):
+        """Upstream 5.10.5 rejects the codex hot-switch into an EMPTY config
+        row (bearer-token write guards on empty text) — the dance must
+        upgrade the official row's config before switching to it."""
+        seed_provider(self.dir, "zhipu", {}, agent="codex", is_current=True,
+                      settings={"auth": {"OPENAI_API_KEY": "sk-z-9"},
+                                "config": ('model_provider = "zhipu"\n'
+                                           '[model_providers.zhipu]\n'
+                                           'base_url = "https://open.bigmodel.cn/api/anthropic"\n')})
+        seed_provider(self.dir, "codex-official", {}, agent="codex",
+                      settings={"auth": {}, "config": ""})
+        A.op_edit("codex", "zhipu", {"patch": {"name": "Zhipu 2"}})
+        db = sqlite3.connect(self.dir / "cc-switch.db")
+        raw = db.execute(
+            "SELECT settings_config FROM providers "
+            "WHERE id='codex-official' AND app_type='codex'"
+        ).fetchone()[0]
+        db.close()
+        stored = json.loads(raw)
+        self.assertIn("model =", stored["config"])  # minimal valid config
+        # The re-add (fake upstream) carries the user's merged config —
+        # the harness's fake add doesn't write the db, so this is where the
+        # row-survival proof lives (same convention as the claude dance test).
+        add_calls = [c for c in self.cli.calls if "add" in c.args]
+        self.assertEqual(len(add_calls), 1)
+        sent = json.loads(add_calls[0].stdin_text)
+        self.assertIn("open.bigmodel.cn", sent["config"])
+
     def test_edit_unknown_provider(self):
         self._seed_two()
         with self.assertRaises(A.AdapterError) as ctx:

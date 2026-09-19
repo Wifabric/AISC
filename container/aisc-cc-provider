@@ -805,43 +805,67 @@ def _db_delete(agent: str, provider_id: str) -> None:
         conn.close()
 
 
-def _db_insert_official_row(agent: str, official_id: str) -> None:
-    """D-6.7: with pre-seeding gone, the edit dance's official fallback can
-    meet a volume whose official row is missing — insert the same
-    placeholder reconcile would (empty config; claude carries the settings
-    base). Idempotent via INSERT OR IGNORE."""
+def _db_ensure_official_switchable(
+    agent: str, official_id: str, snapshot: list[dict[str, Any]]
+) -> None:
+    """Edit-dance fallback guarantee: the official row EXISTS and, for
+    codex, carries a config upstream's hot-switch accepts (a minimal valid
+    toml — empty text is hard-rejected, see _OFFICIAL_CODEX_CONFIG).
+    Insert when missing; upgrade an existing empty-config codex row."""
+    existing = next((r for r in snapshot if r["id"] == official_id), None)
     module = _preset_module()
     base_loader = getattr(module, "load_claude_settings_base", None)
-    settings: dict[str, Any]
-    if agent == "claude":
-        base = base_loader() if callable(base_loader) else {}
-        settings = {"env": {}, **(base if isinstance(base, dict) else {})}
-    else:
-        settings = {"auth": {}, "config": ""}
-    conn = sqlite3.connect(_db_path(), timeout=15)
-    try:
-        conn.execute("PRAGMA busy_timeout=15000")
-        now = int(time.time() * 1000)
-        next_sort = conn.execute(
-            "SELECT COALESCE(MAX(sort_index), -1) + 1 FROM providers "
-            "WHERE app_type = ?",
-            (agent,),
-        ).fetchone()[0]
-        conn.execute(
-            "INSERT OR IGNORE INTO providers ("
-            "id, app_type, name, settings_config, website_url, category, "
-            "created_at, sort_index, notes, icon, icon_color, meta, "
-            "is_current, in_failover_queue) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                official_id, agent,
-                "Claude Official" if agent == "claude" else "OpenAI Official",
-                json.dumps(settings, ensure_ascii=False, separators=(",", ":")),
-                "", "custom", now, next_sort, "", None, None, "{}", 0, 0,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+
+    if existing is None:
+        settings: dict[str, Any]
+        if agent == "claude":
+            base = base_loader() if callable(base_loader) else {}
+            settings = {"env": {}, **(base if isinstance(base, dict) else {})}
+        else:
+            settings = {"auth": {}, "config": _OFFICIAL_CODEX_CONFIG}
+        conn = sqlite3.connect(_db_path(), timeout=15)
+        try:
+            conn.execute("PRAGMA busy_timeout=15000")
+            now = int(time.time() * 1000)
+            next_sort = conn.execute(
+                "SELECT COALESCE(MAX(sort_index), -1) + 1 FROM providers "
+                "WHERE app_type = ?",
+                (agent,),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT OR IGNORE INTO providers ("
+                "id, app_type, name, settings_config, website_url, category, "
+                "created_at, sort_index, notes, icon, icon_color, meta, "
+                "is_current, in_failover_queue) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    official_id, agent,
+                    "Claude Official" if agent == "claude" else "OpenAI Official",
+                    json.dumps(settings, ensure_ascii=False, separators=(",", ":")),
+                    "", "custom", now, next_sort, "", None, None, "{}", 0, 0,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return
+    if agent == "codex":
+        stored = existing.get("settings") or {}
+        if not str(stored.get("config") or "").strip():
+            conn = sqlite3.connect(_db_path(), timeout=15)
+            try:
+                conn.execute("PRAGMA busy_timeout=15000")
+                merged = {"auth": stored.get("auth") or {},
+                          "config": _OFFICIAL_CODEX_CONFIG}
+                conn.execute(
+                    "UPDATE providers SET settings_config = ? "
+                    "WHERE id = ? AND app_type = ?",
+                    (json.dumps(merged, ensure_ascii=False,
+                                separators=(",", ":")),
+                     official_id, agent),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def _db_capture_row(agent: str, provider_id: str) -> Optional[dict[str, Any]]:
@@ -1544,11 +1568,11 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
                 raise
             # D-6.7 aftermath (2026-09-19 user report): with pre-seeding
             # gone, the edited provider may be the ONLY real row. Dance via
-            # the OFFICIAL placeholder instead — the empty-config switch
-            # path op_switch has always used for official targets.
+            # the OFFICIAL placeholder instead — and make sure that row is
+            # actually SWITCHABLE (upstream codex hot-switch rejects empty
+            # configs; insert-or-upgrade a minimal valid config first).
             away = _OFFICIAL_ROW_ID[agent]
-            if not any(r["id"] == away for r in snapshot):
-                _db_insert_official_row(agent, away)
+            _db_ensure_official_switchable(agent, away, snapshot)
             _cli_switch_empty_config(agent, away)
     # PP r4: capture the FULL row before the delete — the guaranteed restore
     # source if the re-add fails (see _db_restore_row; the old
@@ -1585,6 +1609,13 @@ _PROVIDER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\-_]{0,63}$")
 # direct-official row" (IDEA-4 manual round 3).
 OFFICIAL_TARGET = "official"
 _OFFICIAL_ROW_ID = {"claude": "claude-official", "codex": "codex-official"}
+
+# Upstream 5.10.5 refuses the codex hot-switch into an EMPTY config row
+# ("Codex third-party provider is missing config.toml, cannot write bearer
+# token" — set_codex_experimental_bearer_token guards on empty text). The
+# official-direct row therefore carries a minimal VALID config: bare codex
+# on the built-in OpenAI profile, no model_providers section.
+_OFFICIAL_CODEX_CONFIG = 'model = "gpt-5.2"\n'
 
 
 def _cli_switch_empty_config(agent: str, provider_id: str) -> None:

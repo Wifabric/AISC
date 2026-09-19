@@ -182,3 +182,17 @@
   - [x] 初次启动构建失败时，提供重新构建按钮（B1：BuildProgress failed/cancelled 态「重新构建」按钮，同 tag 复用 startBuild 链；B2 顺带 BUILD_TIMEOUT 600→1800s；手测 PASS 2026-09-16）
   - [x] claude、codex、cc-switch等内置工具，定期更新（R5 裁决 = 与 cli update 合一入口；A5 交付：--pin-tool 用户层+build args 消费+cc-switch 三处漂移修齐+node:22 基底）
   - [x] v2.1.11 bug：切换颜色主题后，历史会话视图的消息/终端输出块残留深色样式（深底+淡化字不随主题重绘，2026-09-16 用户截图报障，B0 修复——addon-webgl 图集不随 options.theme 重绘，切主题时重建 addon；手测 PASS 2026-09-16）
+  - [ ] Provider目前看来应该就是上下文后面加个自动compact；
+  - [ ] codex只选模型，无法选择思考深度
+
+
+
+
+
+# 待解决
+- [ ] 历史会话
+  - [ ] 网页版聊天的界面
+  - [ ] aisc历史聊天会话的一个会话，不是codex的resume那个会话,aisc的会话指的是一个bash包住codex的会话，它更像一个runtime（记忆空间）里面的子记忆空间.runtime负责记住在工作路径的各种配置和会话，其中aisc的sessions负责记录或者保存之前打开的bash/bash(里codex)的会话状态，我们比这个叫做 工作记录（对应codex网页版的历史聊天记录）.工作记录和codex中resume的聊天记录，就不是一一对应了。比如我如果喜欢只用一个codex会话，那就是一一对应；但是如果我喜欢一个任务一个干净的codex会话，我就会在工作记录里对应很多个codex会话.
+- [ ] 变更
+  - [ ] vscode的git插件的体验
+  - [ ] 展示变化文件用文件树
