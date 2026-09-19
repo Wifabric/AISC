@@ -86,6 +86,14 @@ export const zhCN = {
   "picker.invalidClear": "清除记录",
   "picker.invalidPurge": "同时清理该工作区的生命周期文件（agent 记忆、配置、状态——不涉及任何用户文件）",
   "picker.exportLifecycle": "先导出（zip）",
+  "picker.import.open": "从 zip 恢复…",
+  "picker.import.title": "从导出的 zip 恢复工作区",
+  "picker.import.zipPh": "选择导出的生命周期 zip 文件",
+  "picker.import.pickZip": "选择 zip",
+  "picker.import.targetPh": "新的工作区路径（不存在将自动创建）",
+  "picker.import.go": "恢复",
+  "picker.import.hint": "恢复会把导出的生命周期数据（agent 记忆、provider 配置、会话状态）落到新路径；你磁盘上的原始文件不受影响，机器本地状态（租约/锁/注册表）不会带过来。恢复本身不写历史记录，首次成功启动后才进入最近列表。",
+  "picker.import.done": "已恢复 {files} 个文件（跳过 {skipped} 项机器本地状态）。路径已填入上方，点「下一步」启动该工作区。",
 
   // --- launch summary (LaunchSummary.vue) ---
   "summary.title": "启动摘要",

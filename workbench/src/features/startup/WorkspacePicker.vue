@@ -79,6 +79,45 @@ async function onRecentClick(path: string): Promise<void> {
  * ForgetConfirmDialog export hand-off. */
 const exportBusy = ref(false);
 
+// --- v2.1.13 zip-restore: import an exported lifecycle zip as a NEW
+// workspace. Local target only (remote data roots are not importable).
+const importOpen = ref(false);
+const importZip = ref("");
+const importTarget = ref("");
+const importBusy = ref(false);
+const importError = ref("");
+const importDone = ref<{ files: number; skipped: number } | null>(null);
+function openImport(): void {
+  importOpen.value = !importOpen.value;
+  importError.value = "";
+  importDone.value = null;
+}
+async function onPickZip(): Promise<void> {
+  const p = await wsStore.pickZipFile();
+  if (p) importZip.value = p;
+}
+async function onPickTargetDir(): Promise<void> {
+  const p = await wsStore.pickDirectory();
+  if (p) importTarget.value = p;
+}
+async function onImport(): Promise<void> {
+  if (importBusy.value) return;
+  importBusy.value = true;
+  importError.value = "";
+  importDone.value = null;
+  try {
+    const r = await wsStore.importLifecycle(importZip.value, importTarget.value.trim());
+    importDone.value = { files: r.files, skipped: r.skipped };
+    // prefill the launcher input (no auto-preflight: the user keeps the
+    // launch-timing control, single-flight flow unchanged)
+    store.workspace = importTarget.value.trim();
+  } catch (e) {
+    importError.value = errText(e);
+  } finally {
+    importBusy.value = false;
+  }
+}
+
 /** W3 手测 r11: close-then-act wrappers over the shared store actions (the
  * bare inline arrows left the dialog open — the original local handlers
  * cleared invalidPath FIRST; the tests caught the regression). */
@@ -317,6 +356,41 @@ async function confirmForget(): Promise<void> {
         @click="onBrowse()"
       >{{ t("picker.browse") }}</button>
       <button class="ui-button primary" :disabled="!store.workspace.trim()" @click="store.runPreflight()">{{ t("picker.next") }}</button>
+    </div>
+    <!-- v2.1.13 zip-restore: local target only (remote data roots are not
+         importable — the export itself has no remote leg either). -->
+    <div v-if="target?.kind !== 'remote'" class="row">
+      <button class="ui-button" @click="openImport()">{{ t("picker.import.open") }}</button>
+    </div>
+    <div v-if="importOpen" class="recents ui-section import-box">
+      <div class="recents-label ui-section-title">{{ t("picker.import.title") }}</div>
+      <div class="row">
+        <input
+          v-model="importZip"
+          class="workspace"
+          :placeholder="t('picker.import.zipPh')"
+          readonly
+        />
+        <button class="ui-button" @click="onPickZip()">{{ t("picker.import.pickZip") }}</button>
+      </div>
+      <div class="row">
+        <input
+          v-model="importTarget"
+          class="workspace"
+          :placeholder="t('picker.import.targetPh')"
+        />
+        <button class="ui-button" @click="onPickTargetDir()">{{ t("picker.browse") }}</button>
+        <button
+          class="ui-button primary"
+          :disabled="!importZip || !importTarget.trim() || importBusy"
+          @click="onImport()"
+        >{{ t("picker.import.go") }}</button>
+      </div>
+      <p class="hint">{{ t("picker.import.hint") }}</p>
+      <p v-if="importError" class="forget-error" role="alert">{{ importError }}</p>
+      <p v-if="importDone" class="hint">
+        {{ t("picker.import.done", { files: importDone.files, skipped: importDone.skipped }) }}
+      </p>
     </div>
     <!-- R4b: machine switcher — local machine or a settings.remoteMachines
          entry. Switching tears every tunnel down (backend) and re-roots all

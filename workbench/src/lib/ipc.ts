@@ -388,6 +388,24 @@ export const workspaceForget = (path: string, expectedHistoryRevision: number) =
 export const workspaceExportLifecycle = (path: string, dest: string) =>
   invoke<number>("workspace_export_lifecycle", { path, dest });
 
+/** v2.1.13 (zip-restore): result of restoring an exported lifecycle zip as
+ * a NEW workspace. workspaceKey names the data-root dir derived from the
+ * TARGET path (hash contract); sourcePath/exportedAt are manifest
+ * provenance (null for pre-manifest v0 zips). */
+export interface WorkspaceImportResult {
+  workspaceKey: string;
+  files: number;
+  skipped: number;
+  sourcePath: string | null;
+  exportedAt: number | null;
+}
+
+export const workspaceImportLifecycle = (zipPath: string, targetPath: string) =>
+  invoke<WorkspaceImportResult>("workspace_import_lifecycle", {
+    zipPath,
+    targetPath,
+  });
+
 export const workspaceHistoryRemove = (path: string, expectedHistoryRevision: number) =>
   invoke<number>("workspace_history_remove", { path, expectedHistoryRevision });
 

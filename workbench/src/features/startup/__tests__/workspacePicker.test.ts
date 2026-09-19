@@ -20,6 +20,8 @@ const mockIpc = vi.hoisted(() => ({
   workspaceForgetPreview: vi.fn(),
   workspaceForget: vi.fn(),
   workspaceHistoryRemove: vi.fn().mockResolvedValue(2),
+  // v2.1.13 zip-restore
+  workspaceImportLifecycle: vi.fn(),
   // F2-B: remote browse + target plumbing
   remoteBrowse: vi.fn(),
   targetGet: vi.fn().mockResolvedValue(null),

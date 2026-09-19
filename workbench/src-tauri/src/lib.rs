@@ -64,7 +64,7 @@ use workspace::{
     remote_browse,
     workspace_copy_entry, workspace_copy_path, workspace_create_dir, workspace_create_file,
     workspace_forget, workspace_forget_preview, workspace_history_remove, workspace_list,
-    workspace_export_lifecycle,
+    workspace_export_lifecycle, workspace_import_lifecycle,
     workspace_open, workspace_path_exists, workspace_preview, workspace_rename, workspace_reveal,
     workspace_reveal_data_file,
 };
@@ -221,6 +221,7 @@ pub fn run(cli_arg: Option<String>) {
             workspace_forget_preview,
             workspace_forget,
             workspace_export_lifecycle,
+            workspace_import_lifecycle,
             workspace_history_remove,
             workspace_path_exists,
             remote_browse,
