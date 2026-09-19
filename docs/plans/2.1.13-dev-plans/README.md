@@ -1,38 +1,54 @@
 # 2.1.13 开发计划
 
-> 2026-09-19 开池（随 v2.1.12 收官切换，Workbench 版本线 bump 2.1.12 → 2.1.13）。
-> 同日用户定稿阶段范围：docs/todo.md「v2.1.13-target」（12 条）即本阶段目标清单。
-> 各条动工时在本目录按 vibe-coding-skill 标准文件立项（DEVELOP_WIKI §1.1，开发以文档为准）。
+> 2026-09-19 开池（Workbench 版本线 bump 2.1.12 → 2.1.13）。同日用户定稿阶段范围
+> （docs/todo.md「v2.1.13-target」）并作三点裁决（D-1 免安装 / D-2 检测精细化 /
+> D-3 局域网暂缓，见 decisions.md）。当日完成立项研究（ultracode workflow：研究员 +
+> 独立证据核验）并落全部计划文档。开发严格以本文档集为准（DEVELOP_WIKI §1.1）。
 
-## 阶段范围（= todo「v2.1.13-target」，2026-09-19 用户定稿）
+## 计划文档索引
+
+| 文档 | 条目 | 状态 |
+| --- | --- | --- |
+| [decisions.md](decisions.md) | 阶段裁决日志（D-1~D-3 用户裁定；D-4~D-10 立项规划裁定，可逐条否决） | 持续更新 |
+| [selfupdate-e2e.md](selfupdate-e2e.md) | 自更新端到端实测 + CI 版本戳修正 | 计划待验收 |
+| [remote-cli-pairing.md](remote-cli-pairing.md) | 远程 CLI 版本配对「需更新」提示 | 计划待验收 |
+| [long-conversation-repro.md](long-conversation-repro.md) | 长对话恢复 bug 取证协议 | 待用户提供复现样本 |
+| [history-worklog.md](history-worklog.md) | 历史会话重构（工作记录 + 只读聊天视图） | 计划待验收 |
+| [changes-page.md](changes-page.md) | 变更页（git 双源 + 变更树 + diff） | 计划待验收 |
+| [workspace-zip-restore.md](workspace-zip-restore.md) | 导出 zip 恢复工作区到新路径 | 计划待验收 |
+| [docker-scan-fidelity.md](docker-scan-fidelity.md) | docker 资源检测精细化 | 计划待验收 |
+| [pi-opencode.md](pi-opencode.md) | agent 加上 Pi/opencode（免安装） | 计划待验收 |
+| [image-drag-to-agent.md](image-drag-to-agent.md) | 拖动图片给 agent（含剪贴板粘贴） | 计划待验收 |
+
+流程项（无开发计划文档）：**final 发布时机**——按 D-8(2.1.12) 规约仅经用户明确要求。
+
+## 阶段范围与状态（= todo「v2.1.13-target」，2026-09-19 用户定稿 + 当日裁决）
 
 **发布与更新**
-- 自更新端到端实测（preview.1 装机 → 检测升级下一版；随首个 preview.2 顺带）
-- 远程机器 CLI 版本配对与更新：「需更新」主动提示 UI 与自动同步（协议硬门已交付，v2.1.11 遗留）
-- final 发布时机（preview.1 稳定后，经用户明确要求转正）
+- 自更新端到端实测（实测目标 = v2.1.13-preview.1；先落 CI 版本戳，见 selfupdate-e2e.md）
+- 远程机器 CLI 版本配对与更新（一期提示 + 复制命令，见 remote-cli-pairing.md）
+- final 发布时机（流程项，经用户明确要求）
 
 **会话 / 工作区**
-- 长对话无法恢复（bug；动手前需复现样本）
-- 历史会话重构：网页版聊天的界面 +「工作记录」概念
-- 变更页：vscode git 插件的体验 + 变化文件用文件树
-- 导出的工作区 zip 恢复为工作区，且指向新路径
+- 长对话无法恢复（bug；等复现样本，协议见 long-conversation-repro.md）
+- 历史会话重构：工作记录 + 只读聊天界面（四批交付，批 0 探针前置）
+- 变更页：git 双源 + 变更树 + diff（git 严格只读）
+- 导出的工作区 zip 恢复为工作区，且指向新路径（按新路径重算 hash 落新目录）
 
 **运行质量**
-- docker 缓存自动清理（手动清理已交付，缺自动触发）
-- 设备性能受限情况下，如何保证稳定运行（v2.1.9 PERF P1-P9 为既有基础，留 P6b/P10 backlog）
+- docker 资源检测精细化（D-2 改裁：不自动清理；只读深扫 + 逐项徽标）
+- 设备性能受限情况下稳定运行（v2.1.9 PERF P1-P9 为既有基础；待专项立项——P6b/P10 backlog、存量容器限额、低配实测验收三方向，见下「待立项」）
 
 **agent 生态**
-- agent 加上 Pi/opencode
-- 拖动图片给 agent
+- agent 加上 Pi/opencode（D-1：免安装；Q1 边界待确认）
+- 拖动图片给 agent（落盘+路径引用；剪贴板粘贴同批）
 
-**远程**
-- 局域网通信增强（动工前需 D-7 TCP 传输安全裁定 + 场景澄清）
+**暂缓（2026-09-19 用户裁定移出）**
+- 局域网通信增强（D-3：退回后备池；重启先决 = 场景澄清 + serve TCP 传输安全裁定）
 
-## 开池比对（2026-09-19，target vs 现状审计）
+## 待立项（范围内但计划文档未落）
 
-12 条无一已完成、无一可提前打勾：3 条有既有基础（上表括注：docker 手动清理、
-PERF 专项、zip 导出半边），2 条为流程项（自更新实测等 preview.2、final 等用户
-明确要求），其余纯未动工。详见当日审计会话。
+- 设备性能受限稳定运行：本批立项研究未含（低配 PERF 基础已在案），下次补研究后立文档。
 
 ## 已移出 target（用户 2026-09-19 定稿裁剪，退回后备/观察）
 
