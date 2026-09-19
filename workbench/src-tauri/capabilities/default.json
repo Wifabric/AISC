@@ -16,6 +16,7 @@
     "core:window:allow-set-title",
     "core:webview:allow-create-webview-window",
     "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-text",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",

@@ -709,6 +709,20 @@ export const workspaceCopyPath = (workspace: string, relativePath: string) =>
 // Only workspace-relative paths + a single basename cross the IPC boundary;
 // containment and basename validation are re-done in Rust (D11-04).
 
+/** v2.1.13 (image-drag): upload one OS image into `<workspace>/.aisc/uploads/`
+ * (contained, no-clobber, atomic; 20 MiB cap). Returns the mutation result
+ * whose relative_path is the uploaded workspace-relative path. */
+export const workspaceUploadImage = (
+  workspace: string,
+  name: string,
+  bytesBase64: string,
+) =>
+  invoke<import("../types").WorkspaceMutationResult>("workspace_upload_image", {
+    workspace,
+    name,
+    bytesBase64,
+  });
+
 export const workspaceCreateFile = (workspace: string, relativeDir: string, name: string) =>
   invoke<import("../types").WorkspaceMutationResult>("workspace_create_file", {
     workspace,

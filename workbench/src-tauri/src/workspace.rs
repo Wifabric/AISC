@@ -1895,6 +1895,126 @@ pub async fn workspace_copy_path(
 // the UI already checked (06 §2).
 
 
+
+// --- v2.1.13 (image-drag): OS image drop/paste → workspace upload ----------
+//
+// D-b6: an OS-dragged or clipboard image lands under `.aisc/uploads/`
+// (DEFAULT_IGNORE keeps the dir out of the tree and the changes projection)
+// and the CONTAINER path token is inserted into the PTY (D11-09: no Enter,
+// nothing executes; D11-10: OS absolute paths never enter the webview).
+// Local leg: containment via resolve_contained, no-clobber suffixing,
+// atomic tmp+rename. Remote leg: fs.mkdir (tolerant) + fs.write over the
+// pooled serve session — the same remote pattern as workspace_create_file.
+// 20 MiB per-file cap: writeSession's 1 MiB PTY cap must not be bypassed by
+// raw bytes riding the PTY, so uploads take the dedicated IPC instead.
+
+const UPLOAD_MAX_BYTES: usize = 20 * 1024 * 1024;
+
+#[tauri::command]
+pub async fn workspace_upload_image(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    name: String,
+    bytes_base64: String,
+) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    // basename only: separators and quote/control characters never survive
+    let bs = char::from(92);
+    let safe_name: String = name
+        .chars()
+        .filter(|c| !c.is_control() && *c != '\'' && *c != '"')
+        .map(|c| if c == bs || c == '/' { '_' } else { c })
+        .collect();
+    if safe_name.is_empty() {
+        return Err(WorkbenchError::usage("upload name is empty"));
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(bytes_base64.as_bytes())
+        .map_err(|e| WorkbenchError::usage(format!("upload bytes: {e}")))?;
+    if bytes.is_empty() {
+        return Err(WorkbenchError::usage("upload is empty"));
+    }
+    if bytes.len() > UPLOAD_MAX_BYTES {
+        return Err(WorkbenchError::input_too_large()
+            .with_detail("uploads are capped at 20 MiB per file"));
+    }
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let (stem, ext) = match safe_name.rsplit_once('.') {
+        Some((b, e)) if !e.is_empty() => (b.to_string(), format!(".{e}")),
+        _ => (safe_name.clone(), String::new()),
+    };
+    let mut relative = format!(".aisc/uploads/{stamp}-{stem}{ext}");
+
+    let target = crate::target::resolve_target_for(&app, &window).await?;
+    if let crate::cli::CliTarget::Remote(t) = target {
+        let pool = crate::serve::global_pool();
+        // best-effort: an existing directory makes mkdir report an error we
+        // deliberately ignore — fs.write below is the operation that matters
+        let _ = crate::serve::fs_op(
+            pool,
+            &t,
+            "fs.mkdir",
+            &serde_json::json!({ "root": workspace, "path": ".aisc/uploads" }),
+        )
+        .await;
+        crate::serve::fs_op(
+            pool,
+            &t,
+            "fs.write",
+            &serde_json::json!({
+                "root": workspace,
+                "path": relative,
+                "base64": bytes_base64
+            }),
+        )
+        .await?;
+        return Ok(WorkspaceMutationResult {
+            schema_version: 1,
+            operation: "upload".into(),
+            relative_path: relative,
+            kind: "file".into(),
+        });
+    }
+
+    // local leg: containment + no-clobber + atomic write
+    let ws = Path::new(&workspace);
+    let dest_base = ws.join(&relative);
+    {
+        let parent = dest_base
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| ws.join(".aisc/uploads"));
+        fs::create_dir_all(&parent)
+            .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("mkdir: {e}")))?;
+    }
+    let mut attempt = 2;
+    while ws.join(&relative).exists() {
+        relative = format!(".aisc/uploads/{stamp}-{stem}-{attempt}{ext}");
+        attempt += 1;
+        if attempt > 50 {
+            return Err(WorkbenchError::workspace_conflict()
+                .with_detail("no free upload name under .aisc/uploads"));
+        }
+    }
+    let dest = ws.join(&relative);
+    let tmp = ws.join(format!("{relative}.aisc-tmp"));
+    fs::write(&tmp, &bytes)
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("tmp write: {e}")))?;
+    fs::rename(&tmp, &dest)
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("rename: {e}")))?;
+    Ok(WorkspaceMutationResult {
+        schema_version: 1,
+        operation: "upload".into(),
+        relative_path: relative,
+        kind: "file".into(),
+    })
+}
+
 async fn is_remote(app: &AppHandle) -> bool {
     app.state::<crate::target::ActiveTarget>().current().is_some()
 }

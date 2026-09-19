@@ -68,6 +68,7 @@ use workspace::{
     workspace_git_diff, workspace_git_info, workspace_git_status,
     workspace_export_lifecycle, workspace_import_lifecycle,
     workspace_open, workspace_path_exists, workspace_rename, workspace_reveal,
+    workspace_upload_image,
     workspace_reveal_data_file,
 };
 use doctor::{diagnostic_bundle, logs_tail, run_doctor};
@@ -236,7 +237,7 @@ pub fn run(cli_arg: Option<String>) {
             workspace_create_file,
             workspace_create_dir,
             workspace_copy_entry,
-            workspace_rename,
+            workspace_rename, workspace_upload_image,
             workspace_rescan,
             workspace_watch_start,
             workspace_watch_stop,
