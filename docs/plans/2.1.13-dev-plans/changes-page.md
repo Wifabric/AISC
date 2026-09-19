@@ -45,7 +45,7 @@
 ## 4. 实施计划
 
 1. 立项文档评审（本文件）+ 开放问题裁决入 decisions。
-2. Rust：workspace.rs（或新 git_status.rs）三命令 + WB_ERR_GIT_* 码 + porcelain=v1 -z / numstat 二进制判定 / `-c core.autocrlf=false`——验证：cargo 单测（porcelain 解析、rename、二进制、非 repo 稳定码）。
+2. Rust：workspace.rs（或新 git_status.rs）三命令 + WB_ERR_GIT_* 码 + porcelain=v1 -z / numstat 二进制判定 / `git -c core.autocrlf=false diff …`（**`-c key=val` 必须置于子命令之前**，实测放后面会 fatal）——验证：cargo 单测（porcelain 解析、rename、二进制、非 repo 稳定码）。
 3. ipc.ts 三封装 + types（GitInfo/GitStatusEntry/DiffResult）——验证：tsc。
 4. store 双源：changesSource('git'|'watcher') + gitEntries + 检测/刷新 action（激活变更页/watcher 事件节流触发 ≥2s）+ 切工作区清理——验证：store 单测（源切换/跳变/清理）。
 5. `changesTree.ts` 投影树（前缀嵌套、目录聚合徽标、deleted 孤儿目录、搜索过滤）——验证：vitest 全覆盖（深路径/根级文件/纯目录删除/重名基名）。

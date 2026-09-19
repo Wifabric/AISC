@@ -9,7 +9,7 @@
 - **导出半边（已交付）**：`workspace_export_lifecycle(path,dest)`（workspace.rs:557-623）——遍历 `<data-root>/workspaces/<hash>/` 整棵子树写 zip；**zip 根目录名 = `sha256-v1-<旧路径64hex>`**（:583-584）；任意层级 `toolchain` 目录剔除（:600-605）；被锁文件 best-effort 跳过（:609-615）；**无任何 manifest/元数据**。入口：forget 对话框与 InvalidPathDialog 的「先导出（zip）」两处（WorkspacePicker.vue:90-97、270-281）。
 - **哈希契约（恢复的落点铁律）**：目录名必须 == `workspace_dir_name(hash(canonical(目标路径)))`（data_root.rs:23/:107-138/:98-101；Rust/Python 双端 SSOT + hash-vectors.json 夹具锁定）。SHA256 单向 ⇒ **无法从 zip 反解原路径**，「原样解包保留旧目录名」方案对新路径天然不成立。
 - **恢复即复活**：runtime start 自动 mkdir claude/codex/cc-switch/runtime 四子目录并挂到容器固定位置（runtime.py:1188、:1224-1233）——容器内路径与宿主路径无关，子树放回 `workspaces/<新hash>/` 下次启动自动接管。
-- **会话/记忆可恢复性（关键核验）**：resume 扫描源就是状态子树本身（conversation.py:360-361、:376-398）；实机子树 grep **无任何 `C:\` 宿主路径残留**（claude/projects 目录名为 "-"，即容器 munge）⇒ 会话在新宿主路径下原样可用。唯一携带旧宿主绝对路径的是 `runtime/containers.json`（container_registry.py:277-285，有惰性 GC）。
+- **会话/记忆可恢复性（关键核验）**：resume 扫描源就是状态子树本身（conversation.py:360-361、:376-398）；实机 4 个工作区核验：**全部 .jsonl 会话文件与 .json/.toml 配置对 `C:\` 零命中**（claude/projects 目录名为 "-"，即容器 munge；仅第三方插件/技能缓存里 12 个 .md/.js/.cmd 含*示例性* `C:\` 路径的惰性文本，非本机路径）⇒ 会话在新宿主路径下原样可用。结构化状态中唯一记录旧宿主路径的是 `runtime/containers.json` 的 entry.workspace（container_registry.py:279，有惰性 GC）。
 - **应跳过的机器本地易腐产物**：runtime-lease.json、runtime/containers.json、runtime/workspace-locks/**、runtime/runtime/daemon.pid|sock、*.lock。
 - **硬要求**：runtime start 要求工作区目录已存在（runtime.py:993-999 AISC_ERR_WORKSPACE_INVALID）⇒ 恢复流程需负责创建目标目录。Workbench 布局在 `config/history.json` 按 path 键控（不在 zip 内）；R4 保证恢复动作本身不产生 history 记录、首次成功启动才入 recent（workspaces.ts:401-412）。
 - **零新增依赖**：zip="2" 已在（Cargo.toml:23）；open()/save() 对话框、store 路由（F-A01）、lib.rs 注册、picker 测试与 Rust dirs_override 注入缝（workspace.rs:2670-2701）全部现成。
