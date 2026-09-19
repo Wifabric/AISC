@@ -47,6 +47,9 @@ const ALLOWED_IN_COMPONENTS = new Set([
   "resizeSession",
   // O2 (D-11): spool readback — same session data-plane class as write/resize.
   "sessionReadSpool",
+  // v2.1.13 (image-drag): drop/paste image upload feeds the PTY token exactly
+  // like writeSession does — same terminal data-plane class.
+  "workspaceUploadImage",
   "captureWindowGeometry",
   "resolveLocale",
   "shutdownWorkbenchV2",

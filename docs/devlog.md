@@ -2,6 +2,27 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 6：拖动/粘贴图片给 agent（2026-09-19，分支 2.1.13-b6-image-drag）
+
+- **上传通道**：新命令 `workspace_upload_image(workspace, name, bytes_base64)`——
+  落盘 `<workspace>/.aisc/uploads/<毫秒时间戳>-<name>`（DEFAULT_IGNORE 使其对
+  Explorer/变更投影不可见）；本地腿 resolve_contained 包容校验 + 无覆盖后缀 +
+  原子 tmp+rename；远程腿 fs.mkdir（容错）+ fs.write（与 create_file 同模式）；
+  单文件 20MiB 上限（不走 writeSession 的 1MiB PTY 通道）；basename 消毒
+  （分隔符/引号/控制字符）。
+- **拖入**：Terminal.vue onDragOver 接受 Files 类型（dragDropEnabled=false 的
+  HTML5 DnD 捕获 File 对象；Windows 上 File.type 可能为空 → MIME+扩展名双
+  判定）；受控 MIME（explorer 路径引用）优先分派；图片读 bytes → 上传 →
+  插入带引号容器路径 token（无 Enter，D11-09/10 契约全保）；≤10 张一次写入。
+- **剪贴板粘贴（同批）**：doPaste 先 readImage——有图走同一上传+插路径（容器
+  内 agent 自身剪贴板结构性失效，宿主剪贴板是唯一粘贴图片通路），无图/失败
+  回退既有 readText；capabilities 增 clipboard-manager:allow-read-image。
+- **层契约**：workspaceUploadImage 列入组件白名单（与 writeSession 同类终端
+  数据面——上传结果直接喂 PTY token）。
+- 测试：dropPath 上传映射 + Rust 编译面（上传命令单测随下批补：本地手测先行）；
+  local-gates 全绿。手测清单：拖 png/jpg/gif/webp 进 claude/codex、截图 Ctrl+V、
+  非图片拒绝、远程 target、git 仓 untracked 观察。
+
 # v2.1.13 批 5：变更页（git 双源 + 投影树 + diff）+ 底部预览移除（2026-09-19，分支 2.1.13-b5-changes-page）
 
 - **D-11 底部预览彻底移除**：「偶尔出现」根因 = 变更面板 D11-16 例外保留单击

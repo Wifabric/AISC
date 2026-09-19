@@ -5,15 +5,7 @@
  * (04 §1 quoting 测试要求).
  */
 import { describe, expect, it } from "vitest";
-import {
-  CONTAINER_WORKSPACE_ROOT,
-  containerPathFor,
-  quoteCmd,
-  quoteForHost,
-  quoteForTerminal,
-  quotePosix,
-  quotePowerShell,
-} from "../dropPath";
+import { CONTAINER_WORKSPACE_ROOT, containerPathFor, quoteCmd, quoteForHost, quoteForTerminal, quotePosix, quotePowerShell, UPLOADS_DIR, containerUploadsPathFor } from "../dropPath";
 
 describe("containerPathFor (D11-15)", () => {
   it("maps workspace-relative paths onto the container mount", () => {
@@ -69,5 +61,18 @@ describe("quotePowerShell / quoteCmd (implemented for contract completeness)", (
     expect(quoteForHost("a b", "powershell")).toBe("'a b'");
     expect(quoteForHost('a "b"', "cmd")).toBe('"a ""b"""');
     expect(quoteForTerminal("/root/app/a b.md")).toBe("'/root/app/a b.md'");
+  });
+});
+
+describe("v2.1.13 image-drag uploads mapping", () => {
+  it("maps uploaded names under the ignored uploads dir", () => {
+    expect(UPLOADS_DIR).toBe(".aisc/uploads");
+    expect(containerUploadsPathFor("shot.png")).toBe(
+      "/root/app/.aisc/uploads/shot.png",
+    );
+    // nested names (defense: sanitizer upstream collapses separators)
+    expect(containerUploadsPathFor("sub/shot.png")).toBe(
+      "/root/app/.aisc/uploads/sub/shot.png",
+    );
   });
 });

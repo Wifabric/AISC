@@ -20,6 +20,17 @@ export function containerPathFor(relativePath: string): string {
   return rel === "" ? CONTAINER_WORKSPACE_ROOT : `${CONTAINER_WORKSPACE_ROOT}/${rel}`;
 }
 
+/** v2.1.13 (image-drag): workspace-relative uploads dir. `.aisc/` sits in
+ *  the Explorer/watcher DEFAULT_IGNORE sets, so uploaded images never flood
+ *  the tree or the changes projection. */
+export const UPLOADS_DIR = ".aisc/uploads";
+
+/** Map an uploaded file name to its container-absolute path. */
+export function containerUploadsPathFor(fileName: string): string {
+  const name = fileName.replace(/\\/g, "/");
+  return `${CONTAINER_WORKSPACE_ROOT}/${UPLOADS_DIR}/${name}`;
+}
+
 export type ShellHost = "posix" | "powershell" | "cmd";
 
 /**
