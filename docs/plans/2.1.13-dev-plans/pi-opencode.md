@@ -1,8 +1,8 @@
 # agent 加上 Pi / opencode（免安装）
 
-> 状态：计划待用户验收（2026-09-19 立项）——D-1 边界有一个语义确认（§5 Q1）
+> 状态：**已作废（2026-09-19 用户澄清 D-1：本阶段不做 Pi/opencode）**——内容保留备查；重启时外部事实（npm 包名/命令/许可证等）需重新核验，「免安装」路线可复议
 > 方法：ultracode workflow（研究员 web+代码双路 + 独立证据核验；verdict=corrected——npm 镜像源前提被修正，按需获取可行性上调）
-> 对应 target：docs/todo.md「agent 加上 Pi/opencode（免安装，镜像不变）」；裁决 D-1
+> 对应 target：原 todo「agent 加上 Pi/opencode」（2026-09-19 移出 target，退回后备池）；裁决 D-1（已澄清）
 
 ## 1. 外部事实（web 抓取 2026-09，本地不可核验处标置信度）
 

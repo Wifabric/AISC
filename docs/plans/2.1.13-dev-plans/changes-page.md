@@ -29,6 +29,8 @@
 
 被否决：A 纯 watcher 升级（无当前态语义）；C 全 git 化（非 repo 工作区直接失去变更页，违反普适性）。
 
+> **用户确认（2026-09-19）**：双源方案采纳；UI 直接模仿 vscode 的 git 页（源代码管理视图）形态；**只显示、不提供任何 git 操作**（read-only 裁定随之确认，Stage/Commit 等写操作按钮不做）。
+
 ## 3. 规格
 
 - **Scope**：Rust 三个本地限定命令（git_info/git_status/git_diff）+ store 双源改造 + 变更树组件 + diff pane + i18n + 测试。
