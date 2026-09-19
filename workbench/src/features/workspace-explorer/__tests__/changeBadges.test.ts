@@ -56,14 +56,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
-describe("change badges (T6 flat panel)", () => {
+describe("change badges (v2.1.13 projection tree)", () => {
   it("every change row carries a TYPE-only badge — icon + text, no agent/source labels", async () => {
     const w = await mountFlat();
     const explorer = useWorkspaceExplorerStore();
-    explorer.unattributed = { "notes/x.md": "modified" };
+    explorer.unattributed = { "x.md": "modified" };
     await flushPromises();
 
-    const badge = w.find(".artifact-row .change-badge");
+    const badge = w.find(".change-row .change-badge");
     expect(badge.exists()).toBe(true);
     expect(badge.attributes("data-type")).toBe("modified");
     expect(badge.text()).toContain("修改");
@@ -84,7 +84,7 @@ describe("change badges (T6 flat panel)", () => {
       "d.txt": "renamed",
     };
     await flushPromises();
-    const badges = w.findAll(".artifact-row .change-badge");
+    const badges = w.findAll(".change-row .change-badge");
     expect(badges).toHaveLength(4);
     const byType = new Map(badges.map((b) => [b.attributes("data-type"), b]));
     expect(["created", "modified", "deleted", "renamed"].every((t) => byType.has(t))).toBe(true);

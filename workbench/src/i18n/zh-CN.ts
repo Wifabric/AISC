@@ -85,6 +85,9 @@ export const zhCN = {
   "picker.invalidBody": "以下路径在磁盘上已不存在。可以清除这条历史记录（只移除记录，不动任何数据）：",
   "picker.invalidClear": "清除记录",
   "picker.invalidPurge": "同时清理该工作区的生命周期文件（agent 记忆、配置、状态——不涉及任何用户文件）",
+  "changes.source.git": "git · {branch} · {n} 项变更",
+  "changes.source.watcher": "会话变更 · {n}",
+  "changes.diff.binary": "二进制文件，无文本差异（双击用系统应用打开）",
   "picker.exportLifecycle": "先导出（zip）",
   "picker.target.needsUpdate": "CLI 需更新",
   "settings.machines.versionTitle": "远程机器 CLI 版本（软提示，不阻断任何操作；比较对象为本机 CLI，不含 Workbench 版本）",
@@ -729,8 +732,6 @@ export const zhCN = {
   "explorer.open": "打开",
   "explorer.reveal": "在文件管理器中显示",
   "explorer.copy": "复制路径",
-  "explorer.preview.truncated": "预览已截断",
-  "explorer.preview.unsupported": "此文件类型不支持预览，可用系统应用打开。",
   // --- workspace explorer operations (Stage 11, 11c) ---
   "explorer.toolbar.newFile": "新建文件",
   "explorer.toolbar.newFolder": "新建文件夹",

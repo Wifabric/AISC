@@ -54,7 +54,6 @@ vi.mock("../../../lib/ipc", () => ({
     relative_path: "renamed.md",
     kind: "file",
   }),
-  workspacePreview: vi.fn().mockResolvedValue({ relative_path: "a.md", media_type: "text/markdown", size: 2, text: "hi", base64: null, truncated: false }),
   workspaceReveal: vi.fn().mockResolvedValue(undefined),
   workspaceCopyPath: vi.fn().mockResolvedValue({ relative_path: "a.md", absolute_path: "/ws/a.md" }),
   workspaceWatchStart: vi.fn().mockResolvedValue(undefined),
@@ -110,9 +109,9 @@ describe("WorkspaceExplorer keyboard (3f, A-WX05-1)", () => {
     await tree.trigger("keydown", { key: "ArrowDown" }); // focus a.md
     await tree.trigger("keydown", { key: "Enter" });
     // Stage 11 (D11-01/19): Enter opens the file; it no longer previews.
-    const { workspaceOpen, workspacePreview } = await import("../../../lib/ipc");
+    const { workspaceOpen } = await import("../../../lib/ipc");
     expect(workspaceOpen).toHaveBeenCalledWith("/ws", "a.md");
-    expect(workspacePreview).not.toHaveBeenCalled();
+    
     wrapper.unmount();
   });
 
@@ -212,17 +211,26 @@ describe("WorkspaceExplorer changes panel (WX-04, T6 flat)", () => {
     ]);
     await flushPromises();
 
-    const row = wrapper.find(".artifact-row");
+    const row = wrapper.find(".change-row");
     expect(row.exists()).toBe(true);
     // No Open / Reveal / Copy buttons in the changes panel.
-    expect(wrapper.findAll(".artifact-row .explorer-mini").length).toBe(0);
-    // Single-click previews; double-click opens.
-    await row.trigger("dblclick");
+    expect(wrapper.findAll(".change-row .explorer-mini").length).toBe(0);
+    // The projection tree lists the "reports" directory first; expand it,
+    // then double-click the leaf to open (D-11: single-click only selects;
+    // git rows open a read-only diff instead).
+    await row.trigger("click");
+    const leaf = wrapper
+      .findAll(".change-row")
+      .find((r) => r.text().includes("result.md"))!;
+    await leaf.trigger("dblclick");
     expect(workspaceOpen).toHaveBeenCalledWith("/ws", "reports/result.md");
     // Right-click opens the shared context menu.
     Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
     Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
-    await row.trigger("contextmenu", { clientX: 300, clientY: 300 });
+    const leafRow = wrapper
+      .findAll(".change-row")
+      .find((r) => r.text().includes("result.md"))!;
+    await leafRow.trigger("contextmenu", { clientX: 300, clientY: 300 });
     expect(wrapper.find("[role=menu]").exists()).toBe(true);
     wrapper.unmount();
   });
@@ -236,13 +244,13 @@ describe("WorkspaceExplorer changes panel (WX-04, T6 flat)", () => {
     ]);
     await flushPromises();
 
-    const names = wrapper.findAll(".artifact-row .explorer-name").map((n) => n.text());
-    // Ambiguous basename `result.md` → show the full relative path to disambiguate.
-    expect(names).toEqual(["a/result.md", "b/result.md"]);
+    const names = wrapper.findAll(".change-row .explorer-name").map((n) => n.text());
+    // The projection tree disambiguates by parent directory grouping.
+    expect(names).toEqual(["a", "b"]);
     wrapper.unmount();
   });
 
-  it("shows relative paths for colliding entries of different types (created + modified)", async () => {
+  it("expanding a directory row reveals its changed file", async () => {
     const wrapper = await mountChanges();
     const explorer = useWorkspaceExplorerStore();
     explorer.handleWorkspaceChanges([
@@ -251,14 +259,18 @@ describe("WorkspaceExplorer changes panel (WX-04, T6 flat)", () => {
     ]);
     await flushPromises();
 
-    const names = wrapper.findAll(".artifact-row .explorer-name").map((n) => n.text());
-    expect(names).toEqual(["a/result.md", "b/result.md"]);
+    const dirRow = wrapper.findAll(".change-row").find((r) => r.text().includes("a"));
+    expect(dirRow).toBeDefined();
+    await dirRow!.trigger("click"); // expands
+    await flushPromises();
+    const names = wrapper.findAll(".change-row .explorer-name").map((n) => n.text());
+    expect(names).toContain("result.md");
     wrapper.unmount();
   });
 
   it("empty state when nothing changed yet", async () => {
     const wrapper = await mountChanges();
-    expect(wrapper.findAll(".artifact-row")).toHaveLength(0);
+    expect(wrapper.findAll(".change-row")).toHaveLength(0);
     expect(wrapper.text()).toContain("Agent 产出的交付物与文件变更会显示在这里");
     wrapper.unmount();
   });
@@ -267,14 +279,14 @@ describe("WorkspaceExplorer changes panel (WX-04, T6 flat)", () => {
 /** Stage 11 (11c): single-click select / double-click open semantics (D11-01). */
 describe("WorkspaceExplorer activation semantics (11c)", () => {
   it("single-click selects a file without previewing; double-click opens it", async () => {
-    const { workspaceOpen, workspacePreview } = await import("../../../lib/ipc");
+    const { workspaceOpen } = await import("../../../lib/ipc");
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const rows = wrapper.findAll("[role=treeitem]");
 
     await rows[1].trigger("click"); // a.md (file)
     expect(rows[1].attributes("aria-selected")).toBe("true");
-    expect(workspacePreview).not.toHaveBeenCalled();
+    
 
     await rows[1].trigger("dblclick");
     expect(workspaceOpen).toHaveBeenCalledWith("/ws", "a.md");

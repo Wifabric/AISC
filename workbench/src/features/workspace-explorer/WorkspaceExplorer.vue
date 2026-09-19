@@ -6,7 +6,7 @@
  * the merged artifact index.
  *
  * Stage 11 (11c): VS Code-style operations — single-click selects (files no
- * longer preview, D11-01; the Artifacts panel keeps click-to-preview,
+ * longer preview, D11-01; D-11 (2.1.13) removed the artifacts click-to-
  * D11-16), double-click/Enter opens, dir click toggles; toolbar new-file /
  * new-folder / refresh (selection-aware target, D11-17); target-aware context
  * menus (root/dir/file); inline create/rename name input with instant
@@ -22,6 +22,7 @@ import { errorCodeOf, useWorkspaceExplorerStore } from "../../stores/workspaceEx
 import { useRuntimeStore } from "../../stores/runtime";
 import { WORKSPACE_PATH_MIME } from "../../lib/workspaceDnd";
 import { buildSearchMatcher } from "../../lib/search";
+import { buildChangeTree, gitTypeOf, subtreeBadge, type ChangeTreeNode } from "./changesTree";
 import { setExplorerCollapsed } from "../../lib/panelLayout";
 import { validateBasename } from "./basename";
 import ChangeBadge from "./ChangeBadge.vue";
@@ -144,15 +145,81 @@ const searchMatches = computed(() => {
   );
   return out;
 });
-/** 2.1.9 T6: the Changes panel is a FLAT list — the shared search matcher
- *  (substring > subsequence fuzzy, `/regex/` for patterns) is the only
- *  filter. Classification (kind sections/chips/attribution) was cut per
- *  user ruling: agent self-registration proved unreliable. */
-const changesFiltered = computed(() => {
+/** v2.1.13 (D-6): dual-source changes rows. Git source (local repo + host
+  git) shows `git status` entries; the watcher fallback keeps the historical
+  session-log semantics. Tree grouping is presentation only - the v2.1.9-cut
+  attribution taxonomy stays cut. Filter: the shared search matcher
+  (substring > subsequence fuzzy, `/regex/` for patterns). */
+const changeRows = computed(() => {
+  if (explorer.changesSource === "git") {
+    return explorer.gitEntries.map((e) => ({
+      path: e.path,
+      type: gitTypeOf(e.x, e.y),
+      renameFrom: e.renameFrom,
+    }));
+  }
   const matcher = searchMatcher.value;
-  if (matcher === null) return explorer.unattributedEntries;
-  return explorer.unattributedEntries.filter((e) => matcher(e.relative_path.toLowerCase()) > 0);
+  const rows = explorer.unattributedEntries;
+  if (matcher === null) {
+    return rows.map((e) => ({ path: e.relative_path, type: e.change_type }));
+  }
+  return rows.filter((e) => matcher(e.relative_path.toLowerCase()) > 0)
+    .map((e) => ({ path: e.relative_path, type: e.change_type }));
 });
+const searchActive = computed(() => searchQuery.value.trim().length > 0);
+const changesTree = computed(() => {
+  const matcher = searchMatcher.value;
+  const filter = matcher === null ? null : (p: string) => matcher(p) > 0;
+  return buildChangeTree(changeRows.value, filter);
+});
+/** Flattened (expanded-only) render rows - same idiom as the file tree. */
+const changeExpanded = ref(new Set<string>());
+function toggleChangeDir(node: ChangeTreeNode): void {
+  const next = new Set(changeExpanded.value);
+  if (next.has(node.path)) next.delete(node.path);
+  else next.add(node.path);
+  changeExpanded.value = next;
+}
+const changeTreeRows = computed(() => {
+  const out: Array<{ node: ChangeTreeNode; depth: number }> = [];
+  const visit = (nodes: ChangeTreeNode[], depth: number) => {
+    for (const n of nodes) {
+      out.push({ node: n, depth });
+      // a search auto-expands: matches must be visible (vscode SCM behavior)
+      if (n.dir && (searchActive.value || changeExpanded.value.has(n.path))) visit(n.children, depth + 1);
+    }
+  };
+  visit(changesTree.value, 0);
+  return out;
+});
+const changeSourceLabel = computed(() =>
+  explorer.changesSource === "git"
+    ? t("changes.source.git", { branch: explorer.gitBranch, n: changeRows.value.length })
+    : t("changes.source.watcher", { n: changeRows.value.length }));
+/** Unified diff line classification for the diff pane. */
+const diffLines = computed(() => {
+  const d = explorer.gitDiff;
+  if (!d || d.binary) return [];
+  return d.unified.split("\n").map((line) => ({
+    line,
+    kind: line.startsWith("+") && !line.startsWith("+++")
+      ? "add"
+      : line.startsWith("-") && !line.startsWith("---")
+        ? "del"
+        : line.startsWith("@@") ? "hunk" : "ctx",
+  }));
+});
+function onRowClick(node: ChangeTreeNode): void {
+  if (node.dir) {
+    toggleChangeDir(node);
+    return;
+  }
+  onArtifactSelect(node.path);
+  if (explorer.changesSource === "git") void explorer.openGitDiff(node.path);
+}
+function subtreeCount(node: ChangeTreeNode): number {
+  return subtreeBadge(node).count;
+}
 // --- v2.1.8 T4: agent history conversations ---
 
 /** Two-call resume orchestration happens in the store (preflight →
@@ -779,11 +846,6 @@ function badgeTypeOf(change: string): "created" | "modified" | "deleted" | "rena
 }
 /** S7 legend row: always visible — no toggle (2026-08-28 manual test). */
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
 
 /** Display a host absolute path for a workspace-relative path. */
 function hostPath(relativePath: string): string {
@@ -799,45 +861,13 @@ function fileName(relativePath: string): string {
   return idx >= 0 ? normalized.slice(idx + 1) : normalized;
 }
 
-/** Basenames that appear more than once across ALL rows in the Artifacts
- *  panel — manifest artifacts AND unattributed watcher changes (the container
- *  agent's writes usually land here, not in the manifest). When a basename
- *  collides, every row for it shows the workspace-relative path so the user can
- *  tell them apart (e.g. `a/result.md` vs `b/result.md`, or a `created` vs a
- *  `modified` of the same name in different folders). */
-const collidingBasenames = computed(() => {
-  const seen = new Map<string, number>();
-  const count = (relativePath: string) => {
-    const base = fileName(relativePath);
-    seen.set(base, (seen.get(base) ?? 0) + 1);
-  };
-  for (const a of explorer.artifacts) {
-    count(a.workspace_relative_path);
-  }
-  for (const u of explorer.unattributedEntries) {
-    count(u.relative_path);
-  }
-  const colliding = new Set<string>();
-  for (const [base, count] of seen) {
-    if (count > 1) colliding.add(base);
-  }
-  return colliding;
-});
-
-/** Display label for an artifact/unattributed row: basename normally, full
- *  workspace-relative path when the basename is ambiguous across the panel. */
-function artifactLabel(relativePath: string): string {
-  const base = fileName(relativePath);
-  return collidingBasenames.value.has(base) ? relativePath : base;
-}
-
-/** Select + preview a file from an artifact/unattributed row. The Artifacts
- *  panel keeps click-to-preview (D11-16); only the file tree moved to
- *  select-only. Double-click still opens. */
-async function onArtifactSelect(relativePath: string) {
+/** Select a file from an artifact/unattributed row. D-11 (2.1.13): the
+ * click-to-preview is gone entirely - single-click selects, double-click
+ * opens with the system app; a git diff opens in the diff pane below
+ * (git source only). */
+function onArtifactSelect(relativePath: string) {
   selected.value = relativePath;
   menu.value = null;
-  await explorer.previewFile(relativePath);
 }
 
 function focusNode(index: number) {
@@ -1227,22 +1257,47 @@ function onTreeKeydown(e: KeyboardEvent) {
          filter chips, attribution badges). The panel is a FLAT change list
          + the shared search box (substring/subsequence fuzzy + /regex/). -->
     <div v-else-if="artifactFilter === 'artifacts'" key="artifacts" class="explorer-body artifacts-panel">
-      <p v-if="!changesFiltered.length" class="explorer-empty">
+      <!-- v2.1.13 D-6: source indicator - git (authoritative, local repo,
+           read-only status/diff) or the watcher session-log fallback. -->
+      <p class="changes-source" :class="'src-' + explorer.changesSource">
+        {{ changeSourceLabel }}
+      </p>
+      <!-- D-11: the raw-file preview is gone for good. The pane below is
+           DIFF-ONLY and exists solely in the changes context (git source). -->
+      <div v-if="explorer.gitDiff" class="diff-pane">
+        <div class="diff-head">
+          <span class="diff-path">{{ explorer.gitDiff.path }}</span>
+          <button class="explorer-mini" @click="explorer.closeGitDiff()">✕</button>
+        </div>
+        <p v-if="explorer.gitDiff.binary" class="note">{{ t("changes.diff.binary") }}</p>
+        <pre v-else class="diff-body"><span
+          v-for="(l, i) in diffLines"
+          :key="i"
+          :class="'diff-' + l.kind"
+        >{{ l.line }}
+</span></pre>
+      </div>
+      <p v-if="!changeRows.length" class="explorer-empty">
         {{ searchQuery ? t("explorer.searchNoMatch") : t("explorer.empty.artifacts") }}
       </p>
-      <div
-        v-for="u in changesFiltered"
-        :key="u.relative_path"
-        class="explorer-row artifact-row"
-        :class="{ selected: selected === u.relative_path }"
-        @click="onArtifactSelect(u.relative_path)"
-        @dblclick="explorer.openFile(u.relative_path)"
-        @contextmenu.prevent.stop="openMenuAt({ kind: 'file', relativePath: u.relative_path, renamable: nodeOf(u.relative_path) !== null }, $event.clientX, $event.clientY)"
-      >
-        <span class="explorer-name" :title="hostPath(u.relative_path)">{{ artifactLabel(u.relative_path) }}</span>
-        <ChangeBadge v-if="badgeTypeOf(u.change_type)" :type="badgeTypeOf(u.change_type)!" />
+      <div class="change-tree">
+        <div
+          v-for="{ node, depth } in changeTreeRows"
+          :key="(node.dir ? 'd:' : 'f:') + node.path"
+          class="explorer-row change-row"
+          :class="{ selected: !node.dir && selected === node.path }"
+          :style="{ paddingLeft: 6 + depth * 12 + 'px' }"
+          @click="onRowClick(node)"
+          @dblclick="!node.dir && explorer.openFile(node.path)"
+          @contextmenu.prevent.stop="!node.dir && openMenuAt({ kind: 'file', relativePath: node.path, renamable: nodeOf(node.path) !== null }, $event.clientX, $event.clientY)"
+        >
+          <span v-if="node.dir" class="change-twisty">{{ changeExpanded.has(node.path) ? "▾" : "▸" }}</span>
+          <span class="explorer-name" :title="hostPath(node.path)">{{ node.name }}</span>
+          <span v-if="node.dir" class="change-count">{{ subtreeCount(node) }}</span>
+          <ChangeBadge v-else-if="badgeTypeOf(node.type)" :type="badgeTypeOf(node.type)!" />
+        </div>
       </div>
-    </div>
+        </div>
 
     <!-- svc-4+: Web services panel (gateway state + registered services) -->
     <div v-else key="services" class="explorer-body services-panel">
@@ -1343,27 +1398,6 @@ function onTreeKeydown(e: KeyboardEvent) {
       </div>
     </Transition>
 
-    <!-- Preview pane -->
-    <div v-if="explorer.preview" class="explorer-preview">
-      <div class="preview-head">
-        <span class="preview-path">{{ hostPath(explorer.preview.relative_path) }}</span>
-        <span class="preview-meta">
-          {{ explorer.preview.media_type }} · {{ formatBytes(explorer.preview.size) }}
-          <template v-if="explorer.preview.truncated"> · {{ t("explorer.preview.truncated") }}</template>
-        </span>
-        <button class="explorer-mini" @click="explorer.clearPreview()">✕</button>
-      </div>
-      <pre v-if="explorer.preview.text" class="preview-text">{{
-        explorer.preview.text
-      }}</pre>
-      <img
-        v-else-if="explorer.preview.base64 && explorer.preview.media_type.startsWith('image/')"
-        class="preview-image"
-        :src="`data:${explorer.preview.media_type};base64,${explorer.preview.base64}`"
-        :alt="explorer.preview.relative_path"
-      />
-      <p v-else class="explorer-empty">{{ t("explorer.preview.unsupported") }}</p>
-    </div>
   </div>
 </template>
 
@@ -1620,37 +1654,6 @@ function onTreeKeydown(e: KeyboardEvent) {
 .explorer-status.warn {
   color: var(--warn);
 }
-.explorer-preview {
-  border-top: var(--border-w) solid var(--border);
-  max-height: 40%;
-  overflow: auto;
-}
-.preview-head {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  align-items: center;
-}
-.preview-path {
-  font-weight: 600;
-}
-.preview-meta {
-  color: var(--text-muted);
-  font-size: var(--font-xs);
-}
-.preview-text {
-  padding: var(--space-2);
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-size: var(--font-sm);
-  margin: 0;
-}
-.preview-image {
-  max-width: 100%;
-  max-height: 300px;
-  display: block;
-  margin: var(--space-2) auto;
-}
 .explorer-mini {
   background: none;
   border: none;
@@ -1702,4 +1705,29 @@ function onTreeKeydown(e: KeyboardEvent) {
 .artifacts-group-head .group-count {
   color: var(--text-faint); text-transform: none;
 }
+/* --- v2.1.13 changes-page: source indicator + projection tree + diff --- */
+.changes-source {
+  margin: 0 0 6px; padding: 2px 8px; font-size: var(--font-xs);
+  color: var(--text-muted); border-left: 2px solid var(--border);
+}
+.changes-source.src-git { color: var(--text-2); border-left-color: var(--status-ok); }
+.change-tree { min-width: 0; }
+.change-row { display: flex; align-items: center; gap: 6px; }
+.change-twisty { width: 12px; flex: 0 0 12px; color: var(--text-muted); }
+.change-count { margin-left: auto; color: var(--text-muted); font-size: var(--font-xs); }
+.diff-pane {
+  border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px;
+  max-height: 45%; overflow: auto;
+}
+.diff-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.diff-path { font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-body {
+  margin: 4px 0 0; font-family: var(--font-mono); font-size: var(--font-xs);
+  white-space: pre; overflow-x: auto; line-height: 1.35;
+}
+.diff-add { display: block; color: var(--status-ok); }
+.diff-del { display: block; color: var(--status-err); }
+.diff-hunk { display: block; color: var(--text-muted); }
+.diff-ctx { display: block; color: var(--text-2); }
+
 </style>

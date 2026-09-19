@@ -2,6 +2,25 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 5：变更页（git 双源 + 投影树 + diff）+ 底部预览移除（2026-09-19，分支 2.1.13-b5-changes-page）
+
+- **D-11 底部预览彻底移除**：「偶尔出现」根因 = 变更面板 D11-16 例外保留单击
+  预览（文件树侧 D11-01 早已移除）。全链清除：触发点/预览面板/样式/store
+  状态与动作/ipc 包装/Rust workspace_preview 命令/i18n 废键；
+  preview_path/PREVIEW_BUDGET 保留为 pub 备 diff 复用（已改注释）。
+- **git 双源（D-6 用户确认：仿 vscode git 页、纯显示零操作）**：新 Rust 三命令
+  workspace_git_info/status/diff——本地工作区 + 宿主 git + repo 三条件满足时
+  `git status`（porcelain v1 -z，--show-prefix 过滤子目录）为权威源，否则回退
+  现有 watcher 源（远程恒回退、非 repo 无感降级）；git 严格只读（-c
+  core.autocrlf=false 置于子命令前）；watcher 事件降级为 freshness 触发（2s
+  节流），git 源激活时不再累积 unattributed 日志。
+- **呈现**：源指示行（git 分支·N 项 / 会话变更·N）+ 变更投影树
+  （changesTree.ts 纯函数：目录聚合、搜索过滤、vscode 序）+ 底部 diff 面板
+  （变更页专属：unified ±着色/二进制占位/512KB 截断；watcher 源点击仅选中，
+  无 previewFile 回退）；搜索时自动展开命中目录。
+- 测试：changesTree/store/git 三层 vitest + 组件用例全部更新为树语义（72 过）；
+  local-gates 全绿。
+
 # v2.1.13 批 4：docker 资源检测精细化（2026-09-19，分支 2.1.13-b4-docker-inspect）
 
 - **只读深扫 `aisc maintenance cache-inspect`**（D-2，规格 docker-scan-fidelity.md）：

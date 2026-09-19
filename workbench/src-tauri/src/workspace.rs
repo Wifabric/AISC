@@ -46,7 +46,8 @@ const DEFAULT_IGNORE: &[&str] = &[
     "venv",
 ];
 
-/// Per-entry preview budget (bytes) for `workspace_preview`.
+/// Per-entry bounded-read budget (bytes). D-11 (2.1.13) removed the
+/// preview UI/command; the helper stays for future diff re-read reuse.
 const PREVIEW_BUDGET: u64 = 512 * 1024;
 
 /// A single Explorer tree node (lazy: children fetched on demand).
@@ -1871,50 +1872,6 @@ pub async fn workspace_open(
     open_path(Path::new(&workspace), &relative_path)
 }
 
-#[tauri::command]
-pub async fn workspace_preview(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    workspace: String,
-    relative_path: String,
-) -> Result<WorkspacePreviewResult, WorkbenchError> {
-    // R3 (D-5/D-9): preview reads the REMOTE file over fs.read; nothing is
-    // stored locally (the budget matches the local PREVIEW_BUDGET).
-    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for(&app, &window).await? {
-        let pool = crate::serve::global_pool();
-        let data = crate::serve::fs_op(
-            pool,
-            &t,
-            "fs.read",
-            &serde_json::json!({ "root": workspace, "path": relative_path }),
-        )
-        .await?;
-        let size = data.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
-        let truncated = data.get("truncated").and_then(|v| v.as_bool()).unwrap_or(false);
-        let b64 = data.get("base64").and_then(|v| v.as_str()).unwrap_or_default();
-        use base64::Engine;
-        let buf = base64::engine::general_purpose::STANDARD
-            .decode(b64)
-            .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("fs.read decode: {e}")))?;
-        let media_type = media_type_for(Path::new(&relative_path));
-        let (text, out_b64) = if media_type.starts_with("text/")
-            || matches!(media_type, "application/json" | "application/octet-stream")
-        {
-            (Some(String::from_utf8_lossy(&buf).into_owned()), None)
-        } else {
-            (None, Some(b64.to_string()))
-        };
-        return Ok(WorkspacePreviewResult {
-            relative_path,
-            media_type: media_type.to_string(),
-            size,
-            text,
-            base64: out_b64,
-            truncated,
-        });
-    }
-    preview_path(Path::new(&workspace), &relative_path)
-}
 
 #[tauri::command]
 pub async fn workspace_reveal(
@@ -2079,6 +2036,162 @@ pub async fn workspace_rename(
     rename_entry(Path::new(&workspace), &relative_path, &new_name)
 }
 
+
+// -- v2.1.13 (changes-page): read-only git integration ----------------------
+//
+// The changes page upgrades to vscode-SCM semantics when the workspace IS a
+// git repository on the LOCAL machine. STRICTLY read-only: status / diff /
+// rev-parse only - no stage/commit/discard (that writes the user's repo and
+// needs its own ruling). Remote workspaces never enter this path: git spawns
+// locally, and a POSIX path simply fails the probe -> available=false. The
+// autocrlf override precedes the subcommand (`git -c key=val status`), which
+// is the only order git accepts.
+
+/// 512 KB diff read budget (same discipline as the old preview budget).
+const DIFF_BUDGET: usize = 512 * 1024;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGitInfo {
+    pub available: bool,
+    pub branch: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGitStatusEntry {
+    pub path: String,
+    pub x: String,
+    pub y: String,
+    pub rename_from: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGitDiff {
+    pub unified: String,
+    pub binary: bool,
+    pub truncated: bool,
+}
+
+fn run_git(workspace: &Path, args: &[&str]) -> Result<std::process::Output, WorkbenchError> {
+    std::process::Command::new("git")
+        .arg("-c")
+        .arg("core.autocrlf=false")
+        .args(args)
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| WorkbenchError::usage(format!("git unavailable: {e}")))
+}
+
+fn git_available(workspace: &Path) -> bool {
+    matches!(
+        run_git(workspace, &["rev-parse", "--is-inside-work-tree"]),
+        Ok(out) if out.status.success()
+    )
+}
+
+#[tauri::command]
+pub async fn workspace_git_info(workspace: String) -> Result<WorkspaceGitInfo, WorkbenchError> {
+    let ws = Path::new(&workspace);
+    if !git_available(ws) {
+        return Ok(WorkspaceGitInfo { available: false, branch: String::new() });
+    }
+    let out = run_git(ws, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok(WorkspaceGitInfo { available: true, branch })
+}
+
+/// porcelain v1 -z: `XY <path>\0[<origPath>\0]` entries. Paths are repo-
+/// relative; when the workspace sits inside a bigger repo the entries are
+/// filtered down to the workspace's own prefix (rev-parse --show-prefix).
+#[tauri::command]
+pub async fn workspace_git_status(
+    workspace: String,
+) -> Result<Vec<WorkspaceGitStatusEntry>, WorkbenchError> {
+    let ws = Path::new(&workspace);
+    if !git_available(ws) {
+        return Ok(Vec::new());
+    }
+    let out = run_git(
+        ws,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    if !out.status.success() {
+        return Err(WorkbenchError::usage(format!(
+            "git status failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    let prefix_out = run_git(ws, &["rev-parse", "--show-prefix"])?;
+    let prefix = String::from_utf8_lossy(&prefix_out.stdout).trim().to_string();
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut fields = text.split('\0');
+    let mut entries = Vec::new();
+    while let Some(head) = fields.next() {
+        if head.is_empty() {
+            break;
+        }
+        if head.len() < 4 {
+            continue;
+        }
+        let x = head[..1].to_string();
+        let y = head[1..2].to_string();
+        let path = head[3..].to_string();
+        let renamed = x == "R" || x == "C" || y == "R" || y == "C";
+        let rename_from = if renamed {
+            fields.next().map(|f| {
+                let f = f.trim_start();
+                f.strip_prefix(&prefix).unwrap_or(f).to_string()
+            })
+        } else {
+            None
+        };
+        let Some(stripped) = path.strip_prefix(&prefix) else { continue };
+        let stripped = stripped.trim_start_matches('/').to_string();
+        if stripped.is_empty() {
+            continue;
+        }
+        entries.push(WorkspaceGitStatusEntry { path: stripped, x, y, rename_from });
+    }
+    Ok(entries)
+}
+
+/// Unified diff for one workspace-relative path. Binary files are flagged,
+/// not rendered; output is budget-truncated like the old preview was.
+#[tauri::command]
+pub async fn workspace_git_diff(
+    workspace: String,
+    relative_path: String,
+) -> Result<WorkspaceGitDiff, WorkbenchError> {
+    let ws = Path::new(&workspace);
+    if !git_available(ws) {
+        return Err(WorkbenchError::usage("git view requires a local git repository"));
+    }
+    // containment: reuse the explorer gate before anything touches git
+    let _ = resolve_contained(ws, &relative_path)?;
+    let rel = relative_path.replace('\\', "/");
+    let out = run_git(ws, &["diff", "--no-color", "-U3", "--", &rel])?;
+    if !out.status.success() {
+        return Err(WorkbenchError::usage(format!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let binary = stdout.starts_with("Binary files");
+    let mut unified = stdout.into_owned();
+    let truncated = unified.len() > DIFF_BUDGET;
+    if truncated {
+        unified.truncate(DIFF_BUDGET);
+        while !unified.is_char_boundary(unified.len()) {
+            unified.pop();
+        }
+        unified.push_str("\n… <truncated>");
+    }
+    Ok(WorkspaceGitDiff { unified, binary, truncated })
+}
 #[cfg(test)]
 mod explorer_tests {
     use super::*;

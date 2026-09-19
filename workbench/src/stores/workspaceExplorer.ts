@@ -17,11 +17,13 @@ import {
   conversationRename,
   workspaceCopyEntry,
   workspaceCopyPath,
+  workspaceGitDiff,
+  workspaceGitInfo,
+  workspaceGitStatus,
   workspaceCreateDir,
   workspaceCreateFile,
   workspaceList,
   workspaceOpen,
-  workspacePreview,
   workspaceRename,
   workspaceReveal,
   workspaceWatchStart,
@@ -33,7 +35,6 @@ import type {
   ConversationSummary,
   WorkspaceMutationResult,
   WorkspaceNode,
-  WorkspacePreviewResult,
 } from "../types";
 
 interface WorkspaceChangeBatch {
@@ -195,13 +196,18 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     /** Unattributed changes (watcher projection, never agent provenance). */
     unattributed: {} as Record<string, string>,
     activeKind: "explorer" as ExplorerKind,
-    /** Inline preview for the selected file. */
-    preview: null as WorkspacePreviewResult | null,
-    previewLoading: false,
     /** Stage 11: in-app file clipboard (copy action). Cleared when the
      *  workspace changes so a stale source can never be pasted elsewhere. */
     clipboard: null as ExplorerClipboard | null,
     clipboardGeneration: 0,
+    // --- v2.1.13 changes-page: git dual source (D-6). "git" only when the
+    // local workspace is a repo AND host git answered; otherwise "watcher".
+    changesSource: "watcher" as "watcher" | "git",
+    gitBranch: "",
+    gitEntries: [] as Array<{ path: string; x: string; y: string; renameFrom?: string }>,
+    gitDiff: null as { path: string; unified: string; binary: boolean; truncated: boolean } | null,
+    gitDiffLoading: false,
+    lastGitProbe: 0,
   }),
 
   getters: {
@@ -315,7 +321,10 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
         this.workspace = workspace;
         this.artifacts = [];
         this.artifactsNextCursor = null;
-        this.preview = null;
+        this.changesSource = "watcher";
+        this.gitBranch = "";
+        this.gitEntries = [];
+        this.gitDiff = null;
         // v2.1.8 T4: conversations belong to the outgoing workspace; inline
         // resume errors equally so.
         this.conversations = [];
@@ -373,6 +382,11 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
 
     /** Update unattributed state and refresh/drop affected directory caches. */
     handleWorkspaceChanges(changes: WorkspaceChangeBatch["changes"]) {
+      // Git source: watcher events are just freshness triggers - the list
+      // itself comes from `git status` (throttled), nothing accumulates.
+      if (this.changesSource === "git") {
+        void this.refreshChangesSource();
+      }
       const parents = new Set<string>();
       for (const c of changes) {
         if (isIgnoredPath(c.relative_path)) {
@@ -380,7 +394,9 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
           // Artifacts panel even when the watcher already emitted it.
           continue;
         }
-        this.unattributed[c.relative_path] = c.change_type;
+        if (this.changesSource !== "git") {
+          this.unattributed[c.relative_path] = c.change_type;
+        }
         const idx = c.relative_path.lastIndexOf("/");
         const parent = idx >= 0 ? c.relative_path.slice(0, idx) : "";
         parents.add(parent);
@@ -405,6 +421,52 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       void Promise.all(reloadTasks).then(() => this.loadNewCreatedDirs());
     },
 
+    /** v2.1.13 changes-page: probe the git source (throttled to one per 2s
+     *  since watcher events and activation both land here). Falls back to
+     *  the watcher source for remote/non-repo/no-git workspaces - silently,
+     *  per D-6 (non-repo is a normal state, never an error). */
+    async refreshChangesSource(force = false) {
+      const now = Date.now();
+      if (!force && now - this.lastGitProbe < 2000) return;
+      this.lastGitProbe = now;
+      if (!this.workspace || this.workspace.startsWith("/")) {
+        this.changesSource = "watcher";
+        return;
+      }
+      try {
+        const info = await workspaceGitInfo(this.workspace);
+        if (!info.available) {
+          this.changesSource = "watcher";
+          this.gitEntries = [];
+          this.gitBranch = "";
+          this.closeGitDiff();
+          return;
+        }
+        this.changesSource = "git";
+        this.gitBranch = info.branch;
+        this.gitEntries = await workspaceGitStatus(this.workspace);
+      } catch {
+        this.changesSource = "watcher";
+      }
+    },
+
+    /** Read-only unified diff for one changed file (git source only). */
+    async openGitDiff(path: string) {
+      if (this.changesSource !== "git" || !this.workspace) return;
+      this.gitDiffLoading = true;
+      try {
+        const d = await workspaceGitDiff(this.workspace, path);
+        this.gitDiff = { path, unified: d.unified, binary: d.binary, truncated: d.truncated };
+      } catch {
+        this.gitDiff = null;
+      } finally {
+        this.gitDiffLoading = false;
+      }
+    },
+
+    closeGitDiff() {
+      this.gitDiff = null;
+    },
     /** Re-apply watcher-derived change_state to loaded tree nodes. With a
      *  dir only that directory is rescanned (S5/R3 — the poll loop used to
      *  walk EVERY loaded directory's nodes on every 1.5s tick); no arg
@@ -452,7 +514,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
         // paths that appeared/disappeared since the last listing so the
         // Artifacts panel can surface them even if the live watcher missed the
         // event (e.g. the Explorer was hidden or the app just started).
-        if (force && previous.length > 0) {
+        if (force && previous.length > 0 && this.changesSource !== "git") {
           const currentPaths = new Set(result.nodes.map((n) => n.relative_path));
           for (const path of currentPaths) {
             if (!previousPaths.has(path) && !this.unattributed[path] && !isIgnoredPath(path)) {
@@ -464,7 +526,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
               this.unattributed[path] = "deleted";
             }
           }
-        } else if (markCreated && previous.length === 0) {
+        } else if (markCreated && previous.length === 0 && this.changesSource !== "git") {
           // This directory itself is newly created: its immediate children are
           // new to the user too, so surface them as unattributed immediately.
           for (const node of result.nodes) {
@@ -624,6 +686,10 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
      * runtime.ts → workspaceRuntime → … back into this module. */
     activateView(kind: ExplorerKind) {
       this.activeKind = kind;
+      if (kind === "artifacts") {
+        // changes page: probe git availability (forced - activation is rare)
+        void this.refreshChangesSource(true);
+      }
       if (kind === "conversations") {
         void this.loadConversations(true);
       } else if (kind === "services") {
@@ -715,19 +781,6 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       return result.absolute_path;
     },
 
-    async previewFile(relativePath: string) {
-      if (!this.workspace) return;
-      this.previewLoading = true;
-      try {
-        this.preview = await workspacePreview(this.workspace, relativePath);
-      } finally {
-        this.previewLoading = false;
-      }
-    },
-
-    clearPreview() {
-      this.preview = null;
-    },
 
     // --- Stage 11 (11c): contained mutations + in-app clipboard ---
     // All actions re-check `workspace`, let Rust validate again, then do a
