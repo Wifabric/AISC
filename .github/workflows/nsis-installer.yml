@@ -17,6 +17,9 @@ on:
   workflow_dispatch:
   push:
     branches: [develop, main]
+    tags:
+      # D-8: a v* tag publishes a (pre)release carrying the Workbench NSIS.
+      - 'v*'
     paths:
       - 'workbench/src/**'
       - 'workbench/package.json'
@@ -250,3 +253,40 @@ jobs:
             # KI-4: drop the smoke data root so the runner stays clean
             Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA "AISC") -ErrorAction SilentlyContinue
           }
+
+
+  # D-8 (2026-09-19): a v* tag publishes a PREVIEW release from this branch
+  # carrying ONLY the Workbench NSIS (which bundles the current CLI). No CLI
+  # assets — pip is the CLI channel. Finals need an explicit user request.
+  release-preview:
+    name: Publish preview release (prerelease)
+    needs: nsis
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: aisc-workbench-windows-nsis
+          path: nsis
+
+      - name: Rename + checksum (AISC-Workbench-<tag>-setup.exe)
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          SRC=$(find nsis -name '*-setup.exe' | head -1)
+          cp "$SRC" "AISC-Workbench-${VER}-setup.exe"
+          sha256sum "AISC-Workbench-${VER}-setup.exe" > "AISC-Workbench-${VER}-setup.exe.sha256"
+
+      - name: Create prerelease (self-update payload)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "$GITHUB_REF_NAME"               --prerelease --target "$GITHUB_SHA"               --title "$GITHUB_REF_NAME (preview)"               --notes-file "$NOTES"               "AISC-Workbench-${VER}-setup.exe" "AISC-Workbench-${VER}-setup.exe.sha256"
+          else
+            gh release create "$GITHUB_REF_NAME"               --prerelease --target "$GITHUB_SHA"               --title "$GITHUB_REF_NAME (preview)"               --generate-notes               "AISC-Workbench-${VER}-setup.exe" "AISC-Workbench-${VER}-setup.exe.sha256"
+          fi

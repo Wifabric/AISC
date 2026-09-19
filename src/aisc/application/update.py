@@ -182,7 +182,12 @@ def perform_update(
 
     ``workdir`` overrides the exe directory (tests). Raises UpdateError /
     BundleFetchError fail-closed; nothing is replaced unless every check
-    passed."""
+    passed.
+
+    D-8 (2026-09-19): releases no longer ship CLI archives — the NSIS
+    installer IS the CLI+UI update channel for frozen installs, and pip is
+    the other. The download path therefore only works with an explicit
+    ``--from-file`` archive (manual/offline updates)."""
     import hashlib
 
     if form["form"] == "pip":
@@ -202,8 +207,19 @@ def perform_update(
             UPDATE_ERROR_STATE,
             "no final release published yet — nothing to update to "
             "(explicit --version <ver> to force)")
-    if not version and _version_key(target) <= _version_key(cli_version):
+    if not from_file and not version and _version_key(target) <= _version_key(cli_version):
         return {"status": "up-to-date", "cli_version": cli_version, "latest_final": target}
+    # D-8 (2026-09-19): releases no longer ship CLI archives. The online
+    # sidecar-swap is retired — NSIS installs update the CLI with the
+    # Workbench, pip installs via pip. Manual/offline updates keep working
+    # through --from-file.
+    if not from_file:
+        raise UpdateError(
+            UPDATE_ERROR_USAGE,
+            "aisc update no longer downloads CLI archives (releases ship "
+            "the Workbench installer only). Update paths: pip install -U "
+            "aisc-cli · Workbench 检查更新（自带最新 CLI）· or --from-file "
+            "<archive> --sha256 <hex> for a manual archive")
 
     exe = Path(form["exe"]) if not workdir else workdir / Path(form["exe"]).name
     exe_dir = exe.parent

@@ -48,7 +48,13 @@ jobs:
         run: python -m pip install --upgrade build twine
 
       - name: Tag/version guard (guide 3.4.2)
-        run: '[ "v$(cat src/aisc/VERSION)" = "${{ inputs.tag }}" ] || { echo "tag ${{ inputs.tag }} != v$(cat src/aisc/VERSION)"; exit 1; }'
+        run: |
+          V="v$(cat src/aisc/VERSION)"
+          if [ "${{ inputs.tag }}" = "$V" ] || [ "${{ inputs.tag }}" = "cli-$V" ]; then
+            echo "tag matches CLI version: ${{ inputs.tag }}"
+          else
+            echo "tag ${{ inputs.tag }} != $V (or cli-$V)"; exit 1
+          fi
 
       - name: Final-tag classification
         id: final

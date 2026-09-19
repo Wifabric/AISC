@@ -8,8 +8,11 @@
 //! rebuild), so this module deliberately does NOT re-implement any of it
 //! — that was the whole argument against tauri-plugin-updater (D-8).
 //!
-//! Channel: FINAL releases only (D-17 — vMAJOR.MINOR.PATCH tags; dev/rc
-//! never show up here; CLI-side dev iteration rides TestPyPI instead).
+//! Channel (D-8, 2026-09-19): preview-first — releases are published from
+//! develop as prereleases (`vX.Y.Z-preview.N`); finals only on explicit
+//! request. The picker ranks by (semver, final > preview, preview number).
+//! The payload is the Workbench NSIS ONLY (`AISC-Workbench-*-setup.exe`);
+//! the CLI rides inside it (pip is the other CLI channel).
 //! Transport: reqwest + system proxy (WinINET probe, subscription.rs
 //! pattern — same-stack reuse, no new deps).
 
@@ -22,7 +25,7 @@ use tauri::Emitter;
 
 use crate::error::WorkbenchError;
 
-const RELEASES_URL: &str = "https://api.github.com/repos/wangyuncepu/AISC/releases?per_page=30";
+const RELEASES_URL: &str = "https://api.github.com/repos/Wifabric/AISC/releases?per_page=30";
 const UPDATE_ERROR_NETWORK: &str = "app.update/network";
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,19 +48,6 @@ pub fn normalize_version(v: &str) -> String {
     } else {
         v.to_string()
     }
-}
-
-/// Parse `vMAJOR.MINOR.PATCH` (final-only channel, D-17). None otherwise.
-pub fn parse_final_tag(tag: &str) -> Option<(u64, u64, u64)> {
-    let body = tag.strip_prefix('v')?;
-    let mut it = body.split('.');
-    let majors = it.next()?.parse().ok()?;
-    let minors = it.next()?.parse().ok()?;
-    let patch = it.next()?.parse().ok()?;
-    if it.next().is_some() {
-        return None; // 4+ segments = not a final tag
-    }
-    Some((majors, minors, patch))
 }
 
 fn client() -> Result<reqwest::Client, WorkbenchError> {
@@ -94,19 +84,49 @@ fn current_version(app: &AppHandle) -> String {
 
 /// Pure: given release JSON entries, pick the newest final tag and its
 /// setup/.sha256 asset URLs. (Unit-tested without network.)
-pub fn pick_latest_final(releases: &serde_json::Value) -> Option<(String, String, String, String)> {
+/// D-8.8: the preview channel IS the default release channel — tags are
+/// `vX.Y.Z` (final) or `vX.Y.Z-preview.N`. Ordering key: (semver, final
+/// beats preview, higher preview number).
+pub fn parse_tag(tag: &str) -> Option<((u64, u64, u64), bool, u64)> {
+    let body = tag.strip_prefix('v').unwrap_or(tag);
+    let (base, preview) = match body.split_once("-preview") {
+        Some((b, n)) => (b, Some(if n.is_empty() { "1" } else { n.trim_start_matches('.') })),
+        None => (body, None),
+    };
+    let mut it = base.split('.');
+    let major: u64 = it.next()?.parse().ok()?;
+    let minor: u64 = it.next()?.parse().ok()?;
+    let patch: u64 = it.next()?.parse().ok()?;
+    if it.next().is_some() {
+        return None; // 4+ segments = not a version we understand
+    }
+    let preview_n: u64 = match preview {
+        Some(n) => n.parse().ok()?,
+        None => 0,
+    };
+    Some(((major, minor, patch), preview.is_none(), preview_n))
+}
+
+fn version_key(tag: &str) -> ((u64, u64, u64), bool, u64) {
+    parse_tag(tag).unwrap_or(((0, 0, 0), false, 0))
+}
+
+pub fn pick_latest(releases: &serde_json::Value) -> Option<(String, String, String, String)> {
     let arr = releases.as_array()?;
-    let mut best: Option<((u64, u64, u64), &str)> = None;
+    let mut best_tag: Option<&str> = None;
+    let mut best_key: Option<((u64, u64, u64), bool, u64)> = None;
     for rel in arr {
         let tag = rel.get("tag_name").and_then(|t| t.as_str()).unwrap_or("");
-        let Some(key) = parse_final_tag(tag) else {
-            continue; // dev/rc tags are channel noise, not a failure
-        };
-        if best.is_none_or(|(k, _)| key > k) {
-            best = Some((key, tag));
+        let key = version_key(tag);
+        if key.0 == (0, 0, 0) {
+            continue; // unparsable tag = channel noise, not a failure
+        }
+        if best_key.as_ref().is_none_or(|bk| key > *bk) {
+            best_key = Some(key);
+            best_tag = Some(tag);
         }
     }
-    let (_, tag) = best?;
+    let tag = best_tag?;
     let rel = arr
         .iter()
         .find(|r| r.get("tag_name").and_then(|t| t.as_str()) == Some(tag))?;
@@ -118,9 +138,13 @@ pub fn pick_latest_final(releases: &serde_json::Value) -> Option<(String, String
             .get("browser_download_url")
             .and_then(|u| u.as_str())
             .unwrap_or("");
-        if name.ends_with("-setup.exe") {
+        // D-8: the Workbench NSIS is the self-update payload. The CLI Inno
+        // installer (AISC-<ver>-windows-x86_64-setup.exe in old releases,
+        // aisc-cli-<ver>-installer.exe since) must never match — CLI
+        // updates ride pip / the Workbench installer's bundled sidecar.
+        if name.starts_with("AISC-Workbench-") && name.ends_with("-setup.exe") {
             setup = Some(url.to_string());
-        } else if name.ends_with("-setup.exe.sha256") {
+        } else if name.starts_with("AISC-Workbench-") && name.ends_with("-setup.exe.sha256") {
             sha = Some(url.to_string());
         }
     }
@@ -134,12 +158,7 @@ pub fn pick_latest_final(releases: &serde_json::Value) -> Option<(String, String
 }
 
 fn version_gt(a: &str, b: &str) -> bool {
-    let key = |v: &str| -> (u64, u64, u64, u64) {
-        let body = v.split(['-', '.']).collect::<Vec<_>>();
-        let n = |i: usize| body.get(i).and_then(|s| s.parse().ok()).unwrap_or(0);
-        (n(0), n(1), n(2), if v.contains("dev") { 0 } else { 1 })
-    };
-    key(a) > key(b)
+    version_key(a) > version_key(b)
 }
 
 /// Check for a newer FINAL release. Network failures degrade to a
@@ -170,7 +189,7 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
         Ok::<_, WorkbenchError>(body)
     };
     let info = match fetch.await {
-        Ok(body) => match pick_latest_final(&body) {
+        Ok(body) => match pick_latest(&body) {
             Some((latest, setup, sha, page)) => UpdateInfo {
                 update_available: version_gt(&latest, &current),
                 current,
@@ -370,43 +389,62 @@ mod tests {
     }
 
     #[test]
-    fn final_tag_parsing_is_strict() {
-        assert_eq!(parse_final_tag("v0.1.0"), Some((0, 1, 0)));
-        assert_eq!(parse_final_tag("v1.2.3"), Some((1, 2, 3)));
-        assert_eq!(parse_final_tag("v0.1.0.dev0"), None);
-        assert_eq!(parse_final_tag("v0.1.0-dev"), None);
-        assert_eq!(parse_final_tag("v0.1"), None);
-        assert_eq!(parse_final_tag("0.1.0"), None); // must carry the v
+    fn tag_parsing_is_strict() {
+        assert_eq!(parse_tag("v0.1.0"), Some(((0, 1, 0), true, 0)));
+        assert_eq!(parse_tag("v1.2.3"), Some(((1, 2, 3), true, 0)));
+        assert_eq!(parse_tag("v2.1.12-preview.1"), Some(((2, 1, 12), false, 1)));
+        assert_eq!(parse_tag("v2.1.12-preview"), Some(((2, 1, 12), false, 1)));
+        assert_eq!(parse_tag("v0.1.0.dev0"), None);
+        assert_eq!(parse_tag("v0.1"), None);
+        assert_eq!(parse_tag("0.1.0"), Some(((0, 1, 0), true, 0))); // v optional
     }
 
     #[test]
-    fn picks_newest_final_ignoring_prereleases() {
+    fn picks_newest_workbench_setup_including_previews() {
         let releases = json!([
-          { "tag_name": "v0.2.0-dev1", "assets": [], "html_url": "u1" },
-          { "tag_name": "v0.1.0", "assets": [
-              { "name": "AISC.Workbench_0.1.0_x64-setup.exe",
-                "browser_download_url": "s1" },
-              { "name": "AISC.Workbench_0.1.0_x64-setup.exe.sha256",
-                "browser_download_url": "h1" },
-          ], "html_url": "p1" },
-          { "tag_name": "v0.3.0", "assets": [
-              { "name": "AISC.Workbench_0.3.0_x64-setup.exe",
-                "browser_download_url": "s3" },
-              { "name": "AISC.Workbench_0.3.0_x64-setup.exe.sha256",
-                "browser_download_url": "h3" },
-          ], "html_url": "p3" },
+          // CLI Inno installer from the old pipeline — must NEVER match.
+          { "tag_name": "v0.1.1", "assets": [
+              { "name": "AISC-0.1.1-windows-x86_64-setup.exe",
+                "browser_download_url": "cli-setup" },
+          ], "html_url": "u0" },
+          { "tag_name": "v2.1.12", "assets": [
+              { "name": "AISC-Workbench-2.1.12-setup.exe",
+                "browser_download_url": "s-final" },
+              { "name": "AISC-Workbench-2.1.12-setup.exe.sha256",
+                "browser_download_url": "h-final" },
+          ], "html_url": "p-final" },
+          { "tag_name": "v2.1.13-preview.1", "assets": [
+              { "name": "AISC-Workbench-2.1.13-preview.1-setup.exe",
+                "browser_download_url": "s-preview" },
+              { "name": "AISC-Workbench-2.1.13-preview.1-setup.exe.sha256",
+                "browser_download_url": "h-preview" },
+          ], "html_url": "p-preview" },
         ]);
-        let (tag, setup, sha, page) = pick_latest_final(&releases).unwrap();
-        assert_eq!(tag, "0.3.0");
-        assert_eq!(setup, "s3");
-        assert_eq!(sha, "h3");
-        assert_eq!(page, "p3");
+        // Preview channel: the newer preview beats the same-base final.
+        let (tag, setup, sha, page) = pick_latest(&releases).unwrap();
+        assert_eq!(tag, "2.1.13-preview.1");
+        assert_eq!(setup, "s-preview");
+        assert_eq!(sha, "h-preview");
+        assert_eq!(page, "p-preview");
     }
 
     #[test]
-    fn version_compare_treats_dev_below_final() {
-        assert!(version_gt("0.1.0", "0.1.0.dev0"));
-        assert!(!version_gt("0.1.0.dev0", "0.1.0"));
-        assert!(version_gt("0.2.0", "0.1.9"));
+    fn pick_rejects_the_cli_installer_asset() {
+        let releases = json!([
+          { "tag_name": "v0.1.1", "assets": [
+              { "name": "AISC-0.1.1-windows-x86_64-setup.exe",
+                "browser_download_url": "cli-setup" },
+          ], "html_url": "u0" },
+        ]);
+        // No AISC-Workbench asset → setup URL is absent (asset? propagates).
+        assert!(pick_latest(&releases).is_none());
+    }
+
+    #[test]
+    fn version_compare_final_beats_same_base_preview() {
+        assert!(version_gt("2.1.12", "2.1.12-preview.2"));
+        assert!(!version_gt("2.1.12-preview.2", "2.1.12"));
+        assert!(version_gt("2.1.12-preview.2", "2.1.12-preview.1"));
+        assert!(version_gt("2.1.13-preview.1", "2.1.12"));
     }
 }

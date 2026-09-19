@@ -27,3 +27,5 @@
   4. **PyPI 解耦**：CLI 版本发布走 pip 通道独立节奏，CLI tag 改 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`，不误建 GitHub Release）；pip 用户更新 CLI 后经 `aisc update` 更镜像（A5 既有链路）。
   5. 背景：A7 自更新实测发现 release 里的 `-setup.exe` 是 Inno CLI 安装器（Workbench NSIS 从未附到 release）——自更新端到端从未成立；且双轨版本号使 `version_gt(CLI, Workbench)` 恒假。本裁定同时修复两者。
   6. 实施批：update.rs 资产匹配 + artifact.yml/nsis-installer.yml 资产命名与附加 + pypi-publish 的 cli-v 前缀 + §11.2 发布步骤重写 + 双版本对（0.1.0 老 NSIS 装 → 升当前）端到端测试。
+  7. **修订（2026-09-19 二次确认）**：release **彻底不含任何 CLI 资产**（三平台 archive、Inno CLI 安装器、SBOM 全退役，artifact.yml 三平台矩阵随之缩减）——release = 纯 Workbench 单安装器 + SHA256。依据：PyPI 包从源码构建不受影响；CLI 分发完全收敛到 pip（全平台）+ Workbench NSIS（Windows）。三条依赖链处置：`aisc update` 收缩为镜像/工具更新（sidecar 热换退役——NSIS 装机的 CLI 随 Workbench 更新、pip 装机走 pip）；`aisc bundle fetch` 降级为随 Workbench 更新；非 pip CLI 安装器退役。
+  8. **发布渠道规约**：无用户明确要求时，新版本**永远以 develop 分支的 preview（prerelease）发布**；final 发布仅经用户明确要求。错发的 v0.1.0/v0.1.1 release 与 tag 删除（PyPI 上的 0.1.0/0.1.1 不可撤，留作历史）。远程无主分支顺手清理（保留 main/develop）。

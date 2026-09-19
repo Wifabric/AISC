@@ -176,12 +176,16 @@ class PerformUpdate(unittest.TestCase):
             self.assertEqual(old.read_bytes(), b"OLD-EXE")
             self.assertIn(".old-", old.name)
 
-    def test_online_path_downloads_verifies_and_replaces(self):
-        data = build_update_zip("1.2.0")
-        f = fake_fetcher_with(data, "1.2.0")
-        r = perform_update(cli_version=CUR, form=self._form(), fetcher=f, workdir=self.td)
-        self.assertEqual(r["status"], "updated")
-        self.assertEqual(self.exe.read_bytes(), b"NEW-EXE")
+    def test_online_path_retired_points_to_new_channels(self):
+        """D-8 (2026-09-19): releases ship the Workbench installer only —
+        the online sidecar-swap is retired with a redirective error; the
+        exe is never touched."""
+        f = fake_fetcher_with(build_update_zip("1.2.0"), "1.2.0")
+        with self.assertRaises(UpdateError) as cm:
+            perform_update(cli_version=CUR, form=self._form(), fetcher=f, workdir=self.td)
+        self.assertEqual(cm.exception.code, UPDATE_ERROR_USAGE)
+        self.assertIn("pip install -U", str(cm.exception))
+        self.assertEqual(self.exe.read_bytes(), b"OLD-EXE")
 
     def test_up_to_date_is_a_no_op(self):
         data = build_update_zip(CUR)
