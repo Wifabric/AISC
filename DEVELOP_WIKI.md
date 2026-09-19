@@ -23,7 +23,7 @@ git status --short
 
 每个大阶段（以 Workbench 版本号命名，见 §8.4 双轨约定）按以下流程运转：
 
-1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（本阶段 = `2.1.12-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（本阶段 = `2.1.13-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
 2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
@@ -35,6 +35,12 @@ git status --short
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 
 注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（release job 仅命中 `-dev`/`.dev`）；preview 统一用 `.devN` 形态，如需 rc 形态先补该 workflow 的后缀判断。
+
+### 1.2 开工纪律（2026-09-19 用户裁定）
+
+1. **分支先行**：实施类工作（代码 / 测试 / CI 变更）开工前必须先从 `develop` 切出工作分支（命名如 `2.1.13-b1-<主题>`），在分支上提交，本地门禁 + 远程 CI 通过后并回 `develop`；纯 docs 账本更新（todo / plans / decisions / devlog）可直接落 develop。
+2. **计划外项入版纪律**：Claude 不得自行把未排期项拔高进当前版本范围。任何新工作项进入本版本前，先经用户确认排期落入 `docs/todo.md` 本版本 target 区，再补计划文档，然后才可实施。
+3. **小项同规**：小项（改动单点的修复 / 守卫）实施前同样要向用户汇报处理方案与文档依据（对应计划文档章节），无文档依据先补规格再动码。
 
 ## 2. 开发环境
 
