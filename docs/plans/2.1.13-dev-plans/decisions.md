@@ -17,3 +17,4 @@
 - **D-8（拖图落盘通道，image-drag-to-agent.md）**：OS 图片拖入 → 落盘 `<ws>/.aisc/uploads/` → 插入容器路径 token（不直传二进制、不改 dragDropEnabled）；**剪贴板图片粘贴同批顺带**（容器内 agent 剪贴板结构性失效，这是「给图」的另一半）；远程复用 remote_mutation 既有模式。
 - **D-9（Pi/opencode 混合形态）——已作废（2026-09-19）**：D-1 经用户澄清为「本阶段不做」，本条随之失效；pi-opencode.md 作废备查。原条目：基线 = 全链注册 + wrapper which 检测 + 未安装中文指引 + 一键复制安装命令（零网络代码）；增强 = 可关的按需获取提示。
 - **D-10（docker 检测形态，docker-scan-fidelity.md）**：新增只读 `maintenance cache-inspect`（envelope aisc.docker-cache-inspect/v1），采集矩阵以 **`docker system df -v --format json`** 为主源（29.x 实测可用、官方未记载，能力探测兜底）+ buildx du / volume dangling / network ls 补齐；逐行「会被现有清理命中」徽标 + 可回收去重口径 + 高估免责；逐项删除、自动触发均不做。
+- **D-11（底部预览彻底移除，2026-09-19 用户裁定，随变更页批实施）**：左键单击文件预览此前已在文件树侧移除（D11-01），但变更面板因 D11-16 例外保留单击预览——即用户所见「偶尔在侧边栏底部出现」的来源。裁定：**底部预览 pane 连同全部触发点彻底移除**（模板/样式/store 状态与动作/ipc 包装/Rust 死代码/i18n 键全清）；变更页的 diff 呈现不受影响且不再回退 previewFile。

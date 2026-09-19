@@ -31,6 +31,19 @@
 
 > **用户确认（2026-09-19）**：双源方案采纳；UI 直接模仿 vscode 的 git 页（源代码管理视图）形态；**只显示、不提供任何 git 操作**（read-only 裁定随之确认，Stage/Commit 等写操作按钮不做）。
 
+## 2b. 附带小项（D-11）：底部预览彻底移除（随本批实施）
+
+用户报告：左键单击文件预览此前已移除，但底部预览「偶尔还在出现」。审计结论（2026-09-19，file:line 在案）：
+
+- **唯一残留触发点 = 变更面板**：WorkspaceExplorer.vue:840 `onArtifactSelect` → `previewFile`（D11-16 例外：Artifacts 面板保留 click-to-preview；文件树侧 D11-01 已无预览 :350-351）。这就是「偶尔出现」的机制——文件树日常不见，变更 tab 一点击行就弹。
+- **移除清单**（彻底清零）：
+  - WorkspaceExplorer.vue:840 previewFile 调用 + :834-841 注释 + :9-11 头注释（D11-16 表述）
+  - 预览 pane 模板 :1346-1366 与样式 :1623-1650（.explorer-preview/.preview-head/.preview-path/.preview-meta/.preview-text/.preview-image）
+  - store workspaceExplorer.ts:198-200（preview/previewLoading 状态）、:718-730（previewFile/clearPreview 动作）、:318（切工作区清理点）
+  - ipc.ts workspacePreview 包装；Rust `workspace_preview` 命令（workspace.rs preview_path + PREVIEW_BUDGET + media_type_for）前端失去消费者后随批移除死代码（media_type_for 若 diff 批有用可就地保留，实施时定）
+  - i18n：explorer.preview.truncated / explorer.preview.unsupported（zh/en :699-700）
+- **与变更页 diff 的关系**：diff 是「显示变化」的核心，不受本项影响；但原计划「非 git 源点击回退 previewFile」随预览移除而失效——非 git/回退源时点击行为 = 仅选中（双击仍系统应用打开）。
+
 ## 3. 规格
 
 - **Scope**：Rust 三个本地限定命令（git_info/git_status/git_diff）+ store 双源改造 + 变更树组件 + diff pane + i18n + 测试。
@@ -43,6 +56,7 @@
   - [ ] CRLF 用例无全文件行尾噪音；大文件/二进制/图片正确降级
   - [ ] 会话中途 git init → 源热切换；切工作区状态清理干净
   - [ ] 1.5s poll 与 PERF P 系列行为不回退；cargo/vitest 全绿
+  - [ ] **底部预览零残留**（D-11）：文件树与变更面板单击均不再弹出底部预览；preview 状态/模板/样式/ipc/Rust 死代码/i18n 键全清，grep 零命中
 
 ## 4. 实施计划
 
@@ -52,9 +66,10 @@
 4. store 双源：changesSource('git'|'watcher') + gitEntries + 检测/刷新 action（激活变更页/watcher 事件节流触发 ≥2s）+ 切工作区清理——验证：store 单测（源切换/跳变/清理）。
 5. `changesTree.ts` 投影树（前缀嵌套、目录聚合徽标、deleted 孤儿目录、搜索过滤）——验证：vitest 全覆盖（深路径/根级文件/纯目录删除/重名基名）。
 6. WorkspaceExplorer.vue artifacts 分支重构：变更树（复用 TypeIcon/ChangeBadge/APG 键盘 onTreeKeydown 模式 :852-905、右键加「查看变更」）+ 源指示行 + 三态文案——验证：组件测试。
-7. diff pane 扩展（unified ± 解析着色、二进制占位、图片走现有 base64、512KB 截断；非 git 源点击回退 previewFile）——验证：组件测试 + fixture 手测。
-8. i18n zh/en 全量键（源指示行/diff 头/二进制占位/WB_ERR_GIT_* 映射）——验证：键奇偶 + bundle CI。
-9. 手测九项清单（repo 实时更新/非 repo 回退/远程回退/宿主无 git/CRLF/大文件二进制图片/中途 git init/切工作区清理/回归 poll 行能）→ devlog 入档 → todo 勾选。
+7. **中央区只读 diff 视图**（底部预览槽位已废除，diff 对齐 vscode 心智落中央区；unified ± 解析着色、created 全绿/deleted 全红、二进制占位、截断标注；点变更文件在主区打开；**无 previewFile 回退**——非 git/回退源点击仅选中）——验证：组件测试 + fixture 手测。
+8. **D-11 底部预览清除**：按 §2b 移除清单执行（触发点/pane/样式/store/ipc/Rust 死代码/i18n）——验证：`grep -rn previewFile\|explorer.preview workbench/src` 零命中；手测文件树与变更面板单击均无底部弹出。
+9. i18n zh/en 全量键（源指示行/diff 头/二进制占位/WB_ERR_GIT_* 映射；同步移除 explorer.preview.* 两个废键）——验证：键奇偶 + bundle CI。
+10. 手测十项清单（repo 实时更新/非 repo 回退/远程回退/宿主无 git/CRLF/大文件二进制图片/中途 git init/切工作区清理/回归 poll 行能/**底部预览零残留**）→ devlog 入档 → todo 勾选。
 
 ## 5. 开放问题
 
@@ -65,6 +80,6 @@
 | 非 repo 回退面板保留/引导 init | assumed | 保留现状文案，不做 init 引导 | 引导 init 又回到写操作问题 |
 | 远程工作区是否显式说明不支持 git 视图 | assumed | 静默回退，源指示行已表达 | 不弹窗 |
 | diff 引入高亮/组件库 | assumed | 不引入，纯 ± 行前缀着色 | bundle 供应链纪律 |
-| diff 形态 unified/双栏 | assumed | unified；未来可升级中央 pane | 变更树在 240-320px 窄 dock |
+| diff 呈现位置与形态 | assumed | **中央区只读 diff 视图**（unified 上下排，点变更文件在主区打开）；底部预览槽位已废除（D-11）；若实施成本超预算需降级回底部专用槽位，须用户确认 | vscode 心智对齐；窄 dock（240-320px）本就不适合读 diff |
 | 目录行聚合徽标样式 | assumed | 计数为主（N + M/A/D 缩写） | 四色堆叠是 D-6 教训 |
 | git 可用性检测缓存/失效 | assumed | 激活必查 + 事件节流重查（≥2s）；树操作不主动探测 | spawn 成本与 .git 中途出现的平衡 |
