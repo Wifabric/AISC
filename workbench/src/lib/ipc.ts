@@ -573,6 +573,23 @@ export interface CacheInspectReport {
 export const cacheInspect = () =>
   invoke<CacheInspectReport>("cache_inspect");
 
+// --- v2.1.13 D-12: owned-resource management (container start/stop/rm,
+// image rm/retag). The CLI re-verifies ownership in-lock and refuses
+// anything not owned/legacy_owned with AISC_ERR_OWNERSHIP_REFUSED. ---
+export interface ManagementResult {
+  action: string;
+  warnings: string[];
+}
+
+export const containerAction = (name: string, action: string) =>
+  invoke<ManagementResult>("container_action", { name, action });
+
+export const imageRm = (id: string) =>
+  invoke<ManagementResult>("image_rm", { id });
+
+export const imageTag = (id: string, repository: string, tag: string) =>
+  invoke<ManagementResult>("image_tag", { id, repository, tag });
+
 // --- B3 (2.1.12): docker resource admin (maintenance scan/cleanup/rebuild) ---
 
 /** One classified container/image row (aisc.docker-scan/v1 projection). */

@@ -305,6 +305,36 @@ export const useSettingsStore = defineStore("settings", () => {
   // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
   // Manual only (D-2): nothing here ever runs on a timer or hooks a build;
   // the user presses the button, the CLI collects ls/df/du, nothing more.
+  // --- v2.1.13 D-12: owned-resource management (settings 路由, F-A01) ---
+  const managementBusy = ref<string | null>(null);
+  async function runManagement(
+    kind: "container" | "image",
+    fn: () => Promise<unknown>,
+  ): Promise<string | null> {
+    if (managementBusy.value) return "busy";
+    managementBusy.value = kind;
+    try {
+      await fn();
+      dockerLogLine(i18n.global.t("settings.docker.manage.done"));
+      await loadDockerScan(); // re-scan refreshes rows (删前必重扫的 UI 面)
+      return null;
+    } catch (e) {
+      const msg =
+        (e as { message?: string })?.message ??
+        (e as { technical_detail?: string })?.technical_detail ??
+        String(e);
+      dockerLogLine(`\u26a0 ${msg}`);
+      return msg;
+    } finally {
+      managementBusy.value = null;
+    }
+  }
+  const containerAction = (name: string, action: string) =>
+    runManagement("container", () => ipc.containerAction(name, action));
+  const imageRm = (id: string) =>
+    runManagement("image", () => ipc.imageRm(id));
+  const imageTag = (id: string, repository: string, tag: string) =>
+    runManagement("image", () => ipc.imageTag(id, repository, tag));
   const inspectReport = ref<ipc.CacheInspectReport | null>(null);
   const inspectBusy = ref(false);
   const inspectError = ref<string | null>(null);
@@ -342,6 +372,10 @@ export const useSettingsStore = defineStore("settings", () => {
     inspectBusy,
     inspectError,
     loadDockerInspect,
+    managementBusy,
+    containerAction,
+    imageRm,
+    imageTag,
     async refreshTarget(): Promise<void> {
       try {
         targetRef.value = await ipc.targetGet();
