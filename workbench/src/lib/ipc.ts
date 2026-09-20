@@ -601,6 +601,7 @@ export interface DockerResource {
   tag: string;
   ownership: string;
   reason: string;
+  state?: string;
 }
 
 export interface ScanBuckets {

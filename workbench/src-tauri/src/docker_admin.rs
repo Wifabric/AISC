@@ -75,6 +75,10 @@ pub struct DockerResource {
     pub image: String,
     #[serde(default)]
     pub status: String,
+    /// D-12: "running" | "stopped" from the scan classification (the CLI
+    /// envelope carries `state`; `status` above keeps the raw docker text).
+    #[serde(default)]
+    pub state: String,
     #[serde(default)]
     pub tag: String,
     #[serde(default)]
