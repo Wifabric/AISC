@@ -227,6 +227,27 @@ function formatBytes(n: number | null | undefined): string {
   }
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
 }
+/** v2.1.13 D-9b: category order is PINNED (the Rust side returns a HashMap
+ *  whose iteration order reshuffled on every scan - hand-test #3). */
+const INSPECT_ORDER = ['images', 'containers', 'volumes', 'build_cache', 'networks'] as const;
+const INSPECT_PREVIEW = 30;
+const inspectShowAll = ref(new Set<string>());
+const orderedInspect = computed(() => {
+  const cats = store.inspectReport?.categories ?? {};
+  return INSPECT_ORDER.filter((k) => cats[k]).map((k) => [k, cats[k]] as const);
+});
+function sortedInspectRows(key: string, rows: import("../../lib/ipc").CacheInspectRow[]) {
+  const size = (r: import("../../lib/ipc").CacheInspectRow) =>
+    r.reclaimable_bytes ?? r.size_bytes ?? 0;
+  const sorted = [...rows].sort((a, b) => size(b) - size(a));
+  if (inspectShowAll.value.has(key)) return sorted;
+  return sorted.slice(0, INSPECT_PREVIEW);
+}
+function inspectDisplayName(row: import("../../lib/ipc").CacheInspectRow): string {
+  if (row.name && row.name !== row.id) return row.name;
+  const kind = row.kind ? row.kind + " \u00b7 " : "";
+  return kind + String(row.id).slice(0, 12);
+}
 const inspectTotals = computed(() => {
   const cats = store.inspectReport?.categories ?? {};
   let reclaimable = 0;
@@ -677,7 +698,7 @@ async function reopenOnboarding() {
           <div v-if="store.inspectReport" class="inspect-groups">
             <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
             <details
-              v-for="(cat, key) in store.inspectReport.categories"
+              v-for="[key, cat] in orderedInspect"
               :key="key"
               class="inspect-cat"
             >
@@ -687,20 +708,32 @@ async function reopenOnboarding() {
                   {{ cat?.summary.count ?? 0 }} · {{ formatBytes(cat?.summary.reclaimable_bytes ?? null) }}
                 </span>
               </summary>
+              <div class="inspect-thead">
+                <span>{{ t("settings.disk.inspect.colName") }}</span>
+                <span>{{ t("settings.disk.inspect.colSize") }}</span>
+                <span>{{ t("settings.disk.inspect.colStatus") }}</span>
+              </div>
               <div
-                v-for="row in cat?.rows ?? []"
+                v-for="row in sortedInspectRows(key, cat?.rows ?? [])"
                 :key="String(row.id) + String(row.name)"
-                class="field disk-row inspect-row"
+                class="inspect-row"
               >
-                <span class="label" :title="String(row.id)">{{ row.name || row.id }}</span>
-                <span class="val">{{ row.size ?? row.unique_size ?? "—" }}</span>
-                <span class="effect">
+                <span class="ir-name" :title="String(row.id)">{{ inspectDisplayName(row) }}</span>
+                <span class="ir-size">{{ row.size ?? row.unique_size ?? formatBytes(row.size_bytes) }}</span>
+                <span class="ir-status" :title="row.will_be_cleaned ? t('settings.disk.inspect.willClean') : undefined">
                   <template v-if="row.will_be_cleaned">{{ t("settings.disk.inspect.willClean") }}</template>
                   <template v-else-if="row.dangling">{{ t("settings.disk.inspect.dangling") }}</template>
                   <template v-else-if="row.in_use">{{ t("settings.disk.inspect.inUse") }}</template>
                   <template v-else>—</template>
                 </span>
               </div>
+              <button
+                v-if="(cat?.rows.length ?? 0) > 30 && !inspectShowAll.has(key)"
+                class="inspect-more"
+                @click="inspectShowAll.add(key)"
+              >
+                {{ t("settings.disk.inspect.showAll", { n: cat?.rows.length }) }}
+              </button>
               <p v-if="!(cat?.rows ?? []).length" class="note">{{ t("settings.disk.inspect.empty") }}</p>
             </details>
           </div>
@@ -927,4 +960,21 @@ button:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outl
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: transparent; color: var(--accent-fg); font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+/* --- v2.1.13 D-9b: aligned inspection rows (hand-test redesign) --- */
+.inspect-thead,
+.inspect-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 150px;
+  gap: 10px; align-items: baseline; padding: 3px 4px;
+  font-size: var(--font-xs);
+}
+.inspect-thead { color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.inspect-row:nth-child(odd) { background: var(--surface-hover, rgba(128, 128, 128, 0.06)); }
+.inspect-row .ir-name {
+  font-family: var(--font-mono); color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inspect-row .ir-size { text-align: right; color: var(--text); white-space: nowrap; }
+.inspect-row .ir-status { text-align: right; color: var(--text-muted); }
+.inspect-more { margin-top: 4px; }
+
 </style>
