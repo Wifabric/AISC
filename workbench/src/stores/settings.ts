@@ -313,7 +313,14 @@ export const useSettingsStore = defineStore("settings", () => {
     inspectBusy.value = true;
     inspectError.value = null;
     try {
-      inspectReport.value = await ipc.cacheInspect();
+      const report = await ipc.cacheInspect();
+      if (!report.dockerAvailable) {
+        // D-9b hand-test: a docker-off click used to render silent empty
+        // groups - surface an explicit warning instead.
+        inspectError.value = i18n.global.t("settings.disk.inspect.dockerOff");
+        return;
+      }
+      inspectReport.value = report;
     } catch (e) {
       inspectError.value = (e as { message?: string })?.message ?? String(e);
     } finally {
