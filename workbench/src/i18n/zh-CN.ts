@@ -561,6 +561,7 @@ export const zhCN = {
   "settings.disk.refreshTip": "重新读取 Docker 磁盘占用概览（docker system df）",
   "settings.disk.cleanupTip": "清理构建缓存与悬空镜像（只清超过 24 小时的条目；安全过滤由 CLI 保证）",
   "settings.disk.inspect.group": "资源精细检测（只读）",
+  "settings.disk.inspect.disclaimer": "可回收量为估算值（按 UniqueSize 去重）；实际释放可能偏低。「会命中清理」仅按悬空/未使用判定，未计入 24 小时龄过滤。",
   "settings.disk.inspect.open": "详细检测",
   "settings.disk.inspect.busy": "检测中…",
   "settings.disk.inspect.totals": "共 {items} 项 · 可回收约 {reclaimable}",

@@ -703,7 +703,10 @@ def _images_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> List[Dict[str
             "size": row.get("Size"),
             "size_bytes": _size_bytes(row.get("Size")),
             "unique_size": row.get("UniqueSize"),
-            "shared": row.get("SharedSize"),
+            # SharedSize is a display STRING (e.g. "326.5MB") - it must never
+            # ride the boolean shared field (2.1.13 hand-test: the string
+            # made the Rust serde drop the whole images category).
+            "shared": None,
             "reclaimable_bytes": (0 if in_use else unique),
             "will_be_cleaned": dangling,
         })

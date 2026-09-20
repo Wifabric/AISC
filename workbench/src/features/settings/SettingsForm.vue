@@ -675,7 +675,7 @@ async function reopenOnboarding() {
           </div>
           <p v-if="store.inspectError" class="err-text">{{ store.inspectError }}</p>
           <div v-if="store.inspectReport" class="inspect-groups">
-            <p class="note">{{ store.inspectReport.disclaimer }}</p>
+            <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
             <details
               v-for="(cat, key) in store.inspectReport.categories"
               :key="key"

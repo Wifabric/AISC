@@ -2,6 +2,26 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 手测修复轮 1（2026-09-20）
+
+- **批 6 路径重复 bug**：store 返回的已是 `.aisc/uploads/<file>`，前端
+  containerUploadsPathFor 又叠一层 → 实际插入
+  `/root/app/.aisc/uploads/.aisc/uploads/x.png`。改为 containerPathFor（两处）。
+- **批 6 TUI 错乱**：成功/失败提示从 term.write 改为全局 toast（写进全屏
+  agent TUI 会打花界面）。
+- **批 5**：点击变更文件不再打开 diff 面板（用户裁定「点文件出 diff 不需要」）；
+  点击仅选中，diff 面板与相关 computed 移除。
+- **批 4 镜像类别缺失根因**：_images_rows 把 df -v 的 SharedSize **字符串**
+  （如 "326.5MB"）塞进布尔字段 shared → Rust serde 整类反序列化失败被静默
+  丢弃。改为 shared=None（SharedSize 语义由 unique_size/size 承载）。
+  实测：Docker 29 的 `system df -v --format json` 输出为单行 39.5 万字符的
+  多段拼接 JSON，json.loads 直接失败——当前 _df_verbose 行解析恰好兼容，
+  但属脆弱依赖，记为待加固点。
+- **批 4 免责文案**：前端不再渲染后端英文 disclaimer，改用 i18n 双语键；
+  docker 不可用时无免责展示。
+- **用户新需求入池**：workbench 内 docker 容器/镜像简单管理（删除/停止）——
+  已入 todo target 运行质量组，破坏性操作边界待立计划裁决。
+
 # v2.1.13 批 6：拖动/粘贴图片给 agent（2026-09-19，分支 2.1.13-b6-image-drag）
 
 - **上传通道**：新命令 `workspace_upload_image(workspace, name, bytes_base64)`——
