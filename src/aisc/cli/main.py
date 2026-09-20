@@ -527,6 +527,26 @@ def _build_parser() -> _AiscArgumentParser:
                             help="Read-only per-item Docker resource inspection (D-2)",
                             allow_abbrev=False)
     _add_global_args(mtci, is_subparser=True)
+    mtma = mtsub.add_parser("container-action",
+                            help="Start/stop/remove ONE aisc-owned container (D-12)",
+                            allow_abbrev=False)
+    _add_global_args(mtma, is_subparser=True)
+    mtma.add_argument("--name", required=True,
+                      help="Container name (from maintenance docker-scan)")
+    mtma.add_argument("--action", required=True, choices=["start", "stop", "rm"])
+    mtmr = mtsub.add_parser("image-rm",
+                            help="Remove ONE unreferenced aisc-owned image (D-12)",
+                            allow_abbrev=False)
+    _add_global_args(mtmr, is_subparser=True)
+    mtmr.add_argument("--id", required=True,
+                      help="Image ID (from maintenance docker-scan)")
+    mtmt = mtsub.add_parser("image-tag",
+                            help="Retag ONE aisc-owned image (D-12 rename)",
+                            allow_abbrev=False)
+    _add_global_args(mtmt, is_subparser=True)
+    mtmt.add_argument("--id", required=True, help="Image ID")
+    mtmt.add_argument("--repository", required=True, help="New repository name")
+    mtmt.add_argument("--tag", required=True, help="New tag")
 
     mtcc = mtsub.add_parser("cache-cleanup",
                             help="Prune builder cache + dangling images (until-filtered)",
@@ -1965,6 +1985,18 @@ def _cmd_maintenance(
         # D-2 read-only per-item inspection — never chained into cleanup
         from aisc.application.docker_lifecycle import cache_inspect
         return cache_inspect(executor), 0, []
+    if sub == "container-action":
+        from aisc.application.docker_lifecycle import container_management_action
+        return container_management_action(
+            executor, name=args.name, action=args.action), 0, []
+    if sub == "image-rm":
+        from aisc.application.docker_lifecycle import image_management_rm
+        return image_management_rm(executor, image_id=args.id), 0, []
+    if sub == "image-tag":
+        from aisc.application.docker_lifecycle import image_management_tag
+        return image_management_tag(
+            executor, image_id=args.id,
+            repository=args.repository, tag=args.tag), 0, []
     if sub == "cache-cleanup":
         from aisc.application.docker_lifecycle import docker_cache_cleanup
         data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)

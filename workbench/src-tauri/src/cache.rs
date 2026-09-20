@@ -312,6 +312,119 @@ pub async fn cache_inspect(
     Ok(inspect_report_from(data))
 }
 
+// --- v2.1.13 D-12: owned-resource management commands -----------------------
+//
+// Each action maps 1:1 to a maintenance subcommand whose CLI side re-verifies
+// ownership in-lock (AISC_ERR_OWNERSHIP_REFUSED for anything not
+// owned/legacy_owned). Transport-only here, same as cache_usage above.
+
+pub fn container_action_argv(name: &str, action: &str) -> Vec<String> {
+    vec![
+        "maintenance".into(),
+        "container-action".into(),
+        "--name".into(),
+        name.into(),
+        "--action".into(),
+        action.into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+pub fn image_rm_argv(id: &str) -> Vec<String> {
+    vec![
+        "maintenance".into(),
+        "image-rm".into(),
+        "--id".into(),
+        id.into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+pub fn image_tag_argv(id: &str, repository: &str, tag: &str) -> Vec<String> {
+    vec![
+        "maintenance".into(),
+        "image-tag".into(),
+        "--id".into(),
+        id.into(),
+        "--repository".into(),
+        repository.into(),
+        "--tag".into(),
+        tag.into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ManagementResult {
+    pub action: String,
+    pub warnings: Vec<String>,
+}
+
+async fn run_management(
+    argv: Vec<String>,
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<ManagementResult, WorkbenchError> {
+    let target = crate::target::resolve_target_for(app, window).await?;
+    let env = run_control_target(
+        &target,
+        argv,
+        INSPECT_TIMEOUT,
+        CancellationToken::new(),
+    )
+    .await?;
+    let data = envelope_data(env, "maintenance")?;
+    Ok(ManagementResult {
+        action: data
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        warnings: data
+            .get("warnings")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+pub async fn container_action(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    name: String,
+    action: String,
+) -> Result<ManagementResult, WorkbenchError> {
+    run_management(container_action_argv(&name, &action), &app, &window).await
+}
+
+#[tauri::command]
+pub async fn image_rm(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+) -> Result<ManagementResult, WorkbenchError> {
+    run_management(image_rm_argv(&id), &app, &window).await
+}
+
+#[tauri::command]
+pub async fn image_tag(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+    repository: String,
+    tag: String,
+) -> Result<ManagementResult, WorkbenchError> {
+    run_management(image_tag_argv(&id, &repository, &tag), &app, &window).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,6 +513,25 @@ mod tests {
         assert_eq!(images.summary.count, 1);
         assert!(report.categories.get("garbage").is_none()); // tolerated out
         assert_eq!(report.warnings, vec!["df-verbose-json-unavailable"]);
+    }
+
+    #[test]
+    fn management_argvs_are_pinned() {
+        assert_eq!(
+            container_action_argv("wb-x", "stop"),
+            vec!["maintenance", "container-action", "--name", "wb-x",
+                 "--action", "stop", "--format", "json"]
+        );
+        assert_eq!(
+            image_rm_argv("abc"),
+            vec!["maintenance", "image-rm", "--id", "abc", "--format", "json"]
+        );
+        assert_eq!(
+            image_tag_argv("abc", "myrepo", "renamed"),
+            vec!["maintenance", "image-tag", "--id", "abc",
+                 "--repository", "myrepo", "--tag", "renamed",
+                 "--format", "json"]
+        );
     }
 
     #[test]

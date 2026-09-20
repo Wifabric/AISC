@@ -2,6 +2,21 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 7：docker 资源管理（D-12，2026-09-20，分支 2.1.13-docker-management）
+
+- **CLI**：maintenance 组三个子命令——container-action（start/stop/rm）、
+  image-rm、image-tag（retag 语义，旧 tag 保留）。每动作锁内重扫判权：
+  owned/legacy_owned 才可操作，unverified/未知 → AISC_ERR_OWNERSHIP_REFUSED
+  （exit 6）；镜像删除前重查 ancestor 容器（被引用即拒）；rm 组合 stop+rm-f。
+  envelope aisc.docker-management/v1。
+- **Rust**：container_action / image_rm / image_tag 三命令（resolve_target_for
+  同构跟随驱动机器；120s 超时）+ argv pin 测试。
+- **前端**：设置页 Docker 资源组 scan 后渲染 owned/legacy_owned 行内按钮
+  （运行中=停止；停止=启动/删除；镜像=删除/重命名）；confirm 文案含资源名；
+  动作完成自动重扫刷新。运行中容器不提供删除（先停再删）。
+- 测试：python 11 用例（所有权拒绝/组合/no-op/argv 安全）+ Rust argv pin；
+  local-gates 全绿；sidecar 已重建。
+
 # v2.1.13 手测修复轮 2 + cli-v0.1.2 发布（2026-09-20）
 
 - **发布**：cli-v0.1.2 tag 已打（run 防重入 + cache-inspect）；发布流水线

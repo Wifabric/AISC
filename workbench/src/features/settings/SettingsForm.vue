@@ -371,6 +371,66 @@ async function onDockerRebuild() {
   await store.runDockerRebuild();
 }
 
+// --- v2.1.13 D-12: owned-resource management actions ------------------------
+// Every action double-gates: a confirm dialog naming the resource, then the
+// CLI's in-lock ownership re-verification (unverified refuses server-side).
+const managementBusyLocal = ref(false);
+type ManageRow = { id: string; name: string; state?: string; ownership: string };
+
+function manageRows(): ManageRow[] {
+  const r = store.dockerReport;
+  if (!r || !r.dockerAvailable) return [];
+  const out: ManageRow[] = [];
+  for (const row of [...r.containers.owned, ...r.containers.legacy_owned]) {
+    out.push({ id: row.id, name: row.name, state: row.status, ownership: row.ownership });
+  }
+  for (const row of [...r.images.owned, ...r.images.legacy_owned]) {
+    out.push({ id: row.id, name: row.name, ownership: row.ownership });
+  }
+  return out;
+}
+const manageRowsRef = computed(() => manageRows());
+
+async function onContainerAction(name: string, action: "start" | "stop" | "rm"): Promise<void> {
+  if (managementBusyLocal.value) return;
+  const key = action === "rm" ? "settings.docker.manage.rmConfirm" : "settings.docker.manage.stopConfirm";
+  const ok = await confirm(t(key, { name }));
+  if (!ok) return;
+  managementBusyLocal.value = true;
+  try {
+    await store.containerAction(name, action);
+  } finally {
+    managementBusyLocal.value = false;
+  }
+}
+async function onImageRm(id: string, name: string): Promise<void> {
+  if (managementBusyLocal.value) return;
+  const ok = await confirm(t("settings.docker.manage.imageRmConfirm", { name }));
+  if (!ok) return;
+  managementBusyLocal.value = true;
+  try {
+    await store.imageRm(id);
+  } finally {
+    managementBusyLocal.value = false;
+  }
+}
+async function onImageTag(id: string, name: string): Promise<void> {
+  if (managementBusyLocal.value) return;
+  // retag-only v1: the new tag derives from the old name (see plan doc).
+  const parts = name.split(":");
+  const repo = parts[0] ?? name;
+  const oldTag = parts[1] ?? "latest";
+  const newTag = `${oldTag}-renamed`;
+  const ok = await confirm(t("settings.docker.manage.imageTagConfirm", { name, newTag }));
+  if (!ok) return;
+  managementBusyLocal.value = true;
+  try {
+    await store.imageTag(id, repo, newTag);
+  } finally {
+    managementBusyLocal.value = false;
+  }
+}
+
 /** A7: destructive-ish (app exits) — confirm before the silent install. */
 async function onInstallUpdate() {
   const { confirm } = await import("@tauri-apps/plugin-dialog");
@@ -762,6 +822,34 @@ async function reopenOnboarding() {
                 <span class="label">{{ row.label }}</span>
                 <span class="val">{{ row.value }}</span>
               </div>
+
+              <!-- v2.1.13 D-12: per-resource management (aisc-owned only;
+                   unverified rows stay view-only). Buttons follow the
+                   container state; confirms name the resource. -->
+              <div v-if="manageRowsRef.length" class="manage-list">
+                <div class="manage-thead">
+                  <span>{{ t("settings.docker.manage.colResource") }}</span>
+                  <span>{{ t("settings.docker.manage.colState") }}</span>
+                  <span>{{ t("settings.docker.manage.colActions") }}</span>
+                </div>
+                <div v-for="row in manageRowsRef" :key="row.id + row.name" class="manage-row">
+                  <span class="mr-name" :title="row.id">{{ row.name }}</span>
+                  <span class="mr-state">{{ row.state ?? "—" }}</span>
+                  <span class="mr-actions">
+                    <template v-if="row.state === 'running'">
+                      <button class="ui-button" :disabled="store.managementBusy !== null" @click="onContainerAction(row.name, 'stop')">{{ t("settings.docker.manage.stop") }}</button>
+                    </template>
+                    <template v-else>
+                      <button class="ui-button" :disabled="store.managementBusy !== null" @click="onContainerAction(row.name, 'start')">{{ t("settings.docker.manage.start") }}</button>
+                      <button class="danger" :disabled="store.managementBusy !== null" @click="onContainerAction(row.name, 'rm')">{{ t("settings.docker.manage.rm") }}</button>
+                    </template>
+                    <template v-if="!row.state">
+                      <button class="danger" :disabled="store.managementBusy !== null" @click="onImageRm(row.id, row.name)">{{ t("settings.docker.manage.rm") }}</button>
+                      <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.name)">{{ t("settings.docker.manage.retag") }}</button>
+                    </template>
+                  </span>
+                </div>
+              </div>
             </template>
           </template>
           <p v-if="store.dockerError" class="err-text">{{ store.dockerError }}</p>
@@ -977,4 +1065,18 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .inspect-row .ir-status { text-align: right; color: var(--text-muted); }
 .inspect-more { margin-top: 4px; }
 
+/* --- v2.1.13 D-12: management rows --- */
+.manage-list { margin-top: 6px; }
+.manage-thead,
+.manage-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px; align-items: center; padding: 3px 4px; font-size: var(--font-xs);
+}
+.manage-thead { color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.manage-row .mr-name {
+  font-family: var(--font-mono); color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.manage-row .mr-state { color: var(--text-muted); white-space: nowrap; }
+.manage-row .mr-actions { display: flex; gap: 4px; }
 </style>
