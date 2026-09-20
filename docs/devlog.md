@@ -2,6 +2,22 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.13 批 8：history-worklog 批 0 探针 + 批 1 数据层（2026-09-21）
+
+- **T0 探针结论（决定性）**：一次性容器内 `codex exec` 建会话 → `codex exec
+  resume <id>`（401 失败态）→ sessions 树前后一致：**resume 不 fork 新 rollout，
+  续写原文件**。claude --resume 同文件追加（高置信）。→ 批 1 preflight「取最新
+  mtime」微调留待批 2 顺带（当前 _find_conversation_file 未排序首命中在单文件
+  语义下无害）。
+- **批 1 数据层**：worklog.py（aisc.worklog/v1，<ws>/runtime/worklogs.json，
+  原子写/损坏隔离/fail-open）；session.py 双钩子（build_session_exec 记开启
+  含 resume_of、terminate_session 记关闭）；reconcile 把未归档 provider 会话
+  收容进合成「未归档会话」；CLI `aisc worklog list/rename/archive/delete/
+  reconcile`。钩子 fail-open：账本问题永不阻塞会话开/关。
+- 测试 9 用例全过；local-gates 全绿；sidecar 已重建。
+- 手测：开两个会话（其一 resume）→ terminate → `aisc worklog list --workspace
+  <ws>` 聚合正确（resume_of 在、closed_at 在）。
+
 # v2.1.13 批 7：docker 资源管理（D-12，2026-09-20，分支 2.1.13-docker-management）
 
 - **CLI**：maintenance 组三个子命令——container-action（start/stop/rm）、

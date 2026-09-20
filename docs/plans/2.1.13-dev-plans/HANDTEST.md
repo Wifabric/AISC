@@ -75,3 +75,12 @@
 - [x] claude/codex/bash/cc-switch 四类会话开/关/分屏正常
 - [x] provider 页/cc-switch 切换正常（批 3-6 未触碰其数据面）
 - [x] pytest / cargo / vitest / vue-tsc 四门绿（已在交付时验证）
+
+## 批 8：history-worklog 批 1（worklog 账本，2026-09-21 交付）
+
+- [ ] 工作区里开两个会话（其一用 resume 进入）→ 关闭 → `aisc worklog list
+      --workspace <路径>`：两条记录、resume 那条带 resume_of、关闭时间在位
+- [ ] `aisc worklog rename/archive/delete` 三件套可用
+- [ ] `aisc worklog reconcile --workspace <路径>`：既有会话（工作记录上线前的）
+      被收容进「未归档会话」；重跑不再新增
+- [ ] 删除容器后账本仍在（host 侧持久）；会话开/关不受账本影响（fail-open）
