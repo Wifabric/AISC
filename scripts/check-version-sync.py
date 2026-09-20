@@ -35,7 +35,9 @@ def main() -> int:
     if not notes.is_file():
         problems.append(f"release notes missing: docs/releases/v{version}.md")
 
-    if args.tag and args.tag != f"v{version}":
+    if args.tag and args.tag not in (f"v{version}", f"cli-v{version}"):
+        # D-8.4: CLI-lane finals carry the cli-v prefix (dodges the
+        # artifact.yml GitHub Release); both spellings satisfy the contract.
         problems.append(f"tag {args.tag!r} != v{version}")
 
     if problems:

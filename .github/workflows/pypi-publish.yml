@@ -59,7 +59,9 @@ jobs:
       - name: Final-tag classification
         id: final
         run: |
-          if echo "${{ inputs.tag }}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # D-8.4: CLI finals carry the cli-v prefix (dodges the artifact.yml
+          # GitHub Release) - they are FINAL releases on the PyPI lane.
+          if echo "${{ inputs.tag }}" | grep -Eq '^(cli-)?v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "is_final=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_final=false" >> "$GITHUB_OUTPUT"
@@ -162,6 +164,12 @@ jobs:
                 *-dev*|*.dev*|*-rc*|*.rc*) echo "prerelease tag: $TAG — TestPyPI only"; exit 1 ;;
               esac
               [ "v$V" = "$TAG" ] || { echo "tag $TAG != v$V"; exit 1; } ;;
+            cli-v[0-9]*.[0-9]*.[0-9]*)
+              # D-8.4 CLI-lane final: same prerelease exclusions, cli- prefix
+              case "$TAG" in
+                *-dev*|*.dev*|*-rc*|*.rc*) echo "prerelease tag: $TAG — TestPyPI only"; exit 1 ;;
+              esac
+              [ "cli-v$V" = "$TAG" ] || { echo "tag $TAG != cli-v$V"; exit 1; } ;;
             *) echo "not a final tag: $TAG"; exit 1 ;;
           esac
       - uses: actions/download-artifact@v4
