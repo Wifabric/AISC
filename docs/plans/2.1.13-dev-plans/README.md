@@ -35,6 +35,7 @@
 | [pi-opencode.md](pi-opencode.md) | （已作废）agent 加上 Pi/opencode | 作废备查 |
 | [HANDTEST.md](HANDTEST.md) | 批 1–6 统一手测清单 | 手测进行中 |
 | [image-drag-to-agent.md](image-drag-to-agent.md) | 拖动图片给 agent（含剪贴板粘贴） | 计划待验收 |
+| [docker-management.md](docker-management.md) | Docker 资源管理（容器/镜像操作，D-12） | 计划待验收 |
 
 流程项（无开发计划文档）：**final 发布时机**——按 D-8(2.1.12) 规约仅经用户明确要求。
 
