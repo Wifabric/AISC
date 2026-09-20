@@ -200,4 +200,10 @@ jobs:
           pip install .
           python scripts/verify-sbom.py --venv-python "$(which python)" \
             --out aisc-sbom.json || true
-          gh release upload "${{ inputs.tag }}" aisc-sbom.json --clobber
+          # D-8.4: cli-v tags create no GitHub Release - the SBOM verification
+          # above still ran; attaching only applies to v* workbench releases.
+          if gh release view "${{ inputs.tag }}" --json name -q .name > /dev/null 2>&1; then
+            gh release upload "${{ inputs.tag }}" aisc-sbom.json --clobber
+          else
+            echo "no GitHub release for ${{ inputs.tag }} (cli-v lane) - SBOM verified, not attached"
+          fi
