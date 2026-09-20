@@ -555,6 +555,46 @@ def _build_parser() -> _AiscArgumentParser:
     mtcc.add_argument("--min-age-hours", type=int, default=24,
                       help="Only clear cache entries older than this (default 24)")
 
+    # --- worklog (v2.1.13 D-12 批 1: history-worklog data layer) ---
+    wlp = sub.add_parser("worklog",
+                         help="Per-workspace PTY session ledger (history-worklog)",
+                         allow_abbrev=False)
+    _add_global_args(wlp, is_subparser=True)
+    wlsub = wlp.add_subparsers(dest="worklog_command",
+                               title="worklog commands",
+                               parser_class=_AiscArgumentParser)
+
+    wl_list = wlsub.add_parser("list", help="List worklogs (newest first)",
+                               allow_abbrev=False)
+    _add_global_args(wl_list, is_subparser=True)
+    wl_list.add_argument("--workspace", type=str, default=None,
+                         help="Workspace path (default: current directory)")
+
+    wl_ren = wlsub.add_parser("rename", help="Rename a worklog", allow_abbrev=False)
+    _add_global_args(wl_ren, is_subparser=True)
+    wl_ren.add_argument("--workspace", type=str, default=None)
+    wl_ren.add_argument("--id", required=True, help="worklog_id")
+    wl_ren.add_argument("--title", required=True, help="New title")
+
+    wl_arc = wlsub.add_parser("archive", help="Archive (or restore) a worklog",
+                              allow_abbrev=False)
+    _add_global_args(wl_arc, is_subparser=True)
+    wl_arc.add_argument("--workspace", type=str, default=None)
+    wl_arc.add_argument("--id", required=True, help="worklog_id")
+    wl_arc.add_argument("--restore", action="store_true", default=False,
+                        help="Restore an archived worklog to active")
+
+    wl_del = wlsub.add_parser("delete", help="Delete a worklog entry", allow_abbrev=False)
+    _add_global_args(wl_del, is_subparser=True)
+    wl_del.add_argument("--workspace", type=str, default=None)
+    wl_del.add_argument("--id", required=True, help="worklog_id")
+
+    wl_rec = wlsub.add_parser("reconcile",
+                              help="Attach unfiled provider sessions to the ledger",
+                              allow_abbrev=False)
+    _add_global_args(wl_rec, is_subparser=True)
+    wl_rec.add_argument("--workspace", type=str, default=None)
+
     # --- bundle (0.1.0 A3, guide 3.3.3) ---
     bp = sub.add_parser("bundle", help="Runtime bundle store (fetch from GitHub Releases)",
                         allow_abbrev=False)
@@ -2004,6 +2044,61 @@ def _cmd_maintenance(
     return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown maintenance subcommand: {sub}")]
 
 
+def _cmd_worklog(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """``aisc worklog`` — per-workspace PTY session ledger (D-12 批 1).
+
+    All subcommands are captured/read-only-or-ledger-local and return
+    JSON-serializable data under the aisc.cli/v1 envelope."""
+    from aisc.cli.commands.worklog import (
+        cmd_worklog_archive,
+        cmd_worklog_delete,
+        cmd_worklog_list,
+        cmd_worklog_reconcile,
+        cmd_worklog_rename,
+    )
+
+    sub = args.worklog_command
+    workspace = args.workspace or os.getcwd()
+
+    if sub == "list":
+        data = cmd_worklog_list(workspace)
+        if effective_format != "json":
+            from aisc.cli.commands.worklog import print_worklog_list
+            print_worklog_list(data)
+            return None, 0, []
+        return data, 0, []
+    if sub == "rename":
+        ok = cmd_worklog_rename(workspace, args.id, args.title)
+        if effective_format != "json":
+            print("已重命名" if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"renamed": ok}, 0 if ok else 1, []
+    if sub == "archive":
+        ok = cmd_worklog_archive(workspace, args.id, restore=args.restore)
+        label = "已恢复" if args.restore else "已归档"
+        if effective_format != "json":
+            print(label if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"archived": ok and not args.restore}, 0 if ok else 1, []
+    if sub == "delete":
+        ok = cmd_worklog_delete(workspace, args.id)
+        if effective_format != "json":
+            print("已删除" if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"deleted": ok}, 0 if ok else 1, []
+    if sub == "reconcile":
+        data = cmd_worklog_reconcile(workspace)
+        if effective_format != "json":
+            print(f"补录 {data.get('attached', 0)} 个未归档会话")
+            return None, 0, []
+        return data, 0, []
+    return None, 2, [build_error("AISC_ERR_USAGE",
+                                 f"Unknown worklog subcommand: {sub}")]
+
+
 def _cmd_bundle(
     args: argparse.Namespace,
     effective_format: str,
@@ -2796,6 +2891,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_session(args, effective_format)
         elif args.command == "conversation":
             data, exit_code, errors = _cmd_conversation(args, effective_format)
+        elif args.command == "worklog":
+            data, exit_code, errors = _cmd_worklog(args, effective_format)
         elif args.command == "artifact":
             data, exit_code, errors = _cmd_artifact(args, effective_format)
         elif args.command == "data-root":
