@@ -583,7 +583,7 @@ export const zhCN = {
   "settings.docker.scan": "扫描 Docker 资源",
   "settings.docker.cleanup": "清理 AISC 容器与镜像",
   "settings.docker.cleanupConfirm": "将删除 AISC 归属的容器与镜像（含工作台镜像，运行中的容器会被停止）。未验证资源不动。之后可用下方按钮重建镜像。继续？",
-  "settings.docker.rebuild": "重建工作台镜像",
+  "settings.docker.rebuild": "重新构建镜像",
   "settings.docker.rebuilding": "重建中…（最长约 30 分钟）",
   "settings.docker.rebuildConfirm": "从本机 aisc-bundle 无缓存重建工作台镜像，约 10-30 分钟；失败时旧镜像保留。继续？",
   "settings.docker.rebuildNote": "重建仅作用于本机（远程机器的镜像请在对应机器操作）；清理/扫描跟随当前驱动机器。",
