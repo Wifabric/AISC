@@ -196,26 +196,13 @@ const changeSourceLabel = computed(() =>
   explorer.changesSource === "git"
     ? t("changes.source.git", { branch: explorer.gitBranch, n: changeRows.value.length })
     : t("changes.source.watcher", { n: changeRows.value.length }));
-/** Unified diff line classification for the diff pane. */
-const diffLines = computed(() => {
-  const d = explorer.gitDiff;
-  if (!d || d.binary) return [];
-  return d.unified.split("\n").map((line) => ({
-    line,
-    kind: line.startsWith("+") && !line.startsWith("+++")
-      ? "add"
-      : line.startsWith("-") && !line.startsWith("---")
-        ? "del"
-        : line.startsWith("@@") ? "hunk" : "ctx",
-  }));
-});
 function onRowClick(node: ChangeTreeNode): void {
   if (node.dir) {
     toggleChangeDir(node);
     return;
   }
+  // 2.1.13 hand-test: click selects only - no diff pane on click (user ruling).
   onArtifactSelect(node.path);
-  if (explorer.changesSource === "git") void explorer.openGitDiff(node.path);
 }
 function subtreeCount(node: ChangeTreeNode): number {
   return subtreeBadge(node).count;
@@ -1262,21 +1249,6 @@ function onTreeKeydown(e: KeyboardEvent) {
       <p class="changes-source" :class="'src-' + explorer.changesSource">
         {{ changeSourceLabel }}
       </p>
-      <!-- D-11: the raw-file preview is gone for good. The pane below is
-           DIFF-ONLY and exists solely in the changes context (git source). -->
-      <div v-if="explorer.gitDiff" class="diff-pane">
-        <div class="diff-head">
-          <span class="diff-path">{{ explorer.gitDiff.path }}</span>
-          <button class="explorer-mini" @click="explorer.closeGitDiff()">✕</button>
-        </div>
-        <p v-if="explorer.gitDiff.binary" class="note">{{ t("changes.diff.binary") }}</p>
-        <pre v-else class="diff-body"><span
-          v-for="(l, i) in diffLines"
-          :key="i"
-          :class="'diff-' + l.kind"
-        >{{ l.line }}
-</span></pre>
-      </div>
       <p v-if="!changeRows.length" class="explorer-empty">
         {{ searchQuery ? t("explorer.searchNoMatch") : t("explorer.empty.artifacts") }}
       </p>

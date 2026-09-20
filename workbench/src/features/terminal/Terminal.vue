@@ -28,7 +28,8 @@ import { readImage, readText, writeText } from "@tauri-apps/plugin-clipboard-man
 import "@xterm/xterm/css/xterm.css";
 import { useRuntimeStore } from "../../stores/runtime";
 import { computeDisplayFrom } from "../../domain/streamBuffer";
-import { useSettingsStore } from "../../stores/settings";
+import { useSettingsStore } from "../../stores/settings";
+import { useToastStore } from "../../stores/toast";
 import { AGENTS } from "../../stores/tabLayout";
 import {
   resizeSession,
@@ -38,7 +39,7 @@ import {
 } from "../../lib/ipc";
 import { sameTermSize, shouldSendSize, type TermSize } from "./resizeSync";
 import { WORKSPACE_PATH_MIME } from "../../lib/workspaceDnd";
-import { containerPathFor, containerUploadsPathFor, quoteForTerminal } from "./dropPath";
+import { containerPathFor, quoteForTerminal } from "./dropPath";
 import { resolveRenderer, terminalTheme, webglGpuSummary } from "./renderer";
 import { linearizeSpoolPage } from "./spoolReplay";
 import { effectiveTheme } from "../../theme";
@@ -755,9 +756,10 @@ function bytesToBase64(buf: Uint8Array): string {
   return btoa(binary);
 }
 
-function terminalNote(message: string, kind: "info" | "error" = "info"): void {
-  const color = kind === "error" ? "31" : "90";
-  term?.write(`\r\n\x1b[${color}${message}\x1b[0m\r\n`);
+function terminalNote(message: string, kind: "info" | "error" = "info"): void {
+  // D-b6 hand-test: notes written into a full-screen agent TUI garble the
+  // display - all image feedback goes through the global toast.
+  useToastStore().push(message, { kind });
 }
 
 /** Upload OS image files to `<workspace>/.aisc/uploads/` and insert the
@@ -776,7 +778,7 @@ async function uploadAndInsertImages(files: File[]): Promise<void> {
       if (f.size > UPLOAD_MAX_BYTES) throw new Error("file exceeds 20 MiB");
       const buf = new Uint8Array(await f.arrayBuffer());
       const rel = await workspaceUploadImage(ws, f.name, bytesToBase64(buf));
-      tokens.push(quoteForTerminal(containerUploadsPathFor(rel.relative_path)));
+      tokens.push(quoteForTerminal(containerPathFor(rel.relative_path)));
     } catch (err) {
       failed += 1;
       terminalNote(
@@ -845,7 +847,7 @@ async function onDrop(e: DragEvent) {
 async function doPaste() {
   try {
     const img = await readImage();
-    const rgba = await img.rgba();
+    const rgba = await img.rgba();
     if (rgba.length > 0) {
       const sid = sessionId.value;
       const ws = store.workspace;
@@ -859,7 +861,7 @@ async function doPaste() {
           `clipboard-${Date.now()}.png`,
           bytesToBase64(rgba),
         );
-        const token = quoteForTerminal(containerUploadsPathFor(rel.relative_path));
+        const token = quoteForTerminal(containerPathFor(rel.relative_path));
         await writeSession(sid, Array.from(new TextEncoder().encode(token)));
         terminalNote(t("terminal.pasteImageSaved"));
         return;

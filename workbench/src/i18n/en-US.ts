@@ -561,6 +561,7 @@ export const enUS: Record<string, string> = {
   "settings.disk.refreshTip": "Re-read the Docker disk usage summary (docker system df)",
   "settings.disk.cleanupTip": "Prune builder cache and dangling images (entries older than 24h only; safety filters owned by the CLI)",
   "settings.disk.inspect.group": "Per-resource inspection (read-only)",
+  "settings.disk.inspect.disclaimer": "Reclaimable figures are estimates (UNIQUE-size based, deduped); actual freed space can be lower. will-be-cleaned flags ignore the 24h age filter.",
   "settings.disk.inspect.open": "Detailed scan",
   "settings.disk.inspect.busy": "Scanning…",
   "settings.disk.inspect.totals": "{items} items · ~{reclaimable} reclaimable",
