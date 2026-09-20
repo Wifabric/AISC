@@ -583,7 +583,7 @@ export const enUS: Record<string, string> = {
   "settings.docker.scan": "Scan Docker resources",
   "settings.docker.cleanup": "Clean AISC containers & images",
   "settings.docker.cleanupConfirm": "This removes AISC-owned containers and images (including the workstation image; running containers are stopped). Unverified items are left alone; the image can be rebuilt below. Continue?",
-  "settings.docker.rebuild": "Rebuild workstation image",
+  "settings.docker.rebuild": "Rebuild image",
   "settings.docker.rebuilding": "Rebuilding… (up to ~30 min)",
   "settings.docker.rebuildConfirm": "No-cache rebuild from the local aisc-bundle, roughly 10-30 minutes; the old image is kept on failure. Continue?",
   "settings.docker.rebuildNote": "Rebuild acts on THIS machine only (remote machines manage their own image); scan/cleanup follow the active drive target.",
