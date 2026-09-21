@@ -78,9 +78,115 @@
 
 ## 批 8：history-worklog 批 1（worklog 账本，2026-09-21 交付）
 
-- [ ] 工作区里开两个会话（其一用 resume 进入）→ 关闭 → `aisc worklog list
-      --workspace <路径>`：两条记录、resume 那条带 resume_of、关闭时间在位
-- [ ] `aisc worklog rename/archive/delete` 三件套可用
-- [ ] `aisc worklog reconcile --workspace <路径>`：既有会话（工作记录上线前的）
-      被收容进「未归档会话」；重跑不再新增
-- [ ] 删除容器后账本仍在（host 侧持久）；会话开/关不受账本影响（fail-open）
+> 准备：启动 Docker Desktop；启动 Workbench（`npm run tauri dev`）；打开你的常用
+> 工作区（有 codex/claude 会话历史的那一个）。CLI 用 `$ai` =
+> `E:\Windows\Users\alan\Documents\AISC\workbench\src-tauri\target\debug\aisc.exe`
+> （sidecar 已重建含批 8），下文统一写 `$ai`。
+> 你的工作区路径下文用 `<WS>` 代指（例如 `D:\proj\demo`）。
+
+### T1 开两个会话（其一 resume）→ 关闭 → 账本正确记录
+
+**操作：**
+
+1. Workbench 里点 `+` 新建一个 **codex** 页签 → 随便问一句话（比如「你好」）→
+   等 agent 回复完成 → 点页签的 `×` 关闭它
+2. 左侧「历史」面板（文件区第 4 个视图）→ 找到刚才会话 → 右键 → **恢复**
+   → 随便再问一句 → 回复完成后点 `×` 关闭
+3. 再新建一个 **bash** 页签 → 不用输命令，直接点 `×` 关闭
+4. PowerShell 执行：
+   ```powershell
+   & $ai worklog list --workspace <WS> --format json
+   ```
+   （想看人读格式就去掉 `--format json`）
+
+**理想结果（JSON 里 `data.worklogs` 数组）：**
+
+- **3 条** worklog（每个开过的页签一条：codex 新建、codex 恢复、bash）
+- codex 恢复那条的 `sessions[0]` 里有非空的
+  `"resume_of_conversation_id"`（= 你恢复的那个会话 ID）；新建那条该字段为
+  `null`
+- 三条的 `sessions[0].closed_at` 都是**非空时间戳**（`exit_code` 可为 null）
+- `sessions[0].agent` 分别是 `codex / codex / bash`
+- 数组顺序：**刚关闭的排最前**（按 last_opened_at 倒序）
+
+### T2 rename / archive / delete 三件套
+
+**操作（接着 T1 的数据）：**
+
+1. 从 T1 输出里挑一条 `"worklog_id"` 复制（取前 8 位也行）：
+   ```powershell
+   # 改名（把 <ID> 换成复制到的值）
+   & $ai worklog rename --workspace <WS> --id <ID> --title "调研笔记"
+   # 再 list 看一眼
+   & $ai worklog list --workspace <WS> --format json
+   ```
+2. 归档同一条：
+   ```powershell
+   & $ai worklog archive --workspace <WS> --id <ID>
+   & $ai worklog list --workspace <WS> --format json   # state 变 "archived"
+   & $ai worklog archive --workspace <WS> --id <ID> --restore   # 变回 active
+   ```
+3. 删掉 bash 那条：
+   ```powershell
+   & $ai worklog delete --workspace <WS> --id <bash那条ID>
+   ```
+
+**理想结果：**
+
+- rename 后那条的 `title` = `"调研笔记"`（list 里可见）
+- archive 后 `"state": "archived"`，`--restore` 后回到 `"active"`
+- delete 后再 list，bash 那条消失、其余两条还在
+- 对不存在的 id 操作：命令不崩溃，输出「未找到该 worklog」
+
+### T3 reconcile 收容存量会话
+
+**操作：**
+
+1. 先看一眼账本当前条数（T2 之后应该是 2）
+2. 执行：
+   ```powershell
+   & $ai worklog reconcile --workspace <WS>
+   ```
+3. 立刻**再跑一次**同命令
+4. list 查看
+
+**理想结果：**
+
+- 第一次 reconcile：输出 `补录 N 个未归档会话`（N = 该工作区在账本上线前
+  存在的 provider 会话总数——你平时的 claude + codex 历史会话数，可能不小）
+- list 里出现一条 `title` 为**「未归档会话」**的 worklog，`sessions` 数量 = N，
+  每个条目带 `"inferred": true`，`terminal_session_id` 为 null
+- **第二次 reconcile：输出 `补录 0 个`**，list 不变（幂等，不重复收容）
+- 注意：该工作区**打开中的 Workbench 会话**对应的 provider 会话不该被收容
+  （它们会随开/关自然入账）——若发现正在用的会话被塞进「未归档」，记下来告诉我
+
+### T4 账本持久性与 fail-open
+
+**操作：**
+
+1. 在 Workbench 里把该工作区停止（或删除 runtime）
+2. `& $ai worklog list --workspace <WS> --format json` 再看一次
+3. （可选，破坏性实验）把账本文件改坏：
+   ```powershell
+   # 账本实际路径 = <数据根>\workspaces\<hash>\runtime\worklogs.json
+   # 数据根默认 %LOCALAPPDATA%\AISC\data；hash 目录可用下面命令找到：
+   & $ai worklog list --workspace <WS> --format json   # 正常输出
+   # 直接往该文件写入垃圾（路径手动定位后）：
+   Set-Content "<账本路径>" "{broken"
+   & $ai worklog list --workspace <WS> --format json
+   ```
+
+**理想结果：**
+
+- 容器停止/删除后 list 内容**原样还在**（账本在 host，不随容器消失）
+- 账本被写坏后：list **不报错**，返回空列表 `worklogs: []`；runtime 目录里
+  出现一个 `worklogs.corrupt-<时间戳>.json`（坏文件被隔离保留）
+- 此后 Workbench 里**仍能正常开关会话**（fail-open：账本坏了不挡会话），
+  且新开的会话会重新开始记账
+
+### 批 8 验收口径
+
+四组全过 = 批 1 闭环；T3 的「未归档」数量如果大得离谱（比如把整个
+`~/.codex` 全局会话算进来了）也告诉我——reconcile 只应扫当前工作区的
+claude/codex 目录，不该碰全局。
+
