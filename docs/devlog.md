@@ -3637,3 +3637,19 @@ diff（确认已移除，代码有用户裁决注释）；远程 CLI 需更新�
 provider 切换 resume（wrapper -c 覆盖）、批 11 聊天式只读对话查看器、
 批 12 资源管理器滚动修复。手测全部通过（HANDTEST 批 8-12）。工作记录
 （批 3）用户裁决移入待解决池。tag v2.1.13-preview.1 → NSIS prerelease。
+
+## 2026-09-21 自更新 E2E 实测通过（2.1.12-preview.1 → v2.1.13-preview.1）——2.1.12 遗留账清
+
+用户实机（Windows + Docker）按 selfupdate-e2e.md §7 全链实测：
+装 2.1.12-preview.1 基线 → 「检查更新」正确检出 → 下载（sha 校验）→
+确认退出 → 静默安装器卸旧装新 → Docker 升级链重建镜像。机器取证：
+注册表 DisplayVersion=2.1.13-preview.1；安装文件 21:43 落盘；
+super-claude:latest 21:44:54 自动重建且内含修复版 wrapper
+（sha256 前缀 9bfb741c2b651399 逐字一致）；装机 sidecar 0.1.2 带
+conversation read；PATH 恰一条 INSTDIR；旧运行容器按 upgrade 分支清理。
+D-4 版本戳生效（嵌入全形 tag 版本）→ 阶段内 preview 迭代链可达。
+
+**记入下批的三个观察项**：①静默升级完成后不自动拉起新版——用户视角
+「什么都没发生」（本次误报来源），候选：NSIS 静默尾 Exec 拉起（注意
+提权边界）；②staging 文件名用旧版本号（update.rs 已知瑕疵）；
+③PATH 写为 REG_SZ，协议期望 REG_EXPAND_SZ（仅含 %vars% 时才有实害）。
