@@ -2128,39 +2128,10 @@ onMounted(() => {
 
   );
 
-  // S1.3 (F-A04): output truncation is observable - once the per-pane budget
-
-  // is exceeded the store keeps dropping; surface it instead of pretending the
-
-  // output is complete. The terminal-flow note marks the point; the fixed
-
-  // banner stays visible because the note scrolls out of view under output.
-
-  watch(
-
-    () => store.paneStreamMeta[props.paneId]?.truncated,
-
-    (truncated) => {
-
-      if (!truncated) return;
-
-      const bytes = store.paneStreamMeta[props.paneId]?.truncatedBytes ?? 0;
-
-      term?.write(
-
-        // dim gray (手测反馈): the notice stays informative but must not read
-
-        // like a warning — truncation under sustained output is normal.
-
-        `\r\n\x1b[90m${t("terminal.outputTruncated", { bytes: formatBytes(bytes) })}\x1b[0m\r\n`
-
-      );
-
-    },
-
-    { immediate: true }
-
-  );
+  // S1.3 (F-A04) 手测反馈 (2026-09-21): the in-stream truncation note was
+  // re-written on every remount of a long session (immediate watch) and the
+  // user asked it gone — the truncation-banner button carries the signal and
+  // the dropped-bytes tooltip now, so the stream stays clean.
 
 });
 
@@ -2232,7 +2203,7 @@ async function loadEarlier(): Promise<void> {
     // xterm 从顶部截掉的恰是刚加载的早期页——画面等于没变。改为
     // [早期页 | 窗口尾部切片]：用早期页自身的行密度估算窗口尾的安全字节
     // 数，保不住的窗口中段留在 paneStreams/spool（重挂载恢复不受影响）。
-    const u8 = linearizeSpoolPage(alignSpoolPage(b64ToUint8(page.bytes)));
+    let u8 = linearizeSpoolPage(alignSpoolPage(b64ToUint8(page.bytes)));
     if (u8.length === 0) {
       useToastStore().push(
         `[诊断] 线性化后 0 字节（原始 ${page.length}B）——重放管线把内容全部吃掉，未清屏`,
@@ -2243,10 +2214,28 @@ async function loadEarlier(): Promise<void> {
     }
     let pageLines = 0;
     for (let i = 0; i < u8.length; i++) if (u8[i] === 0x0a) pageLines++;
+    const capRows = (term?.options?.scrollback ?? 1000) + (term?.rows ?? 30);
+    // 页自身也可能超出回滚上限（bash 稠密输出 1MiB ≈ 10 万行）：保最早能
+    // 放下的部分、裁掉页尾——用户的目标是读到开头，起点为 0 时顶部即
+    // 对话最初的内容；保不住的更晚部分留在 spool（下次重挂载可恢复）。
+    const fitRows = Math.max(1000, Math.floor(capRows * 0.8));
+    let pageTrimmed = false;
+    if (pageLines > fitRows) {
+      let cut = u8.length;
+      let seen = 0;
+      for (let i = 0; i < u8.length; i++) {
+        if (u8[i] === 0x0a && ++seen >= fitRows) {
+          cut = i + 1;
+          break;
+        }
+      }
+      u8 = u8.subarray(0, cut);
+      pageLines = fitRows;
+      pageTrimmed = true;
+    }
     const bytesPerLine = pageLines >= 10 ? u8.length / pageLines : 64;
     const winChunks = store.paneStreams[props.paneId] ?? [];
     const winBytes = ((winChunks.reduce((n, c) => n + c.length, 0) / 4) | 0) * 3;
-    const capRows = (term?.options?.scrollback ?? 1000) + (term?.rows ?? 30);
     // 窗口尾预算：总占用 ≤ 80% cap 且窗口尾 ≤ 50% cap（给早期页和活流留头寸）
     const maxWinRows = Math.max(200, Math.min(capRows * 0.5, capRows * 0.8 - pageLines - 400));
     let winTail: Uint8Array | null = null;
@@ -2285,7 +2274,7 @@ async function loadEarlier(): Promise<void> {
         if (line && line.translateToString(true).trim().length > 0) filled++;
       }
       useToastStore().push(
-        `[诊断] 完成: 页${pageLines}行+窗口尾${winTail ? Math.round(winTail.length / bytesPerLine) + "行" : winBytes + "B未裁"} | buffer ${buf.length}行 非空${filled} viewportY=${buf.viewportY} | renderer=${webgl ? "webgl" : "dom"}`,
+        `[诊断] 完成: 页${pageLines}行${pageTrimmed ? "(超限已裁尾)" : ""}+窗口尾${winTail ? Math.round(winTail.length / bytesPerLine) + "行" : winBytes + "B未裁"} | buffer ${buf.length}行 非空${filled} viewportY=${buf.viewportY} | renderer=${webgl ? "webgl" : "dom"}`,
         { kind: "info", durationMs: 20000 },
       );
       if (page.start === 0) term?.scrollToTop(); // 已到流头：顶部应直接是最早内容

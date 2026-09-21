@@ -231,4 +231,28 @@ describe("load earlier output (O2, D-11)", () => {
     expect((btn.element as HTMLButtonElement).disabled).toBe(true);
     wrapper.unmount();
   });
+
+  it("a page taller than the scrollback cap keeps the OLDEST fitting rows (the beginning)", async () => {
+    // Mock term: no scrollback option, rows=24 → capRows=1024 → fitRows=1000.
+    const page = Array.from({ length: 1200 }, (_, i) => `l${i}`).join("\n") + "\n";
+    h.sessionReadSpool.mockResolvedValue({
+      start: 0,
+      length: page.length,
+      bytes: btoa(page),
+      eof: true,
+    });
+    const { wrapper } = await mountTruncated();
+    await wrapper.find(".truncation-banner").trigger("click");
+    await Promise.resolve();
+    expect(h.cleared).toBe(1);
+    const rebuilt = writtenText();
+    // The view lands on the beginning of the conversation …
+    expect(rebuilt).toContain("l0\n");
+    // … and the tail of the oversized page never enters the scrollback.
+    expect(rebuilt).not.toContain("l1199");
+    // start=0 latched: the button reads "已到最早输出" and is disabled.
+    const btn = wrapper.find(".truncation-banner");
+    expect((btn.element as HTMLButtonElement).disabled).toBe(true);
+    wrapper.unmount();
+  });
 });
