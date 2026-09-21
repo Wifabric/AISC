@@ -84,6 +84,7 @@ vi.mock("@xterm/xterm", () => ({
     clear() {
       h.cleared += 1;
     }
+    scrollToTop() {}
     getSelection() {
       return "";
     }

@@ -2139,9 +2139,13 @@ onMounted(() => {
 
 // the head, but the Rust sidecar spools the FULL raw stream to disk. The
 
-// corner chip became a button that pages the spool backwards. A loaded page
+// corner chip is a button that pages the spool backwards. A loaded page is
 
-// is displayed by rebuilding the scrollback as [spool page | full window];
+// displayed by rebuilding the scrollback as [spool page | window tail]:
+
+// the window alone can fill the whole scrollback (4MiB budget ≈ 50k rows),
+
+// so rewriting the FULL window pushes the freshly loaded page out the top.
 
 // `consumed` resets to the cursor so live streaming continues at the tail.
 
@@ -2165,15 +2169,11 @@ async function loadEarlier(): Promise<void> {
 
   const head = store.paneStreamMeta[props.paneId]?.headOffset ?? -1;
   if (head < 0) {
-    useToastStore().push("[诊断] headOffset 未知（-1）——窗口元数据缺失", { kind: "info", durationMs: 12000 });
+    loadEarlierDone.value = true; // no spool anchor — nothing to page back to
     return;
   }
   if (earliestShown < 0) earliestShown = head;
   if (earliestShown === 0) {
-    useToastStore().push(
-      `[诊断] 窗口自称已覆盖到流头部: headOffset=${head}, earliestShown=${earliestShown}, truncated=${store.paneStreamMeta[props.paneId]?.truncated}`,
-      { kind: "info", durationMs: 12000 },
-    );
     loadEarlierDone.value = true;
     return;
   }
@@ -2187,17 +2187,9 @@ async function loadEarlier(): Promise<void> {
     const page = await sessionReadSpool(sid, from, earliestShown - from);
 
     if (page.length === 0) {
-      useToastStore().push(
-        `[诊断] 空页: from=${from}, 请求=${earliestShown - from}B, page.start=${page.start}, eof=${page.eof}（offset 单位错位?）`,
-        { kind: "info", durationMs: 12000 },
-      );
       loadEarlierDone.value = true;
       return;
     }
-    useToastStore().push(
-      `[诊断] 正在重放 ${page.length}B（起点 ${page.start}）`,
-      { kind: "info", durationMs: 8000 },
-    );
     // 批 8 手测根因（二轮探针实锤）：窗口预算 4MiB(b64)≈3.1MB 原始流，铺满
     // 回滚上限（清屏前 50044 行）后，重建 [早期页|整窗] 的总行数必然超限，
     // xterm 从顶部截掉的恰是刚加载的早期页——画面等于没变。改为
@@ -2205,10 +2197,7 @@ async function loadEarlier(): Promise<void> {
     // 数，保不住的窗口中段留在 paneStreams/spool（重挂载恢复不受影响）。
     let u8 = linearizeSpoolPage(alignSpoolPage(b64ToUint8(page.bytes)));
     if (u8.length === 0) {
-      useToastStore().push(
-        `[诊断] 线性化后 0 字节（原始 ${page.length}B）——重放管线把内容全部吃掉，未清屏`,
-        { kind: "info", durationMs: 15000 },
-      );
+      console.warn("[load-earlier] page linearized to 0 bytes:", page.length);
       loadEarlierDone.value = true;
       return;
     }
@@ -2219,7 +2208,6 @@ async function loadEarlier(): Promise<void> {
     // 放下的部分、裁掉页尾——用户的目标是读到开头，起点为 0 时顶部即
     // 对话最初的内容；保不住的更晚部分留在 spool（下次重挂载可恢复）。
     const fitRows = Math.max(1000, Math.floor(capRows * 0.8));
-    let pageTrimmed = false;
     if (pageLines > fitRows) {
       let cut = u8.length;
       let seen = 0;
@@ -2231,7 +2219,6 @@ async function loadEarlier(): Promise<void> {
       }
       u8 = u8.subarray(0, cut);
       pageLines = fitRows;
-      pageTrimmed = true;
     }
     const bytesPerLine = pageLines >= 10 ? u8.length / pageLines : 64;
     const winChunks = store.paneStreams[props.paneId] ?? [];
@@ -2265,20 +2252,8 @@ async function loadEarlier(): Promise<void> {
 
     if (page.eof || page.start === 0) loadEarlierDone.value = true;
 
-    term.write("", () => {
-      const buf = term?.buffer?.active;
-      if (!buf) return;
-      let filled = 0;
-      for (let y = 0; y < buf.length; y++) {
-        const line = buf.getLine(y);
-        if (line && line.translateToString(true).trim().length > 0) filled++;
-      }
-      useToastStore().push(
-        `[诊断] 完成: 页${pageLines}行${pageTrimmed ? "(超限已裁尾)" : ""}+窗口尾${winTail ? Math.round(winTail.length / bytesPerLine) + "行" : winBytes + "B未裁"} | buffer ${buf.length}行 非空${filled} viewportY=${buf.viewportY} | renderer=${webgl ? "webgl" : "dom"}`,
-        { kind: "info", durationMs: 20000 },
-      );
-      if (page.start === 0) term?.scrollToTop(); // 已到流头：顶部应直接是最早内容
-    });
+    // Land on the first row of the freshly loaded page — the reading position.
+    term.scrollToTop();
 
   } catch (err) {
     // 批 8 诊断: the silent swallow made "button does nothing" undebugable —
