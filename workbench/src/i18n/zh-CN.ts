@@ -730,6 +730,8 @@ export const zhCN = {
   "explorer.conversations.reason.fileTooLarge": "会话文件过大，无法恢复",
   "explorer.conversations.reason.malformed": "会话文件部分损坏，无法恢复",
   "explorer.conversations.reason.unknown": "该会话当前无法恢复",
+  "explorer.conversations.group.claude": "Claude",
+  "explorer.conversations.group.codex": "Codex",
   "explorer.badge.created": "新增",
   "explorer.badge.modified": "修改",
   "explorer.badge.deleted": "删除",

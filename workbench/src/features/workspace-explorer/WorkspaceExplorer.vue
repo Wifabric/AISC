@@ -287,6 +287,35 @@ const conversationsFiltered = computed(() => {
   if (matcher === null) return explorer.conversations;
   return explorer.conversations.filter((c) => matcher(c.title.toLowerCase()) > 0);
 });
+
+/** 批 8 手测: group by agent ONLY when both agents have history — a lone
+ * agent's list stays flat (a single section header is noise, not info). Group
+ * order follows each group's most recent activity; rows keep the store's
+ * recency order inside their group. */
+type ConversationRow =
+  | { kind: "header"; key: string; agent: "claude" | "codex"; label: string; count: number }
+  | { kind: "row"; key: string; c: ConversationSummary };
+
+const conversationRows = computed<ConversationRow[]>(() => {
+  const list = conversationsFiltered.value;
+  const claude = list.filter((c) => c.agent === "claude");
+  const codex = list.filter((c) => c.agent === "codex");
+  if (!(claude.length && codex.length)) {
+    return list.map((c) => ({ kind: "row" as const, key: c.agent + ":" + c.conversation_id, c }));
+  }
+  const recency = (items: ConversationSummary[]) =>
+    Math.max(0, ...items.map((c) => Date.parse(c.last_at ?? "") || 0));
+  const groups = [
+    { agent: "claude" as const, label: t("explorer.conversations.group.claude"), items: claude },
+    { agent: "codex" as const, label: t("explorer.conversations.group.codex"), items: codex },
+  ].sort((a, b) => recency(b.items) - recency(a.items));
+  const out: ConversationRow[] = [];
+  for (const g of groups) {
+    out.push({ kind: "header", key: "header:" + g.agent, agent: g.agent, label: g.label, count: g.items.length });
+    for (const c of g.items) out.push({ kind: "row", key: c.agent + ":" + c.conversation_id, c });
+  }
+  return out;
+});
 function dirOf(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i === -1 ? "" : p.slice(0, i);
@@ -1188,54 +1217,58 @@ function onTreeKeydown(e: KeyboardEvent) {
         {{ t("explorer.empty.conversations") }}
       </p>
       <template v-else>
-        <div
-          v-for="c in conversationsFiltered"
-          :key="c.agent + ':' + c.conversation_id"
-          class="explorer-row artifact-row conversation-row"
-          role="button"
-          :title="t('explorer.conversations.resumeTooltip')"
-          @click="onResumeConversation(c)"
-          @contextmenu.prevent.stop="
-            openMenuAt({ kind: 'conversation', conversationId: c.conversation_id, agent: c.agent, title: c.title }, $event.clientX, $event.clientY)"
-        >
-          <span
-            v-if="renamingConvId === c.conversation_id"
-            class="name-input-row conversation-rename"
-          >
-            <input
-              :ref="(el) => (convRenameInputEl = (el as HTMLInputElement | null))"
-              v-model="convRenameValue"
-              type="text"
-              @click.stop
-              @keydown.enter.prevent="commitConversationRename(c)"
-              @keydown.esc.prevent="cancelConversationRename"
-              @blur="cancelConversationRename"
-            />
-          </span>
-          <span v-else class="explorer-name conversation-title" :title="c.title">
-            {{ c.title }}
-          </span>
-          <span v-if="c.message_count !== null" class="explorer-label">
-            {{ t("explorer.conversations.msgCount", { n: c.message_count }) }}
-          </span>
-          <!-- FIX-1 (2.1.10): agent glyphs with distinct color families —
-               the old plain-text badge read as noise at a glance. -->
-          <span
-            class="explorer-badge agent-glyph"
-            :class="c.agent === 'claude' ? 'agent-claude' : 'agent-codex'"
-            :title="c.agent"
-            aria-hidden="true"
-          >{{ c.agent === "claude" ? "✳" : "◈" }} {{ c.agent }}</span>
+        <template v-for="r in conversationRows" :key="r.key">
+          <p v-if="r.kind === 'header'" class="conversation-group-label" :data-agent="r.agent">
+            {{ r.label }} <span class="explorer-label">{{ r.count }}</span>
+          </p>
           <div
-            v-if="explorer.resumeErrors[c.conversation_id]"
-            class="conversation-resume-error"
+            v-else
+            class="explorer-row artifact-row conversation-row"
+            role="button"
+            :title="t('explorer.conversations.resumeTooltip')"
+            @click="onResumeConversation(r.c)"
+            @contextmenu.prevent.stop="
+              openMenuAt({ kind: 'conversation', conversationId: r.c.conversation_id, agent: r.c.agent, title: r.c.title }, $event.clientX, $event.clientY)"
           >
-            {{ explorer.resumeErrors[c.conversation_id] }}
+            <span
+              v-if="renamingConvId === r.c.conversation_id"
+              class="name-input-row conversation-rename"
+            >
+              <input
+                :ref="(el) => (convRenameInputEl = (el as HTMLInputElement | null))"
+                v-model="convRenameValue"
+                type="text"
+                @click.stop
+                @keydown.enter.prevent="commitConversationRename(r.c)"
+                @keydown.esc.prevent="cancelConversationRename"
+                @blur="cancelConversationRename"
+              />
+            </span>
+            <span v-else class="explorer-name conversation-title" :title="r.c.title">
+              {{ r.c.title }}
+            </span>
+            <span v-if="r.c.message_count !== null" class="explorer-label">
+              {{ t("explorer.conversations.msgCount", { n: r.c.message_count }) }}
+            </span>
+            <!-- FIX-1 (2.1.10): agent glyphs with distinct color families —
+                 the old plain-text badge read as noise at a glance. -->
+            <span
+              class="explorer-badge agent-glyph"
+              :class="r.c.agent === 'claude' ? 'agent-claude' : 'agent-codex'"
+              :title="r.c.agent"
+              aria-hidden="true"
+            >{{ r.c.agent === "claude" ? "✳" : "◈" }} {{ r.c.agent }}</span>
+            <div
+              v-if="explorer.resumeErrors[r.c.conversation_id]"
+              class="conversation-resume-error"
+            >
+              {{ explorer.resumeErrors[r.c.conversation_id] }}
+            </div>
+            <div v-else-if="!r.c.resumable" class="conversation-resume-error">
+              {{ conversationReasonText(r.c.unavailable_reason) }}
+            </div>
           </div>
-          <div v-else-if="!c.resumable" class="conversation-resume-error">
-            {{ conversationReasonText(c.unavailable_reason) }}
-          </div>
-        </div>
+        </template>
       </template>
     </div>
 
@@ -1513,6 +1546,19 @@ function onTreeKeydown(e: KeyboardEvent) {
 .conversation-row {
   cursor: pointer;
   flex-wrap: wrap;
+}
+/* 批 8 手测: per-agent section header — only rendered when both agents
+ * have history (a lone header is noise, not info). */
+.conversation-group-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: var(--space-2) 2px 2px;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 .conversation-title {
   font-weight: 500;

@@ -730,6 +730,8 @@ export const enUS: Record<string, string> = {
   "explorer.conversations.reason.fileTooLarge": "Conversation file too large to resume",
   "explorer.conversations.reason.malformed": "Conversation file partially corrupted",
   "explorer.conversations.reason.unknown": "This conversation cannot be resumed",
+  "explorer.conversations.group.claude": "Claude",
+  "explorer.conversations.group.codex": "Codex",
   "explorer.badge.created": "New",
   "explorer.badge.modified": "Modified",
   "explorer.badge.deleted": "Deleted",
