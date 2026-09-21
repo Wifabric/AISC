@@ -3629,3 +3629,11 @@ ConversationViewer.vue 只读覆盖层（气泡+折叠 details+锚定分页）�
 **顺手闭环**：详细检测缺镜像类（用户确认已可见，关闭）；点文件出
 diff（确认已移除，代码有用户裁决注释）；远程 CLI 需更新提示（用户
 确认 UI 正确）。
+
+## 2026-09-21 v2.1.13-preview.1 发布
+
+本日交付全量入版：批 8 终端链闭环（serve session 门、早期页乱码/满窗
+截断、provider 切换 resume 修复）、批 9 历史页 agent 分组、批 10
+provider 切换 resume（wrapper -c 覆盖）、批 11 聊天式只读对话查看器、
+批 12 资源管理器滚动修复。手测全部通过（HANDTEST 批 8-12）。工作记录
+（批 3）用户裁决移入待解决池。tag v2.1.13-preview.1 → NSIS prerelease。
