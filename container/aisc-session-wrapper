@@ -174,6 +174,53 @@ def _binary_available(binary: str) -> bool:
     return shutil.which(binary) is not None
 
 
+def _codex_resume_overrides() -> list:
+    """``-c`` overrides that pin ``codex resume`` to the ACTIVE provider.
+
+    批 8 手测 (2026-09-21): the rollout records the model provider used at
+    creation; interactive ``codex resume`` revalidates that recorded provider
+    against the CURRENT config — after a cc-switch provider switch it no
+    longer exists and the TUI bootstrap dies (``Model provider `X` not
+    found``). ``codex exec resume`` already resolves through the current
+    config, but the interactive TUI does not; explicit ``-c`` overrides
+    (validated empirically on codex 0.154.0) make the conversation continue
+    under the switched-to provider. Absent keys mean the config stays the
+    single source of truth — pass nothing rather than guess.
+    """
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    path = os.path.join(home, "config.toml")
+    provider = None
+    model = None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return []
+    text = data.decode("utf-8", "replace")
+    try:
+        import tomllib
+
+        cfg = tomllib.loads(text)
+        provider = cfg.get("model_provider")
+        model = cfg.get("model")
+    except Exception:
+        # Minimal fallback: top-level ``key = "value"`` assignments before
+        # any [table] section (tomllib unavailable / malformed tail).
+        head = text.split("[", 1)[0]
+        m = re.search(r'^model_provider\s*=\s*"([^"]+)"', head, re.M)
+        if m:
+            provider = m.group(1)
+        m = re.search(r'^model\s*=\s*"([^"]+)"', head, re.M)
+        if m:
+            model = m.group(1)
+    argv: list = []
+    if provider:
+        argv += ["-c", f"model_provider={provider}"]
+    if model:
+        argv += ["-c", f"model={model}"]
+    return argv
+
+
 def _agent_argv(agent: str, resume_id: Optional[str]) -> Tuple[str, list]:
     """Resolve (binary, argv) for an ``open`` request.
 
@@ -188,7 +235,7 @@ def _agent_argv(agent: str, resume_id: Optional[str]) -> Tuple[str, list]:
         if agent == "claude":
             return "claude", ["claude", "--resume", resume_id]
         if agent == "codex":
-            return "codex", ["codex", "resume", resume_id]
+            return "codex", ["codex", "resume", resume_id] + _codex_resume_overrides()
         raise ValueError(f"agent does not support --resume-id: {agent}")
     if agent == "bash":
         # v2.1.8 T2/D-4: the interactive shell is zsh (ghost text via

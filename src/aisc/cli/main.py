@@ -527,6 +527,26 @@ def _build_parser() -> _AiscArgumentParser:
                             help="Read-only per-item Docker resource inspection (D-2)",
                             allow_abbrev=False)
     _add_global_args(mtci, is_subparser=True)
+    mtma = mtsub.add_parser("container-action",
+                            help="Start/stop/remove ONE aisc-owned container (D-12)",
+                            allow_abbrev=False)
+    _add_global_args(mtma, is_subparser=True)
+    mtma.add_argument("--name", required=True,
+                      help="Container name (from maintenance docker-scan)")
+    mtma.add_argument("--action", required=True, choices=["start", "stop", "rm"])
+    mtmr = mtsub.add_parser("image-rm",
+                            help="Remove ONE unreferenced aisc-owned image (D-12)",
+                            allow_abbrev=False)
+    _add_global_args(mtmr, is_subparser=True)
+    mtmr.add_argument("--id", required=True,
+                      help="Image ID (from maintenance docker-scan)")
+    mtmt = mtsub.add_parser("image-tag",
+                            help="Retag ONE aisc-owned image (D-12 rename)",
+                            allow_abbrev=False)
+    _add_global_args(mtmt, is_subparser=True)
+    mtmt.add_argument("--id", required=True, help="Image ID")
+    mtmt.add_argument("--repository", required=True, help="New repository name")
+    mtmt.add_argument("--tag", required=True, help="New tag")
 
     mtcc = mtsub.add_parser("cache-cleanup",
                             help="Prune builder cache + dangling images (until-filtered)",
@@ -534,6 +554,46 @@ def _build_parser() -> _AiscArgumentParser:
     _add_global_args(mtcc, is_subparser=True)
     mtcc.add_argument("--min-age-hours", type=int, default=24,
                       help="Only clear cache entries older than this (default 24)")
+
+    # --- worklog (v2.1.13 D-12 批 1: history-worklog data layer) ---
+    wlp = sub.add_parser("worklog",
+                         help="Per-workspace PTY session ledger (history-worklog)",
+                         allow_abbrev=False)
+    _add_global_args(wlp, is_subparser=True)
+    wlsub = wlp.add_subparsers(dest="worklog_command",
+                               title="worklog commands",
+                               parser_class=_AiscArgumentParser)
+
+    wl_list = wlsub.add_parser("list", help="List worklogs (newest first)",
+                               allow_abbrev=False)
+    _add_global_args(wl_list, is_subparser=True)
+    wl_list.add_argument("--workspace", type=str, default=None,
+                         help="Workspace path (default: current directory)")
+
+    wl_ren = wlsub.add_parser("rename", help="Rename a worklog", allow_abbrev=False)
+    _add_global_args(wl_ren, is_subparser=True)
+    wl_ren.add_argument("--workspace", type=str, default=None)
+    wl_ren.add_argument("--id", required=True, help="worklog_id")
+    wl_ren.add_argument("--title", required=True, help="New title")
+
+    wl_arc = wlsub.add_parser("archive", help="Archive (or restore) a worklog",
+                              allow_abbrev=False)
+    _add_global_args(wl_arc, is_subparser=True)
+    wl_arc.add_argument("--workspace", type=str, default=None)
+    wl_arc.add_argument("--id", required=True, help="worklog_id")
+    wl_arc.add_argument("--restore", action="store_true", default=False,
+                        help="Restore an archived worklog to active")
+
+    wl_del = wlsub.add_parser("delete", help="Delete a worklog entry", allow_abbrev=False)
+    _add_global_args(wl_del, is_subparser=True)
+    wl_del.add_argument("--workspace", type=str, default=None)
+    wl_del.add_argument("--id", required=True, help="worklog_id")
+
+    wl_rec = wlsub.add_parser("reconcile",
+                              help="Attach unfiled provider sessions to the ledger",
+                              allow_abbrev=False)
+    _add_global_args(wl_rec, is_subparser=True)
+    wl_rec.add_argument("--workspace", type=str, default=None)
 
     # --- bundle (0.1.0 A3, guide 3.3.3) ---
     bp = sub.add_parser("bundle", help="Runtime bundle store (fetch from GitHub Releases)",
@@ -859,6 +919,23 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Agent type (claude|codex)")
     cvr.add_argument("--title", type=str, required=True,
                      help="New display title (sanitized, ≤80 chars)")
+
+    # conversation read (批 2 聊天式 UI): normalized read-only message stream
+    cvrd = cvsub.add_parser("read", help="Read a conversation as a normalized "
+                                         "message stream (read-only)",
+                            allow_abbrev=False)
+    _add_global_args(cvrd, is_subparser=True)
+    cvrd.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    cvrd.add_argument("--conversation-id", type=str, required=True,
+                      help="Provider-native conversation ID (UUID)")
+    cvrd.add_argument("--agent", type=str, required=True,
+                      help="Agent type (claude|codex)")
+    cvrd.add_argument("--tail", type=int, default=None,
+                      help="Return only the LAST N messages (lazy paging)")
+    cvrd.add_argument("--before", type=int, default=None,
+                      help="Return messages with ordinal < N (with --tail "
+                           "for backwards paging)")
 
     # --- artifact (Stage 3, ART-02) ---
     arp = sub.add_parser("artifact", help="Agent Artifact fact protocol (Stage 3)",
@@ -1965,11 +2042,78 @@ def _cmd_maintenance(
         # D-2 read-only per-item inspection — never chained into cleanup
         from aisc.application.docker_lifecycle import cache_inspect
         return cache_inspect(executor), 0, []
+    if sub == "container-action":
+        from aisc.application.docker_lifecycle import container_management_action
+        return container_management_action(
+            executor, name=args.name, action=args.action), 0, []
+    if sub == "image-rm":
+        from aisc.application.docker_lifecycle import image_management_rm
+        return image_management_rm(executor, image_id=args.id), 0, []
+    if sub == "image-tag":
+        from aisc.application.docker_lifecycle import image_management_tag
+        return image_management_tag(
+            executor, image_id=args.id,
+            repository=args.repository, tag=args.tag), 0, []
     if sub == "cache-cleanup":
         from aisc.application.docker_lifecycle import docker_cache_cleanup
         data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)
         return data, (1 if data.get("warnings") else 0), []
     return None, 2, [build_error("AISC_ERR_USAGE", f"Unknown maintenance subcommand: {sub}")]
+
+
+def _cmd_worklog(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """``aisc worklog`` — per-workspace PTY session ledger (D-12 批 1).
+
+    All subcommands are captured/read-only-or-ledger-local and return
+    JSON-serializable data under the aisc.cli/v1 envelope."""
+    from aisc.cli.commands.worklog import (
+        cmd_worklog_archive,
+        cmd_worklog_delete,
+        cmd_worklog_list,
+        cmd_worklog_reconcile,
+        cmd_worklog_rename,
+    )
+
+    sub = args.worklog_command
+    workspace = args.workspace or os.getcwd()
+
+    if sub == "list":
+        data = cmd_worklog_list(workspace)
+        if effective_format != "json":
+            from aisc.cli.commands.worklog import print_worklog_list
+            print_worklog_list(data)
+            return None, 0, []
+        return data, 0, []
+    if sub == "rename":
+        ok = cmd_worklog_rename(workspace, args.id, args.title)
+        if effective_format != "json":
+            print("已重命名" if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"renamed": ok}, 0 if ok else 1, []
+    if sub == "archive":
+        ok = cmd_worklog_archive(workspace, args.id, restore=args.restore)
+        label = "已恢复" if args.restore else "已归档"
+        if effective_format != "json":
+            print(label if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"archived": ok and not args.restore}, 0 if ok else 1, []
+    if sub == "delete":
+        ok = cmd_worklog_delete(workspace, args.id)
+        if effective_format != "json":
+            print("已删除" if ok else "未找到该 worklog")
+            return None, 0 if ok else 1, []
+        return {"deleted": ok}, 0 if ok else 1, []
+    if sub == "reconcile":
+        data = cmd_worklog_reconcile(workspace)
+        if effective_format != "json":
+            print(f"补录 {data.get('attached', 0)} 个未归档会话")
+            return None, 0, []
+        return data, 0, []
+    return None, 2, [build_error("AISC_ERR_USAGE",
+                                 f"Unknown worklog subcommand: {sub}")]
 
 
 def _cmd_bundle(
@@ -2243,6 +2387,7 @@ def _cmd_conversation(
         cmd_conversation_delete,
         cmd_conversation_list,
         cmd_conversation_preflight,
+        cmd_conversation_read,
         cmd_conversation_rename,
     )
 
@@ -2256,6 +2401,15 @@ def _cmd_conversation(
             workspace=args.workspace,
             conversation_id=args.conversation_id,
             agent=args.agent,
+        )
+        return data, 0, []
+    elif sub == "read":
+        data = cmd_conversation_read(
+            workspace=args.workspace,
+            conversation_id=args.conversation_id,
+            agent=args.agent,
+            tail=getattr(args, "tail", None),
+            before=getattr(args, "before", None),
         )
         return data, 0, []
     elif sub == "delete":
@@ -2764,6 +2918,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_session(args, effective_format)
         elif args.command == "conversation":
             data, exit_code, errors = _cmd_conversation(args, effective_format)
+        elif args.command == "worklog":
+            data, exit_code, errors = _cmd_worklog(args, effective_format)
         elif args.command == "artifact":
             data, exit_code, errors = _cmd_artifact(args, effective_format)
         elif args.command == "data-root":

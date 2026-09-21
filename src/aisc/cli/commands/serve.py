@@ -225,8 +225,17 @@ _SERVE_CLI_DENY = frozenset({
     "switch",            # TUI
     "build",             # long streaming op (own channel)
     "wizard",            # interactive
-    "session",           # streams ride session.open / pty.* frames
 })
+
+#: v2.1.13 批 8 手测根因修复: `session` used to be blanket-denied, which
+#: silently swallowed the Workbench's close-tab terminate (close_session
+#: rides the pooled serve cli op; the deny error was best-effort-dropped)
+#: — in-container agents survived as zombies, the worklog close hook never
+#: ran, and codex kept its conversation lock ("open in another app" on
+#: resume). Captured one-shot subcommands are safe over the serial loop;
+#: `open` (the streaming interactive surface) stays denied — PTY entry
+#: rides its own session.open op.
+_SERVE_SESSION_OPS = frozenset({"terminate", "list"})
 
 #: 2.1.11 P1 手测 r6: the bare `cc-switch` IS a TUI, but the workbench
 #: Provider tab drives the six ENVELOPE subcommands over serve for remote
@@ -259,6 +268,9 @@ def _op_cli(args: argparse.Namespace, payload: Dict[str, Any],
     if argv[0] in _SERVE_CLI_DENY or (
         argv[0] == "cc-switch"
         and (len(argv) < 2 or argv[1] not in _SERVE_CC_SWITCH_OPS)
+    ) or (
+        argv[0] == "session"
+        and (len(argv) < 2 or argv[1] not in _SERVE_SESSION_OPS)
     ):
         raise CliError(
             message=f"'{argv[0]}' cannot run over serve (interactive, "

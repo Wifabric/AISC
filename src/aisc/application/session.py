@@ -109,6 +109,20 @@ def build_session_exec(
 
     container_name = _resolve_running_container(runtime_id, executor, registry_root)
 
+    # v2.1.13 history-worklog 批 1: record the session open (fail-open —
+    # a ledger problem never blocks opening a session).
+    try:
+        from aisc.application.worklog import record_open
+
+        record_open(
+            registry_root,
+            session_id=session_id,
+            agent=agent,
+            resume_conversation_id=resume_conversation_id,
+        )
+    except Exception:
+        pass
+
     docker_argv = [
         _SESSION_WRAPPER_PATH,
         "open",
@@ -149,6 +163,17 @@ def build_session_exec(
         env = help_function_env()
 
     return container_name, docker_argv, env
+
+
+def _worklog_close(registry_root: Any, session_id: str, exit_code: Any) -> None:
+    """v2.1.13 history-worklog: close the matching worklog entry (fail-open)."""
+    try:
+        from aisc.application.worklog import record_close
+
+        code = exit_code if isinstance(exit_code, int) else None
+        record_close(registry_root, session_id=session_id, exit_code=code)
+    except Exception:
+        pass
 
 
 def open_session(
@@ -308,13 +333,16 @@ def terminate_session(
     stdout = result.stdout.strip()
     if not stdout:
         # Wrapper may return empty on success (already exited, record cleaned).
+        _worklog_close(registry_root, session_id, None)
         return {"session_id": session_id, "state": "exited", "exit_code": None}
 
     try:
         data = json.loads(stdout)
         if isinstance(data, dict):
+            _worklog_close(registry_root, session_id, data.get("exit_code"))
             return data
     except json.JSONDecodeError:
         pass
 
+    _worklog_close(registry_root, session_id, None)
     return {"session_id": session_id, "state": "exited", "exit_code": None}

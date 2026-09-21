@@ -334,3 +334,85 @@ class TestConversationRename:
         with pytest.raises(CliError) as exc:
             rename_conversation(str(ws), CLAUDE_ID, "claude", "nope")
         assert exc.value.error_code == "AISC_ERR_CONVERSATION_UNRESUMABLE"
+
+
+# ---------------------------------------------------------------------------
+# read (批 2 聊天式 UI): normalized rendering stream
+# ---------------------------------------------------------------------------
+
+class TestConversationRead:
+    def _read(self, ws, conv_id=CODEX_ID, agent="codex", **kw):
+        from aisc.application.conversation import read_conversation
+        return read_conversation(str(ws), conv_id, agent, **kw)
+
+    def test_codex_stream_shape(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        data = self._read(ws)
+        assert data["schema"] == "aisc.conversation-read/v1"
+        assert data["agent"] == "codex"
+        assert data["total"] == len(data["messages"])
+        assert [m["ordinal"] for m in data["messages"]] == list(range(data["total"]))
+        roles = [(m["role"], m["kind"]) for m in data["messages"]]
+        # user → reasoning → tool_use(result merged) → reasoning → assistant
+        assert roles == [
+            ("user", "message"),
+            ("assistant", "reasoning"),
+            ("assistant", "tool_use"),
+            ("assistant", "reasoning"),
+            ("assistant", "message"),
+        ]
+        call = data["messages"][2]
+        assert call["name"] == "exec_command"
+        assert "result" in call and "Output:" in call["result"]
+        assert call["text"].startswith("{")  # serialized arguments
+        assert data["messages"][0]["text"] == "test"
+        assert data["degraded_reason"] is None
+
+    def test_claude_stream_shape(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_claude(ws_dir, "claude_normal.jsonl")
+        data = self._read(ws, CLAUDE_ID, "claude")
+        roles = [(m["role"], m["kind"]) for m in data["messages"]]
+        assert roles == [("user", "message"), ("assistant", "message")]
+
+    def test_tail_and_before_pagination(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        full = self._read(ws)
+        assert full["total"] == 5
+        tail = self._read(ws, tail=2)
+        assert [m["ordinal"] for m in tail["messages"]] == [3, 4]
+        assert tail["start"] == 3
+        page = self._read(ws, tail=2, before=3)
+        assert [m["ordinal"] for m in page["messages"]] == [1, 2]
+        assert page["start"] == 1
+        head = self._read(ws, tail=2, before=0)
+        assert head["messages"] == [] and head["start"] == 0
+
+    def test_corrupted_tail_degrades_but_reads(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_corrupted_tail.jsonl")
+        data = self._read(ws)
+        assert data["malformed_lines"] > 0
+        assert data["degraded_reason"] == "malformed"
+        assert data["total"] > 0
+
+    def test_tool_cap_marks_truncation_in_text(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        data = self._read(ws)
+        call = data["messages"][2]
+        assert call["result"].endswith("字符]") or len(call["result"]) <= 4000
+
+    def test_missing_and_invalid_inputs(self, ws_env):
+        ws, _ws_dir = ws_env
+        with pytest.raises(CliError) as exc:
+            self._read(ws)
+        assert exc.value.error_code == "AISC_ERR_CONVERSATION_UNRESUMABLE"
+        with pytest.raises(CliError) as exc:
+            self._read(ws, conv_id="not-a-uuid")
+        assert exc.value.error_code == "AISC_ERR_CONVERSATION_INVALID_ID"
+        with pytest.raises(CliError) as exc:
+            self._read(ws, agent="bash")
+        assert exc.value.error_code == "AISC_ERR_CONVERSATION_INVALID_AGENT"

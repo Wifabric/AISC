@@ -75,3 +75,208 @@
 - [x] claude/codex/bash/cc-switch 四类会话开/关/分屏正常
 - [x] provider 页/cc-switch 切换正常（批 3-6 未触碰其数据面）
 - [x] pytest / cargo / vitest / vue-tsc 四门绿（已在交付时验证）
+
+## 批 8：history-worklog 批 1（worklog 账本，2026-09-21 交付）
+
+> 准备：启动 Docker Desktop；启动 Workbench（`npm run tauri dev`）；打开你的常用
+> 工作区（有 codex/claude 会话历史的那一个）。CLI 用 `$ai` = `E:\Windows\Users\alan\Documents\AISC\workbench\src-tauri\target\debug\aisc.exe`
+> （sidecar 已重建含批 8），下文统一写 `$ai`。
+> 你的工作区路径下文用 `<WS>` 代指（例如 `D:\proj\demo`）。
+
+### T1 开两个会话（其一 resume）→ 关闭 → 账本正确记录
+
+**操作：**
+
+1. Workbench 里点 `+` 新建一个 **codex** 页签 → 随便问一句话（比如「你好」）→
+   等 agent 回复完成 → 点页签的 `×` 关闭它
+2. 左侧「历史」面板（文件区第 4 个视图）→ 找到刚才会话 → 右键 → **恢复**
+   → 随便再问一句 → 回复完成后点 `×` 关闭（恢复时，codex提示：“This conversation is open in another app；Close it there and press R to continue here.”按下R后，显示To continue this session, run codex resume 01a0c237-9d32-75b1-ad6a-859b212d0035，无法直接使用）
+3. 再新建一个 **bash** 页签 → 不用输命令，直接点 `×` 关闭
+4. PowerShell 执行：（这个部分你替我测试）
+   ```powershell
+   & $ai worklog list --workspace <WS> --format json
+   ```
+   （想看人读格式就去掉 `--format json`）
+
+**理想结果（JSON 里 `data.worklogs` 数组）：**
+
+- **3 条** worklog（每个开过的页签一条：codex 新建、codex 恢复、bash）
+- codex 恢复那条的 `sessions[0]` 里有非空的
+  `"resume_of_conversation_id"`（= 你恢复的那个会话 ID）；新建那条该字段为
+  `null`
+- 三条的 `sessions[0].closed_at` 都是**非空时间戳**（`exit_code` 可为 null）
+- `sessions[0].agent` 分别是 `codex / codex / bash`
+- 数组顺序：**刚关闭的排最前**（按 last_opened_at 倒序）
+
+> **2026-09-21 手测修复（重测前必读）**：你测出的「closed_at 全缺」与「codex resume
+> 撞锁」是同一个根因——Workbench 关页签的 terminate 被 serve 的 session 整体
+> deny 静默吞掉，容器内 agent 从未被杀（还顺带成了僵尸进程）。已修复并重建
+> sidecar。**重测前请完全关闭并重启 `npm run tauri dev`**（serve 驻留进程要用
+> 新二进制），然后从 T1 步骤 1 重来一遍。这次理想结果不变：closed_at 非空、
+> resume 不再出现「open in another app」。
+
+### T2 rename / archive / delete 三件套
+
+**操作（接着 T1 的数据）：**（这个部分你替我测试）
+
+1. 从 T1 输出里挑一条 `"worklog_id"` 复制（取前 8 位也行）：
+   ```powershell
+   # 改名（把 <ID> 换成复制到的值）
+   & $ai worklog rename --workspace <WS> --id <ID> --title "调研笔记"
+   # 再 list 看一眼
+   & $ai worklog list --workspace <WS> --format json
+   ```
+2. 归档同一条：
+   ```powershell
+   & $ai worklog archive --workspace <WS> --id <ID>
+   & $ai worklog list --workspace <WS> --format json   # state 变 "archived"
+   & $ai worklog archive --workspace <WS> --id <ID> --restore   # 变回 active
+   ```
+3. 删掉 bash 那条：
+   ```powershell
+   & $ai worklog delete --workspace <WS> --id <bash那条ID>
+   ```
+
+**理想结果：**
+
+- rename 后那条的 `title` = `"调研笔记"`（list 里可见）
+- archive 后 `"state": "archived"`，`--restore` 后回到 `"active"`
+- delete 后再 list，bash 那条消失、其余两条还在
+- 对不存在的 id 操作：命令不崩溃，输出「未找到该 worklog」
+
+### T3 reconcile 收容存量会话
+
+**操作：**
+
+1. 先看一眼账本当前条数（T2 之后应该是 2）
+2. 执行：
+   ```powershell
+   & $ai worklog reconcile --workspace <WS>
+   ```
+3. 立刻**再跑一次**同命令
+4. list 查看
+
+**理想结果：**
+
+- 第一次 reconcile：输出 `补录 N 个未归档会话`（N = 该工作区在账本上线前
+  存在的 provider 会话总数——你平时的 claude + codex 历史会话数，可能不小）
+- list 里出现一条 `title` 为**「未归档会话」**的 worklog，`sessions` 数量 = N，
+  每个条目带 `"inferred": true`，`terminal_session_id` 为 null
+- **第二次 reconcile：输出 `补录 0 个`**，list 不变（幂等，不重复收容）
+- 注意：该工作区**打开中的 Workbench 会话**对应的 provider 会话不该被收容
+  （它们会随开/关自然入账）——若发现正在用的会话被塞进「未归档」，记下来告诉我
+
+### T4 账本持久性与 fail-open
+
+**操作：**
+
+1. 在 Workbench 里把该工作区停止（或删除 runtime）
+2. `& $ai worklog list --workspace <WS> --format json` 再看一次
+3. （可选，破坏性实验）把账本文件改坏：
+   ```powershell
+   # 账本实际路径 = <数据根>\workspaces\<hash>\runtime\worklogs.json
+   # 数据根默认 %LOCALAPPDATA%\AISC\data；hash 目录可用下面命令找到：
+   & $ai worklog list --workspace <WS> --format json   # 正常输出
+   # 直接往该文件写入垃圾（路径手动定位后）：
+   Set-Content "<账本路径>" "{broken"
+   & $ai worklog list --workspace <WS> --format json
+   ```
+
+**理想结果：**
+
+- 容器停止/删除后 list 内容**原样还在**（账本在 host，不随容器消失）
+- 账本被写坏后：list **不报错**，返回空列表 `worklogs: []`；runtime 目录里
+  出现一个 `worklogs.corrupt-<时间戳>.json`（坏文件被隔离保留）
+- 此后 Workbench 里**仍能正常开关会话**（fail-open：账本坏了不挡会话），
+  且新开的会话会重新开始记账
+
+### 批 8 验收口径
+
+四组全过 = 批 1 闭环；T3 的「未归档」数量如果大得离谱（比如把整个
+`~/.codex` 全局会话算进来了）也告诉我——reconcile 只应扫当前工作区的
+claude/codex 目录，不该碰全局。
+
+## 批 9：历史页按 agent 分组（2026-09-21 交付）
+
+分组规则：仅当 **claude 与 codex 都有历史** 时才分组显示（组头=agent
+名+条数，组间按各自最近活动排序）；只有一个 agent 有历史时保持原平铺；
+无历史显示「暂无历史对话」。
+
+### T1 单 agent 平铺（不分组）
+
+**操作：** 打开一个只用过 codex（或只用过 claude）的工作区 → 左侧栏「历史」页签。
+
+**理想结果：** 列表和改造前一样平铺，没有任何分组标题；每行右侧仍有
+agent 徽章（✳ claude / ◈ codex）。
+
+### T2 双 agent 分组
+
+**操作：** 打开一个 codex 和 claude 都用过的工作区 → 「历史」页签。
+
+**理想结果：** 出现两个分组标题（`CLAUDE` / `CODEX`，右侧带各自条数）；
+各自行归属正确、组内仍按最近活动排序；最近用过哪个 agent，哪个组在
+上面。分组标题下点击行恢复、右键菜单（打开/删除）与改造前一致。
+
+## 批 10：provider 切换后 resume 修复（2026-09-21 交付）
+
+根因：codex rollout 记录创建时的 `model_provider`；切换 provider 后该
+provider 定义已不在 config.toml，交互式 `codex resume` 引导时校验失败
+（`Model provider 'X' not found`）。修复：wrapper 在 codex resume 时把
+当前 config 的 `model_provider`/`model` 以 `-c` 覆盖传入——对话切换到
+当前 provider 继续（实机验证 codex 0.154.0）。
+
+### T1 切 provider 后 resume 旧对话
+
+**操作：**
+
+1. 用 provider A（如 zhipu）开一个 codex 对话，说几句话后关闭页签
+2. cc-switch 切到 provider B（如 deepseek）
+3. 「历史」页签点击步骤 1 的对话恢复
+
+**理想结果：** 恢复成功，界面顶部显示完整历史；发消息后按 provider B
+正常回复。终端不应出现 `Model provider ... not found`。
+
+### T2 未切 provider 的 resume 不回归
+
+**操作：** 不切 provider，直接从「历史」恢复一个最近的 codex 对话。
+
+**理想结果：** 行为与修复前一致（历史完整、正常续聊）。
+
+> 注：修复在容器内 wrapper（`container/aisc-session-wrapper`），旧镜像
+> 需重建镜像后才带此修复；当前运行中的容器可由 `docker cp` 直铺验证。
+
+## 批 11：聊天式只读对话查看器（2026-09-21 交付，history-worklog 批 2）
+
+> 手测结论（2026-09-21 用户确认）：T1 打开渲染 ✓、T2 分页/关闭/回归 ✓、
+> T3 降级 ✓ —— 批 11 收口，随 v2.1.13-preview.1 发布。
+
+范围：`aisc conversation read`（归一化消息流，尾部懒加载分页）+
+Workbench 只读对话查看器（覆盖层）。**工作记录（批 3）等用户需求，未做**。
+
+### T1 查看器打开与渲染
+
+**操作：** 工作区「历史」页签 → 悬停任一条对话行 → 点「查看对话」
+（或右键 → 查看对话）。
+
+**理想结果：** 弹出居中对话面板：用户消息靠右、助手消息靠左；思考
+过程与工具调用为折叠单行，点击可展开（工具调用的结果并发展示）；
+session 元数据/注入上下文不出现。首屏自动滚到最新消息。
+
+### T2 向下分页与关闭
+
+**操作：** 在一个长对话里点顶部「加载更早的消息」数次；点 × 或遮罩关闭。
+
+**理想结果：** 每次点击在顶部并入更早 100 条且阅读位置不跳；到流头
+按钮不再显示；底部计数（第 X–Y 条 / 共 N 条）正确。关闭后历史页签
+状态不变，点「打开」仍能正常 resume（回归零破坏）。
+
+### T3 不可恢复对话的降级
+
+**操作：** 查看一条 `malformed`/超大对话。
+
+**理想结果：** 可读部分照常渲染，不白屏不报错；列表页的不可恢复
+标注不受影响。
+
+
+
+

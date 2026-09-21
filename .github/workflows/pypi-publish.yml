@@ -193,11 +193,6 @@ jobs:
           python scripts/verify-pypi-install.py \
             --index-url https://pypi.org/simple \
             "$(cat src/aisc/VERSION)"
-      - name: Generate + attach SBOM to the release (guide 3.4.1)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pip install .
-          python scripts/verify-sbom.py --venv-python "$(which python)" \
-            --out aisc-sbom.json || true
-          gh release upload "${{ inputs.tag }}" aisc-sbom.json --clobber
+      # SBOM step removed (2026-09-20 user ruling): the cli-v lane creates no
+      # GitHub Release to attach to, so generation was dead motion. Supply-
+      # chain guards that remain: thin-artifact check + gitleaks + pip-audit.

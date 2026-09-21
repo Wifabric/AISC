@@ -79,7 +79,8 @@ use locale::resolve_locale;
 use env::{env_poll_engine, env_readiness};
 use installer::installer_handoff;
 use conversation::{
-    conversation_delete, conversation_list, conversation_preflight, conversation_rename,
+    conversation_delete, conversation_list, conversation_preflight, conversation_read,
+    conversation_rename,
 };
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
@@ -99,7 +100,7 @@ use session::{
     ack_session_exit, close_session, open_session, resize_session, session_read_spool,
     shutdown_workbench, shutdown_workbench_v2, write_session, SessionRegistry,
 };
-use cache::{cache_cleanup, cache_inspect, cache_usage};
+use cache::{cache_cleanup, cache_inspect, cache_usage, container_action, image_rm, image_tag};
 use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
 use update::{app_check_update, app_download_update, app_install_update};
 use settings::{load_settings, reset_gui_settings, save_settings};
@@ -145,6 +146,7 @@ pub fn run(cli_arg: Option<String>) {
             conversation_preflight,
             conversation_delete,
             conversation_rename,
+            conversation_read,
             write_session,
             resize_session,
             session_read_spool,
@@ -157,6 +159,9 @@ pub fn run(cli_arg: Option<String>) {
             app_install_update,
             cache_cleanup,
             cache_inspect,
+            container_action,
+            image_rm,
+            image_tag,
             close_session,
             ack_session_exit,
             shutdown_workbench,

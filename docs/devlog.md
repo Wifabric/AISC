@@ -2,6 +2,76 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# 长对话恢复修复：spool 早期页乱码 + 顶部空白（2026-09-21，长对话 bug 首个实锤样本）
+
+- **用户复现（截图+步骤）**：长会话恢复后点「加载早期输出」，靠最早的页出现乱码，
+  顶部一大段空白。即 v2.1.13 target「长对话无法恢复」的 spool 分页面。
+- **顶部空白根因**：linearizeSpoolPage 把 CUU/CUD/RI 降级为 LF——TUI 每轮重绘
+  上移光标数十次，1MiB 分页注入数千幻影空行。修复：光标移动全部丢弃（真实重绘
+  的 CR+覆写仍落在当前视觉行，轮次塌缩无膨胀）。
+- **早期乱码根因**：分页按原始字节切块，边界随机落在 UTF-8 多字节/CSI 序列中间，
+  孤儿头尾字节按文本渲染。修复：新增 alignSpoolPage——页首剥 UTF-8 连续字节 +
+  吞掉孤儿 CSI 片段（参数字节直至 final byte）；页尾剥不完整 UTF-8 字符。
+- 测试：14 用例（边界切割矩阵 + 30 轮 TUI 重绘零幻影行）；local-gates 全绿。
+- 注：此修复针对 spool 回放层；若 provider 会话文件本身恢复失败（非显示层）
+  仍属「长对话无法恢复」另一面，等下一个样本。
+
+# 批 8 手测修复：serve 整体 deny session → close-tab terminate 被静默吞掉（2026-09-21）
+
+- **用户手测现象（T1）**：6 会话关闭后账本 closed_at 全缺；codex resume 撞锁
+  「This conversation is open in another app」。
+- **取证链**：容器内 wrapper 记录 5 会话恒 running（terminate 从未到达）→
+  Workbench 日志窗口期零条 command:session 的 cli_exit → run_control Local 走
+  池化 serve cli op（无子进程无日志）→ serve.py `_SERVE_CLI_DENY` 含 `session` →
+  拒绝错误被 close_session 的 `let _ =` best-effort 吞掉。CLI 直调 terminate 记账
+  正常（复现 8cb8721d user_close + closed_at ✓）。
+- **根因一拖三**：僵尸容器进程（资源泄漏）+ worklog 关闭钩子失效 + codex 会话锁
+  残留（resume 撞锁）。
+- **修复**：serve 门改为子命令白名单 `_SERVE_SESSION_OPS = {terminate, list}`
+  （captured 一次性命令安全过串行环；open 仍拒绝——PTY 走专用 session.open op）。
+  回归测试 14 过；sidecar 已重建（serve 池 mtime 驱逐自动换代，重启 dev 最稳）。
+- **遗留观察**：历史强杀（关机/崩溃）后的 codex 锁残留是否需要清理手段——
+  待 terminate 修复后重测 resume，仍撞锁再立项。
+
+# 规约固化：手测方案书写规范（DEVELOP_WIKI §1.3，2026-09-21 用户裁定）
+
+- 起因：批 8 手测方案「开两个会话→list 聚合正确」被用户指出太抽象，无法
+  直接照做。已重写为 T1–T4 四组（操作命令级 + 理想结果字段级）。
+- 新规约（§1.3）：每条手测项必须含 ①编号操作步骤（UI 位置/可复制命令，
+  变量先定义）②理想结果到字段级（几条/哪个字段非空/顺序，不接受「正确」
+  结论词）③前置准备段 ④异常判定口径。范本 = HANDTEST.md 批 8 节。
+
+# v2.1.13 批 8：history-worklog 批 0 探针 + 批 1 数据层（2026-09-21）
+
+- **T0 探针结论（决定性）**：一次性容器内 `codex exec` 建会话 → `codex exec
+  resume <id>`（401 失败态）→ sessions 树前后一致：**resume 不 fork 新 rollout，
+  续写原文件**。claude --resume 同文件追加（高置信）。→ 批 1 preflight「取最新
+  mtime」微调留待批 2 顺带（当前 _find_conversation_file 未排序首命中在单文件
+  语义下无害）。
+- **批 1 数据层**：worklog.py（aisc.worklog/v1，<ws>/runtime/worklogs.json，
+  原子写/损坏隔离/fail-open）；session.py 双钩子（build_session_exec 记开启
+  含 resume_of、terminate_session 记关闭）；reconcile 把未归档 provider 会话
+  收容进合成「未归档会话」；CLI `aisc worklog list/rename/archive/delete/
+  reconcile`。钩子 fail-open：账本问题永不阻塞会话开/关。
+- 测试 9 用例全过；local-gates 全绿；sidecar 已重建。
+- 手测：开两个会话（其一 resume）→ terminate → `aisc worklog list --workspace
+  <ws>` 聚合正确（resume_of 在、closed_at 在）。
+
+# v2.1.13 批 7：docker 资源管理（D-12，2026-09-20，分支 2.1.13-docker-management）
+
+- **CLI**：maintenance 组三个子命令——container-action（start/stop/rm）、
+  image-rm、image-tag（retag 语义，旧 tag 保留）。每动作锁内重扫判权：
+  owned/legacy_owned 才可操作，unverified/未知 → AISC_ERR_OWNERSHIP_REFUSED
+  （exit 6）；镜像删除前重查 ancestor 容器（被引用即拒）；rm 组合 stop+rm-f。
+  envelope aisc.docker-management/v1。
+- **Rust**：container_action / image_rm / image_tag 三命令（resolve_target_for
+  同构跟随驱动机器；120s 超时）+ argv pin 测试。
+- **前端**：设置页 Docker 资源组 scan 后渲染 owned/legacy_owned 行内按钮
+  （运行中=停止；停止=启动/删除；镜像=删除/重命名）；confirm 文案含资源名；
+  动作完成自动重扫刷新。运行中容器不提供删除（先停再删）。
+- 测试：python 11 用例（所有权拒绝/组合/no-op/argv 安全）+ Rust argv pin；
+  local-gates 全绿；sidecar 已重建。
+
 # v2.1.13 手测修复轮 2 + cli-v0.1.2 发布（2026-09-20）
 
 - **发布**：cli-v0.1.2 tag 已打（run 防重入 + cache-inspect）；发布流水线
@@ -3521,3 +3591,49 @@ opt-batch 收口后按用户指令开工。四段全部落地：
   强测——需 C 盘 <2GB 环境）、F2 MCP 三轮闭环。遗留 backlog：冲突
   双副本列表投影（等真实冲突形状）、F2 host_exec 远端执行版、远端
   rsync 缺失引导实测、2.1.9 收尾（VERSION 冻结、plans 归档）。
+
+## 2026-09-21 批 10：provider 切换后 codex resume 修复
+
+**问题**：切换 provider（cc-switch）后恢复旧 codex 会话报
+`thread/resume failed: failed to load configuration: Model provider 'zhipu'
+not found (code -32600)`。根因：rollout 的 session_meta 记录创建时的
+provider，交互式 `codex resume` 在 TUI 引导时按当前 config 校验该
+provider——切换后定义已不存在，直接失败。
+
+**取证**（容器 3611198fe8bd，codex 0.154.0）：config.toml 仅剩 deepseek；
+rollout 头部 `model_provider: "zhipu"`；CODEX_HOME 副本 + pty 复现真实
+home 必现、副本不复现（副本之谜未深究）；`codex exec resume` 用当前
+config 不受影响；`codex resume -c model_provider=<当前> -c model=<当前>`
+错误消失、TUI 完整启动。
+
+**修复**：`container/aisc-session-wrapper` 新增 `_codex_resume_overrides()`
+——resume 时读 `~/.codex/config.toml`（tomllib，异常回退顶层正则；键缺失
+不猜）把当前 provider/model 以 `-c` 追加到 `codex resume`。对话切换到
+当前 provider 继续。claude/bash 路径不动。单测 5 例
+（tests/test_session_wrapper.py）；vendor checksums 已刷新
+（vendor-refresh.sh 在 Windows Git Bash 因 python3 缺失死在 Step 3——
+Step 4 手动执行，后续可修脚本兼容）；运行中容器已 docker cp 直铺，
+镜像重建后自然带上。
+
+## 2026-09-21 批 11：聊天式只读对话查看器（history-worklog 批 2）
+
+**范围**：`aisc conversation read`（schema aisc.conversation-read/v1：
+user/assistant 消息、reasoning、tool_use+结果配对、注入上下文剔除、
+单条字数硬上限、tail/before 反向分页）→ Rust conversation_read 桥 →
+explorer store readConversationPage（F-A01 分层：组件不直连 ipc）→
+ConversationViewer.vue 只读覆盖层（气泡+折叠 details+锚定分页）→
+历史行悬停「查看对话」chip + 右键菜单项。provider transcript 严格
+只读（模块头铁律不动）；resume 两调用契约零触碰。工作记录（批 3）
+等用户需求捋清后再立项。
+
+**顺手闭环**：详细检测缺镜像类（用户确认已可见，关闭）；点文件出
+diff（确认已移除，代码有用户裁决注释）；远程 CLI 需更新提示（用户
+确认 UI 正确）。
+
+## 2026-09-21 v2.1.13-preview.1 发布
+
+本日交付全量入版：批 8 终端链闭环（serve session 门、早期页乱码/满窗
+截断、provider 切换 resume 修复）、批 9 历史页 agent 分组、批 10
+provider 切换 resume（wrapper -c 覆盖）、批 11 聊天式只读对话查看器、
+批 12 资源管理器滚动修复。手测全部通过（HANDTEST 批 8-12）。工作记录
+（批 3）用户裁决移入待解决池。tag v2.1.13-preview.1 → NSIS prerelease。

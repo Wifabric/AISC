@@ -15,6 +15,7 @@ from aisc.application.conversation import (
     delete_conversation,
     list_conversations,
     preflight_conversation,
+    read_conversation,
     rename_conversation,
 )
 
@@ -22,6 +23,16 @@ from aisc.application.conversation import (
 def cmd_conversation_list(workspace: str) -> Dict[str, Any]:
     """Execute ``aisc conversation list`` per design §1b."""
     return list_conversations(workspace)
+
+
+def cmd_conversation_read(workspace: str, conversation_id: str, agent: str,
+                          tail: int = None,
+                          before: int = None) -> Dict[str, Any]:
+    """Execute ``aisc conversation read`` (批 2 聊天式 UI): normalized
+    read-only message stream with tail pagination."""
+    return read_conversation(
+        workspace, conversation_id, agent, tail=tail, before=before,
+    )
 
 
 def cmd_conversation_preflight(workspace: str, conversation_id: str,
@@ -70,3 +81,15 @@ def print_conversation_text(subcommand: str, data: Any, errors: list) -> None:
     elif subcommand == "rename":
         print(f"renamed: {data.get('conversation_id', '')} "
               f"agent={data.get('agent', '')} title={data.get('title', '')}")
+    elif subcommand == "read":
+        for m in data.get("messages", []):
+            head = f"#{m.get('ordinal')} {m.get('role')}/{m.get('kind')}"
+            if m.get("name"):
+                head += f" {m['name']}"
+            print(head)
+            text = m.get("text", "")
+            if text:
+                print(text)
+            if "result" in m:
+                print(f"  → result: {m['result']}")
+            print()
