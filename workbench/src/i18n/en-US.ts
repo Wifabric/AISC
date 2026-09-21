@@ -435,6 +435,7 @@ export const enUS: Record<string, string> = {
   "terminal.openFailed": "[open_session failed: {code}]",
   "terminal.outputTruncated": "[older output truncated: {bytes} dropped to keep the newest]",
   "terminal.loadEarlier": "Load earlier output",
+  "terminal.loadEarlierFailed": "Failed to load earlier output",
   "terminal.noEarlierOutput": "Start of output reached",
   // --- search overlay (G-03/A-G03-1) ---
   "terminal.search": "Search",

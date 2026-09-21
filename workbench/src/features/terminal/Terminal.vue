@@ -1185,10 +1185,15 @@ async function loadEarlier(): Promise<void> {
     consumed = store.streamCursor[props.paneId] ?? 0;
     earliestShown = page.start;
     if (page.eof || page.start === 0) loadEarlierDone.value = true;
-  } catch {
-    // Spool degraded mid-session / session registry entry gone — the in-stream
-    // note still records the truncation; stop offering the button.
-    loadEarlierDone.value = true;
+  } catch (err) {
+    // 批 8 诊断: the silent swallow made "button does nothing" undebugable —
+    // surface the reason, then stop offering the button.
+    console.error("[load-earlier] failed:", err);
+    useToastStore().push(
+      `${t("terminal.loadEarlierFailed")}: ${String((err as { message?: string })?.message ?? err)}`,
+      { kind: "error" },
+    );
+    loadEarlierDone.value = true;
   } finally {
     loadEarlierBusy.value = false;
   }
