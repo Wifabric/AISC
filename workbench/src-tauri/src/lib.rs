@@ -79,7 +79,8 @@ use locale::resolve_locale;
 use env::{env_poll_engine, env_readiness};
 use installer::installer_handoff;
 use conversation::{
-    conversation_delete, conversation_list, conversation_preflight, conversation_rename,
+    conversation_delete, conversation_list, conversation_preflight, conversation_read,
+    conversation_rename,
 };
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
@@ -145,6 +146,7 @@ pub fn run(cli_arg: Option<String>) {
             conversation_preflight,
             conversation_delete,
             conversation_rename,
+            conversation_read,
             write_session,
             resize_session,
             session_read_spool,

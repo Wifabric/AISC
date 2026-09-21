@@ -123,6 +123,38 @@ fn conversation_rename_argv(
     ]
 }
 
+/// 批 2 聊天式 UI: normalized read-only message stream with backwards tail
+/// paging. `tail`/`before` are optional — None skips the CLI flag entirely.
+fn conversation_read_argv(
+    workspace: &str,
+    conversation_id: &str,
+    agent: &str,
+    tail: Option<u64>,
+    before: Option<u64>,
+) -> Vec<String> {
+    let mut argv = vec![
+        "conversation".into(),
+        "read".into(),
+        "--workspace".into(),
+        workspace.into(),
+        "--conversation-id".into(),
+        conversation_id.into(),
+        "--agent".into(),
+        agent.into(),
+    ];
+    if let Some(n) = tail {
+        argv.push("--tail".into());
+        argv.push(n.to_string());
+    }
+    if let Some(n) = before {
+        argv.push("--before".into());
+        argv.push(n.to_string());
+    }
+    argv.push("--format".into());
+    argv.push("json".into());
+    argv
+}
+
 // -- wire types (TS mirrors in workbench/src/types/index.ts) --
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +202,49 @@ pub struct ConversationRenameResult {
     pub conversation_id: String,
     pub agent: String,
     pub title: String,
+}
+
+/// 批 2 聊天式 UI wire types (mirror of `aisc.conversation-read/v1`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationReadMessage {
+    #[serde(default)]
+    pub ordinal: u64,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub call_id: Option<String>,
+    #[serde(default)]
+    pub result: Option<String>,
+    #[serde(default)]
+    pub ts: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationReadResult {
+    #[serde(default)]
+    pub schema: String,
+    #[serde(default)]
+    pub conversation_id: String,
+    #[serde(default)]
+    pub agent: String,
+    #[serde(default)]
+    pub file_size: u64,
+    #[serde(default)]
+    pub total: u64,
+    #[serde(default)]
+    pub start: u64,
+    #[serde(default)]
+    pub messages: Vec<ConversationReadMessage>,
+    #[serde(default)]
+    pub malformed_lines: u64,
+    #[serde(default)]
+    pub degraded_reason: Option<String>,
 }
 
 // -- commands --
@@ -266,6 +341,37 @@ pub async fn conversation_rename(
         })
 }
 
+/// 批 2 聊天式 UI: read a conversation as a normalized read-only message
+/// stream (captured CLI pass-through, strictly read-only on the provider
+/// transcript). The file scan is bounded like the other discovery commands.
+#[tauri::command]
+pub async fn conversation_read(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    conversation_id: String,
+    agent: String,
+    tail: Option<u64>,
+    before: Option<u64>,
+) -> Result<ConversationReadResult, WorkbenchError> {
+    if !is_conversation_uuid(&conversation_id) {
+        return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
+    }
+    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let argv = conversation_read_argv(&workspace, &conversation_id, &agent, tail, before);
+    let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
+        .await?;
+    if let Some(e) = envelope_error(&env) {
+        return Err(e);
+    }
+    let data = env.data.unwrap_or(Value::Null);
+    serde_json::from_value::<ConversationReadResult>(data)
+        .map_err(|e| {
+            WorkbenchError::cli_protocol()
+                .with_detail(format!("conversation read parse: {e}"))
+        })
+}
+
 // -- tests --
 
 #[cfg(test)]
@@ -300,5 +406,18 @@ mod tests {
         assert!(!is_conversation_uuid(""));
         assert!(!is_conversation_uuid("not-a-uuid"));
         assert!(!is_conversation_uuid("24b708822d454ceca9e266f8c012481f"));
+    }
+
+    #[test]
+    fn read_argv_shape_with_and_without_paging() {
+        let plain = conversation_read_argv("/ws", "01a04ca9-d3f6-7021-b9e7-50d48d818c65", "codex", None, None);
+        assert!(!plain.contains(&"--tail".into()));
+        assert!(!plain.contains(&"--before".into()));
+        assert_eq!(plain.last().map(|s| s.as_str()), Some("json"));
+        let paged = conversation_read_argv("/ws", "01a04ca9-d3f6-7021-b9e7-50d48d818c65", "codex", Some(80), Some(240));
+        let i = paged.iter().position(|a| a == "--tail").unwrap();
+        assert_eq!(paged[i + 1], "80");
+        let j = paged.iter().position(|a| a == "--before").unwrap();
+        assert_eq!(paged[j + 1], "240");
     }
 }

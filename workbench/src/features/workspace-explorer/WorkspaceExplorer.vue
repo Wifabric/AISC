@@ -675,7 +675,14 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
   const actions: MenuAction[] = [];
   if (target.kind === "conversation") {
     // v2.1.8 T4 手测反馈: 打开 / 重命名 / 删除; left click already opens.
+    // 批 2: 查看对话 = read-only transcript viewer (no resume side effects).
     actions.push(
+      {
+        id: "view",
+        label: t("history.viewMenu"),
+        run: () =>
+          explorer.openConversationViewer(target.agent, target.conversationId, target.title),
+      },
       {
         id: "open",
         label: t("explorer.open"),
@@ -1250,6 +1257,15 @@ function onTreeKeydown(e: KeyboardEvent) {
             <span v-if="r.c.message_count !== null" class="explorer-label">
               {{ t("explorer.conversations.msgCount", { n: r.c.message_count }) }}
             </span>
+            <!-- 批 2 聊天式 UI: read-only viewer entry (hover chip; resume
+                 stays the row's primary click action). -->
+            <span
+              class="cv-view-chip"
+              role="button"
+              tabindex="-1"
+              :title="t('history.viewTooltip')"
+              @click.stop="explorer.openConversationViewer(r.c.agent, r.c.conversation_id, r.c.title)"
+            >{{ t("history.viewMenu") }}</span>
             <!-- FIX-1 (2.1.10): agent glyphs with distinct color families —
                  the old plain-text badge read as noise at a glance. -->
             <span
@@ -1559,6 +1575,25 @@ function onTreeKeydown(e: KeyboardEvent) {
   letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+/* 批 2 聊天式 UI: hover chip opening the read-only transcript viewer. */
+.cv-view-chip {
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease;
+  border: 1px solid var(--border, color-mix(in srgb, currentColor 18%, transparent));
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.conversation-row:hover .cv-view-chip,
+.cv-view-chip:focus-visible {
+  opacity: 1;
+}
+.cv-view-chip:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 .conversation-title {
   font-weight: 500;
