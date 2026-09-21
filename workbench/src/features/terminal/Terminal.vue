@@ -464,6 +464,30 @@ function writeChunks(chunks: string[]): void {
 
 }
 
+/** Decode base64 chunks to one buffer — the trimming path of loadEarlier
+ * needs raw bytes to cut the window tail at a line boundary. */
+function decodeChunks(chunks: string[]): Uint8Array {
+
+  const totalB64 = chunks.reduce((n, c) => n + c.length, 0);
+
+  const decoded = new Uint8Array(((totalB64 / 4) | 0) * 3);
+
+  let off = 0;
+
+  for (const b64 of chunks) {
+
+    const u8 = b64ToUint8(b64);
+
+    decoded.set(u8, off);
+
+    off += u8.length;
+
+  }
+
+  return decoded.subarray(0, off);
+
+}
+
 /** v2.1.7 S6: first-screen quick-start card per session type (replaces the
 
  *  meaningless "terminal ready" line). Written ONLY when the pane has no
@@ -2203,9 +2227,11 @@ async function loadEarlier(): Promise<void> {
       `[诊断] 正在重放 ${page.length}B（起点 ${page.start}）`,
       { kind: "info", durationMs: 8000 },
     );
-    // 批 8 诊断第二轮：①线性化后字节数（0=管线吃光内容，不清屏直接终止）
-    // ②完成回调 toast（不弹=xterm 写队列卡死）③buffer 落地统计（非空 0 行=内容
-    // 没落地；非 0 但画面空=渲染层没画）。
+    // 批 8 手测根因（二轮探针实锤）：窗口预算 4MiB(b64)≈3.1MB 原始流，铺满
+    // 回滚上限（清屏前 50044 行）后，重建 [早期页|整窗] 的总行数必然超限，
+    // xterm 从顶部截掉的恰是刚加载的早期页——画面等于没变。改为
+    // [早期页 | 窗口尾部切片]：用早期页自身的行密度估算窗口尾的安全字节
+    // 数，保不住的窗口中段留在 paneStreams/spool（重挂载恢复不受影响）。
     const u8 = linearizeSpoolPage(alignSpoolPage(b64ToUint8(page.bytes)));
     if (u8.length === 0) {
       useToastStore().push(
@@ -2215,9 +2241,22 @@ async function loadEarlier(): Promise<void> {
       loadEarlierDone.value = true;
       return;
     }
+    let pageLines = 0;
+    for (let i = 0; i < u8.length; i++) if (u8[i] === 0x0a) pageLines++;
+    const bytesPerLine = pageLines >= 10 ? u8.length / pageLines : 64;
     const winChunks = store.paneStreams[props.paneId] ?? [];
     const winBytes = ((winChunks.reduce((n, c) => n + c.length, 0) / 4) | 0) * 3;
-    const rowsBefore = term?.buffer?.active?.length ?? -1;
+    const capRows = (term?.options?.scrollback ?? 1000) + (term?.rows ?? 30);
+    // 窗口尾预算：总占用 ≤ 80% cap 且窗口尾 ≤ 50% cap（给早期页和活流留头寸）
+    const maxWinRows = Math.max(200, Math.min(capRows * 0.5, capRows * 0.8 - pageLines - 400));
+    let winTail: Uint8Array | null = null;
+    if (winBytes > Math.floor(maxWinRows * bytesPerLine)) {
+      const winU8 = decodeChunks(winChunks);
+      let cut = winU8.length - Math.floor(maxWinRows * bytesPerLine);
+      const nl = winU8.indexOf(0x0a, cut); // 切在行首，避免劈开序列
+      if (nl >= 0 && nl < cut + 8192) cut = nl + 1;
+      winTail = alignSpoolPage(winU8.subarray(cut));
+    }
     term.clear();
 
     // 64 KiB slices: one huge write can stall the xterm parse loop.
@@ -2228,7 +2267,8 @@ async function loadEarlier(): Promise<void> {
 
     }
 
-    writeChunks(winChunks);
+    if (winTail) term.write(winTail);
+    else writeChunks(winChunks);
 
     consumed = store.streamCursor[props.paneId] ?? 0;
 
@@ -2245,7 +2285,7 @@ async function loadEarlier(): Promise<void> {
         if (line && line.translateToString(true).trim().length > 0) filled++;
       }
       useToastStore().push(
-        `[诊断] 完成: 重放${u8.length}B+窗口${winBytes}B | renderer=${webgl ? "webgl" : "dom"} | buffer ${buf.length}行(清屏前${rowsBefore}) 非空${filled} viewportY=${buf.viewportY}`,
+        `[诊断] 完成: 页${pageLines}行+窗口尾${winTail ? Math.round(winTail.length / bytesPerLine) + "行" : winBytes + "B未裁"} | buffer ${buf.length}行 非空${filled} viewportY=${buf.viewportY} | renderer=${webgl ? "webgl" : "dom"}`,
         { kind: "info", durationMs: 20000 },
       );
       if (page.start === 0) term?.scrollToTop(); // 已到流头：顶部应直接是最早内容
