@@ -62,6 +62,24 @@ class CliOpInProcessTests(unittest.TestCase):
             self.assertEqual(frame["envelope"]["meta"]["exit_code"], 2)
             self.assertEqual(frame["envelope"]["errors"][0]["code"], "AISC_ERR_USAGE")
 
+    def test_session_captured_ops_allowed_open_still_denied(self) -> None:
+        """v2.1.13 批 8 手测根因: `session terminate`/`list` are captured
+        one-shot ops the Workbench close path rides over the pooled serve —
+        blanket-denying `session` swallowed them (zombie agents + missing
+        worklog close). `open` (the streaming surface) stays denied."""
+        for op in ("terminate", "list"):
+            frame = self._run({"argv": ["session", op]})
+            env = frame["envelope"]
+            self.assertEqual(env["meta"]["exit_code"], 2)  # argparse: missing args
+            self.assertNotIn("cannot run over serve",
+                             env["errors"][0]["message"])
+        for bad in (["session"], ["session", "open"], ["session", "bogus"]):
+            frame = self._run({"argv": bad})
+            env = frame["envelope"]
+            self.assertEqual(env["meta"]["exit_code"], 2)
+            self.assertIn("cannot run over serve",
+                          env["errors"][0]["message"])
+
     def test_cc_switch_tui_denied_envelope_ops_allowed(self) -> None:
         """2.1.11 P1 手测 r6: the bare `cc-switch` is the TUI (denied), but
         the six envelope subcommands must PASS the gate — denying the whole

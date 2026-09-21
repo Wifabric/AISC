@@ -2,6 +2,23 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# 批 8 手测修复：serve 整体 deny session → close-tab terminate 被静默吞掉（2026-09-21）
+
+- **用户手测现象（T1）**：6 会话关闭后账本 closed_at 全缺；codex resume 撞锁
+  「This conversation is open in another app」。
+- **取证链**：容器内 wrapper 记录 5 会话恒 running（terminate 从未到达）→
+  Workbench 日志窗口期零条 command:session 的 cli_exit → run_control Local 走
+  池化 serve cli op（无子进程无日志）→ serve.py `_SERVE_CLI_DENY` 含 `session` →
+  拒绝错误被 close_session 的 `let _ =` best-effort 吞掉。CLI 直调 terminate 记账
+  正常（复现 8cb8721d user_close + closed_at ✓）。
+- **根因一拖三**：僵尸容器进程（资源泄漏）+ worklog 关闭钩子失效 + codex 会话锁
+  残留（resume 撞锁）。
+- **修复**：serve 门改为子命令白名单 `_SERVE_SESSION_OPS = {terminate, list}`
+  （captured 一次性命令安全过串行环；open 仍拒绝——PTY 走专用 session.open op）。
+  回归测试 14 过；sidecar 已重建（serve 池 mtime 驱逐自动换代，重启 dev 最稳）。
+- **遗留观察**：历史强杀（关机/崩溃）后的 codex 锁残留是否需要清理手段——
+  待 terminate 修复后重测 resume，仍撞锁再立项。
+
 # 规约固化：手测方案书写规范（DEVELOP_WIKI §1.3，2026-09-21 用户裁定）
 
 - 起因：批 8 手测方案「开两个会话→list 聚合正确」被用户指出太抽象，无法

@@ -79,8 +79,7 @@
 ## 批 8：history-worklog 批 1（worklog 账本，2026-09-21 交付）
 
 > 准备：启动 Docker Desktop；启动 Workbench（`npm run tauri dev`）；打开你的常用
-> 工作区（有 codex/claude 会话历史的那一个）。CLI 用 `$ai` =
-> `E:\Windows\Users\alan\Documents\AISC\workbench\src-tauri\target\debug\aisc.exe`
+> 工作区（有 codex/claude 会话历史的那一个）。CLI 用 `$ai` = `E:\Windows\Users\alan\Documents\AISC\workbench\src-tauri\target\debug\aisc.exe`
 > （sidecar 已重建含批 8），下文统一写 `$ai`。
 > 你的工作区路径下文用 `<WS>` 代指（例如 `D:\proj\demo`）。
 
@@ -91,9 +90,9 @@
 1. Workbench 里点 `+` 新建一个 **codex** 页签 → 随便问一句话（比如「你好」）→
    等 agent 回复完成 → 点页签的 `×` 关闭它
 2. 左侧「历史」面板（文件区第 4 个视图）→ 找到刚才会话 → 右键 → **恢复**
-   → 随便再问一句 → 回复完成后点 `×` 关闭
+   → 随便再问一句 → 回复完成后点 `×` 关闭（恢复时，codex提示：“This conversation is open in another app；Close it there and press R to continue here.”按下R后，显示To continue this session, run codex resume 01a0c237-9d32-75b1-ad6a-859b212d0035，无法直接使用）
 3. 再新建一个 **bash** 页签 → 不用输命令，直接点 `×` 关闭
-4. PowerShell 执行：
+4. PowerShell 执行：（这个部分你替我测试）
    ```powershell
    & $ai worklog list --workspace <WS> --format json
    ```
@@ -109,9 +108,16 @@
 - `sessions[0].agent` 分别是 `codex / codex / bash`
 - 数组顺序：**刚关闭的排最前**（按 last_opened_at 倒序）
 
+> **2026-09-21 手测修复（重测前必读）**：你测出的「closed_at 全缺」与「codex resume
+> 撞锁」是同一个根因——Workbench 关页签的 terminate 被 serve 的 session 整体
+> deny 静默吞掉，容器内 agent 从未被杀（还顺带成了僵尸进程）。已修复并重建
+> sidecar。**重测前请完全关闭并重启 `npm run tauri dev`**（serve 驻留进程要用
+> 新二进制），然后从 T1 步骤 1 重来一遍。这次理想结果不变：closed_at 非空、
+> resume 不再出现「open in another app」。
+
 ### T2 rename / archive / delete 三件套
 
-**操作（接着 T1 的数据）：**
+**操作（接着 T1 的数据）：**（这个部分你替我测试）
 
 1. 从 T1 输出里挑一条 `"worklog_id"` 复制（取前 8 位也行）：
    ```powershell
