@@ -2203,19 +2203,22 @@ async function loadEarlier(): Promise<void> {
       `[诊断] 正在重放 ${page.length}B（起点 ${page.start}）`,
       { kind: "info", durationMs: 8000 },
     );
-    term.clear();
-
-    // P1-2 (2.1.11): linearize the replayed page — the raw stream's screen
-
-    // choreography (scroll-down/ED/CUP/alt-screen) leaves big blank bands
-
-    // when replayed over a long scrollback (measured 199 lines). The live
-
-    // window replay below stays raw (that is what the user is watching).
-
-    // 批 8 hand-test: byte-offset pages can split UTF-8/CSI sequences —
-    // align trims the orphan head/tail before linearizing (garbage chars).
+    // 批 8 诊断第二轮：①线性化后字节数（0=管线吃光内容，不清屏直接终止）
+    // ②完成回调 toast（不弹=xterm 写队列卡死）③buffer 落地统计（非空 0 行=内容
+    // 没落地；非 0 但画面空=渲染层没画）。
     const u8 = linearizeSpoolPage(alignSpoolPage(b64ToUint8(page.bytes)));
+    if (u8.length === 0) {
+      useToastStore().push(
+        `[诊断] 线性化后 0 字节（原始 ${page.length}B）——重放管线把内容全部吃掉，未清屏`,
+        { kind: "info", durationMs: 15000 },
+      );
+      loadEarlierDone.value = true;
+      return;
+    }
+    const winChunks = store.paneStreams[props.paneId] ?? [];
+    const winBytes = ((winChunks.reduce((n, c) => n + c.length, 0) / 4) | 0) * 3;
+    const rowsBefore = term?.buffer?.active?.length ?? -1;
+    term.clear();
 
     // 64 KiB slices: one huge write can stall the xterm parse loop.
 
@@ -2225,13 +2228,28 @@ async function loadEarlier(): Promise<void> {
 
     }
 
-    writeChunks(store.paneStreams[props.paneId] ?? []);
+    writeChunks(winChunks);
 
     consumed = store.streamCursor[props.paneId] ?? 0;
 
     earliestShown = page.start;
 
     if (page.eof || page.start === 0) loadEarlierDone.value = true;
+
+    term.write("", () => {
+      const buf = term?.buffer?.active;
+      if (!buf) return;
+      let filled = 0;
+      for (let y = 0; y < buf.length; y++) {
+        const line = buf.getLine(y);
+        if (line && line.translateToString(true).trim().length > 0) filled++;
+      }
+      useToastStore().push(
+        `[诊断] 完成: 重放${u8.length}B+窗口${winBytes}B | renderer=${webgl ? "webgl" : "dom"} | buffer ${buf.length}行(清屏前${rowsBefore}) 非空${filled} viewportY=${buf.viewportY}`,
+        { kind: "info", durationMs: 20000 },
+      );
+      if (page.start === 0) term?.scrollToTop(); // 已到流头：顶部应直接是最早内容
+    });
 
   } catch (err) {
     // 批 8 诊断: the silent swallow made "button does nothing" undebugable —
