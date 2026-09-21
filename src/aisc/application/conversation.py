@@ -514,3 +514,293 @@ def rename_conversation(workspace: str, conversation_id: str, agent: str,
         "agent": agent,
         "title": clean,
     }
+
+
+# ---------------------------------------------------------------------------
+# Conversation read (批 2 聊天式 UI, 2026-09-21): normalized read-only stream.
+# Provider transcripts stay strictly read-only (module-head rule); this layer
+# only PROJECTS them into a stable rendering schema — no writes anywhere.
+# ---------------------------------------------------------------------------
+
+CONVERSATION_READ_SCHEMA = "aisc.conversation-read/v1"
+_READ_TEXT_CAP = 8000     # per user/assistant message (chars)
+_READ_REASONING_CAP = 4000
+_READ_TOOL_CAP = 4000     # per tool_use input / tool_result output
+_READ_MAX_MESSAGES = 4000  # hard bound on the rendered stream
+
+
+def _read_join_text(content: Any, block_type: str) -> Optional[str]:
+    """Join EVERY ``block_type`` text block (unlike _text_from_content, which
+    returns the first). A chat bubble must not silently drop the rest of a
+    multi-block message."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == block_type:
+                text = block.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+        if parts:
+            return "\n\n".join(parts)
+    return None
+
+
+def _read_as_text(value: Any) -> Optional[str]:
+    """Best-effort text for tool arguments/outputs: strings pass through,
+    structured payloads serialize (bounded by the caller's cap)."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=1)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _read_cap(text: Any, cap: int) -> str:
+    """Coerce to str and hard-cap, marking the cut in the text itself (the
+    chat pane renders plain text — a side flag would be invisible there)."""
+    out = text if isinstance(text, str) else ("" if text is None else str(text))
+    if len(out) > cap:
+        return out[:cap] + f"\n…[截断，共 {len(out)} 字符]"
+    return out
+
+
+def _read_summary_text(summary: Any) -> Optional[str]:
+    """Codex reasoning payload: ``summary`` is a list of summary blocks."""
+    if isinstance(summary, list):
+        parts = []
+        for block in summary:
+            if isinstance(block, dict) and isinstance(block.get("text"), str) \
+                    and block["text"].strip():
+                parts.append(block["text"])
+        if parts:
+            return "\n\n".join(parts)
+    if isinstance(summary, str) and summary.strip():
+        return summary
+    return None
+
+
+def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One codex rollout line → zero or more rendered entries. Rendered:
+    user/assistant messages, reasoning summaries, function calls/results.
+    Dropped: session_meta, event_msg, world_state, turn_context, developer
+    messages, injected-context user blocks."""
+    if obj.get("type") != "response_item":
+        return []
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        return []
+    ts = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
+    kind = payload.get("type")
+    if kind == "message":
+        role = payload.get("role")
+        if role == "user":
+            text = _read_join_text(payload.get("content"), "input_text")
+            if not text or not text.strip():
+                return []
+            if _CONTEXT_TITLE_RE.match(text.lstrip()):
+                return []
+            return [{"role": "user", "kind": "message", "text": text, "ts": ts}]
+        if role == "assistant":
+            text = _read_join_text(payload.get("content"), "output_text")
+            if not text or not text.strip():
+                return []
+            return [{"role": "assistant", "kind": "message", "text": text, "ts": ts}]
+        return []
+    if kind == "reasoning":
+        text = _read_summary_text(payload.get("summary"))
+        if not text:
+            return []
+        return [{"role": "assistant", "kind": "reasoning", "text": text, "ts": ts}]
+    if kind == "function_call":
+        name = payload.get("name")
+        call_id = payload.get("call_id")
+        return [{
+            "role": "assistant", "kind": "tool_use",
+            "name": name if isinstance(name, str) else "tool",
+            "text": _read_as_text(payload.get("arguments")),
+            "call_id": call_id if isinstance(call_id, str) else None,
+            "ts": ts,
+        }]
+    if kind == "function_call_output":
+        call_id = payload.get("call_id")
+        return [{
+            "role": "tool", "kind": "tool_result",
+            "text": _read_as_text(payload.get("output")),
+            "call_id": call_id if isinstance(call_id, str) else None,
+            "ts": ts,
+        }]
+    return []
+
+
+def _read_entries_claude(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One Claude session line → zero or more rendered entries. Rendered:
+    user/assistant text, thinking, tool_use, tool_result. Dropped:
+    queue-operation/attachment/last-prompt/atis-latch and sidechain
+    (subagent) transcripts — the main thread only."""
+    if obj.get("type") not in ("user", "assistant"):
+        return []
+    if obj.get("isSidechain") is True:
+        return []
+    msg = obj.get("message")
+    if not isinstance(msg, dict):
+        return []
+    ts = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
+    role = "user" if obj.get("type") == "user" else "assistant"
+    content = msg.get("content")
+    out: List[Dict[str, Any]] = []
+
+    def _push_text(text: Any) -> None:
+        if isinstance(text, str) and text.strip():
+            if role == "user" and _CONTEXT_TITLE_RE.match(text.lstrip()):
+                return
+            out.append({"role": role, "kind": "message", "text": text, "ts": ts})
+
+    if isinstance(content, str):
+        _push_text(content)
+        return out
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            bt = block.get("type")
+            if bt == "text":
+                _push_text(block.get("text"))
+            elif bt == "thinking":
+                text = block.get("thinking")
+                if isinstance(text, str) and text.strip():
+                    out.append({"role": "assistant", "kind": "reasoning",
+                                "text": text, "ts": ts})
+            elif bt == "tool_use":
+                call_id = block.get("id")
+                out.append({
+                    "role": "assistant", "kind": "tool_use",
+                    "name": block.get("name") if isinstance(block.get("name"), str) else "tool",
+                    "text": _read_as_text(block.get("input")),
+                    "call_id": call_id if isinstance(call_id, str) else None,
+                    "ts": ts,
+                })
+            elif bt == "tool_result":
+                inner = block.get("content")
+                text = inner if isinstance(inner, str) else _read_join_text(inner, "text")
+                call_id = block.get("tool_use_id")
+                out.append({
+                    "role": "tool", "kind": "tool_result",
+                    "text": text,
+                    "call_id": call_id if isinstance(call_id, str) else None,
+                    "ts": ts,
+                })
+    return out
+
+
+_READ_EXTRACTORS = {
+    "codex": _read_entries_codex,
+    "claude": _read_entries_claude,
+}
+
+
+def read_conversation(workspace: str, conversation_id: str, agent: str,
+                      tail: Optional[int] = None,
+                      before: Optional[int] = None) -> Dict[str, Any]:
+    """Project a provider transcript into the chat rendering stream.
+
+    Pagination walks the RENDERED stream backwards: ``tail`` returns the
+    last ``tail`` entries; ``before`` (0-based exclusive ordinal) returns
+    the window immediately preceding it. Ordinals are stable per file
+    version — the UI pages with ``before=start`` until start reaches 0.
+    Malformed lines are skipped and counted, never fatal (list semantics)."""
+    if not is_conversation_uuid(conversation_id):
+        raise CliError(
+            message=f"Invalid conversation ID: {conversation_id}",
+            exit_code=2,
+            error_code=ERROR_INVALID_ID,
+        )
+    if agent not in _AGENTS:
+        raise CliError(
+            message=f"Unsupported agent: {agent}",
+            exit_code=2,
+            error_code=ERROR_INVALID_AGENT,
+        )
+    ws_dir = _workspace_dir(workspace)
+    path = _find_conversation_file(ws_dir, agent, conversation_id)
+    if path is None:
+        raise CliError(
+            message=f"Conversation {conversation_id} not found for agent {agent}",
+            exit_code=3,
+            error_code=ERROR_UNRESUMABLE,
+        )
+    extract = _READ_EXTRACTORS[agent]
+    entries: List[Dict[str, Any]] = []
+    malformed_lines = 0
+    try:
+        fh = path.open("r", encoding="utf-8", errors="replace")
+    except OSError as e:
+        raise CliError(
+            message=f"Conversation file unreadable: {e}",
+            exit_code=3,
+            error_code=ERROR_UNRESUMABLE,
+        )
+    with fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except (ValueError, TypeError):
+                malformed_lines += 1
+                continue
+            if not isinstance(obj, dict):
+                continue
+            for entry in extract(obj):
+                if len(entries) >= _READ_MAX_MESSAGES:
+                    break  # stream bound; the tail window still pages correctly
+                entries.append(entry)
+    # Pair tool results into their calls (nearest preceding unmatched match);
+    # unpaired results stay standalone so nothing is silently dropped.
+    open_calls: Dict[str, Dict[str, Any]] = {}
+    for entry in entries:
+        if entry["kind"] == "tool_use" and entry.get("call_id"):
+            open_calls[entry["call_id"]] = entry
+        elif entry["kind"] == "tool_result" and entry.get("call_id"):
+            call = open_calls.get(entry["call_id"])
+            if call is not None and "result" not in call:
+                call["result"] = entry.pop("text")
+                entry["consumed"] = True
+    rendered = [e for e in entries if not e.get("consumed")]
+    for i, entry in enumerate(rendered):
+        entry["ordinal"] = i
+        cap = _READ_TEXT_CAP
+        if entry["kind"] == "reasoning":
+            cap = _READ_REASONING_CAP
+        elif entry["kind"] == "tool_use":
+            entry["text"] = _read_cap(entry.get("text"), _READ_TOOL_CAP)
+            if "result" in entry:
+                entry["result"] = _read_cap(entry["result"], _READ_TOOL_CAP)
+            continue
+        elif entry["kind"] == "tool_result":
+            cap = _READ_TOOL_CAP
+        entry["text"] = _read_cap(entry.get("text"), cap)
+
+    total = len(rendered)
+    start = 0
+    end = total
+    if before is not None:
+        end = max(0, min(int(before), total))
+    if tail is not None and tail > 0:
+        start = max(0, end - int(tail))
+    return {
+        "schema": CONVERSATION_READ_SCHEMA,
+        "conversation_id": conversation_id,
+        "agent": agent,
+        "file_size": path.stat().st_size,
+        "total": total,
+        "start": start,
+        "messages": rendered[start:end],
+        "malformed_lines": malformed_lines,
+        "degraded_reason": "malformed" if malformed_lines else None,
+    }

@@ -14,6 +14,7 @@ import {
   conversationDelete,
   conversationList,
   conversationPreflight,
+  conversationRead,
   conversationRename,
   workspaceCopyEntry,
   workspaceCopyPath,
@@ -193,6 +194,14 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     /** Per-conversation inline resume error (preflight failure keeps the
      *  layout — no tab is created; design §1c). */
     resumeErrors: {} as Record<string, string>,
+    /** 批 2 聊天式 UI: the conversation the read-only viewer overlay is
+     *  open on (null = closed). The viewer component owns its own paging
+     *  state; this only anchors the overlay + its title. */
+    conversationViewer: null as {
+      agent: "claude" | "codex";
+      conversationId: string;
+      title: string;
+    } | null,
     /** Unattributed changes (watcher projection, never agent provenance). */
     unattributed: {} as Record<string, string>,
     activeKind: "explorer" as ExplorerKind,
@@ -329,6 +338,8 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
         // resume errors equally so.
         this.conversations = [];
         this.resumeErrors = {};
+        // 批 2: the read-only viewer reads THIS workspace's transcript.
+        this.conversationViewer = null;
         // A copied entry belongs to its workspace; pasting into another
         // workspace must be refused (02 §3), so drop the buffer on switch.
         this.clipboard = null;
@@ -712,6 +723,23 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       } finally {
         this.conversationsLoading = false;
       }
+    },
+
+    /** 批 2 聊天式 UI: open the read-only transcript viewer overlay. */
+    openConversationViewer(agent: "claude" | "codex", conversationId: string, title: string) {
+      this.conversationViewer = { agent, conversationId, title };
+    },
+
+    closeConversationViewer() {
+      this.conversationViewer = null;
+    },
+
+    /** 批 2 聊天式 UI: captured read through the viewer (the component must
+     *  not import lib/ipc directly — front-end layer contract F-A01). */
+    async readConversationPage(conversationId: string, agent: "claude" | "codex",
+                               tail?: number, before?: number) {
+      if (!this.workspace) throw new Error("no workspace");
+      return conversationRead(this.workspace, conversationId, agent, tail, before);
     },
 
     /** Two-call resume orchestration (design §1c): preflight FIRST — its

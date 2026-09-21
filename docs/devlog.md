@@ -3614,3 +3614,18 @@ config 不受影响；`codex resume -c model_provider=<当前> -c model=<当前>
 （vendor-refresh.sh 在 Windows Git Bash 因 python3 缺失死在 Step 3——
 Step 4 手动执行，后续可修脚本兼容）；运行中容器已 docker cp 直铺，
 镜像重建后自然带上。
+
+## 2026-09-21 批 11：聊天式只读对话查看器（history-worklog 批 2）
+
+**范围**：`aisc conversation read`（schema aisc.conversation-read/v1：
+user/assistant 消息、reasoning、tool_use+结果配对、注入上下文剔除、
+单条字数硬上限、tail/before 反向分页）→ Rust conversation_read 桥 →
+explorer store readConversationPage（F-A01 分层：组件不直连 ipc）→
+ConversationViewer.vue 只读覆盖层（气泡+折叠 details+锚定分页）→
+历史行悬停「查看对话」chip + 右键菜单项。provider transcript 严格
+只读（模块头铁律不动）；resume 两调用契约零触碰。工作记录（批 3）
+等用户需求捋清后再立项。
+
+**顺手闭环**：详细检测缺镜像类（用户确认已可见，关闭）；点文件出
+diff（确认已移除，代码有用户裁决注释）；远程 CLI 需更新提示（用户
+确认 UI 正确）。

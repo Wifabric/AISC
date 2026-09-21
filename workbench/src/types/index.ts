@@ -163,6 +163,35 @@ export interface ConversationRenameResult {
   title: string;
 }
 
+// --- 批 2 聊天式 UI: read-only conversation rendering (aisc.conversation-read/v1) ---
+
+/** One normalized chat entry. kind=message renders a bubble; kind=reasoning
+ *  and kind=tool_use render collapsed single-line rows (expandable). Tool
+ *  results arrive merged into their tool_use call as `result`; unpaired
+ *  results render standalone (role=tool). */
+export interface ConversationReadMessage {
+  ordinal: number;
+  role: "user" | "assistant" | "tool";
+  kind: "message" | "reasoning" | "tool_use" | "tool_result";
+  text: string;
+  name?: string | null;
+  call_id?: string | null;
+  result?: string | null;
+  ts?: string | null;
+}
+
+export interface ConversationReadResult {
+  schema: string;
+  conversation_id: string;
+  agent: "claude" | "codex";
+  file_size: number;
+  total: number;
+  start: number;
+  messages: ConversationReadMessage[];
+  malformed_lines: number;
+  degraded_reason: "malformed" | null;
+}
+
 /** Result of the unified exit coordinator (03 §4.3; runtime-lifecycle-ux
  * 02 §4 adds the per-runtime cleanup entries — absent on the legacy
  * sessions-only path). */

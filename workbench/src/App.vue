@@ -42,6 +42,7 @@ import NetworkUsageTab from "./features/usage/NetworkUsageTab.vue";
 import DoctorDialog from "./features/doctor/DoctorDialog.vue";
 import OnboardingWizard from "./features/onboarding/OnboardingWizard.vue";
 import InvalidPathDialog from "./features/startup/InvalidPathDialog.vue";
+import ConversationViewer from "./features/history/ConversationViewer.vue";
 import WorkspaceView from "./features/workspace/WorkspaceView.vue";
 import { useWorkspaceExplorerStore } from "./stores/workspaceExplorer";
 import { useOnboardingStore } from "./stores/onboarding";
@@ -603,6 +604,10 @@ onBeforeUnmount(() => {
       @clear="onOverlayClear"
       @export="onOverlayExport"
     />
+
+    <!-- 批 2 聊天式 UI: read-only transcript viewer (self-anchoring — it
+         renders only while explorer.conversationViewer is set). -->
+    <ConversationViewer />
 
     <!-- P2-1 (A2 反馈语法): the ONE global toast host — body-teleported,
          above every layer. Features push through useToastStore. -->

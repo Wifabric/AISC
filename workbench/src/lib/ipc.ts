@@ -114,6 +114,23 @@ export const conversationRename = (
     title,
   });
 
+// --- 批 2 聊天式 UI: read-only conversation stream (tail paging) ---
+
+export const conversationRead = (
+  workspace: string,
+  conversationId: string,
+  agent: string,
+  tail?: number,
+  before?: number,
+) =>
+  invoke<import("../types").ConversationReadResult>("conversation_read", {
+    workspace,
+    conversationId,
+    agent,
+    tail: tail ?? null,
+    before: before ?? null,
+  });
+
 export const writeSession = (sessionId: string, bytes: number[]) =>
   invoke<void>("write_session", { sessionId, bytes });
 

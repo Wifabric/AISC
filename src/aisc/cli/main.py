@@ -920,6 +920,23 @@ def _build_parser() -> _AiscArgumentParser:
     cvr.add_argument("--title", type=str, required=True,
                      help="New display title (sanitized, ≤80 chars)")
 
+    # conversation read (批 2 聊天式 UI): normalized read-only message stream
+    cvrd = cvsub.add_parser("read", help="Read a conversation as a normalized "
+                                         "message stream (read-only)",
+                            allow_abbrev=False)
+    _add_global_args(cvrd, is_subparser=True)
+    cvrd.add_argument("--workspace", type=str, default=None,
+                      help="Workspace path (default: current directory)")
+    cvrd.add_argument("--conversation-id", type=str, required=True,
+                      help="Provider-native conversation ID (UUID)")
+    cvrd.add_argument("--agent", type=str, required=True,
+                      help="Agent type (claude|codex)")
+    cvrd.add_argument("--tail", type=int, default=None,
+                      help="Return only the LAST N messages (lazy paging)")
+    cvrd.add_argument("--before", type=int, default=None,
+                      help="Return messages with ordinal < N (with --tail "
+                           "for backwards paging)")
+
     # --- artifact (Stage 3, ART-02) ---
     arp = sub.add_parser("artifact", help="Agent Artifact fact protocol (Stage 3)",
                          allow_abbrev=False)
@@ -2370,6 +2387,7 @@ def _cmd_conversation(
         cmd_conversation_delete,
         cmd_conversation_list,
         cmd_conversation_preflight,
+        cmd_conversation_read,
         cmd_conversation_rename,
     )
 
@@ -2383,6 +2401,15 @@ def _cmd_conversation(
             workspace=args.workspace,
             conversation_id=args.conversation_id,
             agent=args.agent,
+        )
+        return data, 0, []
+    elif sub == "read":
+        data = cmd_conversation_read(
+            workspace=args.workspace,
+            conversation_id=args.conversation_id,
+            agent=args.agent,
+            tail=getattr(args, "tail", None),
+            before=getattr(args, "before", None),
         )
         return data, 0, []
     elif sub == "delete":
