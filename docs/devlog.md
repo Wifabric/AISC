@@ -3591,3 +3591,26 @@ opt-batch 收口后按用户指令开工。四段全部落地：
   强测——需 C 盘 <2GB 环境）、F2 MCP 三轮闭环。遗留 backlog：冲突
   双副本列表投影（等真实冲突形状）、F2 host_exec 远端执行版、远端
   rsync 缺失引导实测、2.1.9 收尾（VERSION 冻结、plans 归档）。
+
+## 2026-09-21 批 10：provider 切换后 codex resume 修复
+
+**问题**：切换 provider（cc-switch）后恢复旧 codex 会话报
+`thread/resume failed: failed to load configuration: Model provider 'zhipu'
+not found (code -32600)`。根因：rollout 的 session_meta 记录创建时的
+provider，交互式 `codex resume` 在 TUI 引导时按当前 config 校验该
+provider——切换后定义已不存在，直接失败。
+
+**取证**（容器 3611198fe8bd，codex 0.154.0）：config.toml 仅剩 deepseek；
+rollout 头部 `model_provider: "zhipu"`；CODEX_HOME 副本 + pty 复现真实
+home 必现、副本不复现（副本之谜未深究）；`codex exec resume` 用当前
+config 不受影响；`codex resume -c model_provider=<当前> -c model=<当前>`
+错误消失、TUI 完整启动。
+
+**修复**：`container/aisc-session-wrapper` 新增 `_codex_resume_overrides()`
+——resume 时读 `~/.codex/config.toml`（tomllib，异常回退顶层正则；键缺失
+不猜）把当前 provider/model 以 `-c` 追加到 `codex resume`。对话切换到
+当前 provider 继续。claude/bash 路径不动。单测 5 例
+（tests/test_session_wrapper.py）；vendor checksums 已刷新
+（vendor-refresh.sh 在 Windows Git Bash 因 python3 缺失死在 Step 3——
+Step 4 手动执行，后续可修脚本兼容）；运行中容器已 docker cp 直铺，
+镜像重建后自然带上。

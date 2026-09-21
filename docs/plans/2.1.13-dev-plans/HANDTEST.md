@@ -217,4 +217,33 @@ agent 徽章（✳ claude / ◈ codex）。
 各自行归属正确、组内仍按最近活动排序；最近用过哪个 agent，哪个组在
 上面。分组标题下点击行恢复、右键菜单（打开/删除）与改造前一致。
 
+## 批 10：provider 切换后 resume 修复（2026-09-21 交付）
+
+根因：codex rollout 记录创建时的 `model_provider`；切换 provider 后该
+provider 定义已不在 config.toml，交互式 `codex resume` 引导时校验失败
+（`Model provider 'X' not found`）。修复：wrapper 在 codex resume 时把
+当前 config 的 `model_provider`/`model` 以 `-c` 覆盖传入——对话切换到
+当前 provider 继续（实机验证 codex 0.154.0）。
+
+### T1 切 provider 后 resume 旧对话
+
+**操作：**
+
+1. 用 provider A（如 zhipu）开一个 codex 对话，说几句话后关闭页签
+2. cc-switch 切到 provider B（如 deepseek）
+3. 「历史」页签点击步骤 1 的对话恢复
+
+**理想结果：** 恢复成功，界面顶部显示完整历史；发消息后按 provider B
+正常回复。终端不应出现 `Model provider ... not found`。
+
+### T2 未切 provider 的 resume 不回归
+
+**操作：** 不切 provider，直接从「历史」恢复一个最近的 codex 对话。
+
+**理想结果：** 行为与修复前一致（历史完整、正常续聊）。
+
+> 注：修复在容器内 wrapper（`container/aisc-session-wrapper`），旧镜像
+> 需重建镜像后才带此修复；当前运行中的容器可由 `docker cp` 直铺验证。
+
+
 

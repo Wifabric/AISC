@@ -245,5 +245,68 @@ class TestTerminate(unittest.TestCase):
         assert all(s == wrapper.signal.SIGTERM for _, s in sent)
 
 
+class TestCodexResumeOverrides(unittest.TestCase):
+    """批 8 手测: `codex resume` revalidates the rollout's recorded provider
+    against the current config — after a provider switch it is gone and the
+    TUI bootstrap dies. The wrapper pins resume to the ACTIVE provider/model
+    read from config.toml (empirical validation 2026-09-21, codex 0.154.0)."""
+
+    def _home(self, tmp: "tempfile.TemporaryDirectory", config: str | None):
+        home = Path(tmp) / "codex"
+        home.mkdir()
+        if config is not None:
+            (home / "config.toml").write_text(config, encoding="utf-8")
+        return str(home)
+
+    def test_overrides_carry_active_provider_and_model(self):
+        config = (
+            'model_provider = "deepseek"\nmodel = "deepseek-v4-pro"\n'
+            "model_context_window = 1000000\n\n[model_providers.deepseek]\n"
+            'name = "deepseek"\n'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"CODEX_HOME": self._home(tmp, config)}):
+                argv = wrapper._agent_argv("codex", SID)
+        assert argv == (
+            "codex",
+            [
+                "codex",
+                "resume",
+                SID,
+                "-c",
+                "model_provider=deepseek",
+                "-c",
+                "model=deepseek-v4-pro",
+            ],
+        )
+
+    def test_no_config_no_overrides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"CODEX_HOME": self._home(tmp, None)}):
+                assert wrapper._codex_resume_overrides() == []
+
+    def test_keys_missing_from_config_passes_nothing(self):
+        # Absent keys = config stays the source of truth; guessing (e.g. an
+        # "openai" default) could point the resume somewhere the user never
+        # configured.
+        config = '[model_providers.custom]\nname = "custom"\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"CODEX_HOME": self._home(tmp, config)}):
+                assert wrapper._codex_resume_overrides() == []
+
+    def test_table_scoped_lookalikes_do_not_leak_into_top_level(self):
+        # The regex fallback splits at the first `[` — a `[tools]` section
+        # defining its own `model = "..."` must not be picked up.
+        config = 'model_provider = "deepseek"\n[tools]\nmodel = "not-the-model"\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"CODEX_HOME": self._home(tmp, config)}):
+                argv = wrapper._codex_resume_overrides()
+        assert "model=not-the-model" not in argv
+
+    def test_non_resume_and_claude_are_untouched(self):
+        assert wrapper._agent_argv("codex", None)[1] == ["codex"]
+        assert wrapper._agent_argv("claude", SID)[1] == ["claude", "--resume", SID]
+
+
 if __name__ == "__main__":
     unittest.main()
