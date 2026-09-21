@@ -1426,6 +1426,10 @@ function onTreeKeydown(e: KeyboardEvent) {
 .explorer {
   display: flex;
   flex-direction: column;
+  /* 钉满宿主（.explorer-panel 是普通块容器）：没有这条，根节点高度随
+   * 内容无限生长，.explorer-body 的 overflow-y 永不触发——「文件太多
+   * 看不到下面的内容」（待解决池 #，2026-09-21 用户指派入版）。 */
+  height: 100%;
   min-height: 0;
   position: relative;
   font-size: var(--font-md);
