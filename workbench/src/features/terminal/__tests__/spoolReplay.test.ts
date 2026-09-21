@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Terminal } from "@xterm/headless";
-import { linearizeSpoolPage } from "../spoolReplay";
+import { alignSpoolPage, linearizeSpoolPage } from "../spoolReplay";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 const dec = (u: Uint8Array): string => new TextDecoder().decode(u);
@@ -32,9 +32,9 @@ describe("linearizeSpoolPage — sequence rewriting", () => {
     const out = dec(linearizeSpoolPage(enc("a\x1b[10Tb\x1b[2Jc\x1b[5;10Hd\x1b[1;24re\x1b[3Sf")));
     expect(out).toBe("abcdef");
   });
-  it("degrades cursor up/down to a single line feed", () => {
+  it("drops cursor up/down entirely (批 8: LF injection made phantom blanks)", () => {
     const out = dec(linearizeSpoolPage(enc("x\x1b[3Ay\x1b[2Bz")));
-    expect(out).toBe("x\ny\nz");
+    expect(out).toBe("xyz");
   });
   it("strips alt-screen toggles but keeps other DECSET/DECRST verbatim", () => {
     const out = dec(linearizeSpoolPage(enc("a\x1b[?1049hb\x1b[?1049lc\x1b[?25hd")));
@@ -48,8 +48,8 @@ describe("linearizeSpoolPage — sequence rewriting", () => {
     const raw = "中文内容\x1b[32m绿色\x1b[0m✓";
     expect(dec(linearizeSpoolPage(enc(raw)))).toBe(raw);
   });
-  it("degrades ESC M (two-byte reverse index) to a line feed", () => {
-    expect(dec(linearizeSpoolPage(enc("a\x1bMb")))).toBe("a\nb");
+  it("drops ESC M (批 8: same phantom-line source as CUU)", () => {
+    expect(dec(linearizeSpoolPage(enc("a\x1bMb")))).toBe("ab");
   });
 });
 
@@ -84,5 +84,45 @@ describe("linearizeSpoolPage — end-to-end band elimination (real buffer)", () 
     const lin = await replayBand(s, true);
     expect(raw).toBeGreaterThanOrEqual(20); // ~a full viewport of blank
     expect(lin).toBeLessThan(5);
+  });
+});
+
+describe("alignSpoolPage — byte-offset page boundary trimming (批 8)", () => {
+  it("drops an orphan UTF-8 continuation head (char cut at `from`)", () => {
+    const full = enc("中文字");
+    const cut = full.subarray(1); // first byte of 中 dropped
+    const out = dec(alignSpoolPage(cut));
+    expect(out).toBe("文字");
+  });
+  it("drops a trailing incomplete UTF-8 char", () => {
+    const full = enc("中文");
+    const cut = full.subarray(0, full.length - 1); // last byte of 文 cut
+    const out = dec(alignSpoolPage(cut));
+    expect(out).toBe("中");
+  });
+  it("keeps a complete trailing multibyte char intact", () => {
+    const raw = "中文";
+    expect(dec(alignSpoolPage(enc(raw)))).toBe(raw);
+  });
+  it("swallows an orphan CSI fragment at the head (params without ESC)", () => {
+    const full = enc("x[31;42mtext");
+    const cut = full.subarray(5); // lands inside "31;42m"
+    const out = dec(alignSpoolPage(cut));
+    expect(out).toBe("text"); // orphan "31;42m" swallowed
+  });
+  it("keeps plain digits at the head (not a CSI fragment)", () => {
+    const raw = "123 abc";
+    expect(dec(alignSpoolPage(enc(raw)))).toBe(raw);
+  });
+  it("combined: align then linearize a TUI redraw round injects no blank lines", () => {
+    // 30 redraw rounds: CUU up + CR + rewrite - the old LF degradation
+    // injected 30 phantom lines; drops collapse them.
+    const round = "line text\r\x1b[1A\roverwritten\n";
+    const page = round.repeat(30);
+    const u8 = linearizeSpoolPage(alignSpoolPage(enc(page)));
+    const out = dec(u8);
+    expect(out).not.toContain("\x1b[1A");
+    const lfCount = out.split("\n").length - 1;
+    expect(lfCount).toBe(30); // one per round - no phantom move lines
   });
 });
