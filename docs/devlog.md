@@ -3653,3 +3653,14 @@ D-4 版本戳生效（嵌入全形 tag 版本）→ 阶段内 preview 迭代链�
 「什么都没发生」（本次误报来源），候选：NSIS 静默尾 Exec 拉起（注意
 提权边界）；②staging 文件名用旧版本号（update.rs 已知瑕疵）；
 ③PATH 写为 REG_SZ，协议期望 REG_EXPAND_SZ（仅含 %vars% 时才有实害）。
+
+## 2026-09-22 v2.1.13 收口（用户宣布，DEVELOP_WIKI §1.1 清单执行）
+
+十二批次全部交付手测 PASS；v2.1.13-preview.1 在架；自更新 E2E 实测通过。
+收尾清单逐项：①develop 已推送 + CI 全绿 ✓；②preview 已发布 ✓；③todo
+版本条目全部 [x]（变更页经用户 2026-09-22 确认勾选；自更新体验三项经
+用户裁决**显式转期 v2.1.14**——静默装后自动拉起 / staging 文件名 /
+PATH REG_EXPAND_SZ）✓；④devlog 到位 ✓；⑤plans 归档
+docs/archive/2.1.13-dev-plans/ ✓（README 状态表刷新为终态，WIKI 两处
+路径引用同步）。「工作记录」维持待解决池。final 发布不在收尾清单内，
+时机待用户裁决；下一阶段 2.1.14 待开题（版本 bump 随开题走）。
