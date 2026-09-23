@@ -376,6 +376,8 @@ export const enUS: Record<string, string> = {
   "ccswitch.edit.compactThreshold": "Compact threshold",
   "ccswitch.edit.compactHint": "Auto-compacts the conversation once context reaches this many tokens (leaving headroom under the window). Empty = disabled (new-row prefill 800k/900k is the settled D-7 default).",
   "ccswitch.edit.presetNoMapping": "Template mode saves the template baseline — model mappings are not saved. Configure them on the row advanced tab after saving, or switch to custom mode.",
+  "menubar.closeWorkspace": "Close workspace",
+  "palette.cmd.closeWorkspace": "Close current workspace (back to picker)",
   "ccswitch.edit.templateFallback": "Template list unavailable (old image or restricted network) — showing the built-in fallback list; saving still works.",
   "ccswitch.edit.unsavedConfirm": "Discard unsaved changes and go back?",
   "ccswitch.edit.apiFormat": "Upstream format",

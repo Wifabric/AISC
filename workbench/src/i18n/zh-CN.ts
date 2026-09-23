@@ -376,6 +376,8 @@ export const zhCN = {
   "ccswitch.edit.compactThreshold": "压缩阈值",
   "ccswitch.edit.compactHint": "上下文达到该 token 数时自动压缩一次历史对话（为窗口上限留余量）。清空 = 不启用（新建预填 800k/900k 为 D-7 既定默认）。",
   "ccswitch.edit.presetNoMapping": "模板模式按模板基线保存，不保存模型映射——保存后在编辑页展开高级层配置，或切换「自定义」模式。",
+  "menubar.closeWorkspace": "关闭工作区",
+  "palette.cmd.closeWorkspace": "关闭当前工作区（回到选择页）",
   "ccswitch.edit.templateFallback": "模板清单暂不可用（旧镜像或网络受限），当前显示内置兜底清单；保存仍可用。",
   "ccswitch.edit.unsavedConfirm": "有未保存的修改，确定放弃并返回？",
   "ccswitch.edit.apiFormat": "上游格式",
