@@ -100,7 +100,7 @@ function toggleOneM(key: string): void {
     <button class="link" @click="advancedOpen = !advancedOpen">
       {{ advancedOpen ? t("ccswitch.mapping.advHide") : t("ccswitch.mapping.advShow") }}
     </button>
-    <div v-if="advancedOpen">
+    <div v-if="advancedOpen" class="adv">
       <div v-for="slot in advRoles" :key="slot.key" class="row">
         <span class="role">{{ slot.label }}</span>
         <input
@@ -166,9 +166,12 @@ function toggleOneM(key: string): void {
 </template>
 
 <style scoped>
-.mapping { display: flex; flex-direction: column; gap: 8px; }
+.mapping { display: flex; flex-direction: column; gap: var(--space-2); }
+/* b3: the advanced block used to be a bare wrapper div that swallowed the
+ * flex gap — MODEL/SUBAGENT rows rendered border-to-border (user report). */
+.adv { display: flex; flex-direction: column; gap: var(--space-2); }
 .hint { font-size: var(--font-xs); color: var(--text-faint); margin: 0; }
-.row { display: flex; align-items: center; gap: 8px; }
+.row { display: flex; align-items: center; gap: var(--space-2); }
 .role { width: 110px; font-size: var(--font-sm); color: var(--text-2); }
 input {
   flex: 1; min-width: 120px;
@@ -192,10 +195,10 @@ input {
  * everything in the grid and let tracks own the geometry. */
 .cat-row input { box-sizing: border-box; min-width: 0; }
 input[type="number"] { width: 100%; }
-.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px; gap: 8px;
+.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px; gap: var(--space-2);
   align-items: center; font-size: var(--font-xs); color: var(--text-faint); }
 .cat-row { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px;
-  gap: 8px; align-items: stretch; }
+  gap: var(--space-2); align-items: stretch; }
 /* D-7: the level chips — small toggle buttons, wrap inside their track. */
 .levels { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
 .levels .lv {

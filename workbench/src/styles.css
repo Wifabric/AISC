@@ -41,6 +41,8 @@
   --radius-lg: 14px;
   --radius-xl: 20px;
   --radius-full: 50%;
+  /* b3: pill (fully-rounded capsule) — --radius-full(50%) is for squares. */
+  --radius-pill: 999px;
 
   --control-h-sm: 26px;
   --control-h-md: 32px;

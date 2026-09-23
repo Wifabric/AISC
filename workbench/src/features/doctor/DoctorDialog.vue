@@ -14,12 +14,21 @@ import { useI18n } from "vue-i18n";
 import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useDoctorStore } from "../../stores/doctor";
+import { useSettingsStore } from "../../stores/settings";
 import { useDialogA11y } from "../../composables/useDialogA11y";
 import type { DoctorStatus, LogEvent } from "../../types";
 
 const { t } = useI18n();
 const store = useDoctorStore();
+const settings = useSettingsStore();
 const panel = ref<HTMLElement | null>(null);
+// b3: re-apply the font scale ourselves after Teleporting; the max-height
+// divides by the zoom so the RENDERED panel always fits 84vh of the screen.
+const uiScale = computed(() => settings.doc?.ui.font_scale ?? 1);
+const panelStyle = computed(() => ({
+  zoom: String(uiScale.value),
+  maxHeight: `calc(84vh / ${uiScale.value})`,
+}));
 
 const STATUS_LABEL_KEY: Record<DoctorStatus, string> = {
   pass: "doctor.status.pass",
@@ -93,8 +102,13 @@ function onOverlayDown(e: MouseEvent) {
 </script>
 
 <template>
+  <!-- b3: Teleport out of App's ui.font_scale zoom scope (same treatment as
+       FloatingPane/palette/ToastHost) — the zoom used to multiply the panel's
+       max-height:84vh past the physical screen (font scale >=1.20), leaving no
+       scrollbar and the footer unreachable. -->
+  <Teleport to="body">
   <div class="overlay" @mousedown="onOverlayDown">
-    <section ref="panel" class="panel" role="dialog" aria-modal="true" :aria-label="t('doctor.title')" tabindex="-1">
+    <section ref="panel" class="panel" :style="panelStyle" role="dialog" aria-modal="true" :aria-label="t('doctor.title')" tabindex="-1">
       <header class="head">
         <h2>{{ t("doctor.title") }}</h2>
       </header>
@@ -173,6 +187,7 @@ function onOverlayDown(e: MouseEvent) {
       </footer>
     </section>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -181,7 +196,7 @@ function onOverlayDown(e: MouseEvent) {
   display: flex; align-items: center; justify-content: center; z-index: var(--z-dialog);
 }
 .panel {
-  width: 620px; max-width: 92vw; max-height: 84vh; overflow: auto;
+  width: 620px; max-width: 92vw; overflow: hidden;
   background: var(--surface); color: var(--text-2); border: 1px solid var(--border-2); border-radius: var(--radius-lg);
   outline: none; display: flex; flex-direction: column;
 }
