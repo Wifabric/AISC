@@ -183,6 +183,12 @@ def stage_bundle(root: Path, output_dir: Path, *, verify_version: bool = True) -
         if not (root / fn).is_file(): sys.exit(f"ERROR: required file missing: {fn}")
         _stage_file(root / fn, br, fn)
     _stage_file(root / "config" / "versions.env", br, "config/versions.env")
+    # b6 (F11): the offline cc-switch manifest rides the bundle — installed
+    # users can `aisc build --cc-switch-manifest <INSTDIR>/aisc-bundle/config/
+    # cc-switch-manifest.json` to keep the pinned build with zero network.
+    if (root / "config" / "cc-switch-manifest.json").is_file():
+        _stage_file(root / "config" / "cc-switch-manifest.json",
+                    br, "config/cc-switch-manifest.json")
     # config.json and profiles.json are optional (tests may not have them)
     if (root / "config" / "config.json").is_file():
         _stage_file(root / "config" / "config.json", br, "config/config.json")

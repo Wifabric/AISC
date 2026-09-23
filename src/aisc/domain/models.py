@@ -327,6 +327,9 @@ class BuildPlan:
     # factory file carries no pin.
     build_arg_claude_code_version: str = "latest"
     build_arg_codex_version: str = "latest"
+    # b6 (D-18③): GitHub mirror/proxy prefix from versions.env GH_PROXY —
+    # injected only when non-empty (hand-edited = explicit consent).
+    build_arg_gh_proxy: str = ""
     # T8a (2.1.9 D-9): fallback registry prefixes for the host-side pre-pull
     # chain (versions.env NODE_IMAGE_MIRRORS). Each entry joins the bare
     # node_image name; the first candidate is always build_arg_node_image.
@@ -358,6 +361,8 @@ class BuildPlan:
             "--build-arg", f"CLAUDE_CODE_VERSION={self.build_arg_claude_code_version}",
             "--build-arg", f"CODEX_VERSION={self.build_arg_codex_version}",
         ])
+        if self.build_arg_gh_proxy:
+            argv.extend(["--build-arg", f"GH_PROXY={self.build_arg_gh_proxy}"])
         # docker-resource-lifecycle A2: provenance labels injected by the
         # unified build argv (org.aisc.*; 02 §1.2 — never only host logs).
         import aisc as _aisc

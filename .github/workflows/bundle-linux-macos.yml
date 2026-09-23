@@ -69,6 +69,9 @@ jobs:
       - name: Stage AISC CLI bundle (aisc-bundle for root discovery)
         shell: bash
         run: |
+          # b6 (D-16 C-混合): companion tgz are NOT in git — stage them here
+          # so the NSIS/deb/dmg bundles carry the full offline preset set.
+          bash scripts/stage-npm.sh --yazi
           python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
 
       - name: Set up Node
