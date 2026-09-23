@@ -318,12 +318,13 @@ export const ccSwitchDelete = (workspace: string, runtimeId: string, agent: stri
  * `available=false` (with the upstream message) instead of an error. */
 export const ccSwitchFetchModels = (
   workspace: string, runtimeId: string, agent: string,
-  providerId: string | null, apiKey?: string, baseUrl?: string,
+  providerId: string | null, apiKey?: string, baseUrl?: string, templateId?: string,
 ) =>
   invoke<FetchModelsResult>("cc_switch_fetch_models", {
     workspace, runtimeId, agent,
     providerId: providerId || null,
     apiKey: apiKey || null,
+    templateId: templateId || null,
     // 手测 r2#3: add-mode inline probe — the FORM's endpoint rides stdin
     // when no provider row exists yet.
     baseUrl: baseUrl || null,

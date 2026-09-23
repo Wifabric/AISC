@@ -1986,3 +1986,92 @@ class ProviderParityTests(AdapterTestCase):
             [{"model": "new-a", "display_name": "A", "context_window": 128000},
              {"model": "new-b", "display_name": "", "context_window": 128000}],
         )
+
+
+class B2AddFidelityTests(AdapterTestCase):
+    """b2 (v2.1.14): add-page fidelity — the inline probe joins the template's
+    declared OpenAI-side base, the snake_case catalog survives the first
+    save, and claude preset rows get the same preset-base candidate codex
+    rows already had."""
+
+    def test_inline_probe_template_base_joins_candidates(self):
+        # zhipu: the add form prefills the anthropic endpoint while the real
+        # model list lives on the template's OpenAI side (/api/paas/v4).
+        from unittest import mock
+
+        def fake_fetch(base, key, timeout=15.0, bearer_only=False, log_path=""):
+            if base == "https://open.bigmodel.cn/api/paas/v4":
+                return ["glm-5.3", "glm-5.2"]
+            return None
+
+        with mock.patch.object(A, "_openai_compatible_models", side_effect=fake_fetch):
+            result = A._fetch_models_inline(
+                "codex", "https://open.bigmodel.cn/api/anthropic", "sk-x", "zhipu")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["models"], ["glm-5.3", "glm-5.2"])
+        # Without the template hint the same probe fails closed.
+        with mock.patch.object(A, "_openai_compatible_models", side_effect=fake_fetch):
+            result = A._fetch_models_inline(
+                "codex", "https://open.bigmodel.cn/api/anthropic", "sk-x")
+        self.assertFalse(result["available"])
+
+    def test_inline_probe_template_id_rides_stdin(self):
+        # The request document carries template_id; main() threads it into
+        # the inline probe (b2 wire change).
+        from unittest import mock
+
+        seen: list[str] = []
+        with mock.patch.object(
+            A, "_fetch_models_inline",
+            side_effect=lambda agent, base, key, template_id="": (
+                seen.append(template_id)
+                or {"available": True, "models": ["m"], "message": ""}),
+        ):
+            buf = io.StringIO()
+            with redirect_stdout(buf), mock.patch.object(
+                sys, "stdin",
+                io.StringIO(json.dumps({"base_url": "https://f.example",
+                                        "api_key": "k",
+                                        "template_id": "zhipu"})),
+            ):
+                code = A.main(["fetch-models", "--agent", "codex"])
+        self.assertEqual(code, 0)
+        envelope = json.loads(buf.getvalue().strip().splitlines()[-1])
+        self.assertTrue(envelope["ok"])
+        self.assertEqual(seen, ["zhipu"])
+
+    def test_claude_preset_row_uses_declared_openai_base(self):
+        # b2: symmetric with the codex branch — the env (anthropic) base is
+        # dead but the preset's declared OpenAI-side base serves the list.
+        seed_provider(self.dir, "deepseek", {
+            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+            "ANTHROPIC_AUTH_TOKEN": "sk-live-abcdef123456",
+        })
+        self.cli.stub_stdout("Fetching…\nError: HTTP 401\n")  # CLI fallback dead
+
+        def fake_http(url, headers, timeout):
+            if url == "https://api.deepseek.com/v1/models":
+                return 200, {"data": [{"id": "deepseek-v4-pro[1m]"}]}
+            return 404, None
+
+        orig_http = A._http_get_json
+        A._http_get_json = fake_http
+        try:
+            result = A.op_fetch_models("claude", "deepseek")
+        finally:
+            A._http_get_json = orig_http
+        self.assertTrue(result["available"])
+        self.assertEqual(result["models"], ["deepseek-v4-pro[1m]"])
+
+    def test_custom_codex_add_accepts_snake_model_catalog(self):
+        # b2 (H2): the UI's add request sends snake_case model_catalog; the
+        # add path used to read only modelCatalog and silently dropped it.
+        A.op_add("codex", {"mode": "custom", "id": "mine", "name": "Mine",
+                           "base_url": "https://api.mine",
+                           "model": "glm-5.3",
+                           "model_catalog": {"models": [
+                               {"model": "glm-5.3", "contextWindow": 200000}]}})
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        self.assertIn("modelCatalog", sent)
+        self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")
+        self.assertIn('model = "glm-5.3"', sent["config"])
