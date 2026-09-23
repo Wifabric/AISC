@@ -47,7 +47,7 @@ async function mounted() {
   store.status = "done";
   store.report = report;
   store.logs = LOGS as never;
-  const tab = mount(DoctorDialog, { global: { plugins: [i18n] } });
+  const tab = mount(DoctorDialog, { global: { plugins: [i18n], stubs: { teleport: true } } });
   await flushPromises();
   return tab;
 }
@@ -83,7 +83,7 @@ describe("DoctorDialog recent-log section (P3)", () => {
     store.status = "done";
     store.report = report;
     store.logs = [];
-    const tab = mount(DoctorDialog, { global: { plugins: [i18n] } });
+    const tab = mount(DoctorDialog, { global: { plugins: [i18n], stubs: { teleport: true } } });
     await flushPromises();
     expect(tab.find("details.logs").exists()).toBe(false);
     tab.unmount();
