@@ -18,8 +18,7 @@
 | 3 | UI 对齐四项（高级槽位间距 / 历史页徽标 / 关于弹窗超高 / picker 窄窗挤压〔D-12 收编 todo:150〕） | 2.1.14-b3-ui-align-fixes | 计划待验收 |
 | 4 | 终端键盘域（Ctrl+/ 直发修复 + 分屏导航 Ctrl+Shift+hjkl〔D-10 收编 todo:81〕） | 2.1.14-b4-ctrl-slash-key | 计划待验收 |
 | 5 | 顶栏「关闭工作区」回 picker（复用 closeWorkspace 链，三入口） | 2.1.14-b5-close-workspace | 计划待验收 |
-| 6 | 网络保底构建（D-11 升级：npm 四包预置 + 全触点离线化 + 降级链设计；专项调研进行中） | 2.1.14-b6-build-network | 计划待验收 |
-| — | 「工作记录」需求问询（不占批次，用户裁决后排期） | — | 问询材料已备 |
+| 6 | 网络保底构建（D-11 升级 + D-15 解耦铁律：npm 四包预置 + 全触点离线化 + 降级链设计；专项调研进行中） | 2.1.14-b6-build-network | 计划待验收 |
 
 统一手测清单：[HANDTEST.md](HANDTEST.md)（批 1-6，按 §1.3 四要素书写；核验员
 证伪项均已回灌预期，见各批「异常判定」）。
@@ -35,14 +34,14 @@
 | [ctrl-slash-key.md](ctrl-slash-key.md) | 批 4：终端键盘域（Ctrl+/ + 分屏导航） | 计划待验收 |
 | [close-workspace.md](close-workspace.md) | 批 5：关闭工作区回 picker | 计划待验收 |
 | [build-network.md](build-network.md) | 批 6：网络保底构建（反馈 #1 履约 + D-11 升级） | 计划待验收 |
-| [worklog-questionnaire.md](worklog-questionnaire.md) | 「工作记录」六组歧义问询材料 | 待用户作答 |
 | [HANDTEST.md](HANDTEST.md) | 批 1-6 统一手测清单 | 随批滚动 |
 
 ## 阶段范围
 
-`docs/todo.md`「v2.1.14-target」：8 条既有排期项（2.1.13 转期三项 + provider
-两条 + UI 两条 + 工作记录概念）+ 4 条反馈站项（2026-09-22 反馈：构建网络 /
-Ctrl+/ / 徽标对齐 / 关闭工作区，按 D-1 用户指示纳入）。
+`docs/todo.md`「v2.1.14-target」：既有排期项（2.1.13 转期三项 + provider
+两条 + UI 两条）+ 4 条反馈站项（2026-09-22 反馈：构建网络 / Ctrl+/ /
+徽标对齐 / 关闭工作区，按 D-1 用户指示纳入）+ 悬账收编项（D-12：picker
+窄窗、分屏导航、docker 破坏性边界裁决）。「工作记录」概念已撤销（D-14）。
 
 ## 悬账清单（2026-09-23 用户裁定全部收编，D-12）
 

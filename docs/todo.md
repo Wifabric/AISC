@@ -190,7 +190,7 @@
 - [x] cli run在存在容器的情况下禁止使用
 - [x] workbench 内 docker 容器/镜像的简单查询与管理（镜像删除、容器删除/停止等常用操作；2026-09-20 手测反馈，破坏性操作边界待立计划裁决）
 
-# v2.1.14-target（2026-09-23 开题：范围 = 8 条转期/预置 + 反馈站 4 条〔用户指示纳入，D-1〕；计划 docs/plans/2.1.14-dev-plans/；待裁项见 decisions.md U-1~U-7）
+# v2.1.14-target（2026-09-23 开题：范围 = 转期/预置项 + 反馈站 4 条〔D-1〕+ 悬账收编〔D-12〕；计划 docs/plans/2.1.14-dev-plans/；「工作记录」概念已撤销〔D-14〕；开放项 U-4/U-6）
 
 **发布与更新（批 1）**
 - [ ] 开池版本 bump 2.1.13 → 2.1.14 + 自更新三项：静默升级完成后自动拉起新版（update.rs 加 /R 激活 installer.nsi 既有 RunAsUser 机制；接受升级链全程后拉起，文案/发布说明写明）／ staging 文件名改目标版本（appDownloadUpdate 穿透 targetVersion，顺带清理 staging 旧 exe）／ NSIS PATH 写 REG_EXPAND_SZ（PathWrite 恒 ExpandStr + 存量自愈写 + CI smoke 补首装新建值断言）
@@ -209,7 +209,5 @@
 - [ ] docker 管理破坏性操作边界裁决立账（2.1.13 尾巴，D-12 收编；D-13 代定草案：清单制 + owned-only + 三重不变量 + 永不触碰 aisc 外资产，随验收定稿）
 **网络保底构建（批 6，反馈 #1 履约 + D-11 升级）**
 - [ ] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「无论什么网络条件保底完成构建」专项调研进行中，结论落 build-network.md 后实施）
-**需求澄清（不占批次，裁决后排期）**
-- [ ] 历史会话重构·「工作记录」概念：六组歧义问询材料已备（worklog-questionnaire.md，粒度 A 先裁——A2 复活批 3 原案规模 L / A1 收缩为账本可视化 M）；裁决前不动 worklog.py 数据层与 resume 冻结契约，严禁 assumed 默认推进
 
 # 待解决
