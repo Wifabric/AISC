@@ -1260,7 +1260,7 @@ function onTreeKeydown(e: KeyboardEvent) {
             <!-- 批 2 聊天式 UI: read-only viewer entry (hover chip; resume
                  stays the row's primary click action). -->
             <span
-              class="cv-view-chip"
+              class="cv-view-chip conversation-pill"
               role="button"
               tabindex="-1"
               :title="t('history.viewTooltip')"
@@ -1269,11 +1269,11 @@ function onTreeKeydown(e: KeyboardEvent) {
             <!-- FIX-1 (2.1.10): agent glyphs with distinct color families —
                  the old plain-text badge read as noise at a glance. -->
             <span
-              class="explorer-badge agent-glyph"
+              class="explorer-badge agent-glyph conversation-pill"
               :class="r.c.agent === 'claude' ? 'agent-claude' : 'agent-codex'"
               :title="r.c.agent"
               aria-hidden="true"
-            >{{ r.c.agent === "claude" ? "✳" : "◈" }} {{ r.c.agent }}</span>
+            ><span class="glyph">{{ r.c.agent === "claude" ? "✳" : "◈" }}</span>{{ r.c.agent }}</span>
             <div
               v-if="explorer.resumeErrors[r.c.conversation_id]"
               class="conversation-resume-error"
@@ -1468,7 +1468,7 @@ function onTreeKeydown(e: KeyboardEvent) {
 .explorer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: 24px;
   padding: 0 var(--space-2);
   margin: 0 var(--space-1);
@@ -1551,10 +1551,13 @@ function onTreeKeydown(e: KeyboardEvent) {
   background: var(--accent-soft);
 }
 /* FIX-1: distinct color + glyph per agent (claude: warm ✳ / codex: cool ◈). */
-.agent-glyph { font-weight: 700; border-radius: var(--radius-sm); padding: 0 4px; }
+.agent-glyph { font-weight: 700; border: 1px solid transparent; }
 .agent-claude { color: var(--warn, #e8862d); background: color-mix(in srgb, var(--warn, #e8862d) 12%, transparent); }
 .agent-codex { color: var(--info, #4c9ce8); background: color-mix(in srgb, var(--info, #4c9ce8) 12%, transparent); }
 .explorer-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
   font-size: var(--font-xs);
   color: var(--text-muted);
   max-width: 120px;
@@ -1581,16 +1584,30 @@ function onTreeKeydown(e: KeyboardEvent) {
   color: var(--text-muted);
 }
 /* 批 2 聊天式 UI: hover chip opening the read-only transcript viewer. */
+/* b3: shared pill geometry for the hover chip AND the agent glyph — the
+ * two were ~4px apart in height with mismatched radii (user report
+ * 2026-09-22: 徽标/按钮参差不齐). The transparent border keeps the glyph
+ * box exactly as tall as the bordered chip. */
+.conversation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-xs);
+  line-height: 1;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+/* The glyph char gets its own box — fallback-font metrics (Segoe UI Symbol
+ * on Windows) otherwise inflate the line box and lift the whole badge. */
+.agent-glyph .glyph { line-height: 1; font-size: var(--font-sm); }
 .cv-view-chip {
   opacity: 0;
   transition: opacity var(--duration-fast) ease;
   border: 1px solid var(--border, color-mix(in srgb, currentColor 18%, transparent));
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: var(--font-xs);
   color: var(--text-2);
   cursor: pointer;
-  white-space: nowrap;
 }
 .conversation-row:hover .cv-view-chip,
 .cv-view-chip:focus-visible {
