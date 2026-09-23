@@ -13,12 +13,12 @@
 
 | 批 | 内容 | 分支 | 终态 |
 | --- | --- | --- | --- |
-| 1 | 开池版本 bump + 自更新三项（/R 静默拉起 / staging 目标版本命名 / PATH REG_EXPAND_SZ） | 2.1.14-b1-selfupdate-polish | 计划待验收 |
-| 2 | provider 新建保真合批（保存漂移 + 模型拉取，含容器侧端点数据修复） | 2.1.14-b2-provider-add-fidelity | 计划待验收 |
-| 3 | UI 对齐四项（高级槽位间距 / 历史页徽标 / 关于弹窗超高 / picker 窄窗挤压〔D-12 收编 todo:150〕） | 2.1.14-b3-ui-align-fixes | 计划待验收 |
-| 4 | 终端键盘域（Ctrl+/ 直发修复 + 分屏导航 Ctrl+Shift+hjkl〔D-10 收编 todo:81〕） | 2.1.14-b4-ctrl-slash-key | 计划待验收 |
-| 5 | 顶栏「关闭工作区」回 picker（复用 closeWorkspace 链，三入口） | 2.1.14-b5-close-workspace | 计划待验收 |
-| 6 | 网络保底构建（D-11 升级 + D-15 解耦铁律：npm 四包预置 + 全触点离线化 + 降级链设计；专项调研进行中） | 2.1.14-b6-build-network | 计划待验收 |
+| 1 | 开池版本 bump + 自更新三项（/R 静默拉起 / staging 目标版本命名 / PATH REG_EXPAND_SZ） | 2.1.14-b1-selfupdate-polish | 已实施待手测 |
+| 2 | provider 新建保真合批（保存漂移 + 模型拉取，含容器侧端点数据修复） | 2.1.14-b2-provider-add-fidelity | 已实施待手测 |
+| 3 | UI 对齐四项（高级槽位间距 / 历史页徽标 / 关于弹窗超高 / picker 窄窗挤压〔D-12 收编 todo:150〕） | 2.1.14-b3-ui-align-fixes | 已实施待手测 |
+| 4 | 终端键盘域（Ctrl+/ 直发修复 + 分屏导航 Ctrl+Shift+hjkl〔D-10 收编 todo:81〕） | 2.1.14-b4-ctrl-slash-key | 已实施待手测 |
+| 5 | 顶栏「关闭工作区」回 picker（复用 closeWorkspace 链，三入口） | 2.1.14-b5-close-workspace | 已实施待手测 |
+| 6 | 网络保底构建（D-11 升级 + D-15 解耦铁律：npm 四包预置 + 全触点离线化 + 降级链设计；D-16 C-混合 + F1-F11 已实施） | 2.1.14-b6-build-network | 已实施待手测 |
 
 统一手测清单：[HANDTEST.md](HANDTEST.md)（批 1-6，按 §1.3 四要素书写；核验员
 证伪项均已回灌预期，见各批「异常判定」）。
@@ -28,12 +28,12 @@
 | 文档 | 条目 | 状态 |
 | --- | --- | --- |
 | [decisions.md](decisions.md) | 阶段裁决日志（D-1/D-10~D-12 用户裁定；D-2~D-9/D-13 立项规划裁定；开放项 U-4/U-6/工作记录歧义） | 持续更新 |
-| [selfupdate-polish.md](selfupdate-polish.md) | 批 1：自更新三项 | 计划待验收 |
-| [provider-add-fidelity.md](provider-add-fidelity.md) | 批 2：provider 新建保真（保存漂移 + 模型拉取合批） | 计划待验收 |
-| [ui-align-fixes.md](ui-align-fixes.md) | 批 3：UI 对齐四项（含 picker 窄窗） | 计划待验收 |
-| [ctrl-slash-key.md](ctrl-slash-key.md) | 批 4：终端键盘域（Ctrl+/ + 分屏导航） | 计划待验收 |
-| [close-workspace.md](close-workspace.md) | 批 5：关闭工作区回 picker | 计划待验收 |
-| [build-network.md](build-network.md) | 批 6：网络保底构建（反馈 #1 履约 + D-11 升级） | 计划待验收 |
+| [selfupdate-polish.md](selfupdate-polish.md) | 批 1：自更新三项 | 已实施待手测 |
+| [provider-add-fidelity.md](provider-add-fidelity.md) | 批 2：provider 新建保真（保存漂移 + 模型拉取合批） | 已实施待手测 |
+| [ui-align-fixes.md](ui-align-fixes.md) | 批 3：UI 对齐四项（含 picker 窄窗） | 已实施待手测 |
+| [ctrl-slash-key.md](ctrl-slash-key.md) | 批 4：终端键盘域（Ctrl+/ + 分屏导航） | 已实施待手测 |
+| [close-workspace.md](close-workspace.md) | 批 5：关闭工作区回 picker | 已实施待手测 |
+| [build-network.md](build-network.md) | 批 6：网络保底构建（反馈 #1 履约 + D-11 升级） | 已实施待手测 |
 | [HANDTEST.md](HANDTEST.md) | 批 1-6 统一手测清单 | 随批滚动 |
 
 ## 阶段范围

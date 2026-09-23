@@ -3709,3 +3709,18 @@ push 必拒，落地形态转 U-8（推荐 C-混合：yazi+主包入 git +7.6MiB
 个 tracked 文件致 statusLine 缺件、checksums 无消费方、stage 拉 latest
 漂移、镜像链 5/4/3 漂移）。修复层 F1-F11 已入 build-network.md，无争议
 即做；build-network.md 全面升级（触点矩阵/方案分层/残余清单）。
+
+## 2026-09-23 深夜 六批全部实施完成——只剩手测（T1-T6），停机
+
+用户终裁 U-8=C-混合 / U-9=① / 三小项确认（D-16~D-18）+ 开工令（D-19）。
+六批顺序实施，每批分支→本地门禁→并回 develop→推送：
+b1 自更新三项（b9c6cab）、b2 provider 新建保真（ae26e22）、b3 UI 对齐
+四项（3c35bce+fixup）、b4 终端键盘域（ctrl+/ 直发 0x1F + Ctrl+Alt 分屏
+导航）、b5 关闭工作区三入口、b6 网络保底构建（23ee79b：预置层 npm 主包
++yazi 入库、CI 伴生包随 bundle、Dockerfile glob/超时/GH_MIRRORS 统一、
+.dockerignore 反例外修复 226 文件剥离、失败诊断归因、manifest 随 bundle、
+GH_PROXY 正式通道）。门禁：pytest 1345 全绿、cargo --lib 332、vitest
+515-9（panelLayout 9 例为 develop 既有失败）、vue-tsc ✓。b6 遗留：
+vendor/checksums.txt 未再生新预置条目（manifest 已登记；校验只对已列
+文件，无 CI 风险；随 T6 手测后补）。停止点 = HANDTEST T1-T6 全部需要
+用户实机（T1 需 v2.1.14-preview.1 或临时包）。按 D-19 指示关机。
