@@ -290,7 +290,10 @@ class S8gUpstreamFormatTests(unittest.TestCase):
         # V3: one gateway domain for BOTH agents (claude speaks Anthropic
         # there; codex S9a-translates to the same).
         self.assertEqual(v3["model"], "gpt-5.6-terra")
-        self.assertEqual(v3["base_url"], "https://cc.codesome.ai")
+        # b2 (v2.1.14): the native (Responses) base carries /v1 — the
+        # FALLBACK list and the comment above always said so; the manifest
+        # had drifted to the bare root (silent add-page prefill rewrite).
+        self.assertEqual(v3["base_url"], "https://cc.codesome.ai/v1")
         v3_claude = H._settings_config("claude", v3)
         self.assertEqual(v3_claude["env"]["ANTHROPIC_BASE_URL"], "https://cc.codesome.ai")
         v3_codex = H._settings_config("codex", v3)["config"]
