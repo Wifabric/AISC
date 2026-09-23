@@ -208,6 +208,6 @@
 - [ ] picker 窄窗持续挤压（2.1.11 遗留，D-12 收编批 3）：App.vue width-clamp 把 <800px 窗拉进 zoom——picker 场景脱离 width-clamp 或改响应式
 - [ ] docker 管理破坏性操作边界裁决立账（2.1.13 尾巴，D-12 收编；D-13 代定草案：清单制 + owned-only + 三重不变量 + 永不触碰 aisc 外资产，随验收定稿）
 **网络保底构建（批 6，反馈 #1 履约 + D-11 升级）**
-- [ ] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「无论什么网络条件保底完成构建」专项调研进行中，结论落 build-network.md 后实施）
+- [ ] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「保底完成构建」专项调研已完成（12 触点矩阵+修复层 F1-F11），**发现硬墙**：npm 伴生包 codex tgz 123.7MiB 超 GitHub 单文件 100MiB 上限，「全进仓库」push 必拒——落地形态待 U-8 终裁（推荐 C-混合 +7.6MiB）；保底地板语义待 U-9 终裁（推荐 GitHub 全阻+国内源可达））
 
 # 待解决

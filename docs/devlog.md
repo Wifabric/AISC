@@ -3695,3 +3695,17 @@ U-1~U-7 待裁 + 七份计划文档 + HANDTEST 四要素）；todo v2.1.14-targe
 （初步核实 --network 为 run 期旗标、build 不消费，与现状一致）；③U-5
 回访关闭（模板+高级模式、双侧偶发 → H2 权重升为最可能）。反馈站 4 条
 已按 README 工作流回执推送（fe03cbc）。
+
+## 2026-09-23 晚 保底构建专项调研完成：硬墙发现与 U-8/U-9 提请
+
+16 agent 零阵亡（5 研究员 + 10 双镜头核验 + 批评家，1.09M token）。三关键：
+①npm 四包实测 231.3MB（立项时 ~60MB 估计错误，沿用过时注释）；②codex
+伴生包 tgz 123.7MiB > GitHub 单文件 100MiB 硬限——D-11「全进仓库」字面
+push 必拒，落地形态转 U-8（推荐 C-混合：yazi+主包入 git +7.6MiB，伴生包
+231MB 随 NSIS bundle + stage 引导）；③D-15 字面「断网保底」结构性不可达
+（apt×2 无预置 + 新机基底拉取），地板语义转 U-9（推荐弱化为 GitHub 全阻
++国内源可达）。另发现 12 触点矩阵（npm 离线分支早已存在只差文件、yazi
+唯一无预置口、cc-switch 降级分支版本漂移漏配、.dockerignore 静默剥 226
+个 tracked 文件致 statusLine 缺件、checksums 无消费方、stage 拉 latest
+漂移、镜像链 5/4/3 漂移）。修复层 F1-F11 已入 build-network.md，无争议
+即做；build-network.md 全面升级（触点矩阵/方案分层/残余清单）。

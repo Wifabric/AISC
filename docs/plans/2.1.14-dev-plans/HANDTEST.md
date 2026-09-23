@@ -161,33 +161,48 @@
 **异常判定**：关闭后 `docker ps -a` 有该 runtime 残留容器；picker 字段
 核对任一不符；X 退出路径行为改变。
 
-## T6 批 6：构建网络
+## T6 批 6：网络保底构建（升级版）
 
-**前置**：宿主开 TUN 代理的机器（或用防火墙/clumsy 对 github 域限速丢包
-模拟）；`$ai` 指向装好批 6 的 CLI；`$ev = events.jsonl`。
+**前置**：dev 或安装机均可；`$ai` 指向装好批 6 的 CLI；`$ev = events.jsonl`；
+一台可断外网的测试环境（或防火墙/clumsy 模拟）。按 U-8 终裁后的预置形态
+准备 downloads/（C-混合：yazi zip + npm 主包已入 git，伴生包在 bundle/本地
+stage 补齐——本组 T6-2 前先跑 `bash scripts/stage-npm.sh`（不带 --latest，
+按 versions.env 钉版拉取））。
 
-1. **失败诊断（模拟无预置）**：临时移走 `container/downloads/` 下 yazi
-   文件（若有）→ `& $ai build --tag ht141:1 --events 2>$ev`。
-   理想：退出码 4；`$ev` 末条 `type=build.failed`、error_code=
-   `AISC_ERR_BUILD_FAILED`，新增 `diagnostics` 字段形如
-   `{"network":"container-cannot-reach-github","matched":["curl:(28)","curl:(6)"]}`；
-   `suggestions` 数组 3 项、每项含 action（stage/gh-proxy/doc）。
-2. **预置过关**：宿主跑 `bash scripts/stage-npm.sh --yazi` →
-   `ls container/downloads/yazi-*` 出现
-   **yazi-x86_64-unknown-linux-musl-v25.2.26.zip**（>0 字节）→ 重跑
-   `& $ai build --tag ht141:2 --events`。
-   理想：日志含「📦 使用本地预置 yazi」、该步 DONE <2s；末条
-   `type=build.succeeded`、image_tag=ht141:2；`docker images` 可见。
-3. **保守分支**（如实施 P0b）：以 CC_SWITCH_ASSET_URL 置空手动
-   `docker build` 触发 fallback → 日志「📦 使用本地预置 cc-switch」而非
-   容器内下载死链。
-4. **Workbench 侧**：构建页复现失败 → 失败卡片标题「容器构建网络无法访问
-   GitHub」、三条建议按钮（重试/预置下载包/查看文档）；「预置下载包」
-   调用 stage 命令并提示重试；GH_PROXY 通道：设置里显式填代理后重试构建
-   → 构建日志可见代理生效（用户主动填写，非自动探测）。
-5. **离线回归**：全预置环境 `& $ai build` 全 69 层绿（对齐 devlog 全量
-   构建口径）。
+1. **版本一致性预检（F6/F7）**：改动任一版本源（如 versions.env 的
+   CLAUDE_CODE_VERSION）后跑 `python tools/check-version-sync.py`。
+   理想：五处版本（Dockerfile ARG/versions.env/downloads 实存/config
+   manifest/vendor manifest）不一致 → 非零退出 + 指明冲突处；一致 → 0。
+2. **被墙条件（主死亡场景复现）**：防火墙封 github.com 与全部 gh* 镜像域
+   （保留清华 apt / npmmirror / docker 镜像站）→ `& $ai build --tag ht141:1 --events 2>$ev`。
+   理想：构建日志「📦 使用本地预置」恰 **7 行**（mihomo 1 + geodata 3 +
+   npm 1 + cc-switch 1 + yazi 1）；末条 `type=build.succeeded`、
+   `image_tag=ht141:1`；全程零 GitHub 出站（容器日志无 ghfast/gh-proxy/
+   moeyy 连接尝试）。
+3. **yazi 预置文件名与体积**：`git ls-files container/downloads/`（C-混合
+   口径 = 现有 6 条 + yazi 1 条 + npm 主包 2 条 = 9 条，含 .gitkeep）；
+   yazi 文件名 `yazi-x86_64-unknown-linux-musl-v25.2.26.zip`、体积
+   7,944,048B（7.6MiB）。
+4. **慢速条件**：clumsy 限速 30KB/s → 构建。理想：>10MB 档下载
+   （cc-switch/yazi 伴生链）max-time ≥300s 不中途超时；基底预拉可配
+   `$env:AISC_PULL_TIMEOUT_S=3600` 覆盖；全程不 exit 于 timeout。
+5. **断网边界（U-9① 口径的负样本）**：全断网（含国内源）→ 构建。
+   理想：失败于 apt 段（结构性边界，见 build-network.md §4），失败卡片
+   （F10）diagnostics 给出明确归因与出路，**不是**裸 curl 报错。
+6. **失败诊断（F10）**：仅封 GitHub 且移走伴生 tgz（模拟预置缺失）→
+   `$ev` 末条 `type=build.failed`、error_code=`AISC_ERR_BUILD_FAILED`，
+   附 `diagnostics={"network":"container-cannot-reach-github","matched":["curl:(28)"]}`
+   形态 + suggestions 数组 3 项（stage/gh-proxy/doc）；Workbench 失败卡片
+   三按钮（重试/预置下载包/文档）可点。
+7. **镜像完整性（F9）**：T6-2 成品容器内
+   `docker exec <容器> test -f <plugins/cache/claude-hud>/dist/index.js` →
+   存在（.dockerignore 反例外生效）；构建上下文与 git tracked 差集为空
+   （CI 不变量，本地可 `git ls-files | comm` 抽查）。
+8. **保守分支（F2）**：CC_SWITCH_ASSET_URL 置空手动 `docker build` →
+   日志「📦 使用本地预置 cc-switch」（glob 命中任意版本，sort -V 取最新）
+   而非转在线；预置分支 sha256 校验行出现（F8）。
+9. **GH_PROXY 通道（升格后）**：versions.env 填 GH_PROXY=… → `& $ai build` 日志
+   可见代理前缀生效于四段镜像链；不填 → 零注入（D-12 口径）。
 
-**异常判定**：diagnostics 字段缺失或 matched 为空（归因失效）；预置文件
-名不符（命名漂移）；GH_PROXY 未显式同意就被注入（违反 D-12）；离线构建
-任一层走外网。
+**异常判定**：被墙条件下任一段转在线；预置行数 ≠7；yazi 仍 60s 超时；
+断网死于 apt 之外的段；镜像内 dist/index.js 缺失；未填 GH_PROXY 却出现注入。
