@@ -1732,6 +1732,14 @@ function clearScreen() {
 
  * to let the key reach the PTY, false to swallow it. */
 
+/** b4: payload arm for the Ctrl+/ fix — legacy 0x1F by default, kitty
+
+ * CSI-u for the handtest A/B (see onTermCustomKey). */
+
+const CTRL_SLASH_CSI_U = false;
+
+
+
 function onTermCustomKey(e: KeyboardEvent): boolean {
 
   // S8f (2026-08-28 VM retest): xterm calls this handler for BOTH keydown and
@@ -1829,6 +1837,44 @@ function onTermCustomKey(e: KeyboardEvent): boolean {
     e.preventDefault();
 
     openSearch();
+
+    return false;
+
+  }
+
+  // b4 (user feedback 2026-09-22): Ctrl+/ never reaches the PTY — xterm 6.0's
+
+  // legacy keymap has no ctrl-only entry for '/' (keyCode 191), so the key is
+
+  // silently dropped (result.key undefined → onData never fires) and codex's
+
+  // btw↔main toggle (toggle_side_conversation = ctrl('/')) was dead in
+
+  // Workbench. Send the bytes ourselves. Default payload is the legacy C0.US
+
+  // (0x1F): codex's parser auto-aliases it when only the ctrl('/') default
+
+  // binding exists, and upstream xterm 7.0 (PR #5515) settled on 0x1F too.
+
+  // Flip CTRL_SLASH_CSI_U for the kitty CSI-u arm of the handtest A/B.
+
+  if (mod && !e.shiftKey && !e.altKey && (key === "/" || e.code === "Slash")) {
+
+    e.preventDefault();
+
+    const sid = sessionId.value;
+
+    if (sid) {
+
+      const bytes = CTRL_SLASH_CSI_U
+
+        ? Array.from(new TextEncoder().encode("[47;5u"))
+
+        : [0x1f];
+
+      writeSession(sid, bytes).catch(() => {});
+
+    }
 
     return false;
 

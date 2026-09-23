@@ -287,7 +287,9 @@ watch(
 
 function onKeydown(e: KeyboardEvent) {
   const mod = e.ctrlKey || e.metaKey;
-  if (!mod) return;
+  // b4 (D-10, todo:81): Alt-combos must pass the gate — they are the
+  // WebView2-REACHABLE pane-navigation fallback.
+  if (!mod && !e.altKey) return;
   const key = e.key.toLowerCase();
   // G-17: pane focus navigation + close, scoped to keys originating inside a
   // pane. Consumed keys never reach the PTY. (WebView2 swallows some
@@ -319,6 +321,35 @@ function onKeydown(e: KeyboardEvent) {
           e.preventDefault();
           focusTabTerminal(store.activeTabId);
           return;
+        }
+      } else if (mod) {
+        // b4 (D-10, todo:81): Ctrl+arrows / Ctrl+Shift+hjkl are intercepted
+        // by the WebView2 accelerator layer on real installs (2.1.9 finding;
+        // Tauri 2 has no public hook to disable it). Ctrl+Alt+hjkl and
+        // Ctrl+Alt+arrows ARE delivered to the page — the reachable path.
+        // (Pure Alt stays reserved: Alt+Left/Right are browser back/forward
+        // accelerators and bare Alt+letter is the PTY meta/ESC prefix that
+        // readline word-jumps live on.) stopPropagation keeps xterm from
+        // ALSO encoding the combo to the PTY.
+        if (!e.shiftKey && "hjkl".includes(key)) {
+          const dir = key === "h" ? "left" : key === "j" ? "down"
+            : key === "k" ? "up" : "right";
+          if (store.navigatePane(store.activeTabId, dir)) {
+            e.preventDefault();
+            e.stopPropagation();
+            focusTabTerminal(store.activeTabId);
+            return;
+          }
+        }
+        if (!e.shiftKey && e.key.startsWith("Arrow")) {
+          const dir = e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right"
+            : e.key === "ArrowUp" ? "up" : "down";
+          if (store.navigatePane(store.activeTabId, dir)) {
+            e.preventDefault();
+            e.stopPropagation();
+            focusTabTerminal(store.activeTabId);
+            return;
+          }
         }
       }
     }
