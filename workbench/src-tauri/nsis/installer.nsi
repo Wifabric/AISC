@@ -913,13 +913,13 @@ Function ${UN}PathRead
   Pop $1
 FunctionEnd
 
-; Write $PathRaw back preserving $PathType, then broadcast WM_SETTINGCHANGE.
+; Write $PathRaw back, then broadcast WM_SETTINGCHANGE.
+; b1 (D-16): ALWAYS REG_EXPAND_SZ. User PATH entries may contain %VAR% which
+; only expands in ExpandString; WriteRegStr would freeze them at write time.
+; $PathRaw keeps the literal text (PathRead reads it unexpanded), so existing
+; values round-trip byte-identical — only the value TYPE normalizes.
 Function ${UN}PathWrite
-  ${If} $PathType = 2
-    WriteRegExpandStr HKCU "Environment" "Path" $PathRaw
-  ${Else}
-    WriteRegStr HKCU "Environment" "Path" $PathRaw
-  ${EndIf}
+  WriteRegExpandStr HKCU "Environment" "Path" $PathRaw
   System::Call 'user32::SendMessageTimeout(i 0xFFFF, i 0x1A, i 0, w "Environment", i 0x2, i 5000, *i .r0)'
 FunctionEnd
 
@@ -1033,6 +1033,13 @@ Function ${UN}AddInstDirToPath
     ReadRegDWORD $0 HKCU "${MANUPRODUCTKEY}" "PathEntryOwned"
     ${If} $0 = 1
       WriteRegStr HKCU "${MANUPRODUCTKEY}" "PathEntry" $INSTDIR
+    ${EndIf}
+    ; b1 (D-16): self-heal a legacy REG_SZ PATH. The upgrade chain keeps the
+    ; owned entry (un. /UPDATE), so this early-exit used to skip PathWrite
+    ; forever; normalize the type now that PathWrite is unconditional.
+    ${If} $PathOk = 1
+    ${AndIf} $PathType <> 2
+      Call ${UN}PathWrite
     ${EndIf}
     Return
   ${EndIf}

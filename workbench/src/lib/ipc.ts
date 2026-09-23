@@ -821,8 +821,8 @@ export interface UpdateDownloadResult {
 export const appCheckUpdate = () => invoke<UpdateInfo>("app_check_update");
 
 /** Progress events ride the `update://progress` Tauri event. */
-export const appDownloadUpdate = (setupUrl: string, sha256Url: string) =>
-  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url });
+export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVersion: string) =>
+  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url, targetVersion });
 
 /** Runs the staged installer SILENT and exits the app (UI confirms first). */
 export const appInstallUpdate = (setupPath: string) =>
