@@ -3664,3 +3664,25 @@ PATH REG_EXPAND_SZ）✓；④devlog 到位 ✓；⑤plans 归档
 docs/archive/2.1.13-dev-plans/ ✓（README 状态表刷新为终态，WIKI 两处
 路径引用同步）。「工作记录」维持待解决池。final 发布不在收尾清单内，
 时机待用户裁决；下一阶段 2.1.14 待开题（版本 bump 随开题走）。
+
+## 2026-09-23 v2.1.14 开题：立项研究 + todo 重组 + 计划落盘
+
+用户指示开题（todo v2.1.14-target 转期项 + 反馈站 issues/ 4 条：构建
+网络/ctrl+//徽标对齐/关闭工作区，D-1 纳入）。当日 ultracode workflow
+完成立项研究：10 研究员 + 14 独立证据/替代根因核验 + 1 完备性批评，
+两轮 39 子 agent（处置两起运行事故：about-dialog 研究员 StructuredOutput
+校验空转 62min——停机补产出纪律后 resume 缓存续跑；恢复轮 2 核验员
+死于 API 429——首轮裁决从 journal 回灌，无损失）。关键结论：自更新
+三项根因=/R 未传、下载参数未穿透版本、PathWrite 保型缺自愈；provider
+两项合批（模板端点竞态+确定性覆盖、buildRequest 丢字段、内联探测缺
+模板 OpenAI 端点候选+90s>30s 杀线、旧镜像 adapter 同症状需第 0 步判别）；
+UI 三小项合批（裸 div 吞 gap、胶囊规格/字形度量分层、DoctorDialog 未
+Teleport 逃逸 zoom 且 k>约1.19 越界）；ctrl+/ 为 xterm 6.0 映射缺口
+（CSI-u/ 双臂定案，conhost 翻译层待实测）；关闭工作区=纯入口缺口
+（closeWorkspace 链复用）；构建网络=TUN 不覆盖 buildkit 出口、实死在
+yazi 无预置+max-time 60（P0 预置 + P0b glob 去版本号 + P1 诊断归因 +
+GH_PROXY 显式通道；反馈回复口径校准为「预置+参数修复+引导」）。
+落盘 docs/plans/2.1.14-dev-plans/（README 六批 + decisions D-1~D-9 与
+U-1~U-7 待裁 + 七份计划文档 + HANDTEST 四要素）；todo v2.1.14-target
+重组为分类结构。「工作记录」转需求问询（worklog-questionnaire.md，
+粒度歧义 A 先裁）。悬账三条（todo:191/81/150）开题提请裁决。

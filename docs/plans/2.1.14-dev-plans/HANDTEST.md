@@ -1,0 +1,193 @@
+# 2.1.14 统一手测清单（HANDTEST）
+
+> 按 DEVELOP_WIKI §1.3 四要素书写：前置准备 / 操作（命令级或 UI 位置级）/
+> 理想结果（字段级）/ 异常判定。范本：docs/archive/2.1.13-dev-plans/HANDTEST.md
+> 批 8（T1-T4）。
+> 变量定义（示例值）：
+> `$ai = E:\Windows\Users\alan\Documents\AISC\workbench\src-tauri\target\debug\aisc.exe`
+> （或安装版 `& "C:\Users\<你>\AppData\Local\AISC Workbench\aisc.exe"`）；
+> `<WS>` = 常用测试工作区绝对路径；`<容器>` = `docker ps --format {{.Names}}`
+> 里的 aisc runtime 容器名。
+> 「记下来告诉 Claude」= 打开新会话贴出现场（截图/命令输出/字段值）。
+
+## T1 批 1：自更新三项（三条独立验收线）
+
+**前置**：装 2.1.13 的实机（Windows + Docker Desktop）；develop 已含批 1
+并发布 `v2.1.14-preview.1`（或按 selfupdate-e2e.md 流程临时出包）；预置
+`%TESTVAR%` 对照——若用户 PATH 亲手加过 `%变量%` 条目则以真实条目为对照，
+否则本组跳过 (c)-2。
+
+1. **staging 命名**：设置页「关于与更新」→「检查更新」→ 检出 2.1.14 → 下载。
+   下载中另开 PowerShell：`dir $env:TEMP\aisc-workbench-update\`。
+   理想：下载中出现 `workbench-setup-2.1.14-preview.1.part`；完成后存在
+   `workbench-setup-2.1.14-preview.1.exe`（**文件名含目标版本，非 2.1.13**）；
+   staging 目录内无旧版本 `workbench-setup-*.exe` 残留；ready 行显示 sha256
+   前 16 位。
+2. **静默拉起**：点「退出并安装」确认 → 应用窗口消失、无安装器窗口 →
+   Docker 升级链完成（安装日志时间戳）后数秒内 Workbench **自动打开**。
+   理想：设置页「当前版本」= 2.1.14-preview.1；任务管理器 aisc-workbench
+   进程「账户名」=当前用户、无「已提升」标记；Docker Desktop 原为停止则
+   被先拉起；zh 文案显示「退出并更新（完成后自动重启）」。
+3. **PATH 类型**：
+   `(Get-Item HKCU:\Environment).GetValueKind('Path')` → 升级前后均
+   `ExpandString`；`$env:Path -split ';' | Select-String AISC` → INSTDIR
+   条目恰一条；预置场景：`[Microsoft.Win32.Registry]::GetValue('HKCU:\Environment','Path',$null,'DoNotExpandEnvironmentNames')`
+   → `%TESTVAR%\bin` 保持字面。存量自愈：一台历史装机（Path 曾为
+   `String`）升级后 `GetValueKind` 变 `ExpandString`。
+   回归：新 PowerShell `Get-Command aisc` 指向 `$INSTDIR\aisc.exe`。
+
+**异常判定**：拉起后进程带「已提升」标记；文件名仍是 2.1.13；`GetValueKind`
+仍 String（存量机升级后）；`%TESTVAR%` 被展开成绝对路径——任一出现即记下
+告诉 Claude。
+
+## T2 批 2：provider 新建保真
+
+**前置**：Docker 已启动、runtime 就绪；**第 0 步 adapter 判别（必做）**：
+`docker exec <容器> stat -c %y /usr/local/bin/aisc-cc-provider` → 日期须晚于
+2026-09-19（commit 5f168f4）。早于该日期 = 旧镜像，本批手测全部作废，先
+重建镜像（否则「拉取失败」是旧 adapter 的 requires --id，测了个寂寞）。
+准备一个有效 GLM key（步骤 3-6 用）。
+
+1. **复现路径 A（baseUrl 静默改写）**：冷启动 Workbench → 打开工作区 →
+   立刻切 Provider 页点「添加」（抢在 loadTemplates 往返前）→ codex →
+   模板 Codesome V3 → 高级 → 上游格式改 openai_responses → 记录预填
+   baseUrl（应带 `/v1`）→ 填测试 key → 原地等 5s → **不再看 baseUrl** →
+   保存 → 重开编辑页查 baseUrl。
+   理想（修复后）= 第 2 步所见值（带 /v1）或保存前有可见变更提示；
+   现状（bug 标志）= 被静默改为无 `/v1`。
+   **对照臂 ×2**：①第 2 步手敲一遍 baseUrl 再等 5s（touched）→ 两版都应
+   保持；②切格式后手填 baseUrl 再等 5s → 修复后仍保持（onApiFormatChange
+   重臂不覆盖手填值）。
+2. **复现路径 B（新建丢字段）**：添加 → 自定义 claude → 填 id/baseUrl/key →
+   高级映射 Sonnet/Opus 槽填 `glm-5.3` → 保存 → 重开编辑页。
+   理想：两槽回显 `glm-5.3`；现状：为空。codex 变体：自定义 codex 填
+   「模型」→ 重开编辑页 model 非空。
+3. **拉取·claude 侧**：添加 → 模板 Zhipu GLM（预填
+   `https://open.bigmodel.cn/api/anthropic`）→ 填有效 key →「拉取模型列表」。
+   理想：按钮数秒内回弹，fetched.ok=true、n≥1，下拉含 `glm-5.3`。
+4. **拉取·codex 侧**：同 3（同模板同 key）→ 结果与 3 完全一致。
+5. **降级路径**：故意填错 key 拉取 → fetched.ok=false、message 为上游 401
+   摘要（非超时、非空串），下拉仍列已知模型可手输——不得整页报错。
+6. **日志**：`docker exec <容器> cat /tmp/aisc-fetch-models.log` → 能看到
+   本轮候选请求行（base/status/ids 形如 `base=.../api/paas/v4/models
+   status=200 ids=8`）。
+7. **回归矩阵**：其余 5 家模板各做一次步骤 3（deepseek/ark/kimi 需对应
+   有效 key；codesome 需 sk-/cr-）；通用验收：新建（preset/custom ×
+   claude/codex）→ 保存 → 重开编辑页逐字段比对（baseUrl、model、映射槽、
+   compact 阈值、key 掩码）与保存前一致；再编辑保存一次仍一致。
+
+**异常判定**：第 0 步日期旧于 2026-09-19；任一模板拉取超 25s 才回弹
+（预算失效）；保存后重开比对任一字段不一致——记下「哪个模板/哪步/差哪个
+字段」三要素告诉 Claude（U-5 回访同口径）。
+
+## T3 批 3：UI 对齐三小项
+
+**前置**：dev 态 `cd workbench; npm run tauri dev`（或装批 3 后的包）；
+历史面板须有 claude 与 codex 各 ≥1 条历史（不足先各跑一条对话）。
+
+1. **高级槽位间距**：Provider 页 → 添加 → 任一 claude 模板 → 保存进编辑页
+   → 高级 → 模型映射 →「展开高级槽位（默认模型/子代理）」。
+   理想：MODEL 与 SUBAGENT 两行出现垂直间距（computed `gap: var(--space-2)`
+   =8px，与 SONNET/OPUS/HAIKU 同节奏，边框不再贴合）；收起再展开正常。
+   回归：codex 高级页签目录表行距不变；简易页签不变；
+   `npx vitest run src/features/ccswitch/__tests__/ccSwitchUiTab.test.ts`
+   全绿（351-353 用例仍找到 5 个 mapping 输入框）。
+2. **历史页徽标**：活动栏「历史」tab → 出现 CODEX N / CLAUDE N 分组 →
+   逐行检查：徽标与标题/「N 条消息」中心对齐、不整体偏高、✳ 与 claude
+   文字等高不上凸；悬停：「查看对话」chip 淡入、行高无跳变、chip 与徽标
+   等高平齐；组头位置不变。
+   字段级（F12）：`.cv-view-chip` 与 `.agent-glyph` 的
+   `getBoundingClientRect().height` 相等（目标 20px）、top 差 ≤1px；悬停
+   前后 `.conversation-row` 高度不变（恒 24px）；侧栏拉窄至 240px：标题
+   省略号、条数/chip/徽标单行完整不换行；dark/light 往返配色完整
+   （transparent 边框等高方案不露馅）。
+3. **关于弹窗**：设置 → UI 字号缩放设 **1.25** → 帮助 →「关于 AISC
+   Workbench」→ 等诊断 done。
+   理想：弹窗底缘在视口内；检查列表容器有竖向滚动条；滚动可达最后一条
+   （channel-confusion）与底部「导出诊断包」按钮；Esc/背景/× 三路关闭且
+   焦点归还。字号 1.0 复验：内容不满屏无滚动条无多余空白；**1.5 档 +
+   800×600 小窗**复验不越界。
+
+**异常判定**：任一档字号下弹窗仍越界/无滚动（若 1.0 档也越界，说明 zoom
+机制判断有误——务必告诉 Claude 实际 font_scale 值）；chip 与徽标 rect 高度
+差 >1px；vitest 基线（480+）下降。
+
+## T4 批 4：Ctrl+/ 切换 btw/main
+
+**前置**：dev 态起 Workbench；工作区内开一个 codex 会话终端 pane；知道
+本批载荷定案臂（A=`ESC[47;5u`、B=`\x1F`，实现按定案，两臂都试时逐臂记录）。
+
+1. **字节链路（参考项，不作裁决）**：pane 跑 `cat -v` → 按 Ctrl+/。
+   修复前基线：无任何输出（静默丢弃证明）；修复后：可能回显 `^[[47;5u`
+   或 `^_`——**ConPTY 下 cat -v 不可靠，回显与否不判成败**。
+2. **codex 实测（唯一裁决）**：pane 跑 `codex` → 输入 `/btw` 回车 → 进入
+   旁路线程（出现 side/btw 标识）→ 按 Ctrl+/。
+   理想：焦点切回 main（标题/输入上下文变回、不新建线程、不杀进程）；
+   再按可往返；全程不需要 Ctrl+C。若臂 A 无效臂 B 有效（或反之），
+   记下有效臂告诉 Claude 定稿。
+3. **回归-SIGINT**：`cat -v` 下 Ctrl+C → 回显 ^C 且进程中断（\x03 不受
+   影响）；终端有选区时 Ctrl+C 仍为复制。
+4. **回归-既有快捷键**：Ctrl+F 搜索浮层、Shift+Esc 回 tab 栏、Ctrl+B 侧栏
+   ——均与 2.1.13 行为一致。
+5. **干扰面**：bash 空提示符 Ctrl+/ → 无字符插入、无报错、无补全触发。
+6. **单测**：`npx vitest run src/features/terminal/__tests__/terminalCtrlSlash.test.ts`
+   全绿（ctrl+'/' → writeSession 字节 + preventDefault + return false；
+   keyup 不发；Ctrl+Shift+/ 不发）。
+
+**异常判定**：步骤 2 切不动（两臂都无效）——记下臂别与 codex 版本
+（`codex --version`）；步骤 3/4 任一回归。
+
+## T5 批 5：关闭工作区回 picker
+
+**前置**：dev 态或装包；一个 ready 工作区 + 2 个运行中 bash 会话。
+
+1. 入口可见性：顶栏右端出现「关闭工作区」按钮、「操作」菜单出现「关闭
+   当前工作区」项且可用；picker 态两者隐藏/禁用；starting 态不显示。
+2. confirm（有会话）：点按钮 → 弹「将结束 2 个活动会话，并删除此工作区的
+   临时运行环境。继续？」→「取消」→ 状态仍 ready、会话数不变。
+3. 执行：<1s 回 picker。字段级：顶栏状态标签=「选择工作区」、窗口标题=
+   「AISC Workbench」、路径输入框空、最近列表**含**刚关工作区（注意：
+   last_used_at 保持**打开时刻**不因关闭刷新；若该区恰是最近打开的则居
+   首行——这是预期，不是 bug）。
+4. teardown 落实：稍等后 `docker ps -a --format {{.Names}}` 过滤该 runtime
+   名 → 无残留容器；lease 已释放（维护命令/注册表查询）。
+5. confirm（无会话）：文案=「将删除此工作区的临时运行环境（工作区文件
+   不受影响）。继续？」。
+6. 重开同一工作区：reconcile→preflight→summary→starting→ready 全链正常
+   （**不要求秒回**）；工作区文件、~/.aisc 历史、explorer 树完整。
+7. 回归：ready 态直接点窗口 X → 仍走原 confirmExit/runExitFlow（行为不因
+   新按钮改变）；命令面板出现 app.closeWorkspace 与 app.picker 成对。
+
+**异常判定**：关闭后 `docker ps -a` 有该 runtime 残留容器；picker 字段
+核对任一不符；X 退出路径行为改变。
+
+## T6 批 6：构建网络
+
+**前置**：宿主开 TUN 代理的机器（或用防火墙/clumsy 对 github 域限速丢包
+模拟）；`$ai` 指向装好批 6 的 CLI；`$ev = events.jsonl`。
+
+1. **失败诊断（模拟无预置）**：临时移走 `container/downloads/` 下 yazi
+   文件（若有）→ `& $ai build --tag ht141:1 --events 2>$ev`。
+   理想：退出码 4；`$ev` 末条 `type=build.failed`、error_code=
+   `AISC_ERR_BUILD_FAILED`，新增 `diagnostics` 字段形如
+   `{"network":"container-cannot-reach-github","matched":["curl:(28)","curl:(6)"]}`；
+   `suggestions` 数组 3 项、每项含 action（stage/gh-proxy/doc）。
+2. **预置过关**：宿主跑 `bash scripts/stage-npm.sh --yazi` →
+   `ls container/downloads/yazi-*` 出现
+   **yazi-x86_64-unknown-linux-musl-v25.2.26.zip**（>0 字节）→ 重跑
+   `& $ai build --tag ht141:2 --events`。
+   理想：日志含「📦 使用本地预置 yazi」、该步 DONE <2s；末条
+   `type=build.succeeded`、image_tag=ht141:2；`docker images` 可见。
+3. **保守分支**（如实施 P0b）：以 CC_SWITCH_ASSET_URL 置空手动
+   `docker build` 触发 fallback → 日志「📦 使用本地预置 cc-switch」而非
+   容器内下载死链。
+4. **Workbench 侧**：构建页复现失败 → 失败卡片标题「容器构建网络无法访问
+   GitHub」、三条建议按钮（重试/预置下载包/查看文档）；「预置下载包」
+   调用 stage 命令并提示重试；GH_PROXY 通道：设置里显式填代理后重试构建
+   → 构建日志可见代理生效（用户主动填写，非自动探测）。
+5. **离线回归**：全预置环境 `& $ai build` 全 69 层绿（对齐 devlog 全量
+   构建口径）。
+
+**异常判定**：diagnostics 字段缺失或 matched 为空（归因失效）；预置文件
+名不符（命名漂移）；GH_PROXY 未显式同意就被注入（违反 D-12）；离线构建
+任一层走外网。

@@ -190,22 +190,24 @@
 - [x] cli run在存在容器的情况下禁止使用
 - [x] workbench 内 docker 容器/镜像的简单查询与管理（镜像删除、容器删除/停止等常用操作；2026-09-20 手测反馈，破坏性操作边界待立计划裁决）
 
-# v2.1.14-target （2026-09-22 自更新 E2E 观察项转期预置，待开题）
+# v2.1.14-target（2026-09-23 开题：范围 = 8 条转期/预置 + 反馈站 4 条〔用户指示纳入，D-1〕；计划 docs/plans/2.1.14-dev-plans/；待裁项见 decisions.md U-1~U-7）
 
-- [ ] 静默升级完成后自动拉起新版应用（NSIS 静默尾 Exec；注意提权边界——拉起的 app 不得继承管理员权限）
-- [ ] 自更新 staging 文件名改用目标版本命名（现为当前版本号，排障误导）
-- [ ] NSIS PATH 写入改 REG_EXPAND_SZ（仅用户 PATH 含 %变量% 时有实害，观察项）
-
-
-
-
-
+**发布与更新（批 1）**
+- [ ] 开池版本 bump 2.1.13 → 2.1.14 + 自更新三项：静默升级完成后自动拉起新版（update.rs 加 /R 激活 installer.nsi 既有 RunAsUser 机制；接受升级链全程后拉起，文案/发布说明写明）／ staging 文件名改目标版本（appDownloadUpdate 穿透 targetVersion，顺带清理 staging 旧 exe）／ NSIS PATH 写 REG_EXPAND_SZ（PathWrite 恒 ExpandStr + 存量自愈写 + CI smoke 补首装新建值断言）
+**Provider 新建保真（批 2，合批）**
+- [ ] 新建的 provider 第一次保存的结果和用户填写的不同（偶发，未复现；三假设已定位：模板清单竞态 + 切格式确定性覆盖 baseUrl〔lastAutoPrefilled 守卫修〕／ buildRequest 新建路径丢 env/model/model_catalog／容器侧 codesome-v3 native 端点缺 /v1 数据修复 + FALLBACK↔manifest 一致性单测）
+- [ ] 添加 provider 模型拉取失败，claude 和 codex 侧都是这样（add 内联探测纳入模板声明 OpenAI 侧 base 候选 + 超时 15s→6s 总预算 <25s 对齐 30s 杀线 + 候选请求诊断日志；手测第 0 步先判 adapter 版本——旧镜像 requires --id 同症状）
+**UI 对齐三小项（批 3，合批）**
+- [ ] provider claude 添加时展开高级槽位两个输入框挨太近（ModelMappingEditor.vue:103 裸 div 吃掉 .mapping 的 flex gap——加 class 补 gap 令牌，一处修全部 claude 模板）
+- [ ] 历史记录页徽标按钮未对齐（反馈 #3；胶囊规格统一 + ✳◈ 字形度量隔离 + 散值令牌化，新增 --radius-pill；非批 9 回归）
+- [ ] 关于 aisc workbench 结果弹窗异常，太长超出显示范围无滚动条（DoctorDialog 未 Teleport 逃逸 zoom + max-height:84vh 被放大——k>约1.19 越界，字号 ≥1.20 必现；照 FloatingPane 惯例改造；内容推高来自 2.1.12 新增 doctor 检查项）
+**终端键盘（批 4）**
+- [ ] codex 用 /btw 后 ctrl+/ 无法切回 main（反馈 #2；xterm 6.0 键盘映射无 Ctrl+/ 条目静默丢弃——onTermCustomKey 拦截 + writeSession 直发，载荷 CSI-u/ 双臂手测定案，conhost 翻译层为主要实测风险；同批裁决：分屏 Ctrl+Shift+hjkl 悬账〔todo:81〕入批或转期〔U-2〕）
+**工作区（批 5）**
+- [ ] 顶栏增加「关闭工作区」：关闭当前工作区回 picker、窗口不关（反馈 #4；复用既有 closeWorkspace 链零生命周期改动，操作菜单项 + 顶栏按钮 + 命令面板三入口，confirm 误触保护，ready/error 门控）
+**构建网络（批 6，反馈 #1 履约）**
+- [ ] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi 预置 downloads/ + glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道；对外口径「预置+参数修复+引导」非根治 TUN 覆盖）
+**需求澄清（不占批次，裁决后排期）**
+- [ ] 历史会话重构·「工作记录」概念：六组歧义问询材料已备（worklog-questionnaire.md，粒度 A 先裁——A2 复活批 3 原案规模 L / A1 收缩为账本可视化 M）；裁决前不动 worklog.py 数据层与 resume 冻结契约，严禁 assumed 默认推进
 
 # 待解决
-- [ ] 顶栏操作按钮增加关闭当前工作区的按钮，点下后关闭当前工作区，窗口不关闭，回到picker页面
-- [ ] codex 从btw切换回main的快捷键ctrl+/没有生效
-- [ ] provider页，新建的provider第一次保存的结果和用户填写的不同
-- [ ] 添加provider，模型拉取失败，claude和codex侧都是这样
-- [ ] 历史会话重构·「工作记录」概念（2026-09-21 用户裁决移出当前版本，待捋清需求再立项）——工作记录负责记录/保存打开过的 bash(内含 codex) 会话状态，与 codex 的 resume 记录非一一对应（惯用单 codex 会话=一一对应；一任务一干净会话=一对多）；计划稿见 docs/archive/2.1.13-dev-plans/history-worklog.md 批 3
-- [ ] provider claude添加时，展开高级槽位，两个输入框挨得太近了
-- [ ] 关于aisc workbench结果弹窗异常，太长了超出显示范围，没有滚动条（应该是某一次改动导致的异常，之前都是正常的）

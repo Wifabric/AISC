@@ -1,0 +1,93 @@
+# 2.1.14 阶段裁决记录
+
+> 本文件是 v2.1.14 阶段的裁决日志（沿用 2.1.12/2.1.13 惯例）。每条裁决记：
+> 问题、裁定、影响面。编号 D-N 阶段内连续；U-N 为待用户裁决项（裁定后转 D-N）。
+
+## 用户裁定
+
+- **D-1（2026-09-23 用户指示，开题范围）**：用户原话「阅读todo中给2.1.14版本
+  target，以及E:\...\aisc-issues-feedback下搜集的问题，重新整理一下2.1.14版本
+  的todo，并按照规约制定开发计划」。⇒ 阶段范围 = todo 8 条既有项 + 反馈站 4 条
+  （构建镜像网络异常 / codex ctrl+/ 切换 / 历史页徽标对齐 / 关闭工作区）。
+  4 条反馈项据此获得 §1.2.2「计划外项入版」的用户确认；实施仍按 §1.2.1 分支
+  先行。悬账三条（README「悬账清单」）不在 D-1 范围内，逐条待裁（U-3）。
+
+## 立项规划裁定（2026-09-23，Claude 代定，用户可逐条否决）
+
+> 依据当日立项研究（ultracode workflow：研究员 + 独立证据核验，verdict 全部
+> confirmed/corrected；两处 429 阵亡核验已从首轮 journal 回灌）作出，细节见各
+> 计划文档。
+
+- **D-2（批次划分）**：六批 + 一个需求问询项（README 阶段表）。取舍：自更新
+  三项合一批（同链路同验收形态，但保持**三条独立验收线**——/R 拉起链 / 下载
+  参数穿透 / 注册表类型与自愈，回归点互不相同）；provider 两项合批（同页同
+  链路，分批会两次触碰同一批文件）；UI 三小项合批（互不依赖、验收形态相同）；
+  「工作记录」不占批次（需求未定，D-9）。
+- **D-3（自更新三项技术路线，selfupdate-polish.md）**：①静默拉起 = 给
+  update.rs 安装器参数追加 `/R`，激活 installer.nsi 既有模板机制
+  （`.onInstSuccess` + `nsis_tauri_utils::RunAsUser`），不自研 Exec/降权；
+  接受「整条升级链（含 30min 预算镜像重建）完成后才自动拉起」（改 Section
+  顺序偏离模板，不做）；zh/en 更新卡片文案随之改「退出并更新（完成后自动
+  重启）」。②staging 文件名 = `appDownloadUpdate` 增第三参 targetVersion
+  （取 `info.latest`），staging 命名 `workbench-setup-{目标版本}.exe`；顺带
+  清理 staging 目录旧 exe。③PATH = `PathWrite` 恒 `WriteRegExpandStr` +
+  already-present 早退分支补类型规整自愈写（存量 REG_SZ 装机升级即愈）；
+  CI smoke 补「首装新建 PATH 值类型」断言。
+- **D-4（provider 合批改法基线，provider-add-fidelity.md）**：以**核验员修正版**
+  为基线，否决研究员原案两处——①「模板未就绪禁用保存」与 FALLBACK 降级设计
+  冲突（旧镜像用户将永久锁死），改「未就绪仅提示不阻断」；②「仅当 baseUrl
+  为空才预填」与 D-6（2.1.12 阶段）端点跟随格式裁决冲突，改 **lastAutoPrefilled
+  守卫**（仅当当前值===上次自动预填值才允许自动覆盖）。容器侧先行单行数据修复
+  （codesome-v3 native 端点补 `/v1`）+ FALLBACK↔manifest 快照一致性单测。
+  buildRequest 新建路径补发 env/model/model_catalog（键名对齐 adapter 契约）。
+  模型拉取：add 内联探测纳入模板声明 OpenAI 侧 base 候选（照抄 codex 行路径
+  既有做法）+ 单请求 15s→6s、总预算 <25s + 候选请求诊断日志（新增行为，
+  仿 /tmp/aisc-live-catalog.log 先例）。
+- **D-5（UI 三小项，ui-align-fixes.md）**：合批交付；间距/圆角一律走设计令牌，
+  新增 `--radius-pill: 999px` 令牌（现 `--radius-full: 50%` 不适用胶囊）；
+  计划文档中历史归属一律以 **commit 哈希**引用（仓库批号体系存在自称冲突，
+  核验已证）；关于弹窗按 FloatingPane 惯例改造（Teleport + 自挂 zoom + 定高
+  内部滚动）。
+- **D-6（Ctrl+/ 修复形态，ctrl-slash-key.md）**：前端 `onTermCustomKey` 拦截
+  + `writeSession` 直发字节，仅修 Ctrl+/ 不做泛化层（泛化列后续可扩展项）；
+  对所有终端会话生效（与 kitty 终端行为一致，不按 agent gating）；载荷
+  **双臂手测定案**：`ESC[47;5u`（kitty CSI-u）与 `\x1F`（legacy，与上游
+  xterm 7.0 PR #5515 选定编码一致，codex 解析器对仅存 Ctrl+/ 绑定时自动追加
+  legacy 别名）——Windows conhost ConPTY 输入引擎翻译层为最大未验证风险，
+  手测以「codex 实际切换」为唯一裁决，`cat -v` 回显降为参考项。
+- **D-7（关闭工作区，close-workspace.md）**：完全复用既有 `closeWorkspace`
+  链，零生命周期代码改动；三入口（「操作」菜单末尾项 + 顶栏右端按钮 + 命令
+  面板 `app.closeWorkspace`），门控 status∈{ready,error}（starting 态不显示，
+  避免 cancelRuntimeStart 缺失导致后台物化容器竞态）；confirm 误触保护（容器
+  删除不可撤销）；「重开秒回」不纳入（与 runtime-lifecycle-ux ephemeral 裁决
+  相抵，记观察项）。
+- **D-8（构建网络交付形态，build-network.md）**：P0 yazi 预置进
+  `container/downloads/`（+约 8MB，恢复 v1.2.3 自包含惯例；与 2.1.12「镜像
+  零预置」裁决不冲突——那条指 provider 预配置模板）；P0b 保守分支 glob 去
+  版本号；P0c yazi/cc-switch curl `--max-time` 60→180-300s；P1 构建失败诊断
+  归因（exit 4 + curl (6)/(28)/(35)/(52) 模式 → build.failed 附结构化提示）；
+  P1b Workbench 构建界面暴露既有 `GH_PROXY` build-arg（显式同意通道，符合
+  D-12「不未经同意改写网络」与 network.ts 契约）；P2 宿主代理自动探测注入
+  **降为 opt-in 不默认做**；P4 构建期容器 TUN sidecar **不立项**（写入不做
+  清单）。对外口径：环境性根因 + 预置/参数级修复 + 引导，**非根治宿主 TUN
+  覆盖**（反馈站回复据此校准）。
+- **D-9（工作记录需求问询先行）**：六组歧义（粒度/父子/开关时机/UI 落点/
+  归档/恢复语义）问询材料已备（worklog-questionnaire.md），用户作答后才排期
+  （本版 b7+ 或转期）；**严禁按 assumed 默认推进**（2.1.13 批 3 前车之鉴）；
+  裁决前不动 worklog.py 数据层与 resume 冻结契约。
+
+## 待用户裁决（U-N）
+
+- **U-1（b6）**：yazi 预置已定 +8MB；npm 四包（claude-code/codex tgz）是否
+  连带预置（+约 60MB，仓库/分发体积 vs 极端网络单点消除）。
+- **U-2（b4 同批）**：分屏键盘导航悬账（todo:81）入 b4 一并议，还是显式转期。
+- **U-3**：悬账另两条（todo:191 docker 破坏性操作边界、todo:150 picker 窄窗
+  挤压）收编、转期还是明确关闭。
+- **U-4（b5）**：入口形态确认（推荐菜单项+顶栏按钮两者都做）；「停止 Runtime」
+  与新入口是否统一文案/动作。
+- **U-5（b2 手测前置）**：provider 两条报障回访——保存漂移当时走模板还是
+  自定义、claude 还是 codex、差异具体在哪个字段；模型拉取失败时选的具体
+  模板（决定假设权重与复现路径）。
+- **U-6（b6）**：是否向反馈 #1 用户追问「配置容器 TUN 后构建成功」前做了
+  什么（H3 因果定案），还是直接按 P0 落地不追溯。
+- **U-7**：反馈站 4 条统一回复的时机与口径（立项定稿后即可回执）。
