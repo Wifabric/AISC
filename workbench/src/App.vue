@@ -161,6 +161,11 @@ function paletteCtx(): CommandCtx {
       openSettings: () => ws.openSettingsTab(),
       openNetworkUsage: () => ws.openNetworkUsageTab(),
       openPicker: () => ws.openLauncher(),
+      // b5 (feedback #4): mirror the menubar entry — guarded the same way.
+      closeWorkspace: () => {
+        const r = ws.activeRuntime;
+        if (r && r !== ws.launcher) void ws.closeWorkspace(r.id);
+      },
       runDoctor: () => doctorStore.openDialog(),
       toggleSidebar: () => toggleExplorerCollapsed(),
       showView: (kind) => {

@@ -157,6 +157,22 @@ function newWindow(): void {
   closeMenu();
   void openWorkspaceWindow();
 }
+/** b5 (feedback 2026-09-22 #4): close the CURRENT workspace back to the
+ * picker — a first-class entry alongside the four "open" items. Reuses
+ * closeWorkspace (confirm → flushSave → instant removal → background
+ * stop/remove/lease release). Gated to materialized ready/error runtimes:
+ * starting et al. already have backToPicker/cancel, and closeWorkspace
+ * would not cancelRuntimeStart (a background-materialized container race). */
+const canCloseWorkspace = computed(() => {
+  const r = ws.activeRuntime;
+  return Boolean(r && r !== ws.launcher
+    && (r.status.value === "ready" || r.status.value === "error"));
+});
+function closeCurrentWorkspace(): void {
+  closeMenu();
+  const r = ws.activeRuntime;
+  if (r && r !== ws.launcher) void ws.closeWorkspace(r.id);
+}
 function openSettings(): void {
   closeMenu();
   ws.openSettingsTab();
@@ -216,6 +232,15 @@ async function checkForUpdates(): Promise<void> {
     <span class="mb-status" :data-status="statusRaw" :title="statusLabel">
       {{ statusLabel }}
     </span>
+    <!-- b5 (feedback #4): one-click close-current-workspace, mirroring the
+         操作 menu entry (same gate, same closeWorkspace chain). -->
+    <button
+      v-if="canCloseWorkspace"
+      class="menubar-btn mb-close-ws"
+      :title="t('menubar.closeWorkspace')"
+      :aria-label="t('menubar.closeWorkspace')"
+      @click="closeCurrentWorkspace"
+    >{{ t("menubar.closeWorkspace") }}</button>
 
     <Teleport to="body">
       <ul
@@ -300,6 +325,17 @@ async function checkForUpdates(): Promise<void> {
                 {{ t("menubar.noMachines") }}
               </li>
             </ul>
+          </li>
+          <!-- b5 (feedback #4): close-current-workspace (danger-adjacent:
+               confirm protects the irreversible container removal). -->
+          <li
+            v-if="canCloseWorkspace"
+            role="menuitem"
+            tabindex="0"
+            class="ops-close"
+            @click="closeCurrentWorkspace"
+          >
+            {{ t("menubar.closeWorkspace") }}
           </li>
         </template>
         <template v-else-if="openMenu === 'edit'">
