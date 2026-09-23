@@ -33,6 +33,10 @@ tasks/
 **/node_modules/
 **/target/
 **/dist/
+# b6 (F9): 226 tracked _bundle files (claude-hud dist etc.) were silently
+# stripped by the dist/node_modules rules — the plugin COPY shipped a
+# crippled set and the statusLine dist/index.js went missing.
+!container/_bundle/**
 .venv/
 **/.venv/
 workbench/src-tauri/gen/

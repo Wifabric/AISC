@@ -81,11 +81,16 @@ workbench/src-tauri/binaries/
 # staged by nsis-installer.yml before `tauri build`; generated at build time
 workbench/src-tauri/nsis/bundle/
 
-# 2.1.9 D-9 (T8c): npm 离线逃生预置包——本机按需 stage（scripts/stage-npm.sh），
-# 不入 git/安装包（claude-code 平台伴生包 ~95MB/架构，codex ~123MB）。
-# mihomo/geodata 预置继续 tracked（小且版本钉死）。
+# b6 (D-16 C-混合, v2.1.14): 保底构建预置——npm 主包 tgz（纯 JS，~33KB）
+# 与 yazi x86_64 zip（7.6MB）入 git（GitHub 全阻可构建）；平台伴生包
+# （claude-code-linux-* / codex-*-linux-*，合计 ~231MB）不入 git：随
+# NSIS/deb/dmg bundle 分发（CI 打 bundle 前跑 stage-npm.sh）+ 好网时本地
+# stage 补齐 + npmmirror 在线兜底。arm64 伴生包 +221MiB 不入库（D-18②）。
 container/downloads/*.tgz
 container/downloads/yazi-*.zip
+!container/downloads/claude-code-[0-9]*.tgz
+!container/downloads/codex-[0-9]*.tgz
+!container/downloads/yazi-x86_64-*.zip
 
 # 本机调试/发布暂存残留（反复产生，永不入库；发布资产权威源在 GitHub Releases）
 error_log/

@@ -20,6 +20,9 @@ ARG USE_CN_MIRROR=1
 # ==========================================
 ARG MIHOMO_VERSION=v1.19.27
 ARG GH_PROXY=
+# b6 (F5): single source for the GitHub mirror chain — the four download
+# segments used to drift (5/4/3 sites; yazi had none at all).
+ARG GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/ https://mirror.ghproxy.com/"
 
 # cc-switch-cli 版本（Claude/Codex provider 与 skills 的统一管理工具）
 # Stage 8b (CS-01/CS-02): `aisc build` resolves the release on the HOST and
@@ -31,7 +34,7 @@ ARG GH_PROXY=
 # cannot even OPEN a db the desktop cc-switch has migrated (daemon dead,
 # provider add/switch/edit all refused). Asset names carry the version tag
 # since ~5.10 — the old pattern 404s.
-ARG CC_SWITCH_VERSION=v5.10.4
+ARG CC_SWITCH_VERSION=v5.10.5
 ARG CC_SWITCH_RESOLVED_VERSION=
 ARG CC_SWITCH_RELEASE_COMMIT=
 ARG CC_SWITCH_ASSET_URL=
@@ -110,13 +113,13 @@ RUN set -eux; \
     else \
         base="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz"; \
         if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
-        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/ https://mirror.ghproxy.com/"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="${GH_MIRRORS}"; \
         else mirrors=""; fi; \
         ok=0; \
         for m in $mirrors ""; do \
             u="${m}${base}"; echo "⬇️  mihomo try: $u"; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
-                    --connect-timeout 8 --max-time 120 "$u" -o /tmp/mihomo.gz; then ok=1; break; fi; \
+                    --connect-timeout 8 --max-time 300 "$u" -o /tmp/mihomo.gz; then ok=1; break; fi; \
         done; \
         [ "$ok" = "1" ] || { echo "❌ mihomo 下载失败（可运行 bash stage-mihomo.sh 预下载到 downloads/ 后重建，或 --build-arg GH_PROXY=<镜像前缀>）"; exit 1; }; \
     fi; \
@@ -128,7 +131,7 @@ RUN set -eux; \
 RUN set -eux; \
     mkdir -p /opt/aisc/mihomo; \
     if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
-    elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/ https://mirror.ghproxy.com/"; \
+    elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="${GH_MIRRORS}"; \
     else mirrors=""; fi; \
     for f in geoip.metadb geosite.dat country.mmdb; do \
         if [ -f /tmp/dl/$f ]; then \
@@ -435,9 +438,10 @@ RUN set -eux; \
     case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
     ccs_preset=""; \
     if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
-        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi; \
+        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; \
+        else ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; fi; \
     else \
-        ccs_preset="$(ls /tmp/dl/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz 2>/dev/null | head -1 || true)"; \
+        ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; \
     fi; \
     if [ -n "$ccs_preset" ]; then \
         echo "📦 使用本地预置 cc-switch: $ccs_preset"; \
@@ -454,13 +458,13 @@ RUN set -eux; \
             *) echo "❌ cc-switch asset ${CC_SWITCH_ASSET_NAME} does not match build arch ${cs_arch}"; exit 1 ;; \
         esac; \
         if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
-        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="${GH_MIRRORS}"; \
         else mirrors=""; fi; \
         ok=0; \
         for m in $mirrors ""; do \
             u="${m}${base}"; echo "⬇️  cc-switch try: $u"; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
-                    --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
+                    --connect-timeout 8 --max-time 300 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
         done; \
         [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 stage-cc-switch.sh 预下载到 downloads/ 或 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
         echo "${CC_SWITCH_ASSET_SHA256}  /tmp/ccs.tar.gz" | sha256sum -c - || { echo "❌ cc-switch sha256 mismatch"; exit 1; }; \
@@ -468,13 +472,13 @@ RUN set -eux; \
         echo "⚠️  手动构建回退：无 resolver 校验（aisc build 才有 sha256 pin）"; \
         base="https://github.com/SaladDay/cc-switch-cli/releases/download/${CC_SWITCH_VERSION}/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz"; \
         if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
-        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ https://ghproxy.net/"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="${GH_MIRRORS}"; \
         else mirrors=""; fi; \
         ok=0; \
         for m in $mirrors ""; do \
             u="${m}${base}"; echo "⬇️  cc-switch try: $u"; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
-                    --connect-timeout 8 --max-time 120 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
+                    --connect-timeout 8 --max-time 300 "$u" -o /tmp/ccs.tar.gz; then ok=1; break; fi; \
         done; \
         [ "$ok" = "1" ] || { echo "❌ cc-switch 下载失败（可 stage-cc-switch.sh 预下载到 downloads/ 或 --build-arg GH_PROXY=<镜像前缀> 重试）"; exit 1; }; \
     fi; \
@@ -500,12 +504,13 @@ RUN set -eux; \
         rm -f "$yazi_preset"; \
     else \
         yazi_base="https://github.com/sxyazi/yazi/releases/download/v${YAZI_VERSION}/yazi-${yazi_arch}.zip"; \
-        if [ "$USE_CN_MIRROR" = "1" ]; then yazi_mirrors="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.xyz/ "; else yazi_mirrors=""; fi; \
+        if [ -n "${GH_PROXY:-}" ]; then yazi_mirrors="${GH_PROXY}"; \
+        elif [ "$USE_CN_MIRROR" = "1" ]; then yazi_mirrors="${GH_MIRRORS}"; else yazi_mirrors=""; fi; \
         ok=0; \
         for m in $yazi_mirrors ""; do \
             u="${m}${yazi_base}"; echo "⬇️  yazi try: $u"; \
             if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
-                    --connect-timeout 8 --max-time 60 "$u" -o /tmp/yazi.zip; then ok=1; break; fi; \
+                    --connect-timeout 8 --max-time 300 "$u" -o /tmp/yazi.zip; then ok=1; break; fi; \
         done; \
         [ "$ok" = "1" ] || { echo "❌ yazi 下载失败（可 bash scripts/stage-npm.sh 预下载 yazi 到 downloads/ 后重建，或 --build-arg GH_PROXY=<镜像前缀>）"; exit 1; }; \
     fi; \
