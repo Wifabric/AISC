@@ -222,10 +222,24 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
     Ok(info)
 }
 
-fn staging_path(app: &AppHandle) -> PathBuf {
-    let dir = std::env::temp_dir().join("aisc-workbench-update");
+fn update_staging_dir() -> PathBuf {
+    std::env::temp_dir().join("aisc-workbench-update")
+}
+
+/// b1: the staged installer is named after the TARGET version (it used to
+/// carry the current version, which misled debugging after upgrades). Only
+/// filename-safe chars survive the filter; a degenerate input falls back to
+/// the current version.
+fn staging_path(app: &AppHandle, target: &str) -> PathBuf {
+    let dir = update_staging_dir();
     let _ = std::fs::create_dir_all(&dir);
-    dir.join(format!("workbench-setup-{}.exe", current_version(app)))
+    let safe: String = target
+        .trim_start_matches('v')
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        .collect();
+    let name = if safe.is_empty() { current_version(app) } else { safe };
+    dir.join(format!("workbench-setup-{name}.exe"))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -244,6 +258,7 @@ pub async fn app_download_update(
     app: AppHandle,
     setup_url: String,
     sha256_url: String,
+    target_version: String,
 ) -> Result<DownloadResult, WorkbenchError> {
     let client = client()?;
     let sidecar = client
@@ -284,7 +299,7 @@ pub async fn app_download_update(
         )));
     }
     let total = resp.content_length().unwrap_or(0);
-    let dest = staging_path(&app);
+    let dest = staging_path(&app, &target_version);
     let tmp = dest.with_extension("part");
     use tokio::io::AsyncWriteExt;
     let mut file = tokio::fs::File::create(&tmp)
@@ -323,6 +338,17 @@ pub async fn app_download_update(
     tokio::fs::rename(&tmp, &dest)
         .await
         .map_err(|e| WorkbenchError::usage(format!("staging rename: {e}")))?;
+    // b1: drop stale staged installers from previous updates — they used to
+    // masquerade under the current version's name and lingered in %TEMP%.
+    if let Ok(entries) = std::fs::read_dir(update_staging_dir()) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("workbench-setup-") && name.ends_with(".exe") && entry.path() != dest {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
     Ok(DownloadResult { path: dest.display().to_string(), sha256: actual, size: downloaded })
 }
 
@@ -339,8 +365,13 @@ pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<()
     #[cfg(windows)]
     let spawn = {
         use std::os::windows::process::CommandExt;
+        // b1: /R makes the silent installer relaunch the app as the
+        // ORIGINAL user (nsis_tauri_utils::RunAsUser) once the upgrade chain
+        // — PATH takeover, docker cleanup/rebuild — finishes (.onInstSuccess).
+        // No elevation is inherited: this installer runs with
+        // RequestExecutionLevel user and RunAsUser is a second guard.
         std::process::Command::new("cmd")
-            .args(["/c", "start", "", &setup_path, "/S"])
+            .args(["/c", "start", "", &setup_path, "/S", "/R"])
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .spawn()
     };
