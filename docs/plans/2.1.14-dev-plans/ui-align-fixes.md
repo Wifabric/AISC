@@ -1,8 +1,9 @@
-# 批 3：UI 对齐三小项（高级槽位间距 / 历史页徽标 / 关于弹窗超高）
+# 批 3：UI 对齐四项（高级槽位间距 / 历史页徽标 / 关于弹窗超高 / picker 窄窗）
 
 > 状态：计划待用户验收（2026-09-23 立项）
 > 来源：todo v2.1.14-target 两条 + 反馈站 20260922-历史记录页-徽标按钮未对齐
-> （D-1 纳入）；三 size 均 S、验收形态相同，据 D-2/D-5 合批
+> （D-1 纳入）+ picker 窄窗挤压（D-12 收编 todo:150）；验收形态相同，据
+> D-2/D-5/D-12 合批
 > 方法：ultracode workflow（研究员 + 独立证据核验 + 图像分析；verdict 均
 > corrected——批号归属冲突、越界阈值、版本窗口归属等修正已并入；本稿历史
 > 归属一律用 commit 哈希）
@@ -70,7 +71,17 @@
 - **前置确认**：用户实际 `ui.font_scale` 需手测确认（若 ≤1.19 则 zoom 机制
   不成立，需另查——alt 镜头已标注此不确定性）。
 
+## D. picker 窄窗持续挤压（D-12 收编，todo:150 / 2.1.11 遗留）
+
+- **根因**：App.vue 的 `Math.min(scale, 1.5, w/800, h/600)` 把窗口宽 <800px
+  的场景一并拉进 UI zoom——picker（工作区选择器）在窄窗下整 UI 随
+  effectiveScale 同步缩小（当时手测判「无害但不美观」）。
+- **方案**：picker 场景脱离 width-clamp（仅保留 height-clamp 或按 picker 实际
+  最小需求定 clamp 下限），或改响应式布局；实施时以 picker 在 700×500、
+  600×500 窄窗下的实际排版定案（与批 3 令牌化顺路，UI 同域）。
+
 ## 验收
 
 见 [HANDTEST.md](HANDTEST.md) T3（字号 1.25/1.5 + 800×600 小窗、DevTools
-getBoundingClientRect 字段级断言、双主题往返、vitest 基线不降）。
+getBoundingClientRect 字段级断言、双主题往返、picker 窄窗 700×500/600×500、
+vitest 基线不降）。

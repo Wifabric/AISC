@@ -5,7 +5,8 @@
 > 进程后，只能 ctrl+c 关闭子进程，ctrl+/ 切换无反应」；D-1 纳入）
 > 方法：ultracode workflow（研究员 + evidence/alt 双镜头核验，alt 镜头经
 > 外部权威源交叉核验；verdict 均 corrected——legacy 别名、conhost 翻译层、
-> 上游 PR 编码取向三处关键修正已并入）
+> 上游 PR 编码取向三处关键修正已并入）；批范围 2026-09-23 经 D-10 扩为
+> 「终端键盘域」（含分屏导航）
 > 对应 target：docs/todo.md「v2.1.14-target」反馈 #2 条目
 
 ## 1. 根因（核验确认，排除法完备）
@@ -54,11 +55,14 @@ kitty keyboard protocol / modifyOtherKeys 编码能力（sourcesContent 正则
 - 可选缓解（升级前）：变更说明附 codex config.toml 换键 workaround
   （绑定 legacy 可达组合），随发布口径定。
 
-## 4. 同批裁决（U-2）
+## 4. 同批项：分屏键盘导航（D-10 用户裁定入批，todo:81）
 
-分屏键盘导航 Ctrl+Shift+hjkl / Ctrl+方向键（todo:81，WebView2 加速器层
-拦截、COM 方案已放弃）与本项同域（终端键盘链路）：入批一并处理（如 WebView2
-层放行方案的最后一试）或显式转期——开题时用户裁决。
+Ctrl+Shift+hjkl / Ctrl+方向键 被 WebView2 浏览器加速器层拦截（既定事实：
+AreBrowserAcceleratorKeysEnabled 默认开启，Tauri 2 无公共禁用钩子，COM 方案
+已放弃）。入批处理路径（实施时探针定案）：①xterm 层自定义替代键绑定
+（如 Alt+hjkl，随设置可配）；②再次评估 WebView2 加速键开关的可行注入点
+（Tauri 2 webview 配置演进复查）；③菜单/命令面板降级导航兜底。验收含
+「至少一条可用的 pane 焦点移动路径 + 原组合键行为文档化」。
 
 ## 5. 验收
 

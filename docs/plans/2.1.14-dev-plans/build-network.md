@@ -8,6 +8,9 @@
 > 代码；evidence/alt 双镜头核验 verdict 均 corrected——a1 定性、yazi 文件名、
 > glob 简化改法、D-12 张力四处修正已并入）
 > 对应 target：docs/todo.md「v2.1.14-target」反馈 #1 条目
+> 范围升级（2026-09-23 D-11 用户裁定）：npm 四包连带预置 + 「无论什么网络
+> 条件保底完成构建」——保底专项调研（Dockerfile 全触点 / 离线机制 /
+> 条件矩阵 / 体积核算）结论并入本档后实施，本档 §2 方案为已定底座
 
 ## 1. 根因（日志 + 代码 + devlog 三重印证，置信 H1）
 
@@ -45,18 +48,20 @@
 | P0c | yazi / cc-switch 下载 `curl --max-time` 60→180-300s（慢速镜像下 60s 必死的直接止血） | Dockerfile 两处 |
 | P1 | 构建失败网络诊断归因：build.py/main.py 在 docker exit 4 路径识别 stderr 的 curl (6)/(28)/(35)/(52) + 「下载失败」模式 → `build.failed` 事件附加结构化 `diagnostics`（network 归因 + 三出路建议），Workbench 失败卡片渲染为可点动作（重试/预置/文档） | main.py:1297-1386 / build.py:490-561 / 前端卡片 |
 | P1b | Workbench 构建界面暴露既有 `GH_PROXY` build-arg（架构化的显式同意通道；符合 D-12「不未经同意改写用户网络」与 network.ts 契约「never touch host proxy」） | runtime.rs:1412 argv / 前端 |
-| 不做 | P2 宿主代理自动探测注入（降 opt-in 暂不做）；P4 构建期容器 TUN sidecar（不立项）；npm 四包预置待 U-1 | — |
+| 不做 | P2 宿主代理自动探测注入（降 opt-in 暂不做）；P4 构建期容器 TUN sidecar（不立项）。npm 四包预置已由 D-11 裁定纳入（并入保底专项实施） | — |
 
 ## 3. 裁决边界（核验确认无冲突）
 
 - P0 不破「镜像零预置」裁决（2.1.12 D-1 那条指 **provider 预配置模板**；
   downloads/ 入 git 是 v1.2.3 起自包含惯例，devlog:2303-2306）；
-- P1b 不破 D-12 与 network.ts 契约（用户显式填代理，非自动改写）。
+- P1b 不破 2.1.13 D-12 与 network.ts 契约（用户显式填代理，非自动改写）。
+- D-11 后本批升级为「网络保底构建」：npm 四包 + yazi 等全触点预置、
+  resolver 离线 manifest 接入、条件矩阵降级链——专项调研结论并入本档 §2。
 
 ## 4. 待用户
 
-U-1（npm 四包连带预置 +约 60MB？）、U-6（向反馈用户追问成功前置操作定 H3）、
-U-7（对外回复口径：预置 + 构建参数修复 + 网络引导，非根治宿主 TUN 覆盖）。
+~~U-1~~ 已裁定（D-11）；~~U-7~~ 已回执（2026-09-23）；U-6 追问已随回执
+发出，等用户答复（不阻塞 P0 落地）。
 
 ## 5. 验收
 
