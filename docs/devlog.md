@@ -3724,3 +3724,22 @@ GH_PROXY 正式通道）。门禁：pytest 1345 全绿、cargo --lib 332、vites
 vendor/checksums.txt 未再生新预置条目（manifest 已登记；校验只对已列
 文件，无 CI 风险；随 T6 手测后补）。停止点 = HANDTEST T1-T6 全部需要
 用户实机（T1 需 v2.1.14-preview.1 或临时包）。按 D-19 指示关机。
+
+## 2026-09-24 深夜 v2.1.14-preview.1 发布 + T1 装机取证全绿
+
+发布四轮：①vendor/checksums 未再生被 CI 门禁拦（b6-b11 变更补账+3 预置
+件入册；顺带修 vendor-refresh 在 Windows 被 MS Store python3 桩卡死）；
+②macOS bash 3.2 不支持 ${!var:-}（stage-npm 改直传值+防御性初始化）+
+NSIS 工作流补伴生包 stage；③**b1 真缺陷被自加 smoke 抓到**：PathRead 把
+「值不存在」混同「读取失败」→无用户 PATH 全新装机不创建 PATH（单列
+ERROR_FILE_NOT_FOUND 走创建分支）；④绿。快照测试 python 探测补 CI 兼容。
+载荷 292.7MB（C-混合伴生包）。
+
+用户装机（2.1.13）应用内下载反复死于 ~33MB「参数无效」→ b12 根因：
+client() 30s 整体超时（订阅下载器时代设定；60MB 时代勉强，292MB 必断）
+改 connect(10s)+read(60s)。用户浏览器手动下载安装完成升级链。
+
+装后取证（Claude）：DisplayVersion ✓、PATH ExpandString（b1 存量自愈
+实证）✓、INSTDIR 恰 1 ✓、CLI 0.1.2 同批 ✓、dry-run source=manifest
+（F11 离线 manifest 随 bundle 分发并被消费）✓、镜像 upgrade 链自动重建
+✓、数据保留 ✓。T1-1/T1-2 应用内流顺延下一跳（b12 修复后可达）。

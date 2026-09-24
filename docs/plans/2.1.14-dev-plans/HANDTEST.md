@@ -14,7 +14,9 @@
 
 | 项 | 执行方 | 状态（2026-09-24） |
 | --- | --- | --- |
-| T1 自更新三项 | Claude（打包+装机核验，需先出包） | 待出包 |
+| T1 出包（发布链） | **Claude** | ✅ 2026-09-24：v2.1.14-preview.1 发布（四轮构建：vendor checksums 补账→stage-npm bash3.2+NSIS 伴生包→PathRead 值不存在真缺陷修复→绿；292.7MB 含离线伴生包，prerelease ✓）
+| T1-3 装后取证 | **Claude** | ✅ 2026-09-24：DisplayVersion=2.1.14-preview.1；PATH=ExpandString（存量自愈实证）；INSTDIR 恰 1 条；CLI 0.1.2 同批；dry-run 过且 source=manifest（F11 生效）；镜像 upgrade 链自动重建；数据保留 ✓
+| T1-1/T1-2 应用内更新流 | 用户+Claude | ⏸ 顺延下一跳：本次 30s 整体超时腰斩 292MB 下载（b12 已修 connect/read 双超时）；/R 拉起链由 CI smoke 覆盖；staging 目标版本命名+清场在 2.1.14→下一跳验证 |
 | T2-0 adapter 判别 | **Claude** | ✅ 2026-09-24：镜像内 adapter mtime=2026-09-24 05:09（b7 已入） |
 | T2-B 保存保真（docker exec 容器实跑） | **Claude** | ✅ 2026-09-24 ×3：preset claude env 覆盖落库+模板基线保留（OPUS/SONNET 扇出跟随、HAIKU/SUBAGENT 基线）；preset codex model+catalog 落库；custom codex model 首存非空（H2 闭环） |
 | T2 6 模板回归矩阵（保存路径） | **Claude** | ✅ 等价覆盖：adapter 单测 97 例含 preset/custom × claude/codex 矩阵 |
