@@ -103,7 +103,10 @@ stage_family() {
   # b10fix: the caller passes the versions.env VALUE (no ${!var} indirection —
   # macOS CI ships bash 3.2, where ${!name:-} misparses → "ver: unbound variable").
   local pkg="$1" main_prefix="$2" comp_prefix="$3" pin="$4"
-  local ver comp_pkg comp_ver meta tmp a f keep
+  # b10fix-2: initialize every local — macOS CI's bash 3.2 reported
+  # "ver: unbound variable" at the pinned echo; explicit defaults make the
+  # declaration order irrelevant under `set -u` on every bash.
+  local ver="" comp_pkg="" comp_ver="" meta="" tmp="" a="" f="" keep=""
   if [ "$LATEST" = "1" ] || [ -z "$pin" ]; then
     ver="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$REGISTRY/$pkg/latest" | PYTHONIOENCODING=utf-8 "$PY" -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
   else

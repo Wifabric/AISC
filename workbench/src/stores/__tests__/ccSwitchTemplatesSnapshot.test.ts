@@ -18,8 +18,9 @@ describe("FALLBACK_TEMPLATES ↔ container manifest snapshot", () => {
 
   it("endpoint triples match provider_templates_manifest() per template id", () => {
     const root = resolve(process.cwd(), "..");
-    const pyExe = [".venv/Scripts/python.exe", ".venv/bin/python"].find((p) =>
-      existsSync(resolve(root, p)));
+    // local Windows: the repo venv; CI (ubuntu): system python3.
+    const pyExe = [".venv/Scripts/python.exe", ".venv/bin/python", "python3", "python"].find(
+      (p) => p.includes("/") ? existsSync(resolve(root, p)) : true);
     expect(pyExe, "repo venv python not found").toBeDefined();
     const out = execFileSync(resolve(root, pyExe!), {
       cwd: root,
