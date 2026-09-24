@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import io
+import argparse
 import json
 import sqlite3
 import subprocess
@@ -2140,3 +2141,47 @@ class B7PresetAddOverridesTests(AdapterTestCase):
         row = next(r for r in rows if r["id"] == "zhipu")
         self.assertTrue(row["has_api_key"])
         self.assertIn("glm-5.2", json.dumps(row["role_env"]))
+
+
+class FetchModelsProbePassthroughTests(unittest.TestCase):
+    """b9 (#4, user report): cmd_cc_switch_fetch_models used to forward only
+    {"api_key"} — the add-mode inline probe (base_url/template_id) reached
+    the adapter EMPTY and died on the id gate. The whole probe document must
+    pass through."""
+
+    def test_add_mode_probe_document_forwards_in_full(self):
+        from aisc.cli.commands import cc_switch as cs
+        from aisc.application import cc_switch_provider as prov
+
+        captured: dict = {}
+
+        def fake_fetch(**kw):
+            captured.update(kw)
+            return {"available": False, "models": [], "message": ""}
+
+        args = argparse.Namespace(runtime_id="rid-1", agent="claude",
+                                  provider_id="", workspace=".")
+        doc = json.dumps({
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-x", "template_id": "zhipu"})
+        with mock.patch.object(prov, "fetch_models", side_effect=fake_fetch),                 mock.patch.object(sys, "stdin", io.StringIO(doc)):
+            cs.cmd_cc_switch_fetch_models(args)
+        self.assertEqual(captured["request"], {
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-x", "template_id": "zhipu"})
+
+    def test_row_mode_without_stdin_forwards_none(self):
+        from aisc.cli.commands import cc_switch as cs
+        from aisc.application import cc_switch_provider as prov
+
+        captured: dict = {}
+
+        def fake_fetch(**kw):
+            captured.update(kw)
+            return {"available": False, "models": [], "message": ""}
+
+        args = argparse.Namespace(runtime_id="rid-1", agent="claude",
+                                  provider_id="zhipu", workspace=".")
+        with mock.patch.object(prov, "fetch_models", side_effect=fake_fetch),                 mock.patch.object(sys, "stdin", io.StringIO("")):
+            cs.cmd_cc_switch_fetch_models(args)
+        self.assertIsNone(captured["request"])
