@@ -1618,6 +1618,12 @@ function onTreeKeydown(e: KeyboardEvent) {
 }
 .conversation-title {
   font-weight: 500;
+  /* b7 (T3-2): a long title must SHRINK and ellipsize, not push the
+   * count/chip/badge out of alignment (user report: 名过长时错位). */
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .conversation-resume-error {
   flex-basis: 100%;

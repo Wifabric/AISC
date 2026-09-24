@@ -251,12 +251,27 @@ function buildRequest(): import("../../types").CcSwitchRequest {
   };
   if (adding.value) {
     if (addMode.value === "preset") {
+      // b7 (user verdict): preset add carries the advanced mapping layer —
+      // the adapter's simple path now applies these as overrides on top of
+      // the template baseline (this was H2, the "first save lost the
+      // mapping" root cause).
       return { mode: "simple", id: form.id.trim() || form.preset, provider: form.preset,
                base_url: form.baseUrl.trim() || undefined,
                api_key: form.apiKey || undefined,
                // D-7: the dropdown is authoritative for the wire format —
                // it wins over the template declaration (meta.apiFormat).
                ...(props.agent === "codex" ? { api_format: form.apiFormat } : {}),
+               ...(props.agent === "codex" ? { model: modelField.value.trim() || undefined } : {}),
+               ...(props.agent === "claude"
+                 ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
+                 : {}),
+               ...(props.agent === "codex"
+                 ? { model_catalog: { models: catalog.value.map((m) => ({
+                     model: m.model, contextWindow: m.context_window,
+                     display_name: m.display_name || undefined,
+                     reasoning_levels: m.reasoning_levels?.length ? m.reasoning_levels : undefined,
+                     default_reasoning_level: m.default_reasoning_level || undefined })) } }
+                 : {}),
                ...d7 };
     }
     return {
@@ -464,16 +479,15 @@ function onSave(): void {
           </p>
         </div>
         <ModelMappingEditor
-          v-if="!(adding && addMode === 'preset')"
           :agent="agent"
           :roles="roles"
           :role-slots="roleSlots"
           :catalog="catalog"
           :candidates="candidates"
         />
-        <!-- b2 (H2): preset (simple) add never sends the mapping layer —
-             say so instead of silently dropping what the user typed. -->
-        <p v-else class="hint">{{ t("ccswitch.edit.presetNoMapping") }}</p>
+        <!-- b7 (user verdict, T3-1): the mapping layer is editable AND
+             saved in template mode too — cc-switch parity. The b2 gate
+             (hide + "not saved" hint) is reverted. -->
 
         <!-- Manual-test #2 (2026-09-06): the「其它信息」section (notes /
              website / icon / icon color) is retired from the form per user
