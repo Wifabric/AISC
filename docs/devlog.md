@@ -3743,3 +3743,15 @@ client() 30s 整体超时（订阅下载器时代设定；60MB 时代勉强，29
 实证）✓、INSTDIR 恰 1 ✓、CLI 0.1.2 同批 ✓、dry-run source=manifest
 （F11 离线 manifest 随 bundle 分发并被消费）✓、镜像 upgrade 链自动重建
 ✓、数据保留 ✓。T1-1/T1-2 应用内流顺延下一跳（b12 修复后可达）。
+
+## 2026-09-24 收口（用户宣布：功能全部没问题，preview.2 验自动更新）
+
+收尾清单执行：①六批+追加修复（b1-b12）全部交付，provider 域（b2/b7/b8/
+b9/b10/b11 六轮）用户确认收口；②v2.1.14-preview.1 已发布+装机取证全绿
+（PATH 存量自愈/F11 manifest 消费/镜像 upgrade 链均装机实证）；③todo
+v2.1.14-target 11 条全部勾账+收口注记；④b12 下载超时修复已本地实证
+（292MB/61.2s ignored 测试入库）；⑤CI 修复链：vendor checksums、stage-npm
+bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCII 化）、快照
+测试 CI 兼容×2。preview.2 发布后：用户装机 preview.1→preview.2（手动），
+此后应用内更新链（b12 超时+T1-1 命名清场+T1-2 /R 拉起）在下一跳全验。
+观察项：T6-4/5/6 断网模拟挂起（需窗口）；T5/T2-A/T4-1·3·4·5 随日常使用。
