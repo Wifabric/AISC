@@ -111,9 +111,12 @@ stage_family() {
     ver="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$REGISTRY/$pkg/latest" | PYTHONIOENCODING=utf-8 "$PY" -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
   else
     ver="$pin"
-    echo "📌 $pkg 按 versions.env 钉版：$ver（--latest 可切换）"
+    # b10fix-3: Apple's patched bash 3.2 (macOS CI) chokes when a
+    # variable is followed IMMEDIATELY by a fullwidth char - keep these
+    # echoes ASCII around every interpolation.
+    echo "pin: $pkg @ $ver (from versions.env; --latest overrides)"
   fi
-  [ -n "$ver" ] || { echo "❌ 无法解析 $pkg 版本（$REGISTRY / versions.env）"; exit 1; }
+  [ -n "$ver" ] || { echo "ERROR: cannot resolve version for $pkg ($REGISTRY / versions.env)"; exit 1; }
   # 已是最新且伴生包齐 → 跳过（重跑不重拉 ~100MB 级文件）
   if [ -f "$DL/$main_prefix-$ver.tgz" ]; then
     local skip=1 comp
