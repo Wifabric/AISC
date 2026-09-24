@@ -2000,7 +2000,7 @@ class B2AddFidelityTests(AdapterTestCase):
         # model list lives on the template's OpenAI side (/api/paas/v4).
         from unittest import mock
 
-        def fake_fetch(base, key, timeout=15.0, bearer_only=False, log_path=""):
+        def fake_fetch(base, key, timeout=15.0, bearer_only=False, log_path="", **_kw):
             if base == "https://open.bigmodel.cn/api/paas/v4":
                 return ["glm-5.3", "glm-5.2"]
             return None

@@ -2534,7 +2534,7 @@ def _models_url_candidates(base_url: str) -> list[str]:
 
 def _openai_compatible_models(
     base_url: str, api_key: str, *, timeout: float = 15.0, bearer_only: bool = False,
-    log_path: str = "",
+    log_path: str = "", status_out: Optional[list] = None,
 ) -> list[str] | None:
     """The documented fetch path (user-manual 2.1 §自动获取模型), ported from
     upstream services/model_fetch.rs: walk the candidate model-list URLs and
@@ -2555,6 +2555,8 @@ def _openai_compatible_models(
     for url in _models_url_candidates(base_url):
         for headers in header_sets:
             status, payload = _http_get_json(url, headers, timeout)
+            if status_out is not None:
+                status_out.append(status)
             if log_path:
                 # b2: candidate-level diagnostics (base/status/ids) — makes
                 # "endpoint dead" vs "link dead" separable from the outside.
@@ -2596,14 +2598,20 @@ def _fetch_models_inline(agent: str, base_url: str,
                 bases.append(pb)
         except AdapterError:
             pass
+    statuses: list = []
     for base in bases:
         models = _openai_compatible_models(
-            base, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log")
+            base, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log",
+            status_out=statuses)
         if models:
             return {"available": True, "models": models, "message": ""}
+    # b10 (#2): the bare "no /models" hid WHY — surface the candidate
+    # statuses (401 = key rejected, 404/0 = endpoint/link) + the log path.
+    uniq = "/".join(str(c) for c in sorted({s for s in statuses if s}))
+    detail = f"（候选 {len(statuses)} 次请求：HTTP {uniq or '无响应'}；详见 /tmp/aisc-fetch-models.log）" if statuses else ""
     return {
         "available": False, "models": [],
-        "message": "no /models at the given endpoint",
+        "message": f"no /models at the given endpoint{detail}",
     }
 
 

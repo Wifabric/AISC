@@ -91,7 +91,10 @@ class CliOpInProcessTests(unittest.TestCase):
                           frame["envelope"]["errors"][0]["message"])
         # Past the gate: argparse rejects the missing required args instead —
         # a usage error whose message is NOT the serve denial.
-        for op in ("list", "switch", "fetch-models"):
+        # b10 (#3 终局): "templates" MUST be in the allowlist — its omission
+        # (2.1.12 D-6.8 added the op but never this mirror) silently degraded
+        # every manifest fetch to the builtin fallback for two releases.
+        for op in ("list", "switch", "fetch-models", "templates"):
             frame = self._run({"argv": ["cc-switch", op]})
             env = frame["envelope"]
             self.assertEqual(env["meta"]["exit_code"], 2)
