@@ -192,22 +192,24 @@
 
 # v2.1.14-target（2026-09-23 开题：范围 = 转期/预置项 + 反馈站 4 条〔D-1〕+ 悬账收编〔D-12〕；计划 docs/plans/2.1.14-dev-plans/；「工作记录」概念已撤销〔D-14〕；开放项 U-4/U-6）
 
+> **2026-09-24 收口**：六批（b1-b12，含四轮 provider 修复与三轮发布修复）全部交付。手测 T3-3/T4-2/T1-3/装机取证 PASS；provider 域用户确认收口；剩余观察项：T1-1/T1-2 应用内更新流随 v2.1.14-preview.2→下一跳验证（b12 下载超时已本地实证 61.2s/292MB）、T6-4/5/6 断网模拟挂起（需断网窗口）、T5/T2-A/T4-1·3·4·5 随日常使用验证。
+
 **发布与更新（批 1）**
-- [ ] 开池版本 bump 2.1.13 → 2.1.14 + 自更新三项：静默升级完成后自动拉起新版（update.rs 加 /R 激活 installer.nsi 既有 RunAsUser 机制；接受升级链全程后拉起，文案/发布说明写明）／ staging 文件名改目标版本（appDownloadUpdate 穿透 targetVersion，顺带清理 staging 旧 exe）／ NSIS PATH 写 REG_EXPAND_SZ（PathWrite 恒 ExpandStr + 存量自愈写 + CI smoke 补首装新建值断言）
+- [x] 开池版本 bump 2.1.13 → 2.1.14 + 自更新三项：静默升级完成后自动拉起新版（update.rs 加 /R 激活 installer.nsi 既有 RunAsUser 机制；接受升级链全程后拉起，文案/发布说明写明）／ staging 文件名改目标版本（appDownloadUpdate 穿透 targetVersion，顺带清理 staging 旧 exe）／ NSIS PATH 写 REG_EXPAND_SZ（PathWrite 恒 ExpandStr + 存量自愈写 + CI smoke 补首装新建值断言）
 **Provider 新建保真（批 2，合批）**
-- [ ] 新建的 provider 第一次保存的结果和用户填写的不同（偶发，未复现；三假设已定位：模板清单竞态 + 切格式确定性覆盖 baseUrl〔lastAutoPrefilled 守卫修〕／ buildRequest 新建路径丢 env/model/model_catalog／容器侧 codesome-v3 native 端点缺 /v1 数据修复 + FALLBACK↔manifest 一致性单测）
-- [ ] 添加 provider 模型拉取失败，claude 和 codex 侧都是这样（add 内联探测纳入模板声明 OpenAI 侧 base 候选 + 超时 15s→6s 总预算 <25s 对齐 30s 杀线 + 候选请求诊断日志；手测第 0 步先判 adapter 版本——旧镜像 requires --id 同症状）
+- [x] 新建的 provider 第一次保存的结果和用户填写的不同（偶发，未复现；三假设已定位：模板清单竞态 + 切格式确定性覆盖 baseUrl〔lastAutoPrefilled 守卫修〕／ buildRequest 新建路径丢 env/model/model_catalog／容器侧 codesome-v3 native 端点缺 /v1 数据修复 + FALLBACK↔manifest 一致性单测）
+- [x] 添加 provider 模型拉取失败，claude 和 codex 侧都是这样（add 内联探测纳入模板声明 OpenAI 侧 base 候选 + 超时 15s→6s 总预算 <25s 对齐 30s 杀线 + 候选请求诊断日志；手测第 0 步先判 adapter 版本——旧镜像 requires --id 同症状）
 **UI 对齐四项（批 3，合批；2026-09-23 D-12 收编 picker 窄窗）**
-- [ ] provider claude 添加时展开高级槽位两个输入框挨太近（ModelMappingEditor.vue:103 裸 div 吃掉 .mapping 的 flex gap——加 class 补 gap 令牌，一处修全部 claude 模板）
-- [ ] 历史记录页徽标按钮未对齐（反馈 #3；胶囊规格统一 + ✳◈ 字形度量隔离 + 散值令牌化，新增 --radius-pill；非批 9 回归）
-- [ ] 关于 aisc workbench 结果弹窗异常，太长超出显示范围无滚动条（DoctorDialog 未 Teleport 逃逸 zoom + max-height:84vh 被放大——k>约1.19 越界，字号 ≥1.20 必现；照 FloatingPane 惯例改造；内容推高来自 2.1.12 新增 doctor 检查项）
+- [x] provider claude 添加时展开高级槽位两个输入框挨太近（ModelMappingEditor.vue:103 裸 div 吃掉 .mapping 的 flex gap——加 class 补 gap 令牌，一处修全部 claude 模板）
+- [x] 历史记录页徽标按钮未对齐（反馈 #3；胶囊规格统一 + ✳◈ 字形度量隔离 + 散值令牌化，新增 --radius-pill；非批 9 回归）
+- [x] 关于 aisc workbench 结果弹窗异常，太长超出显示范围无滚动条（DoctorDialog 未 Teleport 逃逸 zoom + max-height:84vh 被放大——k>约1.19 越界，字号 ≥1.20 必现；照 FloatingPane 惯例改造；内容推高来自 2.1.12 新增 doctor 检查项）
 **终端键盘域（批 4）**
-- [ ] codex 用 /btw 后 ctrl+/ 无法切回 main（反馈 #2；xterm 6.0 键盘映射无 Ctrl+/ 条目静默丢弃——onTermCustomKey 拦截 + writeSession 直发，载荷 CSI-u/ 双臂手测定案，conhost 翻译层为主要实测风险；D-10 用户裁定同批收编分屏 Ctrl+Shift+hjkl 导航悬账〔todo:81〕：替代键绑定/加速键开关复查/菜单兜底三路探针定案）
+- [x] codex 用 /btw 后 ctrl+/ 无法切回 main（反馈 #2；xterm 6.0 键盘映射无 Ctrl+/ 条目静默丢弃——onTermCustomKey 拦截 + writeSession 直发，载荷 CSI-u/ 双臂手测定案，conhost 翻译层为主要实测风险；D-10 用户裁定同批收编分屏 Ctrl+Shift+hjkl 导航悬账〔todo:81〕：替代键绑定/加速键开关复查/菜单兜底三路探针定案）
 **工作区（批 5）**
-- [ ] 顶栏增加「关闭工作区」：关闭当前工作区回 picker、窗口不关（反馈 #4；复用既有 closeWorkspace 链零生命周期改动，操作菜单项 + 顶栏按钮 + 命令面板三入口，confirm 误触保护，ready/error 门控）
-- [ ] picker 窄窗持续挤压（2.1.11 遗留，D-12 收编批 3）：App.vue width-clamp 把 <800px 窗拉进 zoom——picker 场景脱离 width-clamp 或改响应式
-- [ ] docker 管理破坏性操作边界裁决立账（2.1.13 尾巴，D-12 收编；D-13 代定草案：清单制 + owned-only + 三重不变量 + 永不触碰 aisc 外资产，随验收定稿）
+- [x] 顶栏增加「关闭工作区」：关闭当前工作区回 picker、窗口不关（反馈 #4；复用既有 closeWorkspace 链零生命周期改动，操作菜单项 + 顶栏按钮 + 命令面板三入口，confirm 误触保护，ready/error 门控）
+- [x] picker 窄窗持续挤压（2.1.11 遗留，D-12 收编批 3）：App.vue width-clamp 把 <800px 窗拉进 zoom——picker 场景脱离 width-clamp 或改响应式
+- [x] docker 管理破坏性操作边界裁决立账（2.1.13 尾巴，D-12 收编；D-13 代定草案：清单制 + owned-only + 三重不变量 + 永不触碰 aisc 外资产，随验收定稿）
 **网络保底构建（批 6，反馈 #1 履约 + D-11 升级）**
-- [ ] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「保底完成构建」专项调研已完成（12 触点矩阵+修复层 F1-F11），**发现硬墙**：npm 伴生包 codex tgz 123.7MiB 超 GitHub 单文件 100MiB 上限，「全进仓库」push 必拒——落地形态待 U-8 终裁（推荐 C-混合 +7.6MiB）；保底地板语义待 U-9 终裁（推荐 GitHub 全阻+国内源可达））
+- [x] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「保底完成构建」专项调研已完成（12 触点矩阵+修复层 F1-F11），**发现硬墙**：npm 伴生包 codex tgz 123.7MiB 超 GitHub 单文件 100MiB 上限，「全进仓库」push 必拒——落地形态待 U-8 终裁（推荐 C-混合 +7.6MiB）；保底地板语义待 U-9 终裁（推荐 GitHub 全阻+国内源可达））
 
 # 待解决
