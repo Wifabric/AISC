@@ -900,6 +900,15 @@ Function ${UN}PathRead
       StrCpy $PathType $3
       StrCpy $PathOk 1
       ReadRegStr $PathRaw HKCU "Environment" "Path"
+    ${ElseIf} $5 = 2
+      ; b10fix (caught by the b1 fresh-PATH smoke): ERROR_FILE_NOT_FOUND means
+      ; the VALUE is absent - a genuinely fresh user PATH. Treat as
+      ; empty-and-writable so AddInstDirToPath CREATES it (unconditional
+      ; PathWrite => REG_EXPAND_SZ). Distinct from a read FAILURE ($PathOk=0,
+      ; value left strictly untouched - that guard is about permissions).
+      StrCpy $PathType 2
+      StrCpy $PathOk 1
+      StrCpy $PathRaw ""
     ${EndIf}
     System::Call 'advapi32::RegCloseKey(p r1)'
   ${EndIf}
