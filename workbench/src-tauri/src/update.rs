@@ -53,7 +53,13 @@ pub fn normalize_version(v: &str) -> String {
 fn client() -> Result<reqwest::Client, WorkbenchError> {
     let mut builder = reqwest::Client::builder()
         .user_agent("aisc-workbench-selfupdate")
-        .timeout(Duration::from_secs(30));
+        // b12 (T1 user report): the old TOTAL timeout(30s) was fine for the
+        // subscription downloader's small files and the ~60MB payloads of
+        // 2.1.13-era installers — but the C-混合 bundles pushed the setup to
+        // 292MB and every in-app download now died ~30s in ("参数无效"/断流).
+        // Bound STALLS, not total size: connect 10s, read 60s idle.
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(60));
     if let Some(proxy) = crate::subscription::system_http_proxy() {
         if let Ok(p) = reqwest::Proxy::all(&proxy) {
             builder = builder.proxy(p);
