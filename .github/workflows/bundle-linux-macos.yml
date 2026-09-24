@@ -25,6 +25,7 @@ on:
       - 'VERSION'
       - 'pyproject.toml'
       - 'vendor/**'
+      - 'scripts/stage-npm.sh'  # b10fix: bundle staging runs it (D-16 companions)
 
 jobs:
   bundle:
