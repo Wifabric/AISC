@@ -54,7 +54,11 @@ const actualModel = computed(() => {
 </script>
 
 <template>
-  <div class="card" :class="{ current: provider.is_current }">
+  <!-- b11 (user request): no persistent 使用中 chip — the current card is
+       marked by the accent border/background (card.current); a title tooltip
+       keeps it discoverable. -->
+  <div class="card" :class="{ current: provider.is_current }"
+       :title="provider.is_current ? t('ccswitch.currentHint') : undefined">
     <span class="glyph" :style="glyphColor ? { color: glyphColor } : {}" aria-hidden="true">
       <!-- Claude's 8-spoke starburst mark (claude-official rows). -->
       <svg v-if="brand === 'anthropic'" width="18" height="18" viewBox="0 0 24 24"
@@ -82,7 +86,6 @@ const actualModel = computed(() => {
       <span v-else class="url" :title="provider.base_url">{{ provider.base_url }}</span>
       <span v-if="actualModel" class="actual">{{ t("ccswitch.actualModel") }}：{{ actualModel }}</span>
     </span>
-    <span v-if="provider.is_current" class="badge">{{ t("ccswitch.currentChip") }}</span>
     <span class="actions" @click.stop @keydown.stop>
       <button v-if="startable" class="start" :disabled="busy"
               :title="official ? t('ccswitch.cancelProxyHint') : t('ccswitch.activateHint')"
@@ -126,11 +129,6 @@ const actualModel = computed(() => {
 .actual { font-size: var(--font-xs); color: var(--accent); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 /* PP r3: rounded-rect tag, not a pill (the 50% radius read as an ellipse). */
-.badge {
-  flex: none; font-size: var(--font-xs); font-weight: 600;
-  color: var(--accent-fg); background: var(--accent);
-  border-radius: var(--radius-sm); padding: 1px 8px;
-}
 /* Desktop-parity hover group: actions sit on the card but only surface on
    hover/focus (touch devices get them permanently via media query). The
    启用 button leads, styled like the cc-switch desktop's primary action. */
