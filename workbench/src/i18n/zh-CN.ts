@@ -627,7 +627,7 @@ export const zhCN = {
   "settings.about.downloading": "下载中…",
   "settings.about.ready": "下载完成（sha256 {sha}… 校验通过）。将退出应用静默安装，升级链完成后自动重启。",
   "settings.about.install": "退出并更新",
-  "settings.about.installConfirm": "将退出 Workbench 静默安装并自动重启（含 Docker 资源升级链；镜像重建最长可达 30 分钟，期间请勿关机）。未保存的工作请先收尾。继续？",
+  "settings.about.installConfirm": "将退出 Workbench 静默安装并自动重启（含 Docker 资源升级链；镜像重建最长可达 30 分钟，期间请勿关机，桌面无进度提示属正常）。未保存的工作请先收尾。继续？",
   "settings.about.sidecarNote": "内置 CLI 的更新走 `aisc update`（免重启，serve 池自动换新二进制）；工具版本钉选走 `aisc update --pin-tool`。",
   "settings.ui.language": "语言",
   "settings.ui.language.auto": "自动（安装器/系统）",
