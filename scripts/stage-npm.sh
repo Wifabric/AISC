@@ -32,7 +32,8 @@ ALL_ARCHES=0
 # silently carried whatever `latest` was at stage time.
 LATEST=0
 NO_COMPANIONS=0
-_env() { grep -E "^$1=" "$ROOT/config/versions.env" | tail -1 | cut -d= -f2 | tr -d ''; }
+_env() { grep -E "^$1=" "$ROOT/config/versions.env" | tail -1 | cut -d= -f2 | tr -d '
+'; }
 YAZI_VERSION="${YAZI_VERSION:-$(_env YAZI_VERSION)}"
 CLAUDE_PIN="$(_env CLAUDE_CODE_VERSION)"
 CODEX_PIN="$(_env CODEX_VERSION)"
@@ -98,13 +99,15 @@ fetch_one() {
 }
 
 stage_family() {
-  # stage_family <pkg> <main-prefix> <companion-dep-prefix> <versions.env 键>
-  local pkg="$1" main_prefix="$2" comp_prefix="$3" env_key="$4"
+  # stage_family <pkg> <main-prefix> <companion-dep-prefix> <pin 值>
+  # b10fix: the caller passes the versions.env VALUE (no ${!var} indirection —
+  # macOS CI ships bash 3.2, where ${!name:-} misparses → "ver: unbound variable").
+  local pkg="$1" main_prefix="$2" comp_prefix="$3" pin="$4"
   local ver comp_pkg comp_ver meta tmp a f keep
-  if [ "$LATEST" = "1" ] || [ -z "${!env_key:-}" ]; then
+  if [ "$LATEST" = "1" ] || [ -z "$pin" ]; then
     ver="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$REGISTRY/$pkg/latest" | PYTHONIOENCODING=utf-8 "$PY" -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
   else
-    ver="${!env_key}"
+    ver="$pin"
     echo "📌 $pkg 按 versions.env 钉版：$ver（--latest 可切换）"
   fi
   [ -n "$ver" ] || { echo "❌ 无法解析 $pkg 版本（$REGISTRY / versions.env）"; exit 1; }
@@ -155,8 +158,8 @@ print("closure-ok")' | grep -q "closure-ok"; then
   done
 }
 
-stage_family "@anthropic-ai/claude-code" "claude-code" "@anthropic-ai/claude-code-linux" CLAUDE_PIN
-stage_family "@openai/codex" "codex" "@openai/codex-linux" CODEX_PIN
+stage_family "@anthropic-ai/claude-code" "claude-code" "@anthropic-ai/claude-code-linux" "$CLAUDE_PIN"
+stage_family "@openai/codex" "codex" "@openai/codex-linux" "$CODEX_PIN"
 
 if [ "$WANT_YAZI" = "1" ]; then
   arch="$(uname -m 2>/dev/null || echo x86_64)"

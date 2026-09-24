@@ -71,6 +71,10 @@ jobs:
       - name: Stage AISC CLI bundle (aisc-bundle for root discovery)
         shell: pwsh
         run: |
+          # b10fix: companion tgz are NOT in git (D-16 C-混合) — stage them so
+          # the NSIS bundle carries the full offline preset set (parity with
+          # artifact.yml/bundle-linux-macos.yml).
+          bash scripts/stage-npm.sh --yazi
           python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
           Get-ChildItem workbench/src-tauri/nsis/bundle/aisc-bundle | Select-Object -First 5 Name
 
