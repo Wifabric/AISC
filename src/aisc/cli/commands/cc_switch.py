@@ -143,19 +143,23 @@ def cmd_cc_switch_fetch_models(args: Any) -> Dict[str, Any]:
     # api_key — forwarded to the adapter inside the same stdin channel
     # (never argv, never logged).
     request = _read_stdin_request(required=False)
-    api_key = str(request.get("api_key") or "")
-    # 手测 r2#3: add-mode inline probe — the form's base_url rides the same
-    # stdin channel when no provider row exists yet.
-    base_url = str(request.get("base_url") or "")
-    if base_url:
-        request["base_url"] = base_url
+    # b9 (#4, user report): the OLD code read base_url into a local dict but
+    # forwarded only {"api_key"} — the add-mode inline probe (base_url +
+    # template_id) reached the adapter EMPTY and died on the id gate
+    # ("requires --id or a base_url probe on stdin"). Forward the whole
+    # probe document, whatever keys it carries.
+    payload: Dict[str, Any] = {}
+    for key in ("api_key", "base_url", "template_id"):
+        value = str(request.get(key) or "").strip()
+        if value:
+            payload[key] = value
     return fetch_models(
         runtime_id=args.runtime_id,
         agent=args.agent,
         provider_id=args.provider_id,
         workspace=args.workspace,
         executor=None,
-        request={"api_key": api_key} if api_key else None,
+        request=payload or None,
     )
 
 

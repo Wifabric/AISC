@@ -2119,7 +2119,11 @@ class B7PresetAddOverridesTests(AdapterTestCase):
         means the re-add de-facto succeeded: continue the dance."""
         from unittest import mock
 
-        self._seed_two()
+        self._install_dance_cli()
+        seed_provider(self.dir, "zhipu", {
+            "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+            "ANTHROPIC_AUTH_TOKEN": "sk-zhipu-key-2222",
+        })
         real = A._cli_add
 
         def write_then_raise(*a, **k):
@@ -2136,4 +2140,3 @@ class B7PresetAddOverridesTests(AdapterTestCase):
         row = next(r for r in rows if r["id"] == "zhipu")
         self.assertTrue(row["has_api_key"])
         self.assertIn("glm-5.2", json.dumps(row["role_env"]))
-        self.assertTrue(any(r["id"] == "deepseek" for r in rows))

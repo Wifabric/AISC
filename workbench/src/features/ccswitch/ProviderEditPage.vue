@@ -51,14 +51,16 @@ const selectedTemplate = computed<CcSwitchTemplate>(
   // template data. Add mode keeps the sponsored default; edit mode matches
   // the row's own template id, else NO template.
   () => {
-    const byPreset = props.templates.find((x) => x.id === form.preset);
-    if (byPreset) return byPreset;
     const row = props.provider;
     if (row) {
       return props.templates.find((x) => x.id === row.id)
         ?? { id: "", name: "" };
     }
-    return props.templates[0] ?? { id: "", name: "" };
+    if (addMode.value === "preset") {
+      return props.templates.find((x) => x.id === form.preset)
+        ?? props.templates[0] ?? { id: "", name: "" };
+    }
+    return { id: "", name: "" };
   });
 const form = reactive({
   id: props.templates[0]?.id ?? "", // add mode — D-6: prefilled, editable (multi-instance)
@@ -123,8 +125,11 @@ const templateEndpoint = computed(() => {
  * the format for untouched values only). */
 const lastAutoPrefilled = ref("");
 function applyTemplateEndpoint(): void {
-  // Edit mode never re-prefills (the row's own endpoint wins).
-  if (props.provider === null) return;
+  // Edit mode never re-prefills (the row's own endpoint wins); custom-add
+  // keeps whatever URL the user carried over from the preset picker.
+  // (b7 accidentally inverted the first guard — add-mode prefill was dead.)
+  if (props.provider !== null) return;
+  if (addMode.value !== "preset") return;
   if (form.baseUrl && form.baseUrl !== lastAutoPrefilled.value) return;
   lastAutoPrefilled.value = templateEndpoint.value;
   form.baseUrl = templateEndpoint.value;
