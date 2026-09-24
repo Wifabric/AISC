@@ -416,6 +416,38 @@ mod sha2_compatible {
 
 #[cfg(test)]
 mod tests {
+    // b12 (T1 user report): the 30s TOTAL timeout killed every 292MB in-app
+    // download ~33MB in. Real-stream proof that the connect/read split keeps
+    // a large asset alive past 30s to completion. #[ignore] so CI never
+    // pulls 292MB; run explicitly with:
+    //   cargo test --lib -- --ignored selfupdate_large_stream_survives
+    #[test]
+    #[ignore = "downloads the real 292MB release asset (~1 min)"]
+    #[cfg(windows)]
+    fn selfupdate_large_stream_survives() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio rt");
+        rt.block_on(async {
+            let client = client().expect("client");
+            let url = "https://github.com/Wifabric/AISC/releases/download/v2.1.14-preview.1/AISC-Workbench-2.1.14-preview.1-setup.exe";
+            let started = std::time::Instant::now();
+            let mut resp = client.get(url).send().await.expect("send");
+            assert!(resp.status().is_success(), "HTTP {}", resp.status());
+            let mut total: u64 = 0;
+            while let Some(chunk) = resp.chunk().await.expect("chunk") {
+                total += chunk.len() as u64;
+            }
+            let elapsed = started.elapsed().as_secs_f64();
+            // The OLD client() died at exactly 30.0s; require we ran past
+            // that mark AND completed the full asset.
+            assert!(elapsed > 31.0, "finished in {elapsed}s - old timeout may still be set");
+            assert_eq!(total, 292_726_047, "expected full 292726047 bytes, got {total}");
+            println!("b12 proof: {total} bytes in {elapsed:.1}s (old cap: 30s)");
+        });
+    }
+
     use super::*;
     use serde_json::json;
 
