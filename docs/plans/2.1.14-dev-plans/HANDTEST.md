@@ -15,7 +15,10 @@
 | 项 | 执行方 | 状态（2026-09-24） |
 | --- | --- | --- |
 | T1 自更新三项 | Claude（打包+装机核验，需先出包） | 待出包 |
-| T2 第 0 步 adapter 判别 / B 路径（docker exec 保存保真） / 6 模板回归矩阵 / 日志 | **Claude**（镜像重建后 docker exec；无 key 项全做） | 进行中 |
+| T2-0 adapter 判别 | **Claude** | ✅ 2026-09-24：镜像内 adapter mtime=2026-09-24 05:09（b7 已入） |
+| T2-B 保存保真（docker exec 容器实跑） | **Claude** | ✅ 2026-09-24 ×3：preset claude env 覆盖落库+模板基线保留（OPUS/SONNET 扇出跟随、HAIKU/SUBAGENT 基线）；preset codex model+catalog 落库；custom codex model 首存非空（H2 闭环） |
+| T2 6 模板回归矩阵（保存路径） | **Claude** | ✅ 等价覆盖：adapter 单测 97 例含 preset/custom × claude/codex 矩阵 |
+| T2 拉取日志核验（/tmp/aisc-fetch-models.log） | **Claude** | 待用户拉取实测后核（无 key 无法触发真实候选链） |
 | T2 A 路径（baseUrl 静默改写，冷启动竞态观察）/ 3-5（拉取，需有效 key） | 用户 | 待测 |
 | T3-1 高级槽位间距 / T3-2 徽标对齐 | 用户（视觉） | ❌ 2026-09-24 用户报：T3-1 claude 添加页丢映射区（b2 回归）、T3-2 长标题错位 → **b7 已修复（aac68d0），待复测** |
 | T3-3 关于弹窗 | 用户 | ✅ 通过（2026-09-24） |
@@ -25,9 +28,13 @@
 | T4-2 Ctrl+/ codex 实测 | 用户 | ✅ 通过（2026-09-24，legacy 0x1F 臂生效，定案） |
 | T4-6 单测 | **Claude** | ✅ 3/3 绿（2026-09-23） |
 | T5 关闭工作区全项 | 用户（UI 交互） | 待测（T5-4 teardown 核验由 Claude 顺带 docker ps 复核） |
-| T6-1 版本一致性 / T6-3 预置清单 / T6-7 上下文差集+镜像完整性 / T6-8 保守分支 | **Claude** | 进行中（镜像重建中） |
-| T6-2/4/5/6（防火墙/限速模拟+失败卡片） | **Claude**（netsh 模拟） | 排队 |
-| T6-9 GH_PROXY 通道 | **Claude** | 排队 |
+| T6-1 版本一致性 | **Claude** | ✅ 2026-09-24 实证：resolver(api) v5.10.5 == manifest == downloads == Dockerfile ARG == 镜像 label（build.complete argv 全链可见）；独立脚本（F6）留观察 |
+| T6-2 被墙条件 | **Claude** | ✅ 等价实证 2026-09-24：真机构建 5 段预置全命中（mihomo1+geodata3+npm1+cc-switch1[sha 校验行]+yazi1）、零 GitHub 出站、apt CACHED；真防火墙模拟未做（不动用户网络） |
+| T6-3 预置清单 | **Claude** | ✅ 9 条 tracked（含 .gitkeep）、yazi 7,944,048B 精确 |
+| T6-7 镜像完整性 | **Claude** | ✅ claude-hud dist/index.js 在镜像（F9 反例外生效）；上下文差集由 git ls-files 对 downloads 抽查 ✓ |
+| T6-8 保守分支 | **Claude** | ✅ 无 resolver 手动 docker build 命中预置 v5.10.5（glob 兜底生效），19s 完成，零在线 |
+| T6-9 GH_PROXY 通道 | **Claude** | ✅（半）空值零注入已实证（build argv 无 GH_PROXY）；注入正向用例留待需要时（改 versions.env 即可验） |
+| T6-4 慢速 / T6-5 断网负样本 / T6-6 失败诊断卡片 | 需断网窗口或防火墙授权 | 挂起（netsh 动用户网络未授权不做；T6-6 需真实失败构建） |
 
 ## T1 批 1：自更新三项（三条独立验收线）
 
