@@ -45,7 +45,21 @@ const addMode = ref<"preset" | "custom">("preset");
 /** D-6.2: the manifest is codesome-led — templates[0] IS the default
  * selection of the add flow. */
 const selectedTemplate = computed<CcSwitchTemplate>(
-  () => props.templates.find((x) => x.id === form.preset) ?? props.templates[0] ?? { id: "", name: "" });
+  // b8 (#5): EDIT mode (or an unknown preset) must NOT fall back to
+  // templates[0] — codesome-v3 leads the list, so editing a zhipu row was
+  // driving the sk- prefix warning (and endpoint display) with codesome
+  // template data. Add mode keeps the sponsored default; edit mode matches
+  // the row's own template id, else NO template.
+  () => {
+    const byPreset = props.templates.find((x) => x.id === form.preset);
+    if (byPreset) return byPreset;
+    const row = props.provider;
+    if (row) {
+      return props.templates.find((x) => x.id === row.id)
+        ?? { id: "", name: "" };
+    }
+    return props.templates[0] ?? { id: "", name: "" };
+  });
 const form = reactive({
   id: props.templates[0]?.id ?? "", // add mode — D-6: prefilled, editable (multi-instance)
   preset: props.templates[0]?.id ?? "",

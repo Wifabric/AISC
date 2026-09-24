@@ -2110,3 +2110,30 @@ class B7PresetAddOverridesTests(AdapterTestCase):
         # exactly ONE model line (the template default replaced, not doubled)
         self.assertEqual(sent["config"].count("model = "), 1)
         self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")
+
+
+    def test_edit_dance_treats_written_row_as_success(self):
+        """b8 (#4, user report): the CLI's failure heuristics can misfire
+        AFTER writing the row — the old unconditional restore then tripped
+        UNIQUE(id, app_type) as a raw "db restore failed". A written row
+        means the re-add de-facto succeeded: continue the dance."""
+        from unittest import mock
+
+        self._seed_two()
+        real = A._cli_add
+
+        def write_then_raise(*a, **k):
+            real(*a, **k)
+            raise A.AdapterError(
+                A.ERR_BAD_REQUEST, "exit 1: stderr contained 'error' after write")
+
+        with mock.patch.object(A, "_cli_add", side_effect=write_then_raise):
+            rows = A.op_edit("claude", "zhipu", {
+                "patch": {"model": "glm-5.2"}, "api_key": "sk-rotated-4444",
+            })
+        # No raise; the row survived with the NEW key (written by the CLI),
+        # and the other row is untouched.
+        row = next(r for r in rows if r["id"] == "zhipu")
+        self.assertTrue(row["has_api_key"])
+        self.assertIn("glm-5.2", json.dumps(row["role_env"]))
+        self.assertTrue(any(r["id"] == "deepseek" for r in rows))

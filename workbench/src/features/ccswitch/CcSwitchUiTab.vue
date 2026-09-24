@@ -187,6 +187,14 @@ onMounted(() => {
   if (hasRuntime.value) {
     void refresh();
     void ui.loadTemplates(store.workspace, store.runtimeId);
+    // b8 (#6): a loadTemplates racing the runtime start (or a transient
+    // exec failure) settled "fallback" forever — retry whenever the runtime
+    // id (re)arms and we are still on the fallback list.
+    watch(() => store.runtimeId, (id) => {
+      if (id && ui.templatesSource === "fallback") {
+        void ui.loadTemplates(store.workspace, id);
+      }
+    }, { immediate: true });
   }
 });
 onBeforeUnmount(() => {
