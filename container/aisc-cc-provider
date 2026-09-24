@@ -709,6 +709,18 @@ def build_add_settings(
                 compact_token_limit=_validated_compact(request),
                 base_url_override=str(request.get("base_url") or ""),
             )
+            # b7 (user verdict): the advanced mapping layer rides the simple
+            # add as OVERRIDES on the template baseline env (cc-switch
+            # parity; this closes H2 — the first save used to lose it).
+            env = settings.get("env")
+            env = env if isinstance(env, dict) else {}
+            extras = request.get("env")
+            if isinstance(extras, dict):
+                for key, value in extras.items():
+                    if isinstance(key, str) and isinstance(value, str) and value:
+                        env[key] = value
+                if env:
+                    settings["env"] = env
             return provider["name"], settings
         # custom
         env: dict[str, str] = {}
@@ -736,6 +748,23 @@ def build_add_settings(
             compact_token_limit=_validated_compact(request),
             base_url_override=str(request.get("base_url") or ""),
         )
+        # b7 (user verdict): preset add may override the model and carry a
+        # catalog on top of the template baseline (cc-switch parity).
+        cfg = settings.get("config")
+        model = str(request.get("model") or "").strip()
+        if isinstance(cfg, str) and model:
+            lines = [ln for ln in cfg.splitlines() if not ln.startswith("model = ")]
+            if lines:
+                lines.insert(1, f'model = "{model}"')
+                settings["config"] = "\n".join(lines)
+        catalog = request.get("modelCatalog")
+        if not isinstance(catalog, dict):
+            alt = request.get("model_catalog")
+            if isinstance(alt, dict):
+                catalog = alt
+        if isinstance(catalog, dict) and isinstance(catalog.get("models"), list) \
+                and catalog["models"]:
+            settings["modelCatalog"] = catalog
         return provider["name"], settings
     base_url = str(request.get("base_url") or "")
     if not base_url:

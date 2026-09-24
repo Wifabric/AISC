@@ -2075,3 +2075,38 @@ class B2AddFidelityTests(AdapterTestCase):
         self.assertIn("modelCatalog", sent)
         self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")
         self.assertIn('model = "glm-5.3"', sent["config"])
+
+
+class B7PresetAddOverridesTests(AdapterTestCase):
+    """b7 (user verdict, T3-1): the advanced mapping layer rides the PRESET
+    (simple) add as overrides on the template baseline — cc-switch parity.
+    This is the H2 root cause closed for real (the first save keeps it)."""
+
+    def test_preset_claude_add_applies_env_role_overrides(self):
+        A.op_add("claude", {
+            "mode": "simple", "id": "deepseek", "provider": "deepseek",
+            "base_url": "https://api.deepseek.com/anthropic",
+            "api_key": "sk-live-abcdef123456",
+            "env": {"ANTHROPIC_MODEL": "deepseek-v4-pro[1m]"},
+        })
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        env = sent["env"]
+        self.assertEqual(env["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
+        # the template baseline survives underneath the override
+        self.assertEqual(env["ANTHROPIC_BASE_URL"], "https://api.deepseek.com/anthropic")
+        self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "sk-live-abcdef123456")
+
+    def test_preset_codex_add_applies_model_and_catalog(self):
+        A.op_add("codex", {
+            "mode": "simple", "id": "zhipu", "provider": "zhipu",
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-zhipu-1",
+            "model": "glm-5.3",
+            "model_catalog": {"models": [{"model": "glm-5.3",
+                                          "contextWindow": 200000}]},
+        })
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        self.assertIn('model = "glm-5.3"', sent["config"])
+        # exactly ONE model line (the template default replaced, not doubled)
+        self.assertEqual(sent["config"].count("model = "), 1)
+        self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")

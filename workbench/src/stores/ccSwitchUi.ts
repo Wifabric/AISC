@@ -211,9 +211,12 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
       codex_endpoint_native: "https://api.moonshot.cn/v1", codex_api_format: "anthropic" },
   ];
   const templates = ref<CcSwitchTemplate[]>(FALLBACK_TEMPLATES);
-  /** b2: "fallback" until a container manifest lands — the add page shows
-   * the degraded-display hint instead of silently racing the manifest. */
-  const templatesSource = ref<"fallback" | "manifest">("fallback");
+  /** b7 (user report): tri-state — "pending" while the docker exec
+   * round-trip is in flight (1-3s on healthy setups; the old two-state
+   * flag flashed the degraded warning during that window), "manifest"
+   * after it lands, "fallback" only on a settled miss (old image /
+   * restricted network). */
+  const templatesSource = ref<"pending" | "fallback" | "manifest">("pending");
   /** D-6.2: codesome leads (sponsor placement, no label) and is the
    * add-flow's default selection; everything else keeps manifest order. */
   function _orderTemplates(list: CcSwitchTemplate[]): CcSwitchTemplate[] {
@@ -229,11 +232,13 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
       if (result.templates.length) {
         templates.value = _orderTemplates(result.templates);
         templatesSource.value = "manifest";
+        return;
       }
     } catch {
-      templates.value = FALLBACK_TEMPLATES;
-      templatesSource.value = "fallback";
+      // fall through to the settled fallback below
     }
+    templates.value = FALLBACK_TEMPLATES;
+    templatesSource.value = "fallback";
   }
 
   return {

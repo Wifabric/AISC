@@ -85,14 +85,14 @@
 **前置**：dev 态 `cd workbench; npm run tauri dev`（或装批 3 后的包）；
 历史面板须有 claude 与 codex 各 ≥1 条历史（不足先各跑一条对话）。
 
-1. **高级槽位间距**：Provider 页 → 添加 → 任一 claude 模板 → 保存进编辑页
+1. **高级槽位间距**：Provider 页 → 添加 → 任一 claude 模板 → 保存进编辑页        不行，为什么claude添加provider的页，变成codex页的样子了？模型映射区域都没有opus这些框了
    → 高级 → 模型映射 →「展开高级槽位（默认模型/子代理）」。
    理想：MODEL 与 SUBAGENT 两行出现垂直间距（computed `gap: var(--space-2)`
    =8px，与 SONNET/OPUS/HAIKU 同节奏，边框不再贴合）；收起再展开正常。
    回归：codex 高级页签目录表行距不变；简易页签不变；
    `npx vitest run src/features/ccswitch/__tests__/ccSwitchUiTab.test.ts`
    全绿（351-353 用例仍找到 5 个 mapping 输入框）。
-2. **历史页徽标**：活动栏「历史」tab → 出现 CODEX N / CLAUDE N 分组 →
+2. **历史页徽标**：活动栏「历史」tab → 出现 CODEX N / CLAUDE N 分组 →    不行，当前依旧是在历史名过长时，出现错位
    逐行检查：徽标与标题/「N 条消息」中心对齐、不整体偏高、✳ 与 claude
    文字等高不上凸；悬停：「查看对话」chip 淡入、行高无跳变、chip 与徽标
    等高平齐；组头位置不变。
@@ -101,7 +101,7 @@
    前后 `.conversation-row` 高度不变（恒 24px）；侧栏拉窄至 240px：标题
    省略号、条数/chip/徽标单行完整不换行；dark/light 往返配色完整
    （transparent 边框等高方案不露馅）。
-3. **关于弹窗**：设置 → UI 字号缩放设 **1.25** → 帮助 →「关于 AISC
+3. **关于弹窗**：设置 → UI 字号缩放设 **1.25** → 帮助 →「关于 AISC            关于页当前行为正常，通过
    Workbench」→ 等诊断 done。
    理想：弹窗底缘在视口内；检查列表容器有竖向滚动条；滚动可达最后一条
    （channel-confusion）与底部「导出诊断包」按钮；Esc/背景/× 三路关闭且
@@ -117,10 +117,10 @@
 **前置**：dev 态起 Workbench；工作区内开一个 codex 会话终端 pane；知道
 本批载荷定案臂（A=`ESC[47;5u`、B=`\x1F`，实现按定案，两臂都试时逐臂记录）。
 
-1. **字节链路（参考项，不作裁决）**：pane 跑 `cat -v` → 按 Ctrl+/。
+1. **字节链路（参考项，不作裁决）**：pane 跑 `cat -v` → 按 Ctrl+/。                 
    修复前基线：无任何输出（静默丢弃证明）；修复后：可能回显 `^[[47;5u`
    或 `^_`——**ConPTY 下 cat -v 不可靠，回显与否不判成败**。
-2. **codex 实测（唯一裁决）**：pane 跑 `codex` → 输入 `/btw` 回车 → 进入
+2. **codex 实测（唯一裁决）**：pane 跑 `codex` → 输入 `/btw` 回车 → 进入               快捷键生效，通过
    旁路线程（出现 side/btw 标识）→ 按 Ctrl+/。
    理想：焦点切回 main（标题/输入上下文变回、不新建线程、不杀进程）；
    再按可往返；全程不需要 Ctrl+C。若臂 A 无效臂 B 有效（或反之），
