@@ -18,11 +18,13 @@ describe("FALLBACK_TEMPLATES ↔ container manifest snapshot", () => {
 
   it("endpoint triples match provider_templates_manifest() per template id", () => {
     const root = resolve(process.cwd(), "..");
-    // local Windows: the repo venv; CI (ubuntu): system python3.
+    // local Windows: the repo venv; CI (ubuntu): bare python3 from PATH
+    // (bare names must NOT go through resolve() — that produced a bogus
+    // <root>/python3 and ENOENT on the runner).
     const pyExe = [".venv/Scripts/python.exe", ".venv/bin/python", "python3", "python"].find(
       (p) => p.includes("/") ? existsSync(resolve(root, p)) : true);
-    expect(pyExe, "repo venv python not found").toBeDefined();
-    const out = execFileSync(resolve(root, pyExe!), {
+    expect(pyExe, "no python interpreter found").toBeDefined();
+    const out = execFileSync(pyExe!.includes("/") ? resolve(root, pyExe!) : pyExe!, {
       cwd: root,
       encoding: "utf-8",
       // provider_templates_manifest() is deterministic; the timeout only
