@@ -1579,9 +1579,17 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
         # The dance window: deleted but the re-add failed. Restore the exact
         # previous row DIRECTLY (no upstream dependency), then surface the
         # failure.
-        if captured is not None:
-            _db_restore_row(captured)
-        raise
+        # b8 (#4, user report): the upstream CLI can fail AFTER writing the
+        # row (its exit/stderr heuristics misfire) — the unconditional
+        # restore then tripped UNIQUE(id, app_type) on the very row the CLI
+        # had just added. If the row is back, the add de-facto succeeded:
+        # skip the restore and continue the dance.
+        if any(r["id"] == provider_id for r in read_snapshot(agent)):
+            pass
+        else:
+            if captured is not None:
+                _db_restore_row(captured)
+            raise
     # The re-add seeded fresh defaults — the original row's meta (e.g. the
     # router's codex apiFormat selector, user/TUI-written) must survive the
     # dance or every routed request 404s.
