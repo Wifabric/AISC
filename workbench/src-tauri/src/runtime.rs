@@ -625,6 +625,17 @@ pub struct CcSwitchTemplate {
     pub acquire_url: String,
     #[serde(default)]
     pub default_model: String,
+    // b10: the manifest carries the endpoint triple (the add page's baseUrl
+    // prefill consumes it, D-6). Serene default: absent fields fall back to
+    // "" without failing the parse.
+    #[serde(default)]
+    pub claude_endpoint: String,
+    #[serde(default)]
+    pub codex_endpoint: String,
+    #[serde(default)]
+    pub codex_endpoint_native: String,
+    #[serde(default)]
+    pub codex_api_format: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

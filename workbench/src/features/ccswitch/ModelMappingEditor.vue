@@ -52,7 +52,9 @@ const advRoles = computed(() =>
 
 function addCatalogRow(): void {
   (props.catalog ?? []).push({
-    model: "", display_name: "", context_window: 128000,
+    // b10 (user ruling): GLM/codesome-era models are 1M-class; 128000 was
+    // codex's unknown-model fallback, not a sane default for a NEW row.
+    model: "", display_name: "", context_window: 1000000,
     reasoning_levels: [], default_reasoning_level: "",
   });
 }
@@ -138,8 +140,8 @@ function toggleOneM(key: string): void {
       <input v-model="row.display_name" :placeholder="t('ccswitch.mapping.namePh')" />
       <input
         type="number" min="1000" step="1000"
-        :value="row.context_window || 128000"
-        @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 128000"
+        :value="row.context_window || 1000000"
+        @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 1000000"
       />
       <!-- D-7: cc-switch desktop parity — the per-model level set is a
            searchable checkbox dropdown (multi-select), plus the row's
