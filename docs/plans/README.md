@@ -7,7 +7,6 @@ under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-pl
 
 ## Current active plan
 
-- **v2.1.14**（2026-09-23 开池）：[2.1.14-dev-plans/](2.1.14-dev-plans/README.md)
-  —— 范围 = todo 转期/预置 8 条 + 反馈站 4 条（D-1）；六批 + 「工作记录」
-  需求问询项；立项研究（ultracode workflow）当日完成，待用户验收计划与
-  U-1~U-7 裁决。
+- （当前无活动阶段。v2.1.14 已于 2026-09-24 收口，计划集归档
+  `docs/archive/2.1.14-dev-plans/`；preview.1/preview.2 已发布，观察项见
+  归档 README——T1-1/T1-2 应用内更新流随 preview.2→下一跳、断网模拟挂起。）
