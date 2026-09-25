@@ -56,7 +56,9 @@ export const useUpdateStore = defineStore("workbench-update", () => {
     error.value = null;
     await ensureProgressListener();
     try {
-      staged.value = await appDownloadUpdate(info.value.setupUrl, info.value.sha256Url);
+      // b1: staging is named after the TARGET version (was: current).
+      const targetVersion = info.value.latest ?? "";
+      staged.value = await appDownloadUpdate(info.value.setupUrl, info.value.sha256Url, targetVersion);
       status.value = "ready";
       return true;
     } catch (e) {

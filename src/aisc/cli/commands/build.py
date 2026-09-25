@@ -43,6 +43,9 @@ class _BuildEnv:
     # under the data-root USER pin overlay (tool_versions.py, D-27).
     claude_code_version: str = "latest"
     codex_version: str = "latest"
+    # b6 (D-18③): explicit GitHub mirror/proxy prefix — hand-editing
+    # versions.env IS the consent (2.1.13 D-12: never touch silently).
+    gh_proxy: str = ""
 
 
 def _parse_build_env(root: Path, data_root: Optional[Path] = None) -> _BuildEnv:
@@ -70,6 +73,7 @@ def _parse_build_env(root: Path, data_root: Optional[Path] = None) -> _BuildEnv:
         node_image_cn=node_image_cn, node_image_mirrors=mirrors,
         claude_code_version=claude or "latest",
         codex_version=codex or "latest",
+        gh_proxy=env.get("GH_PROXY", "").strip(),
     )
 
 
@@ -118,6 +122,44 @@ def _previous_context_total(skip_log: Optional[Path]) -> Optional[float]:
     except Exception:
         pass
     return None
+
+def _failure_text(proc) -> str:
+    """Best-effort captured output for failure attribution (F10)."""
+    parts = [getattr(proc, "stdout", "") or "", getattr(proc, "stderr", "") or ""]
+    return "\n".join(parts)
+
+
+# b6 (F10, feedback 2026-09-22 #1): attribute network-condition failures —
+# the TUN report died in an online-download step with a bare curl error and
+# no guidance. The failure payload now carries a structured diagnosis plus
+# the three exits (preset / explicit mirror / docs).
+_CURL_NET_PATTERNS = ("curl: (6)", "curl: (28)", "curl: (35)", "curl: (52)")
+
+
+def _build_network_diag(text: str) -> dict:
+    if not text:
+        return {}
+    tail = text[-20000:]
+    matched = [p for p in _CURL_NET_PATTERNS if p in tail]
+    if not matched:
+        return {}
+    return {
+        "network": "container-cannot-reach-github",
+        "matched": matched,
+        "suggestions": [
+            {"action": "stage", "hint": "bash scripts/stage-npm.sh --yazi（预置后构建零外网）"},
+            {"action": "gh-proxy", "hint": "config/versions.env 填 GH_PROXY=<镜像前缀>（显式同意通道）"},
+            {"action": "doc", "hint": "构建网络说明见 DEVELOP_WIKI / docs（宿主代理不覆盖 buildkit 出口）"},
+        ],
+    }
+
+
+def _apply_network_diag(result, text: str) -> dict:
+    data = result.to_dict()
+    diag = _build_network_diag(text)
+    if diag:
+        data["diagnostics"] = diag
+    return data
 
 
 # Dockerfile instructions that count as build steps (candidate step_total).
@@ -236,6 +278,7 @@ def plan_build(
         build_arg_node_image=selected_node_image,
         build_arg_claude_code_version=build_env.claude_code_version,
         build_arg_codex_version=build_env.codex_version,
+        build_arg_gh_proxy=build_env.gh_proxy,
         dry_run=dry_run,
         **cc_kwargs,
     )
@@ -282,7 +325,9 @@ class BuildResult:
 # NODE_IMAGE_MIRRORS entries), `docker tag` the first success to the bare
 # local name so buildkit hits the local store, and only fail (with guidance)
 # when every mirror failed.
-_PULL_TIMEOUT_S = 600.0
+# b6 (F4): slow links get more headroom (node:22-slim is ~80MB; 30KB/s
+# needs ~45min). AISC_PULL_TIMEOUT_S overrides for pathological links.
+_PULL_TIMEOUT_S = float(__import__("os").environ.get("AISC_PULL_TIMEOUT_S", "900"))
 
 
 def _base_image_candidates(plan: "BuildPlan") -> list:
@@ -489,7 +534,7 @@ def run_build(
             raise CliError(
                 message=f"Docker build failed (exit {proc.exit_code})",
                 exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
-                data=result.to_dict(),
+                data=_apply_network_diag(result, _failure_text(proc)),
             )
     elif emitter is not None:
         # --events: stream docker output as real-time build.output events and
@@ -539,10 +584,16 @@ def run_build(
                 data=result.to_dict(),
             )
         if proc.exit_code != 0:
+            log_text = ""
+            if build_log_path is not None:
+                try:
+                    log_text = build_log_path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    pass
             raise CliError(
                 message=f"Docker build failed (exit {proc.exit_code})",
                 exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
-                data=result.to_dict(),
+                data=_apply_network_diag(result, _failure_text(proc) + "\n" + log_text),
             )
     else:
         # --format json: capture, forward docker output to stderr (stdout pure).
@@ -559,7 +610,7 @@ def run_build(
             raise CliError(
                 message=f"Docker build failed (exit {proc.exit_code})",
                 exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
-                data=result.to_dict(),
+                data=_apply_network_diag(result, _failure_text(proc)),
             )
 
     # --- success: main.py emits the build.complete terminal event ---

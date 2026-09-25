@@ -53,7 +53,13 @@ pub fn normalize_version(v: &str) -> String {
 fn client() -> Result<reqwest::Client, WorkbenchError> {
     let mut builder = reqwest::Client::builder()
         .user_agent("aisc-workbench-selfupdate")
-        .timeout(Duration::from_secs(30));
+        // b12 (T1 user report): the old TOTAL timeout(30s) was fine for the
+        // subscription downloader's small files and the ~60MB payloads of
+        // 2.1.13-era installers — but the C-混合 bundles pushed the setup to
+        // 292MB and every in-app download now died ~30s in ("参数无效"/断流).
+        // Bound STALLS, not total size: connect 10s, read 60s idle.
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(60));
     if let Some(proxy) = crate::subscription::system_http_proxy() {
         if let Ok(p) = reqwest::Proxy::all(&proxy) {
             builder = builder.proxy(p);
@@ -222,10 +228,24 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
     Ok(info)
 }
 
-fn staging_path(app: &AppHandle) -> PathBuf {
-    let dir = std::env::temp_dir().join("aisc-workbench-update");
+fn update_staging_dir() -> PathBuf {
+    std::env::temp_dir().join("aisc-workbench-update")
+}
+
+/// b1: the staged installer is named after the TARGET version (it used to
+/// carry the current version, which misled debugging after upgrades). Only
+/// filename-safe chars survive the filter; a degenerate input falls back to
+/// the current version.
+fn staging_path(app: &AppHandle, target: &str) -> PathBuf {
+    let dir = update_staging_dir();
     let _ = std::fs::create_dir_all(&dir);
-    dir.join(format!("workbench-setup-{}.exe", current_version(app)))
+    let safe: String = target
+        .trim_start_matches('v')
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        .collect();
+    let name = if safe.is_empty() { current_version(app) } else { safe };
+    dir.join(format!("workbench-setup-{name}.exe"))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -244,6 +264,7 @@ pub async fn app_download_update(
     app: AppHandle,
     setup_url: String,
     sha256_url: String,
+    target_version: String,
 ) -> Result<DownloadResult, WorkbenchError> {
     let client = client()?;
     let sidecar = client
@@ -284,7 +305,7 @@ pub async fn app_download_update(
         )));
     }
     let total = resp.content_length().unwrap_or(0);
-    let dest = staging_path(&app);
+    let dest = staging_path(&app, &target_version);
     let tmp = dest.with_extension("part");
     use tokio::io::AsyncWriteExt;
     let mut file = tokio::fs::File::create(&tmp)
@@ -323,6 +344,17 @@ pub async fn app_download_update(
     tokio::fs::rename(&tmp, &dest)
         .await
         .map_err(|e| WorkbenchError::usage(format!("staging rename: {e}")))?;
+    // b1: drop stale staged installers from previous updates — they used to
+    // masquerade under the current version's name and lingered in %TEMP%.
+    if let Ok(entries) = std::fs::read_dir(update_staging_dir()) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("workbench-setup-") && name.ends_with(".exe") && entry.path() != dest {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
     Ok(DownloadResult { path: dest.display().to_string(), sha256: actual, size: downloaded })
 }
 
@@ -339,8 +371,13 @@ pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<()
     #[cfg(windows)]
     let spawn = {
         use std::os::windows::process::CommandExt;
+        // b1: /R makes the silent installer relaunch the app as the
+        // ORIGINAL user (nsis_tauri_utils::RunAsUser) once the upgrade chain
+        // — PATH takeover, docker cleanup/rebuild — finishes (.onInstSuccess).
+        // No elevation is inherited: this installer runs with
+        // RequestExecutionLevel user and RunAsUser is a second guard.
         std::process::Command::new("cmd")
-            .args(["/c", "start", "", &setup_path, "/S"])
+            .args(["/c", "start", "", &setup_path, "/S", "/R"])
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .spawn()
     };
@@ -379,6 +416,38 @@ mod sha2_compatible {
 
 #[cfg(test)]
 mod tests {
+    // b12 (T1 user report): the 30s TOTAL timeout killed every 292MB in-app
+    // download ~33MB in. Real-stream proof that the connect/read split keeps
+    // a large asset alive past 30s to completion. #[ignore] so CI never
+    // pulls 292MB; run explicitly with:
+    //   cargo test --lib -- --ignored selfupdate_large_stream_survives
+    #[test]
+    #[ignore = "downloads the real 292MB release asset (~1 min)"]
+    #[cfg(windows)]
+    fn selfupdate_large_stream_survives() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio rt");
+        rt.block_on(async {
+            let client = client().expect("client");
+            let url = "https://github.com/Wifabric/AISC/releases/download/v2.1.14-preview.1/AISC-Workbench-2.1.14-preview.1-setup.exe";
+            let started = std::time::Instant::now();
+            let mut resp = client.get(url).send().await.expect("send");
+            assert!(resp.status().is_success(), "HTTP {}", resp.status());
+            let mut total: u64 = 0;
+            while let Some(chunk) = resp.chunk().await.expect("chunk") {
+                total += chunk.len() as u64;
+            }
+            let elapsed = started.elapsed().as_secs_f64();
+            // The OLD client() died at exactly 30.0s; require we ran past
+            // that mark AND completed the full asset.
+            assert!(elapsed > 31.0, "finished in {elapsed}s - old timeout may still be set");
+            assert_eq!(total, 292_726_047, "expected full 292726047 bytes, got {total}");
+            println!("b12 proof: {total} bytes in {elapsed:.1}s (old cap: 30s)");
+        });
+    }
+
     use super::*;
     use serde_json::json;
 

@@ -187,6 +187,21 @@ onMounted(() => {
   if (hasRuntime.value) {
     void refresh();
     void ui.loadTemplates(store.workspace, store.runtimeId);
+    // b9 (#3 round 3): one retry on runtimeId change wasn't enough — the
+    // container can still be mid-boot at that instant. While settled on the
+    // fallback list, retry with bounded backoff (cap 5).
+    let templateRetries = 0;
+    watch(() => ui.templatesSource, (v) => {
+      if (v === "fallback" && templateRetries < 5 && store.runtimeId) {
+        const delay = [1500, 3000, 6000, 10000, 15000][templateRetries] ?? 15000;
+        templateRetries += 1;
+        window.setTimeout(() => {
+          if (ui.templatesSource === "fallback" && store.runtimeId) {
+            void ui.loadTemplates(store.workspace, store.runtimeId);
+          }
+        }, delay);
+      }
+    });
   }
 });
 onBeforeUnmount(() => {

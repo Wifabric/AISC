@@ -312,7 +312,10 @@ def build_preset_providers(fixture_path: Path = FIXTURE_PATH) -> list[dict[str, 
             # endpoint (official native fallback: cc.codesome.ai/v1).
             "id": "codesome-v3",
             "name": "Codesome V3",
-            "base_url": "https://cc.codesome.ai",
+            # b2: native (Responses) base carries /v1 — the FALLBACK list and
+            # the comment above always said /v1; the manifest drifted to the
+            # bare root and the add page silently rewrote the prefill.
+            "base_url": "https://cc.codesome.ai/v1",
             "anthropic_base_url": "https://cc.codesome.ai",
             "claude_env": {
                 "ANTHROPIC_BASE_URL": "https://cc.codesome.ai",

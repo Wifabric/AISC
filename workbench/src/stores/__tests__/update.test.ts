@@ -69,6 +69,7 @@ describe("update store (A7)", () => {
     expect(ok).toBe(true);
     expect(s.status).toBe("ready");
     expect(s.staged?.size).toBe(42);
+    expect(mockIpc.appDownloadUpdate).toHaveBeenCalledWith("s", "h", "0.2.0");
   });
 
   it("download failure -> back to available (retryable)", async () => {

@@ -709,6 +709,18 @@ def build_add_settings(
                 compact_token_limit=_validated_compact(request),
                 base_url_override=str(request.get("base_url") or ""),
             )
+            # b7 (user verdict): the advanced mapping layer rides the simple
+            # add as OVERRIDES on the template baseline env (cc-switch
+            # parity; this closes H2 — the first save used to lose it).
+            env = settings.get("env")
+            env = env if isinstance(env, dict) else {}
+            extras = request.get("env")
+            if isinstance(extras, dict):
+                for key, value in extras.items():
+                    if isinstance(key, str) and isinstance(value, str) and value:
+                        env[key] = value
+                if env:
+                    settings["env"] = env
             return provider["name"], settings
         # custom
         env: dict[str, str] = {}
@@ -736,6 +748,23 @@ def build_add_settings(
             compact_token_limit=_validated_compact(request),
             base_url_override=str(request.get("base_url") or ""),
         )
+        # b7 (user verdict): preset add may override the model and carry a
+        # catalog on top of the template baseline (cc-switch parity).
+        cfg = settings.get("config")
+        model = str(request.get("model") or "").strip()
+        if isinstance(cfg, str) and model:
+            lines = [ln for ln in cfg.splitlines() if not ln.startswith("model = ")]
+            if lines:
+                lines.insert(1, f'model = "{model}"')
+                settings["config"] = "\n".join(lines)
+        catalog = request.get("modelCatalog")
+        if not isinstance(catalog, dict):
+            alt = request.get("model_catalog")
+            if isinstance(alt, dict):
+                catalog = alt
+        if isinstance(catalog, dict) and isinstance(catalog.get("models"), list) \
+                and catalog["models"]:
+            settings["modelCatalog"] = catalog
         return provider["name"], settings
     base_url = str(request.get("base_url") or "")
     if not base_url:
@@ -774,7 +803,14 @@ def build_add_settings(
     # `modelCatalog.models` — same effect as presets: /model lists the
     # provider's models instead of Codex's built-ins). The UI form starts
     # sending this in a follow-up round; passthrough is harmless before that.
+    # b2: the UI sends snake_case `model_catalog` (the edit path already
+    # maps both spellings); accept either on add so the catalog survives
+    # the first save instead of being dropped by a key-name mismatch.
     catalog = request.get("modelCatalog")
+    if not isinstance(catalog, dict):
+        alt = request.get("model_catalog")
+        if isinstance(alt, dict):
+            catalog = alt
     if isinstance(catalog, dict) and isinstance(catalog.get("models"), list) \
             and catalog["models"]:
         settings["modelCatalog"] = catalog
@@ -1543,9 +1579,17 @@ def op_edit(agent: str, provider_id: str, request: dict[str, Any]) -> list[dict[
         # The dance window: deleted but the re-add failed. Restore the exact
         # previous row DIRECTLY (no upstream dependency), then surface the
         # failure.
-        if captured is not None:
-            _db_restore_row(captured)
-        raise
+        # b8 (#4, user report): the upstream CLI can fail AFTER writing the
+        # row (its exit/stderr heuristics misfire) — the unconditional
+        # restore then tripped UNIQUE(id, app_type) on the very row the CLI
+        # had just added. If the row is back, the add de-facto succeeded:
+        # skip the restore and continue the dance.
+        if any(r["id"] == provider_id for r in read_snapshot(agent)):
+            pass
+        else:
+            if captured is not None:
+                _db_restore_row(captured)
+            raise
     # The re-add seeded fresh defaults — the original row's meta (e.g. the
     # router's codex apiFormat selector, user/TUI-written) must survive the
     # dance or every routed request 404s.
@@ -2489,7 +2533,9 @@ def _models_url_candidates(base_url: str) -> list[str]:
 
 
 def _openai_compatible_models(
-    base_url: str, api_key: str, *, timeout: float = 15.0, bearer_only: bool = False
+    base_url: str, api_key: str, *, timeout: float = 15.0, bearer_only: bool = False,
+    log_path: str = "", status_out: Optional[list] = None,
+    fake200_out: Optional[list] = None,
 ) -> list[str] | None:
     """The documented fetch path (user-manual 2.1 §自动获取模型), ported from
     upstream services/model_fetch.rs: walk the candidate model-list URLs and
@@ -2510,6 +2556,24 @@ def _openai_compatible_models(
     for url in _models_url_candidates(base_url):
         for headers in header_sets:
             status, payload = _http_get_json(url, headers, timeout)
+            if status_out is not None:
+                status_out.append(status)
+            if fake200_out is not None and status == 200                     and not (isinstance(payload, dict) and isinstance(payload.get("data"), list)
+                             and any(isinstance(m, dict) and m.get("id")
+                                     for m in payload["data"])):
+                fake200_out.append(1)
+            if log_path:
+                # b2: candidate-level diagnostics (base/status/ids) — makes
+                # "endpoint dead" vs "link dead" separable from the outside.
+                try:
+                    n = 0
+                    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                        n = sum(1 for m in payload["data"]
+                                if isinstance(m, dict) and m.get("id"))
+                    with open(log_path, "a", encoding="utf-8") as fh:
+                        fh.write(f"base={base_url} url={url} status={status} ids={n}\n")
+                except OSError:
+                    pass
             if status != 200 or not isinstance(payload, dict):
                 continue
             data = payload.get("data")
@@ -2522,15 +2586,52 @@ def _openai_compatible_models(
 
 
 def _fetch_models_inline(agent: str, base_url: str,
-                          api_key: str) -> dict[str, Any]:
+                          api_key: str, template_id: str = "") -> dict[str, Any]:
     """Add-mode probe (手测 r2#3): fetch against the FORM's endpoint+key —
-    no saved row needed. Same JSON-chain the row path uses."""
-    models = _openai_compatible_models(base_url, api_key) if base_url else None
-    if models:
-        return {"available": True, "models": models, "message": ""}
+    no saved row needed. b2: the selected TEMPLATE's declared OpenAI-side
+    base joins the candidate list — the inline form is prefilled with the
+    anthropic-side endpoint while model lists usually live on the other
+    root (zhipu's real /api/paas/v4/models is otherwise unreachable).
+    Budget 6s per request so the probe degrades to available=false WELL
+    before the Rust PROVIDER_TIMEOUT (30s) hard-kills it."""
+    bases: list[str] = [base_url] if base_url else []
+    if template_id:
+        try:
+            preset = _preset_provider(template_id)
+            pb = str(preset.get("base_url") or "")
+            if pb and pb not in bases:
+                bases.append(pb)
+        except AdapterError:
+            pass
+    statuses: list = []
+    fake200: list = []
+    for base in bases:
+        models = _openai_compatible_models(
+            base, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log",
+            status_out=statuses, fake200_out=fake200)
+        if models:
+            return {"available": True, "models": models, "message": ""}
+    # b11 (user request): a rejected KEY must SAY so — 401/403 and the relays'
+    # fake-200 error bodies (HTTP 200 carrying a non-models payload) are the
+    # key-rejection shapes; anything else keeps the endpoint diagnosis.
+    auth = sorted({c for c in statuses if c in (401, 403)})
+    if auth or fake200:
+        parts = []
+        if auth:
+            parts.append(f"HTTP {'/'.join(str(c) for c in auth)}")
+        if fake200:
+            parts.append(f"HTTP 200×{len(fake200)}（应答非模型清单）")
+        return {
+            "available": False, "models": [],
+            "message": "API Key 无效或被上游拒绝（"
+                       + "；".join(parts)
+                       + f"；候选 {len(statuses)} 次；详见 /tmp/aisc-fetch-models.log）",
+        }
+    uniq = "/".join(str(c) for c in sorted({c for c in statuses if c}))
+    detail = f"（候选 {len(statuses)} 次请求：HTTP {uniq or '无响应'}；详见 /tmp/aisc-fetch-models.log）" if statuses else ""
     return {
         "available": False, "models": [],
-        "message": "no /models at the given endpoint",
+        "message": f"no /models at the given endpoint{detail}",
     }
 
 
@@ -2541,7 +2642,9 @@ def op_fetch_models(agent: str, provider_id: str,
     req = request or {}
     inline_base = str(req.get("base_url") or "").strip()
     if not provider_id and inline_base:
-        return _fetch_models_inline(agent, inline_base, str(req.get("api_key") or ""))
+        return _fetch_models_inline(
+            agent, inline_base, str(req.get("api_key") or ""),
+            str(req.get("template_id") or "").strip())
     snapshot = read_snapshot(agent)
     row = next((r for r in snapshot if r["id"] == provider_id), None)
     if row is None:
@@ -2575,7 +2678,8 @@ def op_fetch_models(agent: str, provider_id: str,
         except AdapterError:
             pass
         for base_url in bases:
-            models = _openai_compatible_models(base_url, api_key)
+            models = _openai_compatible_models(
+                base_url, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log")
             if models:
                 return {"available": True, "models": models, "message": ""}
     else:
@@ -2583,9 +2687,22 @@ def op_fetch_models(agent: str, provider_id: str,
         env = env if isinstance(env, dict) else {}
         base_url = str(env.get("ANTHROPIC_BASE_URL") or "")
         api_key = override or str(env.get("ANTHROPIC_AUTH_TOKEN") or env.get("ANTHROPIC_API_KEY") or "")
-        models = _openai_compatible_models(base_url, api_key) if base_url else None
+        models = _openai_compatible_models(
+            base_url, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log") if base_url else None
         if models:
             return {"available": True, "models": models, "message": ""}
+        # b2: symmetric with the codex branch — for preset rows the declared
+        # OpenAI-side base often hosts the model list the env base lacks.
+        try:
+            preset = _preset_provider(provider_id)
+            pb = str(preset.get("base_url") or "")
+            if pb:
+                models = _openai_compatible_models(
+                    pb, api_key, timeout=6.0, log_path="/tmp/aisc-fetch-models.log")
+                if models:
+                    return {"available": True, "models": models, "message": ""}
+        except AdapterError:
+            pass
 
     # FALLBACK: the upstream CLI subcommand (its own candidate chain), with
     # the tightened last-resort text parse.

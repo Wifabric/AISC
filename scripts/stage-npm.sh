@@ -25,13 +25,25 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DL="$ROOT/container/downloads"
 REGISTRY="https://registry.npmmirror.com"
 WANT_YAZI=0
-YAZI_VERSION="25.2.26"
 ALL_ARCHES=0
+# b6 (F7): versions pinned from versions.env by default (--latest restores
+# the old registry-latest behavior). Preset drift vs the Dockerfile ARG pin
+# was real: the online branch pinned 2.1.273/0.154.0 while the preset
+# silently carried whatever `latest` was at stage time.
+LATEST=0
+NO_COMPANIONS=0
+_env() { grep -E "^$1=" "$ROOT/config/versions.env" | tail -1 | cut -d= -f2 | tr -d '
+'; }
+YAZI_VERSION="${YAZI_VERSION:-$(_env YAZI_VERSION)}"
+CLAUDE_PIN="$(_env CLAUDE_CODE_VERSION)"
+CODEX_PIN="$(_env CODEX_VERSION)"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --yazi) WANT_YAZI=1 ;;
     --all-arches) ALL_ARCHES=1 ;;
+    --latest) LATEST=1 ;;
+    --no-companions) NO_COMPANIONS=1 ;;  # b6: main tgz + yazi only (git presets)
     --registry) REGISTRY="${2:?--registry 需要值}"; shift ;;
     *) echo "未知参数: $1"; exit 2 ;;
   esac
@@ -87,12 +99,24 @@ fetch_one() {
 }
 
 stage_family() {
-  # stage_family <pkg> <main-prefix> <companion-dep-prefix>
-  #   例：stage_family @anthropic-ai/claude-code claude-code @anthropic-ai/claude-code-linux
-  local pkg="$1" main_prefix="$2" comp_prefix="$3"
-  local ver comp_pkg comp_ver meta tmp a f keep
-  ver="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$REGISTRY/$pkg/latest" | PYTHONIOENCODING=utf-8 "$PY" -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
-  [ -n "$ver" ] || { echo "❌ 无法解析 $pkg 最新版本（$REGISTRY）"; exit 1; }
+  # stage_family <pkg> <main-prefix> <companion-dep-prefix> <pin 值>
+  # b10fix: the caller passes the versions.env VALUE (no ${!var} indirection —
+  # macOS CI ships bash 3.2, where ${!name:-} misparses → "ver: unbound variable").
+  local pkg="$1" main_prefix="$2" comp_prefix="$3" pin="$4"
+  # b10fix-2: initialize every local — macOS CI's bash 3.2 reported
+  # "ver: unbound variable" at the pinned echo; explicit defaults make the
+  # declaration order irrelevant under `set -u` on every bash.
+  local ver="" comp_pkg="" comp_ver="" meta="" tmp="" a="" f="" keep=""
+  if [ "$LATEST" = "1" ] || [ -z "$pin" ]; then
+    ver="$(curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors "$REGISTRY/$pkg/latest" | PYTHONIOENCODING=utf-8 "$PY" -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+  else
+    ver="$pin"
+    # b10fix-3: Apple's patched bash 3.2 (macOS CI) chokes when a
+    # variable is followed IMMEDIATELY by a fullwidth char - keep these
+    # echoes ASCII around every interpolation.
+    echo "pin: $pkg @ $ver (from versions.env; --latest overrides)"
+  fi
+  [ -n "$ver" ] || { echo "ERROR: cannot resolve version for $pkg ($REGISTRY / versions.env)"; exit 1; }
   # 已是最新且伴生包齐 → 跳过（重跑不重拉 ~100MB 级文件）
   if [ -f "$DL/$main_prefix-$ver.tgz" ]; then
     local skip=1 comp
@@ -104,6 +128,25 @@ stage_family() {
   fi
   tmp="$DL/.stage-$main_prefix.tgz"
   fetch_one "$pkg" "$tmp" "$ver"
+  # b6 (F7): closure guard — the offline path installs ONLY these files; a
+  # real registry dependency added upstream would ENOTFOUND inside the
+  # build (visible only at build time). Fail the STAGE instead.
+  if ! tar -xzOf "$tmp" package/package.json | PYTHONIOENCODING=utf-8 "$PY" -c '
+import json, sys
+d = json.load(sys.stdin)
+deps = d.get("dependencies") or {}
+if deps:
+    print("DEPS:" + ",".join(deps)); raise SystemExit(1)
+print("closure-ok")' | grep -q "closure-ok"; then
+    echo "❌ $pkg@$ver 出现真 dependencies——四文件离线闭包已破，请更新离线机制"; exit 1
+  fi
+  if [ "$NO_COMPANIONS" = "1" ]; then
+    mv "$tmp" "$DL/$main_prefix-$ver.tgz"
+    for f in "$DL"/$main_prefix-*.tgz; do
+      case " $DL/$main_prefix-$ver.tgz " in *" $f "*) ;; *) rm -f "$f" ;; esac
+    done
+    return 0
+  fi
   keep="$DL/$main_prefix-$ver.tgz"
   for a in $ARCHES; do
     meta="$(parse_pkg_meta "$tmp" "${comp_prefix}-${a}")"
@@ -121,8 +164,8 @@ stage_family() {
   done
 }
 
-stage_family "@anthropic-ai/claude-code" "claude-code" "@anthropic-ai/claude-code-linux"
-stage_family "@openai/codex" "codex" "@openai/codex-linux"
+stage_family "@anthropic-ai/claude-code" "claude-code" "@anthropic-ai/claude-code-linux" "$CLAUDE_PIN"
+stage_family "@openai/codex" "codex" "@openai/codex-linux" "$CODEX_PIN"
 
 if [ "$WANT_YAZI" = "1" ]; then
   arch="$(uname -m 2>/dev/null || echo x86_64)"

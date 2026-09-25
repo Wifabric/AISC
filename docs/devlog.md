@@ -2,6 +2,22 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.14 阶段后销账 + 面向用户 README 重写 + main 同步（2026-09-25）
+
+- **用户裁定**：维持 2.1.14（不开新版本），全部挂账销账——D-23（D-13 docker
+  边界追认定稿）、观察项/悬项全闭、sidecar 0.1.2 记为已知状态。账本：
+  archive/2.1.14-dev-plans/decisions.md「销账」节 + todo 收口注记。
+- **反馈站**：4 条 20260922 反馈 status → resolved + 发布说明回复
+  （aisc-issues-feedback 3ae0190，站点 ≤5min 生效）。
+- **README**：面向用户按当前实际重写——仓库地址全量修正（wangyuncepu →
+  Wifabric）、新增「远程机器」章节（SSH 密钥认证 + serve 通道 + 版本配对
+  软提示）、Workbench 2.1.14 特性入册（关闭工作区 / Ctrl+/ / 分屏焦点导航 /
+  自更新进度条与自动重启 / 网络保底离线构建 / Docker 资源管理组）、CLI
+  命令表补齐（serve / conversation / worklog / maintenance 扩展）、
+  `aisc update` 语义对齐 0.1.3（不再网络下载归档）、反馈站渠道入册。
+- **main 同步**：develop → main 合并推送（用户批准，2.1.14 final 发布线与
+  代码线对齐）。
+
 # 长对话恢复修复：spool 早期页乱码 + 顶部空白（2026-09-21，长对话 bug 首个实锤样本）
 
 - **用户复现（截图+步骤）**：长会话恢复后点「加载早期输出」，靠最早的页出现乱码，
@@ -3637,3 +3653,121 @@ diff（确认已移除，代码有用户裁决注释）；远程 CLI 需更新�
 provider 切换 resume（wrapper -c 覆盖）、批 11 聊天式只读对话查看器、
 批 12 资源管理器滚动修复。手测全部通过（HANDTEST 批 8-12）。工作记录
 （批 3）用户裁决移入待解决池。tag v2.1.13-preview.1 → NSIS prerelease。
+
+## 2026-09-21 自更新 E2E 实测通过（2.1.12-preview.1 → v2.1.13-preview.1）——2.1.12 遗留账清
+
+用户实机（Windows + Docker）按 selfupdate-e2e.md §7 全链实测：
+装 2.1.12-preview.1 基线 → 「检查更新」正确检出 → 下载（sha 校验）→
+确认退出 → 静默安装器卸旧装新 → Docker 升级链重建镜像。机器取证：
+注册表 DisplayVersion=2.1.13-preview.1；安装文件 21:43 落盘；
+super-claude:latest 21:44:54 自动重建且内含修复版 wrapper
+（sha256 前缀 9bfb741c2b651399 逐字一致）；装机 sidecar 0.1.2 带
+conversation read；PATH 恰一条 INSTDIR；旧运行容器按 upgrade 分支清理。
+D-4 版本戳生效（嵌入全形 tag 版本）→ 阶段内 preview 迭代链可达。
+
+**记入下批的三个观察项**：①静默升级完成后不自动拉起新版——用户视角
+「什么都没发生」（本次误报来源），候选：NSIS 静默尾 Exec 拉起（注意
+提权边界）；②staging 文件名用旧版本号（update.rs 已知瑕疵）；
+③PATH 写为 REG_SZ，协议期望 REG_EXPAND_SZ（仅含 %vars% 时才有实害）。
+
+## 2026-09-22 v2.1.13 收口（用户宣布，DEVELOP_WIKI §1.1 清单执行）
+
+十二批次全部交付手测 PASS；v2.1.13-preview.1 在架；自更新 E2E 实测通过。
+收尾清单逐项：①develop 已推送 + CI 全绿 ✓；②preview 已发布 ✓；③todo
+版本条目全部 [x]（变更页经用户 2026-09-22 确认勾选；自更新体验三项经
+用户裁决**显式转期 v2.1.14**——静默装后自动拉起 / staging 文件名 /
+PATH REG_EXPAND_SZ）✓；④devlog 到位 ✓；⑤plans 归档
+docs/archive/2.1.13-dev-plans/ ✓（README 状态表刷新为终态，WIKI 两处
+路径引用同步）。「工作记录」维持待解决池。final 发布不在收尾清单内，
+时机待用户裁决；下一阶段 2.1.14 待开题（版本 bump 随开题走）。
+
+## 2026-09-23 v2.1.14 开题：立项研究 + todo 重组 + 计划落盘
+
+用户指示开题（todo v2.1.14-target 转期项 + 反馈站 issues/ 4 条：构建
+网络/ctrl+//徽标对齐/关闭工作区，D-1 纳入）。当日 ultracode workflow
+完成立项研究：10 研究员 + 14 独立证据/替代根因核验 + 1 完备性批评，
+两轮 39 子 agent（处置两起运行事故：about-dialog 研究员 StructuredOutput
+校验空转 62min——停机补产出纪律后 resume 缓存续跑；恢复轮 2 核验员
+死于 API 429——首轮裁决从 journal 回灌，无损失）。关键结论：自更新
+三项根因=/R 未传、下载参数未穿透版本、PathWrite 保型缺自愈；provider
+两项合批（模板端点竞态+确定性覆盖、buildRequest 丢字段、内联探测缺
+模板 OpenAI 端点候选+90s>30s 杀线、旧镜像 adapter 同症状需第 0 步判别）；
+UI 三小项合批（裸 div 吞 gap、胶囊规格/字形度量分层、DoctorDialog 未
+Teleport 逃逸 zoom 且 k>约1.19 越界）；ctrl+/ 为 xterm 6.0 映射缺口
+（CSI-u/ 双臂定案，conhost 翻译层待实测）；关闭工作区=纯入口缺口
+（closeWorkspace 链复用）；构建网络=TUN 不覆盖 buildkit 出口、实死在
+yazi 无预置+max-time 60（P0 预置 + P0b glob 去版本号 + P1 诊断归因 +
+GH_PROXY 显式通道；反馈回复口径校准为「预置+参数修复+引导」）。
+落盘 docs/plans/2.1.14-dev-plans/（README 六批 + decisions D-1~D-9 与
+U-1~U-7 待裁 + 七份计划文档 + HANDTEST 四要素）；todo v2.1.14-target
+重组为分类结构。「工作记录」转需求问询（worklog-questionnaire.md，
+粒度歧义 A 先裁）。悬账三条（todo:191/81/150）开题提请裁决。
+
+## 2026-09-23 晚 裁决补充：工作记录撤销 / 构建解耦铁律 / U-5 回访
+
+用户三裁：①「工作记录」概念撤销不做了（D-14，问卷文件删除，批 8 已交付
+账本维持现状不动）；②D-15 构建解耦铁律——启动摘要页网络模式不影响宿主
+网络也不得影响构建，保底 = 无论宿主网络环境如何全预置离线路径兜底成功
+（初步核实 --network 为 run 期旗标、build 不消费，与现状一致）；③U-5
+回访关闭（模板+高级模式、双侧偶发 → H2 权重升为最可能）。反馈站 4 条
+已按 README 工作流回执推送（fe03cbc）。
+
+## 2026-09-23 晚 保底构建专项调研完成：硬墙发现与 U-8/U-9 提请
+
+16 agent 零阵亡（5 研究员 + 10 双镜头核验 + 批评家，1.09M token）。三关键：
+①npm 四包实测 231.3MB（立项时 ~60MB 估计错误，沿用过时注释）；②codex
+伴生包 tgz 123.7MiB > GitHub 单文件 100MiB 硬限——D-11「全进仓库」字面
+push 必拒，落地形态转 U-8（推荐 C-混合：yazi+主包入 git +7.6MiB，伴生包
+231MB 随 NSIS bundle + stage 引导）；③D-15 字面「断网保底」结构性不可达
+（apt×2 无预置 + 新机基底拉取），地板语义转 U-9（推荐弱化为 GitHub 全阻
++国内源可达）。另发现 12 触点矩阵（npm 离线分支早已存在只差文件、yazi
+唯一无预置口、cc-switch 降级分支版本漂移漏配、.dockerignore 静默剥 226
+个 tracked 文件致 statusLine 缺件、checksums 无消费方、stage 拉 latest
+漂移、镜像链 5/4/3 漂移）。修复层 F1-F11 已入 build-network.md，无争议
+即做；build-network.md 全面升级（触点矩阵/方案分层/残余清单）。
+
+## 2026-09-23 深夜 六批全部实施完成——只剩手测（T1-T6），停机
+
+用户终裁 U-8=C-混合 / U-9=① / 三小项确认（D-16~D-18）+ 开工令（D-19）。
+六批顺序实施，每批分支→本地门禁→并回 develop→推送：
+b1 自更新三项（b9c6cab）、b2 provider 新建保真（ae26e22）、b3 UI 对齐
+四项（3c35bce+fixup）、b4 终端键盘域（ctrl+/ 直发 0x1F + Ctrl+Alt 分屏
+导航）、b5 关闭工作区三入口、b6 网络保底构建（23ee79b：预置层 npm 主包
++yazi 入库、CI 伴生包随 bundle、Dockerfile glob/超时/GH_MIRRORS 统一、
+.dockerignore 反例外修复 226 文件剥离、失败诊断归因、manifest 随 bundle、
+GH_PROXY 正式通道）。门禁：pytest 1345 全绿、cargo --lib 332、vitest
+515-9（panelLayout 9 例为 develop 既有失败）、vue-tsc ✓。b6 遗留：
+vendor/checksums.txt 未再生新预置条目（manifest 已登记；校验只对已列
+文件，无 CI 风险；随 T6 手测后补）。停止点 = HANDTEST T1-T6 全部需要
+用户实机（T1 需 v2.1.14-preview.1 或临时包）。按 D-19 指示关机。
+
+## 2026-09-24 深夜 v2.1.14-preview.1 发布 + T1 装机取证全绿
+
+发布四轮：①vendor/checksums 未再生被 CI 门禁拦（b6-b11 变更补账+3 预置
+件入册；顺带修 vendor-refresh 在 Windows 被 MS Store python3 桩卡死）；
+②macOS bash 3.2 不支持 ${!var:-}（stage-npm 改直传值+防御性初始化）+
+NSIS 工作流补伴生包 stage；③**b1 真缺陷被自加 smoke 抓到**：PathRead 把
+「值不存在」混同「读取失败」→无用户 PATH 全新装机不创建 PATH（单列
+ERROR_FILE_NOT_FOUND 走创建分支）；④绿。快照测试 python 探测补 CI 兼容。
+载荷 292.7MB（C-混合伴生包）。
+
+用户装机（2.1.13）应用内下载反复死于 ~33MB「参数无效」→ b12 根因：
+client() 30s 整体超时（订阅下载器时代设定；60MB 时代勉强，292MB 必断）
+改 connect(10s)+read(60s)。用户浏览器手动下载安装完成升级链。
+
+装后取证（Claude）：DisplayVersion ✓、PATH ExpandString（b1 存量自愈
+实证）✓、INSTDIR 恰 1 ✓、CLI 0.1.2 同批 ✓、dry-run source=manifest
+（F11 离线 manifest 随 bundle 分发并被消费）✓、镜像 upgrade 链自动重建
+✓、数据保留 ✓。T1-1/T1-2 应用内流顺延下一跳（b12 修复后可达）。
+
+## 2026-09-24 收口（用户宣布：功能全部没问题，preview.2 验自动更新）
+
+收尾清单执行：①六批+追加修复（b1-b12）全部交付，provider 域（b2/b7/b8/
+b9/b10/b11 六轮）用户确认收口；②v2.1.14-preview.1 已发布+装机取证全绿
+（PATH 存量自愈/F11 manifest 消费/镜像 upgrade 链均装机实证）；③todo
+v2.1.14-target 11 条全部勾账+收口注记；④b12 下载超时修复已本地实证
+（292MB/61.2s ignored 测试入库）；⑤CI 修复链：vendor checksums、stage-npm
+bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCII 化）、快照
+测试 CI 兼容×2。preview.2 发布后：用户装机 preview.1→preview.2（手动），
+此后应用内更新链（b12 超时+T1-1 命名清场+T1-2 /R 拉起）在下一跳全验。
+观察项：T6-4/5/6 断网模拟挂起（需窗口）；T5/T2-A/T4-1·3·4·5 随日常使用。

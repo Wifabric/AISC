@@ -20,6 +20,7 @@ function makeCtx(): CommandCtx {
       openSettings: vi.fn(),
       openNetworkUsage: vi.fn(),
       openPicker: vi.fn(),
+      closeWorkspace: vi.fn(),
       runDoctor: vi.fn(),
       toggleSidebar: vi.fn(),
       showView: vi.fn(),

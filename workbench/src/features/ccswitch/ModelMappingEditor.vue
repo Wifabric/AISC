@@ -52,7 +52,9 @@ const advRoles = computed(() =>
 
 function addCatalogRow(): void {
   (props.catalog ?? []).push({
-    model: "", display_name: "", context_window: 128000,
+    // b10 (user ruling): GLM/codesome-era models are 1M-class; 128000 was
+    // codex's unknown-model fallback, not a sane default for a NEW row.
+    model: "", display_name: "", context_window: 1000000,
     reasoning_levels: [], default_reasoning_level: "",
   });
 }
@@ -100,7 +102,7 @@ function toggleOneM(key: string): void {
     <button class="link" @click="advancedOpen = !advancedOpen">
       {{ advancedOpen ? t("ccswitch.mapping.advHide") : t("ccswitch.mapping.advShow") }}
     </button>
-    <div v-if="advancedOpen">
+    <div v-if="advancedOpen" class="adv">
       <div v-for="slot in advRoles" :key="slot.key" class="row">
         <span class="role">{{ slot.label }}</span>
         <input
@@ -138,8 +140,8 @@ function toggleOneM(key: string): void {
       <input v-model="row.display_name" :placeholder="t('ccswitch.mapping.namePh')" />
       <input
         type="number" min="1000" step="1000"
-        :value="row.context_window || 128000"
-        @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 128000"
+        :value="row.context_window || 1000000"
+        @input="row.context_window = Number(($event.target as HTMLInputElement).value) || 1000000"
       />
       <!-- D-7: cc-switch desktop parity — the per-model level set is a
            searchable checkbox dropdown (multi-select), plus the row's
@@ -166,9 +168,12 @@ function toggleOneM(key: string): void {
 </template>
 
 <style scoped>
-.mapping { display: flex; flex-direction: column; gap: 8px; }
+.mapping { display: flex; flex-direction: column; gap: var(--space-2); }
+/* b3: the advanced block used to be a bare wrapper div that swallowed the
+ * flex gap — MODEL/SUBAGENT rows rendered border-to-border (user report). */
+.adv { display: flex; flex-direction: column; gap: var(--space-2); }
 .hint { font-size: var(--font-xs); color: var(--text-faint); margin: 0; }
-.row { display: flex; align-items: center; gap: 8px; }
+.row { display: flex; align-items: center; gap: var(--space-2); }
 .role { width: 110px; font-size: var(--font-sm); color: var(--text-2); }
 input {
   flex: 1; min-width: 120px;
@@ -192,10 +197,10 @@ input {
  * everything in the grid and let tracks own the geometry. */
 .cat-row input { box-sizing: border-box; min-width: 0; }
 input[type="number"] { width: 100%; }
-.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px; gap: 8px;
+.cat-head { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px; gap: var(--space-2);
   align-items: center; font-size: var(--font-xs); color: var(--text-faint); }
 .cat-row { display: grid; grid-template-columns: 1fr 0.7fr 92px 1.9fr 84px 30px;
-  gap: 8px; align-items: stretch; }
+  gap: var(--space-2); align-items: stretch; }
 /* D-7: the level chips — small toggle buttons, wrap inside their track. */
 .levels { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
 .levels .lv {

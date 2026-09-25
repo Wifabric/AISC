@@ -1,89 +1,116 @@
 {
- "schema_version": 1,
- "generated": "2026-07-16",
- "components": [
-  {
-   "name": "mihomo",
-   "version": "v1.19.27",
-   "source": "https://github.com/MetaCubeX/mihomo/releases/tag/v1.19.27",
-   "license": "GPL-3.0",
-   "files": [
-    "container/downloads/mihomo-linux-amd64-v1.19.27.gz"
-   ]
-  },
-  {
-   "name": "geodata",
-   "version": "latest",
-   "source": "https://github.com/MetaCubeX/meta-rules-dat",
-   "license": "unknown",
-   "files": [
-    "container/downloads/geoip.metadb",
-    "container/downloads/geosite.dat",
-    "container/downloads/country.mmdb"
-   ]
-  },
-  {
-   "name": "caveman",
-   "version": "0.1.0",
-   "source": "https://github.com/JuliusBrussee/caveman",
-   "license": "MIT",
-   "files": [
-    "container/_bundle/plugins/marketplaces/caveman/"
-   ]
-  },
-  {
-   "name": "claude-hud",
-   "version": "0.0.11",
-   "source": "https://github.com/jarrodwatts/claude-hud",
-   "license": "MIT",
-   "files": [
-    "container/_bundle/plugins/marketplaces/claude-hud/"
-   ]
-  },
-  {
-   "name": "claude-plugins-official",
-   "version": "embedded",
-   "source": "https://github.com/anthropics/claude-plugins-public",
-   "license": "Apache-2.0",
-   "files": [
-    "container/_bundle/plugins/marketplaces/claude-plugins-official/"
-   ]
-  },
-  {
-   "name": "anthropic-agent-skills",
-   "version": "1.0.0",
-   "source": "https://github.com/anthropics/skills",
-   "license": "Apache-2.0",
-   "files": [
-    "container/_bundle/plugins/marketplaces/anthropic-agent-skills/"
-   ]
-  },
-  {
-   "name": "gstack-skills",
-   "version": "1.1.0",
-   "source": "https://github.com/gstack/skills",
-   "license": "unknown",
-   "files": [
-    "container/_bundle/skills/gstack/"
-   ]
-  },
-  {
-   "name": "grill-me",
-   "version": "embedded-2026-07-24",
-   "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me",
-   "license": "MIT",
-   "files": [
-    "container/cc-switch-skills/grill-me/"
-   ]
-  },
-  {
-   "name": "cc-switch-cli",
-   "version": "v5.10.5",
-   "source": "https://github.com/SaladDay/cc-switch-cli/releases/tag/v5.10.5",
-   "license": "MIT",
-   "files": [
-    "container/downloads/cc-switch-cli-v5.10.5-linux-x64-musl.tar.gz"
-   ]
-  }
- ]
+  "schema_version": 1,
+  "generated": "2026-07-16",
+  "components": [
+    {
+      "name": "mihomo",
+      "version": "v1.19.27",
+      "source": "https://github.com/MetaCubeX/mihomo/releases/tag/v1.19.27",
+      "license": "GPL-3.0",
+      "files": [
+        "container/downloads/mihomo-linux-amd64-v1.19.27.gz"
+      ]
+    },
+    {
+      "name": "geodata",
+      "version": "latest",
+      "source": "https://github.com/MetaCubeX/meta-rules-dat",
+      "license": "unknown",
+      "files": [
+        "container/downloads/geoip.metadb",
+        "container/downloads/geosite.dat",
+        "container/downloads/country.mmdb"
+      ]
+    },
+    {
+      "name": "caveman",
+      "version": "0.1.0",
+      "source": "https://github.com/JuliusBrussee/caveman",
+      "license": "MIT",
+      "files": [
+        "container/_bundle/plugins/marketplaces/caveman/"
+      ]
+    },
+    {
+      "name": "claude-hud",
+      "version": "0.0.11",
+      "source": "https://github.com/jarrodwatts/claude-hud",
+      "license": "MIT",
+      "files": [
+        "container/_bundle/plugins/marketplaces/claude-hud/"
+      ]
+    },
+    {
+      "name": "claude-plugins-official",
+      "version": "embedded",
+      "source": "https://github.com/anthropics/claude-plugins-public",
+      "license": "Apache-2.0",
+      "files": [
+        "container/_bundle/plugins/marketplaces/claude-plugins-official/"
+      ]
+    },
+    {
+      "name": "anthropic-agent-skills",
+      "version": "1.0.0",
+      "source": "https://github.com/anthropics/skills",
+      "license": "Apache-2.0",
+      "files": [
+        "container/_bundle/plugins/marketplaces/anthropic-agent-skills/"
+      ]
+    },
+    {
+      "name": "gstack-skills",
+      "version": "1.1.0",
+      "source": "https://github.com/gstack/skills",
+      "license": "unknown",
+      "files": [
+        "container/_bundle/skills/gstack/"
+      ]
+    },
+    {
+      "name": "grill-me",
+      "version": "embedded-2026-07-24",
+      "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me",
+      "license": "MIT",
+      "files": [
+        "container/cc-switch-skills/grill-me/"
+      ]
+    },
+    {
+      "name": "cc-switch-cli",
+      "version": "v5.10.5",
+      "source": "https://github.com/SaladDay/cc-switch-cli/releases/tag/v5.10.5",
+      "license": "MIT",
+      "files": [
+        "container/downloads/cc-switch-cli-v5.10.5-linux-x64-musl.tar.gz"
+      ]
+    },
+    {
+      "name": "claude-code",
+      "license": "SEE_PACKAGE",
+      "version": "2.1.273",
+      "source": "https://www.npmjs.com/package/@anthropic-ai/claude-code",
+      "files": [
+        "container/downloads/claude-code-2.1.273.tgz"
+      ]
+    },
+    {
+      "name": "codex",
+      "license": "Apache-2.0",
+      "version": "0.154.0",
+      "source": "https://www.npmjs.com/package/@openai/codex",
+      "files": [
+        "container/downloads/codex-0.154.0.tgz"
+      ]
+    },
+    {
+      "name": "yazi",
+      "license": "MIT",
+      "version": "v25.2.26",
+      "source": "https://github.com/sxyazi/yazi/releases/tag/v25.2.26",
+      "files": [
+        "container/downloads/yazi-x86_64-unknown-linux-musl-v25.2.26.zip"
+      ]
+    }
+  ]
 }

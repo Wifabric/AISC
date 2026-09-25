@@ -45,7 +45,23 @@ const addMode = ref<"preset" | "custom">("preset");
 /** D-6.2: the manifest is codesome-led — templates[0] IS the default
  * selection of the add flow. */
 const selectedTemplate = computed<CcSwitchTemplate>(
-  () => props.templates.find((x) => x.id === form.preset) ?? props.templates[0] ?? { id: "", name: "" });
+  // b8 (#5): EDIT mode (or an unknown preset) must NOT fall back to
+  // templates[0] — codesome-v3 leads the list, so editing a zhipu row was
+  // driving the sk- prefix warning (and endpoint display) with codesome
+  // template data. Add mode keeps the sponsored default; edit mode matches
+  // the row's own template id, else NO template.
+  () => {
+    const row = props.provider;
+    if (row) {
+      return props.templates.find((x) => x.id === row.id)
+        ?? { id: "", name: "" };
+    }
+    if (addMode.value === "preset") {
+      return props.templates.find((x) => x.id === form.preset)
+        ?? props.templates[0] ?? { id: "", name: "" };
+    }
+    return { id: "", name: "" };
+  });
 const form = reactive({
   id: props.templates[0]?.id ?? "", // add mode — D-6: prefilled, editable (multi-instance)
   preset: props.templates[0]?.id ?? "",
@@ -101,34 +117,36 @@ const templateEndpoint = computed(() => {
     ? (tpl.codex_endpoint ?? "")
     : (tpl.codex_endpoint_native ?? tpl.codex_endpoint ?? "");
 });
-/** D-6: baseUrl PREFILLS from the template (reactively — the manifest can
- * land after mount) and the user may freely overwrite; once they type in
- * the field, auto-prefill stands down (switching template re-arms it). */
-const baseUrlTouched = ref(props.provider !== null);
+/** D-6/b2: baseUrl PREFILLS from the template (reactively — the manifest
+ * can land after mount) and the user may freely overwrite. The b2 guard:
+ * auto-prefill only overwrites its OWN previous value (lastAutoPrefilled) —
+ * a hand-typed endpoint is never silently replaced, not even by a late
+ * manifest swap or a format/template flip (D-6 keeps the endpoint following
+ * the format for untouched values only). */
+const lastAutoPrefilled = ref("");
 function applyTemplateEndpoint(): void {
-  // Edit mode never re-prefills (the row's own endpoint wins).
-  if (props.provider !== null || baseUrlTouched.value) return;
+  // Edit mode never re-prefills (the row's own endpoint wins); custom-add
+  // keeps whatever URL the user carried over from the preset picker.
+  // (b7 accidentally inverted the first guard — add-mode prefill was dead.)
+  if (props.provider !== null) return;
+  if (addMode.value !== "preset") return;
+  if (form.baseUrl && form.baseUrl !== lastAutoPrefilled.value) return;
+  lastAutoPrefilled.value = templateEndpoint.value;
   form.baseUrl = templateEndpoint.value;
 }
 applyTemplateEndpoint();
 watch([templateEndpoint, () => props.templates], applyTemplateEndpoint);
 function onApiFormatChange(): void {
-  // A format flip is explicit intent — re-prefill the matching endpoint.
-  if (props.provider === null && addMode.value === "preset") {
-    baseUrlTouched.value = false;
-    applyTemplateEndpoint();
-  }
+  applyTemplateEndpoint();
   touch();
 }
 function onPresetChange(): void {
   // Re-prefill the row id when untouched or colliding with another template.
   form.id = selectedTemplate.value.id;
-  baseUrlTouched.value = false; // a template switch re-arms the prefill
   applyTemplateEndpoint();
   touch();
 }
 function onBaseUrlInput(): void {
-  baseUrlTouched.value = true;
   touch();
 }
 function openAcquire(): void {
@@ -170,8 +188,11 @@ async function fetchNow(): Promise<void> {
     // 手测 r2#3: add-mode INLINE probe — the form's endpoint+key ride the
     // stdin channel; no saved row needed.
     if (!form.baseUrl.trim()) return;
+    // b2: the selected template rides along — the adapter adds the
+    // template's declared OpenAI-side base as a fetch candidate.
+    const templateId = addMode.value === "preset" ? form.preset : "";
     await uiStore.fetchModels(runtime.workspace, runtime.runtimeId, null,
-      form.apiKey || undefined, form.baseUrl.trim());
+      form.apiKey || undefined, form.baseUrl.trim(), templateId || undefined);
   }
   const key = props.provider?.id ?? "__add__";
   const r = uiStore.fetchedModels[key];
@@ -249,12 +270,27 @@ function buildRequest(): import("../../types").CcSwitchRequest {
   };
   if (adding.value) {
     if (addMode.value === "preset") {
+      // b7 (user verdict): preset add carries the advanced mapping layer —
+      // the adapter's simple path now applies these as overrides on top of
+      // the template baseline (this was H2, the "first save lost the
+      // mapping" root cause).
       return { mode: "simple", id: form.id.trim() || form.preset, provider: form.preset,
                base_url: form.baseUrl.trim() || undefined,
                api_key: form.apiKey || undefined,
                // D-7: the dropdown is authoritative for the wire format —
                // it wins over the template declaration (meta.apiFormat).
                ...(props.agent === "codex" ? { api_format: form.apiFormat } : {}),
+               ...(props.agent === "codex" ? { model: modelField.value.trim() || undefined } : {}),
+               ...(props.agent === "claude"
+                 ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
+                 : {}),
+               ...(props.agent === "codex"
+                 ? { model_catalog: { models: catalog.value.map((m) => ({
+                     model: m.model, contextWindow: m.context_window,
+                     display_name: m.display_name || undefined,
+                     reasoning_levels: m.reasoning_levels?.length ? m.reasoning_levels : undefined,
+                     default_reasoning_level: m.default_reasoning_level || undefined })) } }
+                 : {}),
                ...d7 };
     }
     return {
@@ -263,6 +299,12 @@ function buildRequest(): import("../../types").CcSwitchRequest {
       name: form.name.trim(),
       base_url: form.baseUrl.trim(),
       api_key: form.apiKey || undefined,
+      // b2 (H2): the ADD path used to drop the advanced-layer fields the
+      // edit path sends — the first save silently lost them.
+      ...(props.agent === "codex" ? { model: modelField.value.trim() || undefined } : {}),
+      ...(props.agent === "claude"
+        ? { env: Object.fromEntries(ROLE_SLOTS.map((s) => [s.key, roles[s.key] || null])) }
+        : {}),
       ...d7,
       ...extras,
       ...(props.agent === "codex"
@@ -355,6 +397,11 @@ function onSave(): void {
           </label>
           <p v-if="selectedTemplate.description" class="hint">{{ selectedTemplate.description }}</p>
           <p class="hint">{{ t("ccswitch.edit.presetHint") }}</p>
+          <!-- b2: manifest not landed yet (old image / network) — say so
+               instead of silently racing the docker exec round-trip. -->
+          <p v-if="uiStore.templatesSource === 'fallback'" class="hint warn">
+            {{ t("ccswitch.edit.templateFallback") }}
+          </p>
           <!-- D-6: preset-mode row id — prefilled, editable for
                multi-instance setups (codesome-v3-lite / -max). -->
           <label class="field">
@@ -457,6 +504,9 @@ function onSave(): void {
           :catalog="catalog"
           :candidates="candidates"
         />
+        <!-- b7 (user verdict, T3-1): the mapping layer is editable AND
+             saved in template mode too — cc-switch parity. The b2 gate
+             (hide + "not saved" hint) is reverted. -->
 
         <!-- Manual-test #2 (2026-09-06): the「其它信息」section (notes /
              website / icon / icon color) is retired from the form per user

@@ -625,6 +625,17 @@ pub struct CcSwitchTemplate {
     pub acquire_url: String,
     #[serde(default)]
     pub default_model: String,
+    // b10: the manifest carries the endpoint triple (the add page's baseUrl
+    // prefill consumes it, D-6). Serene default: absent fields fall back to
+    // "" without failing the parse.
+    #[serde(default)]
+    pub claude_endpoint: String,
+    #[serde(default)]
+    pub codex_endpoint: String,
+    #[serde(default)]
+    pub codex_endpoint_native: String,
+    #[serde(default)]
+    pub codex_api_format: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -872,6 +883,7 @@ pub async fn cc_switch_fetch_models(
     provider_id: Option<String>,
     api_key: Option<String>,
     base_url: Option<String>,
+    template_id: Option<String>,
 ) -> Result<Value, WorkbenchError> {
     cc_switch_validate(&runtime_id, &agent)?;
     // 手测 r2#3: an EMPTY provider_id = add-mode inline probe — the form's
@@ -887,6 +899,11 @@ pub async fn cc_switch_fetch_models(
     if provider_id.as_deref().unwrap_or("").trim().is_empty() {
         if let Some(b) = base_url.filter(|b| !b.trim().is_empty()) {
             doc.insert("base_url".into(), serde_json::json!(b));
+        }
+        // b2: the selected template — the adapter adds the template's
+        // declared OpenAI-side base as an inline fetch candidate.
+        if let Some(tpl) = template_id.filter(|t| !t.trim().is_empty()) {
+            doc.insert("template_id".into(), serde_json::json!(tpl));
         }
     }
     let input = if doc.is_empty() {

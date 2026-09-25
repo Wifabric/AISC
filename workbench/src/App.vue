@@ -161,6 +161,11 @@ function paletteCtx(): CommandCtx {
       openSettings: () => ws.openSettingsTab(),
       openNetworkUsage: () => ws.openNetworkUsageTab(),
       openPicker: () => ws.openLauncher(),
+      // b5 (feedback #4): mirror the menubar entry — guarded the same way.
+      closeWorkspace: () => {
+        const r = ws.activeRuntime;
+        if (r && r !== ws.launcher) void ws.closeWorkspace(r.id);
+      },
       runDoctor: () => doctorStore.openDialog(),
       toggleSidebar: () => toggleExplorerCollapsed(),
       showView: (kind) => {
@@ -242,7 +247,14 @@ function onViewportResize() {
 }
 onMounted(() => window.addEventListener("resize", onViewportResize));
 const effectiveScale = computed(() =>
-  Math.min(uiScale.value, 1.5, windowSize.value.w / 800, windowSize.value.h / 600)
+  // b3 (todo:150): the picker view drops the width clamp — the 800px
+  // workspace minimum squeezed the whole picker UI in narrow windows
+  // (2.1.11 leftover); only the height floor still applies there.
+  Math.min(
+    uiScale.value, 1.5,
+    (ws.activeRuntime ? windowSize.value.w : Math.max(windowSize.value.w, 800)) / 800,
+    windowSize.value.h / 600,
+  )
 );
 // Zoom scales layout too, so the app box must compensate its height/width.
 const uiZoom = computed(() => ({

@@ -145,7 +145,7 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
    * save; it rides the stdin channel only and is never stored here. */
   async function fetchModels(
     ws: string, rt: string, providerId: string | null, apiKey?: string,
-    baseUrl?: string,
+    baseUrl?: string, templateId?: string,
   ): Promise<boolean> {
     // 手测 r2#3: providerId null = add-mode inline probe (form endpoint).
     const key = providerId ?? "__add__";
@@ -153,7 +153,7 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
     error.value = null;
     try {
       fetchedModels[key] =
-        await ipc.ccSwitchFetchModels(ws, rt, agent.value, providerId, apiKey, baseUrl);
+        await ipc.ccSwitchFetchModels(ws, rt, agent.value, providerId, apiKey, baseUrl, templateId);
       void ipc.logUiEvent?.("cc_switch_fetch", "ok");
       return true;
     } catch (e) {
@@ -211,6 +211,12 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
       codex_endpoint_native: "https://api.moonshot.cn/v1", codex_api_format: "anthropic" },
   ];
   const templates = ref<CcSwitchTemplate[]>(FALLBACK_TEMPLATES);
+  /** b7 (user report): tri-state — "pending" while the docker exec
+   * round-trip is in flight (1-3s on healthy setups; the old two-state
+   * flag flashed the degraded warning during that window), "manifest"
+   * after it lands, "fallback" only on a settled miss (old image /
+   * restricted network). */
+  const templatesSource = ref<"pending" | "fallback" | "manifest">("pending");
   /** D-6.2: codesome leads (sponsor placement, no label) and is the
    * add-flow's default selection; everything else keeps manifest order. */
   function _orderTemplates(list: CcSwitchTemplate[]): CcSwitchTemplate[] {
@@ -225,14 +231,19 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
       const result = await ipc.ccSwitchTemplates(ws, rt, agent.value);
       if (result.templates.length) {
         templates.value = _orderTemplates(result.templates);
+        templatesSource.value = "manifest";
+        return;
       }
     } catch {
-      templates.value = FALLBACK_TEMPLATES;
+      // fall through to the settled fallback below
     }
+    templates.value = FALLBACK_TEMPLATES;
+    templatesSource.value = "fallback";
   }
 
   return {
     agent, providers, loading, busy, busyOp, error, errorDetail, fetchedModels,
+    templatesSource,
     templates, loadTemplates,
     list, switchAgent, add, edit, activate, remove, fetchModels, revealKey,
   };

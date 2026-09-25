@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import io
+import argparse
 import json
 import sqlite3
 import subprocess
@@ -1986,3 +1987,201 @@ class ProviderParityTests(AdapterTestCase):
             [{"model": "new-a", "display_name": "A", "context_window": 128000},
              {"model": "new-b", "display_name": "", "context_window": 128000}],
         )
+
+
+class B2AddFidelityTests(AdapterTestCase):
+    """b2 (v2.1.14): add-page fidelity — the inline probe joins the template's
+    declared OpenAI-side base, the snake_case catalog survives the first
+    save, and claude preset rows get the same preset-base candidate codex
+    rows already had."""
+
+    def test_inline_probe_template_base_joins_candidates(self):
+        # zhipu: the add form prefills the anthropic endpoint while the real
+        # model list lives on the template's OpenAI side (/api/paas/v4).
+        from unittest import mock
+
+        def fake_fetch(base, key, timeout=15.0, bearer_only=False, log_path="", **_kw):
+            if base == "https://open.bigmodel.cn/api/paas/v4":
+                return ["glm-5.3", "glm-5.2"]
+            return None
+
+        with mock.patch.object(A, "_openai_compatible_models", side_effect=fake_fetch):
+            result = A._fetch_models_inline(
+                "codex", "https://open.bigmodel.cn/api/anthropic", "sk-x", "zhipu")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["models"], ["glm-5.3", "glm-5.2"])
+        # Without the template hint the same probe fails closed.
+        with mock.patch.object(A, "_openai_compatible_models", side_effect=fake_fetch):
+            result = A._fetch_models_inline(
+                "codex", "https://open.bigmodel.cn/api/anthropic", "sk-x")
+        self.assertFalse(result["available"])
+
+    def test_inline_probe_template_id_rides_stdin(self):
+        # The request document carries template_id; main() threads it into
+        # the inline probe (b2 wire change).
+        from unittest import mock
+
+        seen: list[str] = []
+        with mock.patch.object(
+            A, "_fetch_models_inline",
+            side_effect=lambda agent, base, key, template_id="": (
+                seen.append(template_id)
+                or {"available": True, "models": ["m"], "message": ""}),
+        ):
+            buf = io.StringIO()
+            with redirect_stdout(buf), mock.patch.object(
+                sys, "stdin",
+                io.StringIO(json.dumps({"base_url": "https://f.example",
+                                        "api_key": "k",
+                                        "template_id": "zhipu"})),
+            ):
+                code = A.main(["fetch-models", "--agent", "codex"])
+        self.assertEqual(code, 0)
+        envelope = json.loads(buf.getvalue().strip().splitlines()[-1])
+        self.assertTrue(envelope["ok"])
+        self.assertEqual(seen, ["zhipu"])
+
+    def test_claude_preset_row_uses_declared_openai_base(self):
+        # b2: symmetric with the codex branch — the env (anthropic) base is
+        # dead but the preset's declared OpenAI-side base serves the list.
+        seed_provider(self.dir, "deepseek", {
+            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+            "ANTHROPIC_AUTH_TOKEN": "sk-live-abcdef123456",
+        })
+        self.cli.stub_stdout("Fetching…\nError: HTTP 401\n")  # CLI fallback dead
+
+        def fake_http(url, headers, timeout):
+            if url == "https://api.deepseek.com/v1/models":
+                return 200, {"data": [{"id": "deepseek-v4-pro[1m]"}]}
+            return 404, None
+
+        orig_http = A._http_get_json
+        A._http_get_json = fake_http
+        try:
+            result = A.op_fetch_models("claude", "deepseek")
+        finally:
+            A._http_get_json = orig_http
+        self.assertTrue(result["available"])
+        self.assertEqual(result["models"], ["deepseek-v4-pro[1m]"])
+
+    def test_custom_codex_add_accepts_snake_model_catalog(self):
+        # b2 (H2): the UI's add request sends snake_case model_catalog; the
+        # add path used to read only modelCatalog and silently dropped it.
+        A.op_add("codex", {"mode": "custom", "id": "mine", "name": "Mine",
+                           "base_url": "https://api.mine",
+                           "model": "glm-5.3",
+                           "model_catalog": {"models": [
+                               {"model": "glm-5.3", "contextWindow": 200000}]}})
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        self.assertIn("modelCatalog", sent)
+        self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")
+        self.assertIn('model = "glm-5.3"', sent["config"])
+
+
+class B7PresetAddOverridesTests(AdapterTestCase):
+    """b7 (user verdict, T3-1): the advanced mapping layer rides the PRESET
+    (simple) add as overrides on the template baseline — cc-switch parity.
+    This is the H2 root cause closed for real (the first save keeps it)."""
+
+    def test_preset_claude_add_applies_env_role_overrides(self):
+        A.op_add("claude", {
+            "mode": "simple", "id": "deepseek", "provider": "deepseek",
+            "base_url": "https://api.deepseek.com/anthropic",
+            "api_key": "sk-live-abcdef123456",
+            "env": {"ANTHROPIC_MODEL": "deepseek-v4-pro[1m]"},
+        })
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        env = sent["env"]
+        self.assertEqual(env["ANTHROPIC_MODEL"], "deepseek-v4-pro[1m]")
+        # the template baseline survives underneath the override
+        self.assertEqual(env["ANTHROPIC_BASE_URL"], "https://api.deepseek.com/anthropic")
+        self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "sk-live-abcdef123456")
+
+    def test_preset_codex_add_applies_model_and_catalog(self):
+        A.op_add("codex", {
+            "mode": "simple", "id": "zhipu", "provider": "zhipu",
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-zhipu-1",
+            "model": "glm-5.3",
+            "model_catalog": {"models": [{"model": "glm-5.3",
+                                          "contextWindow": 200000}]},
+        })
+        sent = json.loads(self.cli.calls[0].stdin_text)
+        self.assertIn('model = "glm-5.3"', sent["config"])
+        # exactly ONE model line (the template default replaced, not doubled)
+        self.assertEqual(sent["config"].count("model = "), 1)
+        self.assertEqual(sent["modelCatalog"]["models"][0]["model"], "glm-5.3")
+
+
+    def test_edit_dance_treats_written_row_as_success(self):
+        """b8 (#4, user report): the CLI's failure heuristics can misfire
+        AFTER writing the row — the old unconditional restore then tripped
+        UNIQUE(id, app_type) as a raw "db restore failed". A written row
+        means the re-add de-facto succeeded: continue the dance."""
+        from unittest import mock
+
+        self._install_dance_cli()
+        seed_provider(self.dir, "zhipu", {
+            "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+            "ANTHROPIC_AUTH_TOKEN": "sk-zhipu-key-2222",
+        })
+        real = A._cli_add
+
+        def write_then_raise(*a, **k):
+            real(*a, **k)
+            raise A.AdapterError(
+                A.ERR_BAD_REQUEST, "exit 1: stderr contained 'error' after write")
+
+        with mock.patch.object(A, "_cli_add", side_effect=write_then_raise):
+            rows = A.op_edit("claude", "zhipu", {
+                "patch": {"model": "glm-5.2"}, "api_key": "sk-rotated-4444",
+            })
+        # No raise; the row survived with the NEW key (written by the CLI),
+        # and the other row is untouched.
+        row = next(r for r in rows if r["id"] == "zhipu")
+        self.assertTrue(row["has_api_key"])
+        self.assertIn("glm-5.2", json.dumps(row["role_env"]))
+
+
+class FetchModelsProbePassthroughTests(unittest.TestCase):
+    """b9 (#4, user report): cmd_cc_switch_fetch_models used to forward only
+    {"api_key"} — the add-mode inline probe (base_url/template_id) reached
+    the adapter EMPTY and died on the id gate. The whole probe document must
+    pass through."""
+
+    def test_add_mode_probe_document_forwards_in_full(self):
+        from aisc.cli.commands import cc_switch as cs
+        from aisc.application import cc_switch_provider as prov
+
+        captured: dict = {}
+
+        def fake_fetch(**kw):
+            captured.update(kw)
+            return {"available": False, "models": [], "message": ""}
+
+        args = argparse.Namespace(runtime_id="rid-1", agent="claude",
+                                  provider_id="", workspace=".")
+        doc = json.dumps({
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-x", "template_id": "zhipu"})
+        with mock.patch.object(prov, "fetch_models", side_effect=fake_fetch),                 mock.patch.object(sys, "stdin", io.StringIO(doc)):
+            cs.cmd_cc_switch_fetch_models(args)
+        self.assertEqual(captured["request"], {
+            "base_url": "https://open.bigmodel.cn/api/anthropic",
+            "api_key": "sk-x", "template_id": "zhipu"})
+
+    def test_row_mode_without_stdin_forwards_none(self):
+        from aisc.cli.commands import cc_switch as cs
+        from aisc.application import cc_switch_provider as prov
+
+        captured: dict = {}
+
+        def fake_fetch(**kw):
+            captured.update(kw)
+            return {"available": False, "models": [], "message": ""}
+
+        args = argparse.Namespace(runtime_id="rid-1", agent="claude",
+                                  provider_id="zhipu", workspace=".")
+        with mock.patch.object(prov, "fetch_models", side_effect=fake_fetch),                 mock.patch.object(sys, "stdin", io.StringIO("")):
+            cs.cmd_cc_switch_fetch_models(args)
+        self.assertIsNone(captured["request"])

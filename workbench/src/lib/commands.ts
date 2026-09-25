@@ -37,6 +37,8 @@ export interface CommandCtx {
     openSettings: () => void;
     openNetworkUsage: () => void;
     openPicker: () => void;
+    /** b5 (feedback #4): close the active workspace back to the picker. */
+    closeWorkspace: () => void;
     runDoctor: () => void;
     toggleSidebar: () => void;
     showView: (kind: "explorer" | "conversations" | "artifacts" | "services") => void;
@@ -114,6 +116,15 @@ export function buildCommands(): CommandEntry[] {
       // workspace (same + button semantics as the strip).
       id: "app.picker", labelKey: "palette.cmd.openPicker", groupKey: "palette.group.app",
       run: (c) => c.app.openPicker(),
+    },
+    {
+      // b5 (feedback #4): the close counterpart of app.picker — close the
+      // ACTIVE workspace (confirm → background teardown), stay on the picker.
+      // ready/error only: starting et al. have their own backToPicker/cancel
+      // paths and closeWorkspace would not cancelRuntimeStart.
+      id: "app.closeWorkspace", labelKey: "palette.cmd.closeWorkspace", groupKey: "palette.group.app",
+      when: (ctx) => ctx.active.status === "ready" || ctx.active.status === "error",
+      run: (c) => c.app.closeWorkspace(),
     },
     {
       id: "app.doctor", labelKey: "palette.cmd.runDoctor", groupKey: "palette.group.app",

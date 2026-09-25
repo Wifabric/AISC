@@ -244,8 +244,12 @@ _SERVE_SESSION_OPS = frozenset({"terminate", "list"})
 #: application/cc_switch_provider._OPS; anything else (bare TUI, future
 #: subcommands) stays denied — default-deny keeps the serial op loop safe.
 _SERVE_CC_SWITCH_OPS = frozenset({
-    "list", "add", "edit", "switch", "delete", "fetch-models",
+    "list", "add", "edit", "switch", "delete", "fetch-models", "templates",
 })
+# b10 (#3 终局): "templates" was added to _OPS in 2.1.12 (D-6.8) but this
+# mirror was never updated — every workbench-side manifest fetch was
+# rejected at the serve gate and silently fell back to the builtin list
+# (exposed by the b2 degraded-display hint, chased through four rounds).
 
 
 def _op_cli(args: argparse.Namespace, payload: Dict[str, Any],

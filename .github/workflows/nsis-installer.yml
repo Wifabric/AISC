@@ -71,6 +71,10 @@ jobs:
       - name: Stage AISC CLI bundle (aisc-bundle for root discovery)
         shell: pwsh
         run: |
+          # b10fix: companion tgz are NOT in git (D-16 C-混合) — stage them so
+          # the NSIS bundle carries the full offline preset set (parity with
+          # artifact.yml/bundle-linux-macos.yml).
+          bash scripts/stage-npm.sh --yazi
           python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
           Get-ChildItem workbench/src-tauri/nsis/bundle/aisc-bundle | Select-Object -First 5 Name
 
@@ -180,6 +184,32 @@ jobs:
             # value so a literal %USERPROFILE% entry is detectable.
             $raw = (Get-Item "HKCU:\Environment").GetValue("Path", $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
             if ($raw -notlike "*%USERPROFILE%\AppData\Roaming\aisc-smoke-test*") { throw "G-18: %USERPROFILE% entry lost/expanded (raw=$raw)" }
+
+            # --- b1 (D-16): fresh user PATH creation must be REG_EXPAND_SZ ---
+            # E2E miss: PathRead forces $PathType=1 when the value is absent
+            # and the old conditional PathWrite then created a REG_SZ PATH.
+            Remove-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue
+            $procF = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($procF.ExitCode -ne 0) { throw "b1: fresh-PATH install failed with exit $($procF.ExitCode)" }
+            $freshKind = (Get-Item "HKCU:\Environment").GetValueKind('Path')
+            if ($freshKind -ne 'ExpandString') { throw "b1: fresh user PATH created as $freshKind (expected ExpandString)" }
+            if ((Count-InstDirEntries (Get-UserPath)) -ne 1) { throw "b1: INSTDIR entry missing after fresh-PATH install" }
+            Write-Host "B1 FRESH-PATH (ExpandString): PASSED"
+
+            # --- b1 (D-16): already-present self-heal REG_SZ -> REG_EXPAND_SZ ---
+            # Legacy installs wrote REG_SZ; the upgrade chain keeps the owned
+            # entry, so AddInstDirToPath early-exits — self-heal must retype.
+            $curRaw = (Get-Item "HKCU:\Environment").GetValue("Path", $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            [Microsoft.Win32.Registry]::SetValue("HKEY_CURRENT_USER\Environment", "Path", $curRaw, [Microsoft.Win32.RegistryValueKind]::String)
+            if ((Get-Item "HKCU:\Environment").GetValueKind('Path') -ne 'String') { throw "b1: self-heal precondition (REG_SZ) not set" }
+            $procH = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($procH.ExitCode -ne 0) { throw "b1: self-heal install failed with exit $($procH.ExitCode)" }
+            $healKind = (Get-Item "HKCU:\Environment").GetValueKind('Path')
+            if ($healKind -ne 'ExpandString') { throw "b1: legacy REG_SZ PATH not self-healed (got $healKind)" }
+            Write-Host "B1 SELF-HEAL (REG_SZ -> ExpandString): PASSED"
+
+            # restore the unrelated literal entry the later blocks assert on
+            Set-UserPath ("%USERPROFILE%\AppData\Roaming\aisc-smoke-test;" + $appDir)
 
             # --- G-18: resolution from a NEW PowerShell process via PATH ---
             # A runner may already have another aisc in the SYSTEM PATH (e.g.

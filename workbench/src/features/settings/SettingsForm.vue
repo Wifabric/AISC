@@ -20,6 +20,20 @@ import type { TerminalSettings, UiSettings, WindowSettings } from "../../types";
 const { t } = useI18n();
 const store = useSettingsStore();
 const update = useUpdateStore();
+
+// b13: human-readable download progress.
+const fmtBytes = (n: number): string => {
+  if (!n) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0, v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(1)} ${units[i]}`;
+};
+const dlPercent = computed(() => {
+  const total = update.total ?? 0;
+  if (!total) return 0;
+  return Math.min(100, Math.round((update.downloaded / total) * 100));
+});
 const emit = defineEmits<{ close: [] }>();
 
 type EffectKind = "immediate" | "rebuild" | "restart";
@@ -897,8 +911,14 @@ async function reopenOnboarding() {
                   {{ update.status === "downloading" ? t("settings.about.downloading") : t("settings.about.download") }}
                 </button>
               </div>
-              <div v-if="update.status === 'downloading'" class="bar note">
-                {{ update.downloaded }} / {{ update.total || "?" }} bytes
+              <!-- b13: human-readable progress + a visual bar (raw bytes
+                   read as noise for a 292MB payload). -->
+              <div v-if="update.status === 'downloading'" class="dl-progress note">
+                <div class="dl-bar">
+                  <div class="dl-fill" :style="{ width: dlPercent + '%' }" />
+                </div>
+                <span>{{ fmtBytes(update.downloaded) }} / {{ fmtBytes(update.total) }}
+                  ({{ dlPercent }}%)</span>
               </div>
             </template>
             <template v-if="update.status === 'ready'">
@@ -935,6 +955,16 @@ async function reopenOnboarding() {
 </template>
 
 <style scoped>
+/* b13: download progress bar */
+.dl-progress { display: flex; align-items: center; gap: var(--space-2); }
+.dl-bar {
+  flex: 1; height: 6px; border-radius: var(--radius-pill);
+  background: var(--surface-3); overflow: hidden;
+}
+.dl-fill {
+  height: 100%; border-radius: var(--radius-pill);
+  background: var(--accent); transition: width var(--duration-fast) ease;
+}
 /* Fill the host (dialog panel / settings tab pane); the body grows and the
    sticky footer pins to the bottom when the content is short. */
 .settings-form { flex: 1; min-height: 0; display: flex; flex-direction: column; }
