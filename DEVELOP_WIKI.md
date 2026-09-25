@@ -33,6 +33,7 @@ git status --short
    - `docs/devlog.md` 更新到位；
    - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档。
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
+6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
 注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（release job 仅命中 `-dev`/`.dev`）；preview 统一用 `.devN` 形态，如需 rc 形态先补该 workflow 的后缀判断。
 
