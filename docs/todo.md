@@ -194,6 +194,8 @@
 
 > **2026-09-24 收口**：六批（b1-b12，含四轮 provider 修复与三轮发布修复）全部交付。手测 T3-3/T4-2/T1-3/装机取证 PASS；provider 域用户确认收口；剩余观察项：T1-1/T1-2 应用内更新流随 v2.1.14-preview.2→下一跳验证（b12 下载超时已本地实证 61.2s/292MB）、T6-4/5/6 断网模拟挂起（需断网窗口）、T5/T2-A/T4-1·3·4·5 随日常使用验证。
 
+> **2026-09-25 销账（用户裁定维持 2.1.14，不开新版本）**：观察项全部关闭——T1-1/T1-2 已于 preview.2→3 实测 PASS；T6-4/5/6 与 T5/T2-A/T4-1·3·4·5 经用户确认日常使用无异常，销账；D-13 docker 破坏性操作边界用户追认定稿（archive decisions.md D-23）。已知状态：装机 sidecar CLI 停留 0.1.2（无独立升级通道，随下一版 Workbench 安装器按「先 bump CLI 再构建」规则携带更新）。
+
 **发布与更新（批 1）**
 - [x] 开池版本 bump 2.1.13 → 2.1.14 + 自更新三项：静默升级完成后自动拉起新版（update.rs 加 /R 激活 installer.nsi 既有 RunAsUser 机制；接受升级链全程后拉起，文案/发布说明写明）／ staging 文件名改目标版本（appDownloadUpdate 穿透 targetVersion，顺带清理 staging 旧 exe）／ NSIS PATH 写 REG_EXPAND_SZ（PathWrite 恒 ExpandStr + 存量自愈写 + CI smoke 补首装新建值断言）
 **Provider 新建保真（批 2，合批）**
