@@ -8,7 +8,7 @@
 
 | 批 | 内容 | 建议优先级 | 分支（实施时创建） | 终态 |
 | --- | --- | --- | --- | --- |
-| b1 | SSH 远程会话启动阻塞排查修复 | P0 | `2.1.15-b1-remote-ssh-recovery` | 待实施 |
+| b1 | SSH 远程会话启动阻塞排查修复 | P0 | `2.1.15-b1-remote-ssh-recovery` | 实施中 |
 | b2 | Windows 工作区路径大小写归一与历史去重 | P1 | `2.1.15-b2-workspace-path-identity` | 待实施 |
 | b3 | CLI 输出后的终端滚动稳定性 | P1 | `2.1.15-b3-terminal-output-scroll` | 待实施 |
 | b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 待实施 |
