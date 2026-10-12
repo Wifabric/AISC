@@ -85,6 +85,12 @@ import { containerPathFor, quoteForTerminal } from "./dropPath";
 import { resolveRenderer, terminalTheme, webglGpuSummary } from "./renderer";
 
 import { alignSpoolPage, linearizeSpoolPage } from "./spoolReplay";
+import {
+  createAltScreenDetector,
+  createScrollOwnership,
+  isEraseScrollbackRequest,
+  isTerminalGeneratedInput,
+} from "./scrollOwnership";
 
 import { effectiveTheme } from "../../theme";
 
@@ -412,16 +418,61 @@ function mountSearch() {
 
 }
 
-function onTermData(data: string) {
+let scrollOwnership = createScrollOwnership();
+let altScreenDetector = createAltScreenDetector();
 
-  const sid = sessionId.value;
+// Codex is not an alt-screen TUI. It clears scrollback with ED3 on startup;
+// suppressing that sequence preserves history and avoids the xterm viewport
+// reset. ED0/ED2 still execute so terminal UIs can redraw normally.
+function installCodexScrollbackGuard(target: Terminal): void {
+  target.parser.registerCsiHandler(
+    { final: "J" },
+    (params) => isEraseScrollbackRequest(params),
+  );
+}
 
-  if (sid) {
+function enterLivePromptForInput(): void {
+  if (scrollOwnership.onUserInput()) term?.scrollToBottom();
+}
 
-    writeSession(sid, Array.from(new TextEncoder().encode(data))).catch(() => {});
-
+function onTerminalWheelCapture(event: WheelEvent): void {
+  // xterm 6 scrolls an internal SmoothScrollableElement; the legacy viewport
+  // element does not expose native scroll metrics. Capture at the component
+  // root because xterm consumes wheel events during the bubble phase.
+  const buffer = term?.buffer.active;
+  if (!buffer || buffer.type !== "normal") return;
+  if (event.deltaY < 0) {
+    scrollOwnership.onUserScrollAway();
+    return;
   }
+  if (event.deltaY > 0) {
+    queueMicrotask(() => {
+      const next = term?.buffer.active;
+      if (next?.type === "normal" && next.viewportY >= next.baseY) {
+        scrollOwnership.onUserScrollAtBottom();
+      }
+    });
+  }
+}
 
+function attachTerminalWheelListener(): void {
+  container.value?.addEventListener("wheel", onTerminalWheelCapture, { capture: true, passive: true });
+}
+
+function detachTerminalWheelListener(): void {
+  container.value?.removeEventListener("wheel", onTerminalWheelCapture, { capture: true });
+}
+
+function onTermData(data: string) {
+  // b3: input means the user is returning to the live prompt. Do it before
+  // sending so the pasted/typed echo lands in the visible present. xterm's
+  // automatic focus reports also arrive through onData and must not claim
+  // keyboard ownership.
+  if (data.length > 0 && !isTerminalGeneratedInput(data)) enterLivePromptForInput();
+  const sid = sessionId.value;
+  if (sid) {
+    writeSession(sid, Array.from(new TextEncoder().encode(data))).catch(() => {});
+  }
 }
 
 function b64ToUint8(b64: string): Uint8Array {
@@ -440,28 +491,32 @@ function b64ToUint8(b64: string): Uint8Array {
 
  * per-chunk writes make high-throughput output render slowly). */
 
-function writeChunks(chunks: string[]): void {
-
+function writeChunks(chunks: string[], trackAltScreen = true): void {
   if (!term || chunks.length === 0) return;
-
+  const currentTerm = term;
   const totalB64 = chunks.reduce((n, c) => n + c.length, 0);
-
   const decoded = new Uint8Array(((totalB64 / 4) | 0) * 3);
-
   let off = 0;
-
   for (const b64 of chunks) {
-
     const u8 = b64ToUint8(b64);
-
     decoded.set(u8, off);
-
     off += u8.length;
-
   }
-
-  term.write(decoded.subarray(0, off));
-
+  const bytes = decoded.subarray(0, off);
+  // Historical pages are intentionally positioned by loadEarlier; only LIVE
+  // alt-screen exit restores normal-buffer tracking for the current view.
+  const altEvent = trackAltScreen ? altScreenDetector.feed(bytes) : null;
+  currentTerm.write(bytes, () => {
+    if (currentTerm === term && altEvent?.exited && scrollOwnership.shouldFollowOutput()) {
+      // xterm restores the saved viewport while parsing the exit sequence.
+      // Let that restore settle before claiming ownership for live output.
+      setTimeout(() => {
+        if (currentTerm === term && scrollOwnership.shouldFollowOutput()) {
+          currentTerm.scrollToBottom();
+        }
+      }, 0);
+    }
+  });
 }
 
 /** Decode base64 chunks to one buffer — the trimming path of loadEarlier
@@ -549,6 +604,11 @@ function rebuildTerminal() {
   term.loadAddon(fit);
 
   term.open(host);
+  installCodexScrollbackGuard(term);
+  // A rebuilt view has a new viewport and starts a fresh ownership epoch.
+  scrollOwnership = createScrollOwnership();
+  altScreenDetector = createAltScreenDetector();
+  attachTerminalWheelListener();
 
   writeWelcomeCard();
 
@@ -1506,6 +1566,8 @@ async function uploadAndInsertImages(files: File[]): Promise<void> {
 
   try {
 
+    enterLivePromptForInput();
+
     await writeSession(
 
       sid,
@@ -1588,6 +1650,8 @@ async function onDrop(e: DragEvent) {
 
   try {
 
+    enterLivePromptForInput();
+
     await writeSession(sid, Array.from(new TextEncoder().encode(token)));
 
     term?.focus();
@@ -1643,6 +1707,8 @@ async function doPaste() {
         );
 
         const token = quoteForTerminal(containerPathFor(rel.relative_path));
+
+        enterLivePromptForInput();
 
         await writeSession(sid, Array.from(new TextEncoder().encode(token)));
 
@@ -1866,6 +1932,8 @@ function onTermCustomKey(e: KeyboardEvent): boolean {
 
     if (sid) {
 
+      enterLivePromptForInput();
+
       const bytes = CTRL_SLASH_CSI_U
 
         ? Array.from(new TextEncoder().encode("[47;5u"))
@@ -1943,6 +2011,10 @@ onMounted(() => {
   term.loadAddon(fit);
 
   term.open(container.value!);
+  installCodexScrollbackGuard(term);
+  scrollOwnership = createScrollOwnership();
+  altScreenDetector = createAltScreenDetector();
+  attachTerminalWheelListener();
 
   writeWelcomeCard();
 
@@ -2290,7 +2362,7 @@ async function loadEarlier(): Promise<void> {
     }
 
     if (winTail) term.write(winTail);
-    else writeChunks(winChunks);
+    else writeChunks(winChunks, false);
 
     consumed = store.streamCursor[props.paneId] ?? 0;
 
@@ -2383,6 +2455,7 @@ onBeforeUnmount(() => {
   veilFading.value = false;
 
   window.removeEventListener("resize", onWindowResize);
+  detachTerminalWheelListener();
 
   term?.dispose(); // disposes fit/webgl/search addons + custom key handler (03 §七)
 
