@@ -106,3 +106,20 @@ Workbench 历史中显示为两个工作区的问题。统一身份键匹配语�
   - `scripts/local-gates.ps1`：`LOCAL GATES: ALL GREEN`。
 - 剩余门：Windows 实机手测（双大小写打开同目录 → 最近列表单条；forget 无
   孪生残留）；远程 CI 全绿；并回 develop。
+
+### 手测记录（2026-10-13 00:11 实机，Windows debug 构建）
+
+环境：真实 Workbench 二进制 + 真实 history.json（基线 rev=16，2 条工作区）。
+
+| 步骤 | 结果 |
+| --- | --- |
+| save `C:\Users\wangyu\aisc-b1-t3`（canonical） | ✅ rev 16→17 |
+| save `c:/USERS/wangyu/AISC-B1-T3`（大小写变体，F4 复现路径） | ✅ rev 17→18 |
+| load：该目录记录数 | ✅ **1 条**（修复前为 2 条） |
+| 显示形态 | ✅ 保留原 `C:\Users\wangyu\aisc-b1-t3` |
+| `last_used_at` | ✅ 取较新 `00:11:00Z` |
+| layout/tabs 合并 | ✅ 旧记录 layout 完整保留 |
+| `workspace_history_remove` 用变体大小写 | ✅ 命中，rev 18→19 |
+| 删除后该目录记录 | ✅ 0 条，history 无孪生残留 |
+
+手测通过。T1（b1 lease）与前端 `sameWorkspace` 不受影响（未触碰）。
