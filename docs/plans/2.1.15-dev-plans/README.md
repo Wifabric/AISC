@@ -12,6 +12,7 @@
 | b2 | Windows 工作区路径大小写归一与历史去重 | P1 | `2.1.15-b2-workspace-path-identity` | 待实施 |
 | b3 | CLI 输出后的终端滚动稳定性 | P1 | `2.1.15-b3-terminal-output-scroll` | 待实施 |
 | b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 待实施 |
+| b5 | PTY 输出流断流修复（b1 手测发现） | P1 | `2.1.15-b5-pty-output-stream` | 待实施 |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。
