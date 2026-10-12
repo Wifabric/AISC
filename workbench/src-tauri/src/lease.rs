@@ -19,6 +19,7 @@
 //!   unknown workspace is a no-op.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -26,7 +27,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
-use crate::cli::{run_control_target, Envelope};
+use crate::cli::{run_control_target, CliTarget, Envelope};
+use crate::target::RemoteMachine;
 use crate::error::WorkbenchError;
 use crate::runtime::{envelope_error, lease_argv, LEASE_TIMEOUT};
 
@@ -228,7 +230,25 @@ pub struct SupervisorInfo {
 struct LeaseBeat {
     workspace: String,
     lease_id: String,
+    /// The machine that owns this runtime. A window may switch targets later;
+    /// claim/heartbeat/release must remain on the runtime's original machine.
+    target: Option<RemoteMachine>,
     cancel: CancellationToken,
+}
+
+/// Build a CLI target from a claim-time machine snapshot.
+fn beat_cli_target(machine: Option<&RemoteMachine>, local_executable: &Path) -> CliTarget {
+    match machine {
+        Some(machine) => CliTarget::Remote(machine.to_ssh_target()),
+        None => CliTarget::Local(local_executable.to_path_buf()),
+    }
+}
+
+/// Direct lease-file writes only touch the local data root. Remote snapshots
+/// must heartbeat through the original remote CLI, never fall back to the
+/// process-global target.
+fn direct_heartbeat_allowed(machine: Option<&RemoteMachine>, heartbeat_mode: Option<&str>) -> bool {
+    heartbeat_mode.map(|mode| mode != "cli").unwrap_or(true) && machine.is_none()
 }
 
 #[derive(Default)]
@@ -262,7 +282,15 @@ pub async fn lease_claim(
     window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<LeaseClaimResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target_machine = crate::target::window_machine(&app, &window);
+    let local_executable = match target_machine {
+        Some(_) => None,
+        None => Some(crate::session::resolve_cli(&app).await?),
+    };
+    let target = beat_cli_target(
+        target_machine.as_ref(),
+        local_executable.as_deref().unwrap_or_else(|| Path::new("")),
+    );
     let supervisor = app.state::<LeaseSupervisor>();
     let instance_id = supervisor.instance_id();
     let argv = lease_argv("claim", &workspace, Some(&instance_id), None);
@@ -281,6 +309,7 @@ pub async fn lease_claim(
             LeaseBeat {
                 workspace: workspace.clone(),
                 lease_id: claim.lease_id.clone(),
+                target: target_machine.clone(),
                 cancel: cancel.clone(),
             },
         ) {
@@ -289,6 +318,7 @@ pub async fn lease_claim(
     }
 
     let beat_app = app.clone();
+    let beat_target = target_machine.clone();
     let beat_workspace = workspace.clone();
     let beat_lease = claim.lease_id.clone();
     let beat_instance = instance_id.clone();
@@ -303,16 +333,9 @@ pub async fn lease_claim(
             // fall back to the CLI heartbeat, which owns re-claim and the
             // rich error mapping; Busy skips the beat (TTL absorbs). The
             // escape hatch AISC_LEASE_HEARTBEAT=cli keeps the old path.
-            let direct_allowed = std::env::var("AISC_LEASE_HEARTBEAT")
-                .map(|v| v != "cli")
-                .unwrap_or(true)
-                // G2 (2.1.10 R2c): the direct write targets THIS machine's
-                // data root — a remote target's lease files live on the
-                // remote machine, so remote mode always beats via the CLI.
-                && beat_app
-                    .state::<crate::target::ActiveTarget>()
-                    .current()
-                    .is_none();
+            let heartbeat_mode = std::env::var("AISC_LEASE_HEARTBEAT").ok();
+            let direct_allowed =
+                direct_heartbeat_allowed(beat_target.as_ref(), heartbeat_mode.as_deref());
             if direct_allowed {
                 let ws = beat_workspace.clone();
                 let inst = beat_instance.clone();
@@ -333,7 +356,15 @@ pub async fn lease_claim(
                     DirectBeat::Absent | DirectBeat::Unavailable => {}
                 }
             }
-            let Ok(target) = crate::target::resolve_target(&beat_app).await else { continue };
+            let target = match beat_target.as_ref() {
+                Some(machine) => CliTarget::Remote(machine.to_ssh_target()),
+                None => {
+                    let Ok(executable) = crate::session::resolve_cli(&beat_app).await else {
+                        continue;
+                    };
+                    CliTarget::Local(executable)
+                }
+            };
             let argv = lease_argv(
                 "heartbeat", &beat_workspace,
                 Some(&beat_instance), Some(&beat_lease),
@@ -379,7 +410,7 @@ fn handle_lease_conflict(app: &AppHandle, workspace: &str, lease_id: &str) {
 #[tauri::command]
 pub async fn lease_release(
     app: AppHandle,
-    window: tauri::WebviewWindow,
+    _window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<bool, WorkbenchError> {
     let supervisor = app.state::<LeaseSupervisor>();
@@ -389,7 +420,10 @@ pub async fn lease_release(
     };
     let Some(beat) = beat else { return Ok(false) };
     beat.cancel.cancel();
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = match beat.target.as_ref() {
+        Some(machine) => CliTarget::Remote(machine.to_ssh_target()),
+        None => CliTarget::Local(crate::session::resolve_cli(&app).await?),
+    };
     let argv = lease_argv(
         "release", &workspace,
         Some(&supervisor.instance_id()), Some(&beat.lease_id),
@@ -431,6 +465,55 @@ fn decode_lease_data(env: &Envelope) -> Option<LeaseClaimResult> {
     })
 }
 
+#[cfg(test)]
+mod target_snapshot {
+    use super::*;
+    use crate::cli::SshTarget;
+    use std::path::PathBuf;
+
+    fn remote_machine() -> RemoteMachine {
+        RemoteMachine {
+            name: "remote-a".into(),
+            host: "remote-a.invalid".into(),
+            user: Some("aisc-test".into()),
+            port: Some(2222),
+            key_path: Some("/keys/remote-a".into()),
+        }
+    }
+
+    #[test]
+    fn remote_snapshot_builds_remote_target() {
+        let machine = remote_machine();
+        let target = beat_cli_target(Some(&machine), &PathBuf::from("ignored-local-cli"));
+        assert_eq!(
+            target,
+            CliTarget::Remote(SshTarget {
+                host: "aisc-test@remote-a.invalid".into(),
+                port: Some(2222),
+                key_path: Some("/keys/remote-a".into()),
+                extra_args: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn local_snapshot_builds_local_target() {
+        let local = PathBuf::from("local-cli");
+        assert_eq!(
+            beat_cli_target(None, &local),
+            CliTarget::Local(local)
+        );
+    }
+
+    #[test]
+    fn direct_heartbeat_is_local_only() {
+        let machine = remote_machine();
+        assert!(!direct_heartbeat_allowed(Some(&machine), None));
+        assert!(!direct_heartbeat_allowed(Some(&machine), Some("direct")));
+        assert!(direct_heartbeat_allowed(None, None));
+        assert!(!direct_heartbeat_allowed(None, Some("cli")));
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

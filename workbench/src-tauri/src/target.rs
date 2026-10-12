@@ -93,6 +93,13 @@ pub async fn target_get(
 }
 
 /// This window's target: its own entry, else the legacy global fallback.
+pub(crate) fn window_machine(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Option<RemoteMachine> {
+    window_target(app, window)
+}
+
 fn window_target(
     app: &tauri::AppHandle,
     window: &tauri::WebviewWindow,
