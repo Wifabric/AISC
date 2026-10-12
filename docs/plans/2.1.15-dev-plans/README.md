@@ -20,8 +20,8 @@
 
 - 来源：`https://feedback.alanevergarden.xyz`
 - 抓取时间：2026-10-12
-- 新反馈：5 条（status 均为 `submitted`）
-- 明细、初步归因和回复草案见 [feedback-intake.md](feedback-intake.md)。
+- 新反馈：5 条（首轮回复前 status 均为 `submitted`，当前均为 `replied`）
+- 明细、初步归因和首轮回复见 [feedback-intake.md](feedback-intake.md)。
 - 现有 4 条 2026-09-22 反馈已在 v2.1.14 解决，本周期不重复处理。
 
 ## 阶段范围（草案）
@@ -38,7 +38,9 @@
 
 ## 反馈站回复处置
 
-计划已于 2026-10-12 生成 5 条首轮回复与状态迁移草案：`submitted → replied`。
-但当前 Codex 凭据对反馈数据仓库 `Evergarden-Alan/aisc-issues-feedback` 返回
-404，无法读取/修改私有 Markdown。待仓库访问权或本地数据仓库路径提供后，按
-[feedback-intake.md](feedback-intake.md) §“待应用仓库变更”原样写入并推送。
+2026-10-12 16:35 已按 `Wifabric/aisc-issues-feedback` 根目录 README 的开发者工作流，
+为 5 条新反馈追加首轮回复，并将状态从 `submitted` 更新为 `replied`。反馈数据仓库
+提交为 `e597278 feedback: reply to 2026-10-12 reports`，已推送到 `main`。
+
+回复正文和各条目标状态见 [feedback-intake.md](feedback-intake.md)。`索引.md` 由
+反馈站自动维护，未手动修改；站点列表和详情缓存按 README 承诺在 5 分钟内刷新。
