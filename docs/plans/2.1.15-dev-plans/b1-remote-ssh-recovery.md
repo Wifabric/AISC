@@ -118,3 +118,83 @@ PTY 输出与远端 CLI 版本继续取证，不在 b1 内混合修改。
   - `npx vue-tsc --noEmit`：通过；
   - `powershell -File scripts\local-gates.ps1`：`LOCAL GATES: ALL GREEN`。
 - 剩余门：按 `HANDTEST.md` 完成实机 T1–T3；推送后远程 CI 全绿；用户确认后并回 develop。
+
+## T2 复测修复计划（2026-10-12 手测后返工）
+
+### 手测发现
+
+HANDTEST T2 第 7 步「关闭窗口 1 的 runtime」后，远端 `runtime-lease.json`
+持续 fresh，直到整个 Workbench 进程关闭才过期。T2 字段级理想结果要求
+「关闭 runtime 后远端 `runtime-lease.json` 不再是 fresh，或被明确 release」，
+当前行为不满足，b1 不能按原状态收口。
+
+### 根因
+
+`stop_runtime`（`workbench/src-tauri/src/runtime.rs`）只调用 CLI
+`runtime stop` 停止容器，不调用 `lease_release`。`lease_release`
+（`workbench/src-tauri/src/lease.rs`）功能正常，但当前唯一调用点是
+app 关闭时 `session.rs::release_all_leases`——与手测观察吻合：
+只有关进程才释放。
+
+### 修复方案
+
+1. `stop_runtime` 成功执行 CLI stop 后，追加调用
+   `crate::lease::lease_release`（同一 workspace）；
+2. release 使用 `stop_runtime` 已解析的 target（b1 已保证 claim/heartbeat/
+   release 共享 claim-time snapshot，不需要额外改动）；
+3. release 失败不阻塞 stop 结果返回——容器已停，lease 会按 45s TTL 过期，
+   记录 warning 即可（与 shutdown 的 best-effort 语义一致）；
+4. 不改 lease schema、TTL、reconcile 判定、SSH transport、PTY 协议。
+
+### 测试计划
+
+自动化：
+
+- Rust 测试：验证 `stop_runtime` 在 CLI stop 成功后触发 lease release
+  （可用 mock/assert 函数调用顺序或抽 release 调用为可注入依赖）；
+- 既有 `cargo test --lib` 全量通过（回归）。
+
+手测复测：
+
+- 重跑 HANDTEST T2 第 7–8 步：stop runtime 后远端 lease 立即不再 fresh
+  （或文件被明确删除）；
+- T1 / T3 不受影响（无需重跑，lease_release 路径不变）。
+
+### 范围边界
+
+- 只改 `stop_runtime` 的 lease 释放调用与对应测试；
+- 不改 `remove_runtime`（remove 语义是否也需要 release 另行裁决）；
+- 不动 PTY / session / UI 代码。
+
+### 执行状态（2026-10-12 T2 返工）
+
+- 新增 `release_lease_best_effort` helper + `stop_runtime` 接入，red→green 证据：
+  - red：2 项测试因 helper 不存在编译失败；
+  - green：实现后 2 项通过（验证 workspace 传递正确、release 失败被吞不阻塞 stop）。
+- 全量门禁（fresh run）：
+  - `cargo test --lib`：337 passed，0 failed，1 ignored；
+  - `scripts/local-gates.ps1`：`LOCAL GATES: ALL GREEN`（pytest 1350 passed / cargo / vitest 518 passed / vue-tsc）。
+- 实机复测：见下方 T2 复测记录。
+
+### T2 复测记录（2026-10-12 23:12 实机，修复后 fresh run）
+
+环境：`2.1.15-b1-remote-ssh-recovery` 分支 debug 构建（含 stop release 修复），
+远端 `wsl-base`（172.21.90.157），工作区 `/home/wangyu/aisc-b1-t1`。
+
+| 步骤 | 结果 |
+| --- | --- |
+| target_set/get → `wsl-base` remote | ✅ |
+| reconcile | ✅ `stale_registry`，`can_proceed=true` |
+| lease_claim | ✅ `claimed_stale`，`lease_id=4637c821…` |
+| start_runtime | ✅ `running/ready` |
+| heartbeat 采样 ×2（间隔 17s） | ✅ 均 fresh（age 5.5s / 7.8s） |
+| **stop_runtime（修复点）** | ✅ `stopped`；**远端 lease 文件被明确删除（explicit release）** |
+| stop 后 docker ps | ✅ 无运行容器 |
+| stop 后 reconcile（原 step 8 等价） | ✅ `can_proceed=true`，无 `AISC_ERR_ACTIVE_WORKSPACE_LEASE` |
+
+对照修复前：stop 后 lease 保持 fresh 直到整个 Workbench 进程关闭；
+修复后 stop 即明确 release，T2 字段级理想结果「关闭 runtime 后
+`runtime-lease.json` 不再是 fresh，或被明确 release」完全满足。
+
+T1 / T3 不受影响（`lease_release` 路径与 claim-time snapshot 未变，
+仅新增 stop 时的显式调用），无需重跑。

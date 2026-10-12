@@ -1286,6 +1286,24 @@ pub async fn runtime_restart(
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("restart parse: {e}")))
 }
 
+/// Best-effort lease release after a successful runtime stop (T2 rework).
+///
+/// The container is already stopped when this runs; a release failure must
+/// never turn the stop IPC into an error - the 45s lease TTL is the designed
+/// safety net, mirroring the shutdown release_all_leases contract.
+pub(crate) async fn release_lease_best_effort<F, Fut>(workspace: &str, release: F)
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<bool, WorkbenchError>>,
+{
+    if let Err(e) = release(workspace.to_string()).await {
+        eprintln!(
+            "[stop_runtime] lease release failed for {workspace}: {} (TTL will expire it)",
+            e.code
+        );
+    }
+}
+
 #[tauri::command]
 pub async fn stop_runtime(
     app: AppHandle,
@@ -1300,6 +1318,15 @@ pub async fn stop_runtime(
     if let Some(e) = envelope_error(&env) {
         return Err(e);
     }
+    // T2 rework: the container is stopped; best-effort release the workspace
+    // lease now instead of waiting for the 45s TTL. A release failure never
+    // blocks the stop result.
+    let app2 = app.clone();
+    let window2 = window.clone();
+    release_lease_best_effort(&workspace, |ws| async move {
+        crate::lease::lease_release(app2, window2, ws).await
+    })
+    .await;
     let data = env.data.unwrap_or(Value::Null);
     serde_json::from_value::<RuntimeSnapshot>(data)
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("stop parse: {e}")))
@@ -2339,6 +2366,41 @@ mod tests {
         assert!(l.model_catalog.is_empty());
     }
 
+    // T2 rework (b1, 2026-10-12): stop_runtime must best-effort release the
+    // workspace lease after a successful CLI stop. Release failure never
+    // blocks the stop result — the 45s TTL is the designed safety net.
+
+    #[tokio::test]
+    async fn stop_release_helper_invokes_release_with_workspace() {
+        let released = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = released.clone();
+        release_lease_best_effort("C:\\ws-A", move |ws| {
+            let sink = sink.clone();
+            async move {
+                sink.lock().unwrap_or_else(|p| p.into_inner()).push(ws);
+                Ok(true)
+            }
+        })
+        .await;
+        assert_eq!(
+            *released.lock().unwrap_or_else(|p| p.into_inner()),
+            vec!["C:\\ws-A".to_string()],
+            "stop must hand the exact workspace to lease release"
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_release_helper_swallows_release_failure() {
+        // The stop IPC already succeeded; a failed release must NOT turn the
+        // stop result into an error (shutdown release_all_leases shares this
+        // best-effort contract).
+        let result: () = release_lease_best_effort("C:\\ws-B", |_ws| async {
+            Err(WorkbenchError::cli_protocol()
+                .with_detail("simulated release failure for test"))
+        })
+        .await;
+        let _ = result; // no panic reaching here = error was swallowed
+    }
     #[tokio::test]
     async fn op_lock_serializes_same_runtime() {
         let m = OpMutexes::default();
@@ -2365,3 +2427,5 @@ mod tests {
         drop(g2);
     }
 }
+
+
