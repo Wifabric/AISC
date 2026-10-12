@@ -86,3 +86,23 @@ Workbench 历史中显示为两个工作区的问题。统一身份键匹配语�
 - 风险：去重改写历史文件丢数据。缓解：仅合并 identity key 相同的记录、
   保留字段最多的最新一条；复用既有锁内持久化与 corrupt 隔离机制。
 - 回滚：revert 本批单个 commit，历史文件格式不变（仍是 schema v2）。
+
+## 执行状态（2026-10-13）
+
+- 分支 `2.1.15-b2-workspace-path-identity`（自 develop 切出）。
+- TDD red→green：
+  - red：`path_identity_key` 不存在，4 项新测试编译失败；
+  - green：实现后 history 模块 21 项全过（4 新增：identity key 折叠/恒等、
+    upsert 变体合并保显示形态、remove 变体命中、load 去重 latest-wins）。
+- 实现：`path_identity_key`（Windows 分隔符归一+小写折叠 / POSIX 恒等）、
+  `save_locked` upsert 按 key 匹配且保留旧显示 path、`remove_workspace` 按
+  key 匹配、`load` 按 key 去重并置 migrated 让调用方持久化。
+- Python 回归：`tests/test_workspace_path_identity.py` 3 项（win32 skipif）
+  验证 `canonical_workspace_path` / `workspace_hash_v1` / `workspace_key_for`
+  大小写变体同 key。
+- 自动化门禁（fresh run）：
+  - `cargo test --lib`：341 passed，0 failed，1 ignored；
+  - pytest：新增 3 项通过；
+  - `scripts/local-gates.ps1`：`LOCAL GATES: ALL GREEN`。
+- 剩余门：Windows 实机手测（双大小写打开同目录 → 最近列表单条；forget 无
+  孪生残留）；远程 CI 全绿；并回 develop。

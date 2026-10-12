@@ -187,6 +187,21 @@ pub struct TabRecord {
     pub extra: serde_json::Value,
 }
 
+/// Workspace-path IDENTITY key for history matching (b2, F4): NTFS is
+/// case-insensitive, so `E:\proj` and `e:/proj` name the same directory and
+/// must share one history record. POSIX paths are case-sensitive -> verbatim.
+/// The DISPLAY path is never rewritten here; only matching uses this key.
+fn path_identity_key(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', "\\").to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
+
 /// Patch a window submits to `save`. Workspaces are upserted by path; other
 /// workspaces on disk are preserved (02 §九 "多窗口只 patch 自己拥有的").
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -225,7 +240,10 @@ pub fn load(dir: &Path) -> Result<(WorkbenchHistory, bool), HistoryError> {
             match found {
                 Some(v) if v == SCHEMA_VERSION => {
                     match serde_json::from_value(value) {
-                        Ok(h) => Ok((h, false)),
+                        Ok(mut h) => {
+                            let deduped = dedupe_workspace_paths(&mut h);
+                            Ok((h, deduped))
+                        }
                         Err(e) => {
                             isolate_corrupt(dir);
                             Err(HistoryError::Corrupt(e.to_string()))
@@ -271,6 +289,30 @@ fn migrate_v1_to_v2(h: &mut WorkbenchHistory) {
             }
         }
     }
+}
+
+/// Collapse history records whose paths share one identity key (b2, F4):
+/// keep the `last_used_at`-latest record per key (and its display path).
+/// Returns true when anything was removed (caller re-persists). No-op when
+/// every path already has a unique key.
+fn dedupe_workspace_paths(h: &mut WorkbenchHistory) -> bool {
+    let mut best: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, ws) in h.workspaces.iter().enumerate() {
+        let key = path_identity_key(&ws.path);
+        match best.get(&key) {
+            Some(&j) if h.workspaces[j].last_used_at >= ws.last_used_at => {}
+            _ => {
+                best.insert(key, i);
+            }
+        }
+    }
+    if best.len() == h.workspaces.len() {
+        return false;
+    }
+    let mut keep: Vec<usize> = best.values().copied().collect();
+    keep.sort_unstable();
+    h.workspaces = keep.into_iter().map(|i| h.workspaces[i].clone()).collect();
+    true
 }
 
 /// Load and persist the v1 -> v2 migration under the cross-process lock when the
@@ -355,7 +397,10 @@ pub fn remove_workspace(
             });
         }
         let before = current.workspaces.len();
-        current.workspaces.retain(|w| w.path != path);
+        let remove_key = path_identity_key(path);
+        current
+            .workspaces
+            .retain(|w| path_identity_key(&w.path) != remove_key);
         if current.workspaces.len() == before {
             return Ok((current.revision, false));
         }
@@ -425,12 +470,20 @@ fn save_locked(
             current_revision: current.revision,
         });
     }
-    // Merge: upsert patch workspaces by path; preserve others and their
-    // unknown fields.
+    // Merge: upsert patch workspaces by IDENTITY key (Windows folds case,
+    // POSIX exact); preserve others and their unknown fields. The original
+    // record's path stays as the display form (F4: keep the user's case).
     for ws in &patch.workspaces {
-        if let Some(slot) = current.workspaces.iter_mut().find(|w| w.path == ws.path) {
+        let key = path_identity_key(&ws.path);
+        if let Some(slot) = current
+            .workspaces
+            .iter_mut()
+            .find(|w| path_identity_key(&w.path) == key)
+        {
             let old = slot.clone();
+            let display_path = old.path.clone();
             *slot = ws.clone();
+            slot.path = display_path;
             merge_workspace(&old, slot);
         } else {
             current.workspaces.push(ws.clone());
@@ -472,6 +525,119 @@ pub async fn save_history(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    // --- b2 (F4): Windows path case-insensitive identity matching ---
+
+    #[test]
+    fn identity_key_folds_case_on_windows_identity_on_posix() {
+        // Contract: NTFS is case-insensitive -> fold for matching; POSIX
+        // filesystems are case-sensitive -> the key is the path verbatim.
+        #[cfg(windows)]
+        {
+            assert_eq!(path_identity_key("C:\\Ws\\A"), path_identity_key("c:/ws/a"));
+            assert_eq!(path_identity_key("C:\\Ws\\A"), "c:\\ws\\a");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(path_identity_key("/ws/A"), "/ws/A");
+            assert_ne!(path_identity_key("/ws/A"), path_identity_key("/ws/a"));
+        }
+    }
+
+    #[test]
+    fn upsert_matches_by_identity_key() {
+        // Windows: `e:\proj` must merge into the existing `E:\proj` record,
+        // keeping the ORIGINAL path as the display form. POSIX: case variants
+        // are genuinely different directories and stay distinct (the guard
+        // against breaking case-sensitive semantics).
+        let dir = tempdir().unwrap();
+        let (first, second) = if cfg!(windows) {
+            ("E:\\proj", "e:/proj")
+        } else {
+            ("/ws/A", "/ws/a")
+        };
+        let rev1 = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: first.into(),
+                    last_used_at: "t1".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let rev2 = save(
+            dir.path(),
+            rev1,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: second.into(),
+                    last_used_at: "t2".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let _ = rev2;
+        let h = load(dir.path()).unwrap().0;
+        if cfg!(windows) {
+            assert_eq!(h.workspaces.len(), 1, "case variants must merge on Windows");
+            assert_eq!(h.workspaces[0].path, first, "display keeps the original case");
+            assert_eq!(h.workspaces[0].last_used_at, "t2", "patch fields win");
+        } else {
+            assert_eq!(h.workspaces.len(), 2, "POSIX case variants stay distinct");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn remove_windows_matches_case_variant() {
+        let dir = tempdir().unwrap();
+        let rev = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: "E:\\proj".into(),
+                    last_used_at: "t1".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let (_rev, removed) = remove_workspace(dir.path(), rev, "e:\\proj").unwrap();
+        assert!(removed, "remove must hit the case variant");
+        let h = load(dir.path()).unwrap().0;
+        assert!(h.workspaces.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn load_windows_dedupes_case_variants_latest_wins() {
+        let dir = tempdir().unwrap();
+        let body = serde_json::json!({
+            "schema_version": SCHEMA_VERSION,
+            "revision": 4,
+            "workspaces": [
+                { "path": "E:\\proj", "last_used_at": "t1" },
+                { "path": "e:\\proj", "last_used_at": "t2" },
+                { "path": "D:\\other", "last_used_at": "t0" }
+            ]
+        });
+        std::fs::write(dir.path().join(HISTORY_FILE), body.to_string()).unwrap();
+        let (h, migrated) = load(dir.path()).unwrap();
+        assert!(migrated, "dedup must mark the file for re-persist");
+        assert_eq!(h.workspaces.len(), 2);
+        let proj = h
+            .workspaces
+            .iter()
+            .find(|w| w.path.contains("proj"))
+            .expect("proj record kept");
+        assert_eq!(proj.path, "e:\\proj", "the LATEST variant's display wins");
+        assert_eq!(proj.last_used_at, "t2");
+    }
 
     #[test]
     fn load_missing_file_is_empty() {
