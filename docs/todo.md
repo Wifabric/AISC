@@ -215,3 +215,14 @@
 - [x] 宿主 TUN 代理模式下构建镜像失败（根因：TUN 不覆盖 buildkit 容器出口，GitHub 全阻而国内源全通；两次构建实死在 yazi 下载——无预置 + curl max-time 60 必死；保守分支 glob 硬编码 v5.10.4 是隐藏第二雷。修复：yazi + npm 四包预置 downloads/〔D-11〕+ glob 去版本号 + max-time 180-300s + 失败诊断归因 + GH_PROXY 显式通道 + resolver 离线 manifest + 条件矩阵降级链——「保底完成构建」专项调研已完成（12 触点矩阵+修复层 F1-F11），**发现硬墙**：npm 伴生包 codex tgz 123.7MiB 超 GitHub 单文件 100MiB 上限，「全进仓库」push 必拒——落地形态待 U-8 终裁（推荐 C-混合 +7.6MiB）；保底地板语义待 U-9 终裁（推荐 GitHub 全阻+国内源可达））
 
 # 待解决
+
+# v2.1.15-target（2026-10-12 开题：反馈站 5 条；计划 docs/plans/2.1.15-dev-plans/）
+- P0 fix
+  - [ ] SSH 远程电脑后卡在 CLI bash 光标，或打开会话报错；先分析诊断包并复现，修复远端 shell/PTY/会话开启链路（反馈 F5）
+- fix
+  - [ ] Windows 下仅大小写不同的工作区路径应归一为同一身份，历史不重复显示，同时保留用户原始显示形态（反馈 F4）
+  - [ ] CLI 输出运行/结束后终端滚动不应把用户视口拉到顶部；明确自动跟随与手动回看边界（反馈 F2）
+- UX
+  - [ ] 顶部 bash/codex/claude 状态栏不应参与上下拖动，只保留侧边栏与分屏边界拖拽（反馈 F1）
+- design
+  - [ ] 调研并定义 AISC 工作记录、runtime 子记忆空间与 CLI resume 会话的映射/展示模型，先出方案再实施（反馈 F3）

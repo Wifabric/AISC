@@ -7,6 +7,7 @@ under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-pl
 
 ## Current active plan
 
-- （当前无活动阶段。v2.1.14 已于 2026-09-24 收口，计划集归档
-  `docs/archive/2.1.14-dev-plans/`；preview.1/preview.2 已发布，观察项见
-  归档 README——T1-1/T1-2 应用内更新流随 preview.2→下一跳、断网模拟挂起。）
+- `docs/plans/2.1.15-dev-plans/`——v2.1.15 反馈驱动开题（2026-10-12）。
+  5 条新反馈已纳入：SSH 会话阻塞、Windows 工作区路径大小写、CLI 输出滚动跳顶、
+  顶部状态栏拖拽边界、历史/工作记录模型调研。各批实施前仍须切独立分支并补
+  批次计划与四要素手测清单。
