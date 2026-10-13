@@ -225,6 +225,6 @@
 - UX
   - [x] 顶部 bash/codex/claude 状态栏不应参与上下拖动，只保留侧边栏与分屏边界拖拽（反馈 F1；b4 已闭环）
 - design
-  - [x] 调研并定义 AISC 工作记录、runtime 子记忆空间与 CLI resume 会话的映射/展示模型，先出方案再实施（反馈 F3；b4 方案已入档，实施待用户裁决 8 个开放点）
+  - [ ] 实施 Work Record / Collection 完整语义：会话记录 + 轻量集合层、active 自动收容、归档、级联删除与失败提示（反馈 F3；方案与范围已裁决，待 b6 实施）
 - 追加（b1 手测发现）
   - [x] PTY 输出流在初始输出后停止而输入仍可达；修复 pump 误判 timeout/EINTR 为 EOF（b5 已闭环）

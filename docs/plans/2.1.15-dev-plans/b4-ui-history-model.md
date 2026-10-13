@@ -294,3 +294,9 @@ powershell -ExecutionPolicy Bypass -File scripts/local-gates.ps1
   不把自动恢复布局列为 b4 门禁。
 - [x] PR CI 全绿并 ff-only 合回 develop：PR #8 3/3 绿；develop 完整 CI（Workbench、CLI sidecar、NSIS、Linux/macOS bundle）全绿。
 - [x] README / todo 账本收口：b4 标记完成；F3 明确留待用户裁决后另行实施。
+
+### F3 裁决与移交（2026-10-13）
+
+- [x] F3 的 8 个开放裁决点已由用户完成裁定，结论记入 `decisions.md` D-3。
+- [x] F3 实施计划已移交 [b6-work-record-collection.md](b6-work-record-collection.md)；
+  b6 只完成计划入库，尚未开始实施。
