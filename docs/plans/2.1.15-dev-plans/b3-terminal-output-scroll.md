@@ -126,6 +126,27 @@
 **异常判定**：Codex 退出跳顶 / 200 行历史被清空 / 回看态被打断 / 敲键不回底 →
 记录复现序列报批。
 
+## 执行状态（2026-10-13）
+
+- 分支：`2.1.15-b3-terminal-output-scroll`，实施提交 `d6b825e`，PR #6 已合并回
+  `develop`（fast-forward）。
+- 自动化：
+  - terminal ownership / parser 目标测试：18 passed；
+  - 全量本地门禁：`LOCAL GATES: ALL GREEN`（pytest 1353 passed / 53 skipped、
+    cargo lib 341 passed、vitest 71 files / 536 tests、vue-tsc 通过）；
+  - PR CI：frontend / cli / rust 全部 success；
+  - develop CI：frontend、cli、rust、macOS bundle、Linux bundle、Windows NSIS
+    均 success；preview release job 因非 prerelease 发布路径 skipped。
+- 实机验证：
+  - 回看态下 xterm 协议查询响应不抢占所有权，视口保持不动；
+  - 回放 Codex `0.154` 启动序列 `CSI H + CSI 2J + CSI 3J`，ED3 被 guard 拦截，
+    scrollback 未被裁剪，视口不跳顶；
+  - `0.162.1` 实机进程已启动并改变 terminal mode，但该次远程环境 TUI 未完成
+    渲染；因此该版本仅作为 alt-screen / 协议响应边界证据，ED3 主路径以
+    `0.154` 精确序列验证。
+- 遗留观察：`0.162.1` 渲染异常发生在 PTY 会话上下文中，可能受 b5 输出流链路
+  影响；不作为 b3 验收阻塞，后续由 b5 长会话输出链路修复/复测覆盖。
+
 ## 风险与回滚
 
 - 风险：ED3 守卫改变用户显式 `clear -x` 的 xterm 默认历史清理语义。缓解：这是
