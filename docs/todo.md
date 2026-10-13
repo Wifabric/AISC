@@ -225,6 +225,6 @@
 - UX
   - [x] 顶部 bash/codex/claude 状态栏不应参与上下拖动，只保留侧边栏与分屏边界拖拽（反馈 F1；b4 已闭环）
 - design
-  - [ ] 实施 Work Record / Collection 完整语义：会话记录 + 轻量集合层、active 自动收容、归档、级联删除与失败提示（反馈 F3；方案与范围已裁决，待 b6 实施）
+  - [x] 实施 Work Record / Collection 完整语义：会话记录 + 轻量集合层、active 自动收容、归档、级联删除与失败提示（反馈 F3；b6 已闭环）
 - 追加（b1 手测发现）
   - [x] PTY 输出流在初始输出后停止而输入仍可达；修复 pump 误判 timeout/EINTR 为 EOF（b5 已闭环）

@@ -13,14 +13,16 @@
 | b3 | CLI 输出后的终端滚动稳定性 | P1 | `2.1.15-b3-terminal-output-scroll` | 已完成 |
 | b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 已完成 |
 | b5 | PTY 输出流断流修复（b1 手测发现） | P1 | `2.1.15-b5-pty-output-stream` | 已完成 |
-| b6 | Work Record / Collection 完整语义 | P2 | `2.1.15-b6-work-record-collection` | 计划完成 / 待实施 |
+| b6 | Work Record / Collection 完整语义 | P2 | `2.1.15-b6-work-record-collection` | 已完成 |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。
 
-2026-10-13 状态：b1 / b2 / b3 / b4 / b5 已并回 `develop`。b4 的 F1 已通过本地门禁、实机手测、PR CI 与 develop CI；F3 的 8 个开放裁决点已由用户完成裁定并记入 D-3，实施计划移交
-[b6-work-record-collection.md](b6-work-record-collection.md)。b6 目前只完成计划
-入库，未开始实施。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
+2026-10-14 状态：b1–b6 全部并回 `develop`。b6 Work Record / Collection 已实施完成：
+PR #9 已合并，本地门禁与 develop CI 全绿，T6 实机验证（真实 running session
+确认删除 → session 终止、collection 与双引擎 transcript 级联消失、无误伤）PASS，
+README 与 CLI 参考已补充 Work Records 用法，详见
+[b6-work-record-collection.md](b6-work-record-collection.md) 执行状态。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
 验证；`0.162.1` 在该次远程环境中 TUI 未完成渲染，详见
 [b3-terminal-output-scroll.md](b3-terminal-output-scroll.md) 执行状态。b5 的
 pump timeout/EINTR 修复已通过 transport、Workbench UI 数据面 >70s 长流验证；
