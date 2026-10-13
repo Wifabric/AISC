@@ -1149,3 +1149,71 @@ export interface WorkspaceMutationResult {
   relative_path: string;
   kind: "dir" | "file";
 }
+// --- v2.1.15 b6: Work Record / Collection aggregate layer ---
+
+export type WorkRecordMemberSource = "manual" | "active_auto";
+
+export interface WorkRecordMember {
+  member_key: string;
+  agent: "claude" | "codex";
+  conversation_id: string;
+  runtime_id: string | null;
+  source: WorkRecordMemberSource;
+  added_at: string;
+}
+
+export interface WorkRecordCollection {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  members: WorkRecordMember[];
+}
+
+export interface WorkRecordListResult {
+  schema_version: string;
+  active_collection_id: string | null;
+  collections: WorkRecordCollection[];
+  unfiled: ConversationSummary[];
+}
+
+export interface WorkRecordCollectionResult {
+  collection: WorkRecordCollection;
+}
+
+export interface WorkRecordActiveResult {
+  active_collection_id: string | null;
+  previous_collection_id?: string | null;
+}
+
+export interface WorkRecordMemberResult {
+  member: WorkRecordMember;
+}
+
+export interface WorkRecordRemoveResult {
+  removed: boolean;
+  member_key?: string;
+}
+
+export interface WorkRecordDeleteFailure extends WorkRecordMember {
+  stage: "terminate" | "delete";
+  reason: string;
+}
+
+export interface WorkRecordDeleteResult {
+  deleted: boolean;
+  collection_id: string;
+  terminated_session_ids: string[];
+  deleted_members: WorkRecordMember[];
+  failed_members: WorkRecordDeleteFailure[];
+}
+
+export interface WorkRecordReconcileResult {
+  schema_version: string;
+  added: string[];
+  active_collection_id: string | null;
+  collections: WorkRecordCollection[];
+  observed_provider_keys: string[];
+}

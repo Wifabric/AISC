@@ -114,6 +114,70 @@ export const conversationRename = (
     title,
   });
 
+
+// --- v2.1.15 b6: Work Record / Collection IPC ---
+
+export const workRecordList = (workspace: string) =>
+  invoke<import("../types").WorkRecordListResult>("work_record_list", { workspace });
+
+export const workRecordCreate = (workspace: string, title: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_create", {
+    workspace,
+    title,
+  });
+
+export const workRecordRename = (workspace: string, id: string, title: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_rename", {
+    workspace,
+    id,
+    title,
+  });
+
+export const workRecordActivate = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordActiveResult>("work_record_activate", { workspace, id });
+
+export const workRecordDeactivate = (workspace: string) =>
+  invoke<import("../types").WorkRecordActiveResult>("work_record_deactivate", { workspace });
+
+export const workRecordArchive = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_archive", { workspace, id });
+
+export const workRecordRestore = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_restore", { workspace, id });
+
+export const workRecordAddMember = (
+  workspace: string,
+  id: string,
+  agent: "claude" | "codex",
+  conversationId: string,
+  runtimeId?: string | null,
+) =>
+  invoke<import("../types").WorkRecordMemberResult>("work_record_add_member", {
+    workspace,
+    id,
+    agent,
+    conversationId,
+    runtimeId: runtimeId ?? null,
+  });
+
+export const workRecordRemoveMember = (
+  workspace: string,
+  id: string,
+  agent: "claude" | "codex",
+  conversationId: string,
+) =>
+  invoke<import("../types").WorkRecordRemoveResult>("work_record_remove_member", {
+    workspace,
+    id,
+    agent,
+    conversationId,
+  });
+
+export const workRecordDelete = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordDeleteResult>("work_record_delete", { workspace, id });
+
+export const workRecordReconcile = (workspace: string) =>
+  invoke<import("../types").WorkRecordReconcileResult>("work_record_reconcile", { workspace });
 // --- 批 2 聊天式 UI: read-only conversation stream (tail paging) ---
 
 export const conversationRead = (
