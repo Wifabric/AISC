@@ -11,6 +11,7 @@ import type {
   BuildEvent,
   BuildProgressData,
   BuildStatus,
+  ConversationSummary,
   Freshness,
   HistoryPatch,
   LaunchAgent,
@@ -229,6 +230,15 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // single array replacement - high-frequency writes never hit the reactive
   // tree per chunk. O2 (D-11): chunks carry RAW offsets; the durable offsets
   // array rides the (non-reactive) paneByteCounts pattern.
+  /** b6: in-memory before-open conversation snapshots for newly created
+   * provider tabs. A tab is linked only when identity is unambiguous (see
+   * resolvePendingConversationAssociations); ambiguity is never guessed. */
+  type PendingConversationAssociation = {
+    knownConversationIds: Set<string>;
+    startedAt: string;
+  };
+  const pendingConversationAssociations = new Map<string, PendingConversationAssociation>();
+
   const pendingChunks: Record<string, StreamChunk[]> = {};
   const paneByteCounts: Record<string, number> = {};
   const paneOffsets: Record<string, number[]> = {};
@@ -1430,6 +1440,25 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * Step 8 (04 §三 rule table): login_required and unknown ALSO route to the
    * guide state (supersedes the 2026-08-10 decision that login_required opened
    * directly - the spec now requires the conservative flow). */
+  async function startNewConversationAssociation(
+    agent: LaunchAgent,
+  ): Promise<PendingConversationAssociation | null> {
+    if (agent !== "claude" && agent !== "codex") return null;
+    try {
+      const result = await ipc.conversationList(workspace.value.trim());
+      return {
+        knownConversationIds: new Set(
+          result.conversations
+            .filter((item) => item.agent === agent)
+            .map((item) => item.conversation_id.toLowerCase()),
+        ),
+        startedAt: new Date().toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function maybeOpenCreated(
     tabId: string,
     agent: LaunchAgent,
@@ -1444,6 +1473,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         setActivePaneState(tab, { sessionState: "guide" });
         if (outcome !== "ok") void ensureProviderSettled(agent);
         return;
+      }
+      if (!resumeConversationId) {
+        const association = await startNewConversationAssociation(agent);
+        if (association) pendingConversationAssociations.set(tabId, association);
       }
     }
     openTab(tabId, resumeConversationId);
@@ -1491,10 +1524,51 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     syncProjection(tab);
   }
 
-  /** b6: terminate only live sessions that are known to belong to the given
-   * resumed provider conversations. `runtime_id` is deliberately not used for
-   * matching (D-3); tabs opened without a resume id cannot be identified here
-   * and are left untouched. */
+  /** b6: link a newly created provider transcript only when it is the unique
+   * unknown conversation for the unique pending provider tab of that agent.
+   * Any ambiguity keeps the tab unlinked; deletion then leaves it live. */
+  async function resolvePendingConversationAssociations(
+    conversations: ConversationSummary[],
+  ): Promise<number> {
+    const pending = [...pendingConversationAssociations.entries()].flatMap(([tabId, association]) => {
+      const tab = findTab(tabId);
+      if (!tab || tab.resumeConversationId) {
+        pendingConversationAssociations.delete(tabId);
+        return [];
+      }
+      const live = Object.values(tab.panes).some(
+        (pane) => pane.sessionState === "starting" || pane.sessionState === "running",
+      );
+      if (!live) {
+        pendingConversationAssociations.delete(tabId);
+        return [];
+      }
+      return [{ tabId, tab, association }];
+    });
+    const pendingByAgent = new Map<string, number>();
+    for (const item of pending) {
+      pendingByAgent.set(item.tab.agent, (pendingByAgent.get(item.tab.agent) ?? 0) + 1);
+    }
+
+    let resolved = 0;
+    for (const { tab, association } of pending) {
+      if ((pendingByAgent.get(tab.agent) ?? 0) !== 1) continue;
+      const candidates = conversations.filter(
+        (item) => item.agent === tab.agent
+          && !association.knownConversationIds.has(item.conversation_id.toLowerCase()),
+      );
+      if (candidates.length !== 1) continue;
+      tab.resumeConversationId = candidates[0].conversation_id;
+      pendingConversationAssociations.delete(tab.tabId);
+      resolved += 1;
+    }
+    return resolved;
+  }
+
+  /** b6: terminate only live sessions known to belong to the given provider
+   * conversations. `runtime_id` is deliberately not used for matching (D-3);
+   * newly created tabs are covered only after unambiguous snapshot resolution,
+   * and unmatched tabs are left untouched. */
   async function closeLiveConversationSessions(conversationIds: string[]) {
     const targets = new Set(conversationIds.map((id) => id.toLowerCase()));
     const closes: Promise<unknown>[] = [];
@@ -1954,6 +2028,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     reopenTab,
     createTab,
     findLiveResumeTab,
+    resolvePendingConversationAssociations,
     closeLiveConversationSessions,
     removeTab,
     openCcSwitch,

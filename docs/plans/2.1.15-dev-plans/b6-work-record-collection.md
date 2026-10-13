@@ -447,8 +447,13 @@ Store / UI：
 3. 前端先找出本 Workbench 中与成员 conversation 匹配的 live PTY tab/session，
    逐个调用现有 `close_session()`；结果进入 `terminated_session_ids`。
    - 安全匹配依据是 tab 的 `resumeConversationId`；`runtime_id` 不参与匹配。
-   - 新开且尚无 `resumeConversationId` 的 provider tab 目前没有安全身份依据，
-     不得按 agent 批量关闭；如要覆盖该边界，须先补充身份关联裁决和实现。
+   - 新开 provider tab 在 `open_session` 前记录该 agent 的 provider
+     conversation 快照；Work Records 刷新后，只有当同一 agent 恰好有一个待关联
+     live tab、且快照外恰好新增一个 provider conversation 时，才把该 tab 关联到
+     新 conversation。出现任何歧义（0 或多个新增、多个待关联 tab、快照失败）
+     一律不关联，也不关闭。
+   - 该关联只存在于当前 Workbench 会话内存中，用于删除编排；不持久化、不使用
+     `runtime_id`，也不改变 provider transcript。
 4. 调用 `work_record_delete`。CLI 不用 `runtime_id` 反查或终止 session。
 5. CLI 按成员顺序：
    - transcript 已不存在时按“已删除”处理，只移除弱引用，不算失败；

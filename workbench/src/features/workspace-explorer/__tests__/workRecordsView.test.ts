@@ -49,6 +49,7 @@ vi.mock("../../../lib/ipc", () => ({
 }));
 const runtimeMock = vi.hoisted(() => ({
   closeLiveConversationSessions: vi.fn(async () => {}),
+  resolvePendingConversationAssociations: vi.fn(async () => 0),
 }));
 
 vi.mock("../../../stores/runtime", () => ({
@@ -106,6 +107,7 @@ beforeEach(() => {
   i18n.global.locale.value = "zh-CN";
   vi.clearAllMocks();
   vi.mocked(workRecordList).mockResolvedValue(listResult());
+  vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [provider] });
   vi.mocked(confirm).mockResolvedValue(true);
 });
 
@@ -140,6 +142,7 @@ describe("WorkRecordsView", () => {
   it("uses one ordinary confirmation containing count and permanent-delete wording", async () => {
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
     expect(confirm).toHaveBeenCalledTimes(1);
     const [message, options] = vi.mocked(confirm).mock.calls[0] as [string, { title: string; kind: string }];
     expect(message).toContain("1");
@@ -214,10 +217,21 @@ describe("WorkRecordsView", () => {
     expect(wrapper.find("[data-testid=unfiled]").text()).toContain("Provider");
   });
 
+  it("resolves pending new provider tabs after refresh", async () => {
+    const { wrapper } = await mountView();
+    runtimeMock.resolvePendingConversationAssociations.mockClear();
+    const refresh = wrapper.findAll("button").find((button) => button.text() === "刷新");
+    await refresh!.trigger("click");
+    await flushPromises();
+
+    expect(runtimeMock.resolvePendingConversationAssociations).toHaveBeenLastCalledWith([provider]);
+  });
+
   it("disables resume for a missing transcript", async () => {
     const explorer = useWorkspaceExplorerStore();
     explorer.workspace = "/ws";
     explorer.conversations = [];
+    vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [] });
     const wrapper = mount(WorkRecordsView, {
       props: { workspace: "/ws" },
       global: { plugins: [i18n] },

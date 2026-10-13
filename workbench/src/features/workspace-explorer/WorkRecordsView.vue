@@ -64,6 +64,8 @@ async function removeCollection(id: string, title: string) {
     kind: "warning",
   });
   if (!ok) return;
+  await explorer.loadConversations(true);
+  await runtime.resolvePendingConversationAssociations(explorer.conversations);
   // Terminate known live resume sessions before the CLI physically cascades
   // transcript deletion. Provider tabs opened without a resume id have no safe
   // conversation identity match here and are intentionally left alone.
@@ -80,6 +82,7 @@ async function refreshWorkRecords() {
     records.reload(),
     explorer.loadConversations(true),
   ]);
+  await runtime.resolvePendingConversationAssociations(explorer.conversations);
 }
 
 async function removeMember(id: string, agent: "claude" | "codex", conversationId: string) {
@@ -104,6 +107,7 @@ onMounted(async () => {
       records.load(props.workspace),
       explorer.loadConversations(true),
     ]);
+    await runtime.resolvePendingConversationAssociations(explorer.conversations);
   }
 });
 
