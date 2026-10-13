@@ -375,3 +375,184 @@ class TestDeleteCollection:
         assert doc["collections"] == []
 
 
+
+class TestWorkRecordCli:
+    """Task 3: `aisc work-record` parser/dispatch is a thin JSON surface."""
+
+    def test_parser_accepts_all_work_record_forms(self):
+        from aisc.cli.main import _build_parser
+        parser = _build_parser()
+        cases = [
+            (["work-record", "list", "--workspace", "/ws"],
+             {"work_record_command": "list", "workspace": "/ws"}),
+            (["work-record", "create", "--workspace", "/ws", "--title", "A"],
+             {"work_record_command": "create", "workspace": "/ws", "title": "A"}),
+            (["work-record", "rename", "--workspace", "/ws", "--id", "c1", "--title", "B"],
+             {"work_record_command": "rename", "workspace": "/ws", "id": "c1", "title": "B"}),
+            (["work-record", "activate", "--workspace", "/ws", "--id", "c1"],
+             {"work_record_command": "activate", "workspace": "/ws", "id": "c1"}),
+            (["work-record", "deactivate", "--workspace", "/ws"],
+             {"work_record_command": "deactivate", "workspace": "/ws"}),
+            (["work-record", "archive", "--workspace", "/ws", "--id", "c1"],
+             {"work_record_command": "archive", "workspace": "/ws", "id": "c1"}),
+            (["work-record", "restore", "--workspace", "/ws", "--id", "c1"],
+             {"work_record_command": "restore", "workspace": "/ws", "id": "c1"}),
+            (["work-record", "add", "--workspace", "/ws", "--id", "c1",
+              "--agent", "codex", "--conversation-id", CODEX_ID, "--runtime-id", "r1"],
+             {"work_record_command": "add", "workspace": "/ws", "id": "c1",
+              "agent": "codex", "conversation_id": CODEX_ID, "runtime_id": "r1"}),
+            (["work-record", "remove", "--workspace", "/ws", "--id", "c1",
+              "--agent", "claude", "--conversation-id", CLAUDE_ID],
+             {"work_record_command": "remove", "workspace": "/ws", "id": "c1",
+              "agent": "claude", "conversation_id": CLAUDE_ID}),
+            (["work-record", "delete", "--workspace", "/ws", "--id", "c1"],
+             {"work_record_command": "delete", "workspace": "/ws", "id": "c1"}),
+            (["work-record", "reconcile", "--workspace", "/ws"],
+             {"work_record_command": "reconcile", "workspace": "/ws"}),
+        ]
+        for argv, expected in cases:
+            args = parser.parse_args([*argv, "--format", "json"])
+            assert args.command == "work-record"
+            assert args.format == "json"
+            for key, value in expected.items():
+                assert getattr(args, key) == value
+
+    @pytest.mark.parametrize("argv", [
+        ["work-record", "create", "--workspace", "/ws"],
+        ["work-record", "rename", "--workspace", "/ws", "--id", "c1"],
+        ["work-record", "activate", "--workspace", "/ws"],
+        ["work-record", "add", "--workspace", "/ws", "--id", "c1",
+         "--agent", "codex"],
+        ["work-record", "delete"],
+    ])
+    def test_required_arguments_are_usage_errors(self, argv):
+        from aisc.cli.main import _build_parser
+        with pytest.raises(SystemExit) as exc:
+            _build_parser().parse_args(argv)
+        assert exc.value.code == 2
+
+    def test_json_dispatch_flow_and_partial_delete(
+        self, ws_env, work_collection, monkeypatch
+    ):
+        import argparse
+        from aisc.cli.main import _cmd_work_record
+        ws, ws_dir, runtime = ws_env
+        _claude(ws_dir)
+        _codex(ws_dir)
+
+        def call(ns):
+            data, code, errors = _cmd_work_record(ns, "json")
+            assert errors == []
+            assert code == 0
+            return data
+
+        list_ns = argparse.Namespace(
+            work_record_command="list", workspace=str(ws)
+        )
+        listed = call(list_ns)
+        assert listed["schema_version"] == work_collection.WORK_COLLECTION_SCHEMA
+        assert listed["workspace"] == str(ws)
+        assert listed["collections"] == []
+        assert [c["conversation_id"] for c in listed["unfiled"]] == [
+            CLAUDE_ID, CODEX_ID
+        ]
+
+        created = call(argparse.Namespace(
+            work_record_command="create", workspace=str(ws), title="CLI record"
+        ))
+        assert created["collection"]["title"] == "CLI record"
+        cid = created["collection"]["id"]
+
+        renamed = call(argparse.Namespace(
+            work_record_command="rename", workspace=str(ws), id=cid, title="Renamed"
+        ))
+        assert renamed["collection"]["title"] == "Renamed"
+
+        activated = call(argparse.Namespace(
+            work_record_command="activate", workspace=str(ws), id=cid
+        ))
+        assert activated["active_collection_id"] == cid
+        assert work_collection.load(runtime)["observed_provider_keys"]
+
+        deactivated = call(argparse.Namespace(
+            work_record_command="deactivate", workspace=str(ws)
+        ))
+        assert deactivated["active_collection_id"] is None
+
+        archived = call(argparse.Namespace(
+            work_record_command="archive", workspace=str(ws), id=cid
+        ))
+        assert archived["collection"]["status"] == "archived"
+        restored = call(argparse.Namespace(
+            work_record_command="restore", workspace=str(ws), id=cid
+        ))
+        assert restored["collection"]["status"] == "active"
+
+        added = call(argparse.Namespace(
+            work_record_command="add", workspace=str(ws), id=cid, agent="codex",
+            conversation_id=CODEX_ID, runtime_id="00000000-0000-4000-8000-00000000cccc",
+        ))
+        assert added["member"]["member_key"] == _key("codex", CODEX_ID)
+        removed = call(argparse.Namespace(
+            work_record_command="remove", workspace=str(ws), id=cid, agent="codex",
+            conversation_id=CODEX_ID,
+        ))
+        assert removed["removed"] is True
+        work_collection.add_member(runtime, cid, agent="codex", conversation_id=CODEX_ID)
+        work_collection.add_member(runtime, cid, agent="claude", conversation_id=CLAUDE_ID)
+
+        def fake_delete(workspace, conversation_id, agent):
+            if agent == "claude":
+                raise CliError(message="locked transcript", exit_code=1,
+                               error_code="AISC_ERR_GENERAL")
+
+        monkeypatch.setattr(conversation, "delete_conversation", fake_delete)
+        deleted = call(argparse.Namespace(
+            work_record_command="delete", workspace=str(ws), id=cid
+        ))
+        assert deleted["deleted"] is True
+        assert len(deleted["failed_members"]) == 1
+        assert deleted["failed_members"][0]["reason"] == "locked transcript"
+
+        reconciled = call(argparse.Namespace(
+            work_record_command="reconcile", workspace=str(ws)
+        ))
+        assert reconciled["schema_version"] == work_collection.WORK_COLLECTION_SCHEMA
+
+    def test_human_output_shows_status_and_delete_failures(
+        self, ws_env, work_collection, capsys
+    ):
+        from aisc.cli.commands.work_record import (
+            print_work_record_delete,
+            print_work_record_list,
+        )
+        ws, _ws_dir, runtime = ws_env
+        created = work_collection.create(runtime, title="Human")
+        work_collection.add_member(runtime, created["id"], agent="codex", conversation_id=CODEX_ID)
+        print_work_record_list({
+            "schema_version": work_collection.WORK_COLLECTION_SCHEMA,
+            "workspace": str(ws),
+            "active_collection_id": created["id"],
+            "collections": [work_collection.load(runtime)["collections"][0]],
+            "unfiled": [{"agent": "claude", "conversation_id": CLAUDE_ID, "title": "Unfiled"}],
+        })
+        print_work_record_delete({
+            "deleted": True,
+            "collection_id": created["id"],
+            "terminated_session_ids": ["term-1"],
+            "deleted_members": work_collection.load(runtime)["collections"][0]["members"],
+            "failed_members": [{
+                "member_key": _key("claude", CLAUDE_ID),
+                "agent": "claude",
+                "conversation_id": CLAUDE_ID,
+                "stage": "delete",
+                "reason": "locked transcript",
+            }],
+        })
+        out = capsys.readouterr().out
+        assert "Human" in out
+        assert "Unfiled" in out
+        assert "term-1" in out
+        assert "locked transcript" in out
+        assert CLAUDE_ID in out
+
