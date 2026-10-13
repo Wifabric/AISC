@@ -228,3 +228,6 @@
   - [x] 实施 Work Record / Collection 完整语义：会话记录 + 轻量集合层、active 自动收容、归档、级联删除与失败提示（反馈 F3；b6 已闭环）
 - 追加（b1 手测发现）
   - [x] PTY 输出流在初始输出后停止而输入仍可达；修复 pump 误判 timeout/EINTR 为 EOF（b5 已闭环）
+- 追加（收尾前修复，2026-10-14 用户裁定）
+  - [ ] bash/codex/claude 会话退出后直接关闭标签，不保留 exited 横幅（b7）
+  - [ ] Work Records UI 树状重构：动作符号化、右键菜单（重命名/fork）、子代理会话折叠、树状展示、历史并入全部会话（b8）

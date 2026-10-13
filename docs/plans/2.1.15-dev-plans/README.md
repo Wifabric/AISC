@@ -14,6 +14,8 @@
 | b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 已完成 |
 | b5 | PTY 输出流断流修复（b1 手测发现） | P1 | `2.1.15-b5-pty-output-stream` | 已完成 |
 | b6 | Work Record / Collection 完整语义 | P2 | `2.1.15-b6-work-record-collection` | 已完成 |
+| b7 | 会话退出自动关闭标签（收尾前修复） | P1 | `2.1.15-b7-session-exit-tab-close` | 未开始 |
+| b8 | Work Records UI 树状重构与历史合并（收尾前修复） | P1 | `2.1.15-b8-work-records-ui-tree` | 未开始 |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。
@@ -22,7 +24,8 @@
 PR #9 已合并，本地门禁与 develop CI 全绿，T6 实机验证（真实 running session
 确认删除 → session 终止、collection 与双引擎 transcript 级联消失、无误伤）PASS，
 README 与 CLI 参考已补充 Work Records 用法，详见
-[b6-work-record-collection.md](b6-work-record-collection.md) 执行状态。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
+[b6-work-record-collection.md](b6-work-record-collection.md) 执行状态。2026-10-14 用户裁定收尾前追加两个修复批次：b7（会话退出自动关闭标签）与
+b8（Work Records UI 树状重构与历史合并），见各批次计划。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
 验证；`0.162.1` 在该次远程环境中 TUI 未完成渲染，详见
 [b3-terminal-output-scroll.md](b3-terminal-output-scroll.md) 执行状态。b5 的
 pump timeout/EINTR 修复已通过 transport、Workbench UI 数据面 >70s 长流验证；
