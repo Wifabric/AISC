@@ -209,7 +209,7 @@
 | Work Records 刷新双通道 | PASS | UI 打开后新增 `b6 refresh fixture` transcript，点击 Work Records「刷新」后未切换视图，unfiled 立即显示该 fixture。 |
 | T3 移出成员后 unfiled 立即恢复 | PASS | `b6-manual` 中 `init` 成功移出；未手动刷新时该会话立即出现在未归档会话，成员列表清空。 |
 | 新开 provider tab 身份关联 | PASS（单测） | `a71b16f` 记录 provider conversation 快照；唯一新增且唯一 pending live tab 时才建立当前 Workbench 会话内关联，歧义时不关联、不关闭。已覆盖唯一关联与歧义拒绝。 |
-| T6 删除运行中成员 | BLOCKED | 先后尝试恢复 `b6-delete-running` 成员时，Codex 显示「codex 需要登录」；Claude fixture `847f9a08-781e-45a7-8c75-a2874ec0c50c` 显示「claude 需要登录」。未登录、未伪造 running session，也未执行删除。 |
+| T6 删除运行中成员 | PASS | Codex 配置可用后，目标成员 `5f3c9a72-1b64-4f8e-9a20-6d7c8e91b234` 恢复为真实 running session；用户确认后点击删除并通过原生确认框确认。目标 session 先变为 `user_close`/exited（不再 live），Collection 消失；刷新后目标 Codex transcript 与 Claude fixture `847f9a08-781e-45a7-8c75-a2874ec0c50c` 均不再出现在 All Sessions；无 delete failures。未匹配身份的无关 Codex live tab 保持运行。 |
 
 **缺陷修复范围**
 
@@ -221,4 +221,4 @@
 **当前边界**
 
 - `a71b16f` 补充了无 `resumeConversationId` 时的保守身份关联：仅在同一 agent 恰好一个 pending live tab 且 conversation 快照恰好新增一个时关联；任何歧义都不关联、不关闭。不得用 agent 或 `runtime_id` 批量关闭。
-- T6 仍需真实登录/配置后的 Claude 或 Codex live session 完成实机删除验证；当前登录阻塞不记 PASS。
+- T6 已在 Codex 配置可用后用真实 running session 完成实机删除验证；未匹配身份的 live tab 未被批量关闭。
