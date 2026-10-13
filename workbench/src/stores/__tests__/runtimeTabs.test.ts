@@ -202,6 +202,36 @@ describe("removeTab (A-G08-6)", () => {
   });
 });
 
+describe("closeLiveConversationSessions (b6 delete)", () => {
+  it("closes live panes only for matching resumed conversations", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({
+      provider_name: "official",
+      route_mode: "official-direct",
+      auth_status: "configured",
+      observed_at: "x",
+    });
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const matchedId = s.createTab("codex")!;
+    const otherId = s.createTab("codex")!;
+    await tick();
+    await tick();
+    const matched = s.tabs.find((tab) => tab.tabId === matchedId)!;
+    const other = s.tabs.find((tab) => tab.tabId === otherId)!;
+    matched.resumeConversationId = "Conversation-1";
+    other.resumeConversationId = "conversation-2";
+
+    await s.closeLiveConversationSessions(["conversation-1", "conversation-3"]);
+
+    expect(mockIpc.closeSession).toHaveBeenCalledWith(matched.sessionId);
+    expect(mockIpc.closeSession).not.toHaveBeenCalledWith(other.sessionId);
+    expect(matched.sessionState).toBe("closing");
+    expect(other.sessionState).not.toBe("closing");
+  });
+});
+
 describe("history memory stays in sync with disk (G-07 last-layout fallback)", () => {
   it("doSave reloads history.value, so a runtime stop preserves the multi-tab layout", async () => {
     // Disk starts with a stale single-codex layout (e.g. from a prior session).

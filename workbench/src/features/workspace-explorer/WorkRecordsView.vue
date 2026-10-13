@@ -9,6 +9,7 @@ import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useWorkRecordsStore } from "../../stores/workRecords";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
+import { useRuntimeStore } from "../../stores/runtime";
 import type { ConversationSummary } from "../../types";
 
 const props = defineProps<{ workspace: string | null }>();
@@ -16,6 +17,7 @@ const emit = defineEmits<{ (event: "switch", kind: "conversations"): void }>();
 const { t } = useI18n();
 const records = useWorkRecordsStore();
 const explorer = useWorkspaceExplorerStore();
+const runtime = useRuntimeStore();
 const showArchived = ref(false);
 const newTitle = ref("");
 const selectedCollection = ref<string | null>(null);
@@ -62,9 +64,27 @@ async function removeCollection(id: string, title: string) {
     kind: "warning",
   });
   if (!ok) return;
+  // Terminate known live resume sessions before the CLI physically cascades
+  // transcript deletion. Provider tabs opened without a resume id have no safe
+  // conversation identity match here and are intentionally left alone.
+  await runtime.closeLiveConversationSessions(
+    (records.byId(id)?.members ?? []).map((member) => member.conversation_id),
+  );
   // The store preserves the partial-failure result for explicit UI display.
   await records.delete(id);
   await explorer.loadConversations(true);
+}
+
+async function refreshWorkRecords() {
+  await Promise.all([
+    records.reload(),
+    explorer.loadConversations(true),
+  ]);
+}
+
+async function removeMember(id: string, agent: "claude" | "codex", conversationId: string) {
+  const removed = await records.removeMember(id, agent, conversationId);
+  if (removed) await records.reload();
 }
 
 async function addUnfiled(item: ConversationSummary) {
@@ -114,7 +134,7 @@ watch(() => props.workspace, async (workspace) => {
         <input v-model="showArchived" type="checkbox" data-testid="show-archived" />
         {{ t("workRecords.showArchived") }}
       </label>
-      <button class="ui-button sm" type="button" @click="records.reload()">
+      <button class="ui-button sm" type="button" @click="refreshWorkRecords()">
         {{ t("workRecords.refresh") }}
       </button>
     </div>
@@ -216,7 +236,7 @@ watch(() => props.workspace, async (workspace) => {
           <button
             class="ui-button sm"
             type="button"
-            @click="records.removeMember(collection.id, member.agent, member.conversation_id)"
+            @click="removeMember(collection.id, member.agent, member.conversation_id)"
           >{{ t("workRecords.remove") }}</button>
         </li>
       </ul>

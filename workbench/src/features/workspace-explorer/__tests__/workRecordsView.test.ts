@@ -6,7 +6,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { i18n } from "../../../i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { workRecordDelete, workRecordList } from "../../../lib/ipc";
+import {
+  conversationList,
+  workRecordDelete,
+  workRecordList,
+  workRecordRemoveMember,
+} from "../../../lib/ipc";
 import { useWorkspaceExplorerStore } from "../../../stores/workspaceExplorer";
 import WorkRecordsView from "../WorkRecordsView.vue";
 import type { WorkRecordListResult } from "../../../types";
@@ -41,6 +46,13 @@ vi.mock("../../../lib/ipc", () => ({
   workRecordRemoveMember: vi.fn(),
   workRecordDelete: vi.fn(),
   workRecordReconcile: vi.fn(),
+}));
+const runtimeMock = vi.hoisted(() => ({
+  closeLiveConversationSessions: vi.fn(async () => {}),
+}));
+
+vi.mock("../../../stores/runtime", () => ({
+  useRuntimeStore: () => runtimeMock,
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 
@@ -150,6 +162,56 @@ describe("WorkRecordsView", () => {
     const failures = wrapper.find("[data-testid=delete-failures]");
     expect(failures.exists()).toBe(true);
     expect(failures.text()).toContain("locked transcript");
+  });
+
+  it("closes matching live resume sessions before deleting a collection", async () => {
+    const order: string[] = [];
+    runtimeMock.closeLiveConversationSessions.mockImplementation(async () => {
+      order.push("close");
+    });
+    vi.mocked(workRecordDelete).mockImplementation(async () => {
+      order.push("delete");
+      return {
+        deleted: true,
+        collection_id: activeCollection.id,
+        terminated_session_ids: [conversationId],
+        deleted_members: [member],
+        failed_members: [],
+      };
+    });
+
+    const { wrapper } = await mountView();
+    await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
+
+    expect(order).toEqual(["close", "delete"]);
+    expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([conversationId]);
+  });
+
+  it("refreshes both ledger and provider conversations", async () => {
+    const { wrapper } = await mountView();
+    const refresh = wrapper.findAll("button").find((button) => button.text() === "刷新");
+    await refresh!.trigger("click");
+    await flushPromises();
+
+    expect(workRecordList).toHaveBeenCalledTimes(2);
+    expect(conversationList).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores unfiled immediately after removing a member", async () => {
+    const { wrapper } = await mountView();
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      collections: [{ ...activeCollection, members: [] }],
+    });
+    vi.mocked(workRecordRemoveMember).mockResolvedValue({ removed: true, member_key: member.member_key });
+    const remove = wrapper.findAll("button").find((button) => button.text() === "移出");
+    await remove!.trigger("click");
+    await flushPromises();
+
+    expect(workRecordList).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(`[data-testid="resume-${member.member_key}"]`).exists()).toBe(false);
+    expect(wrapper.find("[data-testid=unfiled]").text()).toContain("Provider");
   });
 
   it("disables resume for a missing transcript", async () => {

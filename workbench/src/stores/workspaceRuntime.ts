@@ -1491,6 +1491,31 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     syncProjection(tab);
   }
 
+  /** b6: terminate only live sessions that are known to belong to the given
+   * resumed provider conversations. `runtime_id` is deliberately not used for
+   * matching (D-3); tabs opened without a resume id cannot be identified here
+   * and are left untouched. */
+  async function closeLiveConversationSessions(conversationIds: string[]) {
+    const targets = new Set(conversationIds.map((id) => id.toLowerCase()));
+    const closes: Promise<unknown>[] = [];
+    for (const tab of tabs.value) {
+      const resumeId = tab.resumeConversationId?.toLowerCase();
+      if (!resumeId || !targets.has(resumeId)) continue;
+      for (const pane of Object.values(tab.panes)) {
+        if (
+          pane.sessionId &&
+          !TERMINAL_STATES.includes(pane.sessionState) &&
+          pane.sessionState !== "closing"
+        ) {
+          pane.sessionState = "closing";
+          closes.push(ipc.closeSession(pane.sessionId).catch(() => null));
+        }
+      }
+      syncProjection(tab);
+    }
+    await Promise.all(closes);
+  }
+
   async function removeTab(tabId: string) {
     const tab = findTab(tabId);
     if (!tab) return;
@@ -1929,6 +1954,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     reopenTab,
     createTab,
     findLiveResumeTab,
+    closeLiveConversationSessions,
     removeTab,
     openCcSwitch,
     onTabOpenOk,
