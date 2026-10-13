@@ -1,5 +1,5 @@
 /**
- * FIX-3: panel drag & collapse — source contracts on WorkspaceView.
+ * FIX-3 + b4 F1: panel drag contracts on WorkspaceView.
  *
  * jsdom does no layout and SFC styles are not injected, and WorkspaceView's
  * ready branch needs the full workspace store chain — so the load-bearing
@@ -60,22 +60,31 @@ describe("FIX-3 source contracts — WorkspaceView.vue", () => {
     expect(v).toContain("dockAnimating.value = true;");
   });
 
-  it("both separators are accessible (role + orientation + keyboard)", () => {
+  it("only the dock separator remains interactive (b4 F1)", () => {
     const v = s();
     expect(v).toMatch(/class="dock-handle"[\s\S]{0,200}role="separator"/);
     expect(v).toMatch(/aria-orientation="vertical"/);
-    expect(v).toMatch(/class="tab-divider"[\s\S]{0,200}role="separator"/);
-    expect(v).toMatch(/aria-orientation="horizontal"/);
+    expect(v).not.toContain("onTabDividerDown");
+    expect(v).not.toContain("onTabDividerKey");
+    expect(v).not.toContain("setTabbarHeight");
+    expect(v).not.toContain("tabbarHeight");
+    expect(v).not.toContain("explorer.tabbarResize");
+    // The former top-bar divider is visual only and is not a focusable or
+    // pointer-resizable separator.
+    expect(v).not.toMatch(/class="tab-divider"[\s\S]{0,160}role="separator"/);
+    expect(v).not.toMatch(/class="tab-divider"[\s\S]{0,160}tabindex="0"/);
+    expect(v).not.toMatch(/class="tab-divider"[\s\S]{0,160}@pointerdown=/);
   });
 
-  it("drag math is incremental with the appScale conversion (no rect reads)", () => {
+  it("dock drag math is incremental with the appScale conversion (no rect reads)", () => {
     const v = s();
     expect(v).toContain("setExplorerWidth(startW + (ev.clientX - startX) / scale)");
-    expect(v).toContain("setTabbarHeight(startH + (ev.clientY - startY) / scale)");
   });
 
-  it("TabBar height: null keeps the natural height (no explicit style)", () => {
-    expect(s()).toMatch(/panelLayout\.tabbarHeight != null\s*\n\s*\? \{ height: `\$\{panelLayout\.tabbarHeight\}px` \}\s*\n\s*: undefined/);
+  it("TabBar keeps its natural height (b4 F1)", () => {
+    const v = s();
+    expect(v).not.toContain(":style=\"tabbarStyle\"");
+    expect(v).not.toContain("tabbarStyle");
   });
 });
 
@@ -94,7 +103,7 @@ describe("FIX-3 source contracts — App.vue dead rules removed", () => {
 });
 
 describe("FIX-3 i18n — both locales carry the new keys", () => {
-  const keys = ["explorer.collapse", "explorer.expand", "explorer.resizeHandle", "explorer.tabbarResize"] as const;
+  const keys = ["explorer.collapse", "explorer.expand", "explorer.resizeHandle"] as const;
 
   it("zh-CN and en-US agree on every key", () => {
     for (const k of keys) {
@@ -115,7 +124,7 @@ describe("P2-3 — the permanent activity rail (VS Code semantics)", () => {
     expect(railIconAction(false, "artifacts", "artifacts")).toEqual({
       do: "collapse",
     });
-    // Open + other view active → plain switch (dock stays open).
+    // Open + other view active → plain switch.
     expect(railIconAction(false, "explorer", "conversations")).toEqual({
       do: "switch", kind: "conversations",
     });

@@ -1,12 +1,12 @@
 /**
  * Panel layout (FIX-3, 2026-09-09): user-resizable / collapsible panel
- * geometry — Explorer dock width + collapse, TabBar height.
+ * geometry — Explorer dock width + collapse (b4 F1 removed TabBar height).
  *
  * Module-level reactive state (theme.ts pattern): WorkspaceView remounts per
  * workspace (keyed by runtime id) so component-local state would be lost on
  * workspace switch. Persisted to localStorage (NOT the settings chain): this
- * is local UI geometry, loss falls back to defaults harmlessly — same class
- * of state as the theme render hint, and it avoids the settings doc's
+ * the top bar is not a resize boundary. This state is local UI geometry,
+ * loss falls back to defaults harmlessly, and it avoids the settings doc's
  * revision-locked explicit-save flow (drag-to-size must stick immediately).
  */
 
@@ -18,8 +18,6 @@ export interface PanelLayout {
   explorerWidth: number;
   /** true = dock collapsed to the 40px rail (VS Code-style). */
   explorerCollapsed: boolean;
-  /** TabBar height in px; null = natural auto height (no explicit style). */
-  tabbarHeight: number | null;
 }
 
 const CACHE_KEY = "aisc-wb-panel-layout-v1";
@@ -27,25 +25,15 @@ const CACHE_KEY = "aisc-wb-panel-layout-v1";
 const DEFAULTS: PanelLayout = {
   explorerWidth: 320,
   explorerCollapsed: false,
-  tabbarHeight: null,
 };
 
 export const EXPLORER_MIN_W = 240;
 export const EXPLORER_MAX_W = 600;
-/** Natural bar height is ~39px (32px control + 2×3px padding + 1px border);
- * below 40 the forced `overflow-x:auto` turns into a vertical scrollbar. */
-export const TABBAR_MIN_H = 40;
-export const TABBAR_MAX_H = 120;
 export const EXPLORER_COLLAPSED_W = 40;
 
 export function clampExplorerWidth(px: number): number {
   if (!Number.isFinite(px)) return DEFAULTS.explorerWidth;
   return Math.min(EXPLORER_MAX_W, Math.max(EXPLORER_MIN_W, Math.round(px)));
-}
-
-export function clampTabbarHeight(px: number | null): number | null {
-  if (px == null || !Number.isFinite(px)) return null;
-  return Math.min(TABBAR_MAX_H, Math.max(TABBAR_MIN_H, Math.round(px)));
 }
 
 /** Visual px per layout px — the `.app` zoom factor. Derived (never read
@@ -71,8 +59,6 @@ function readPersisted(): PanelLayout {
       explorerWidth: clampExplorerWidth(
         typeof data.explorerWidth === "number" ? data.explorerWidth : DEFAULTS.explorerWidth),
       explorerCollapsed: data.explorerCollapsed === true,
-      tabbarHeight: clampTabbarHeight(
-        typeof data.tabbarHeight === "number" ? data.tabbarHeight : null),
     };
   } catch {
     return { ...DEFAULTS };
@@ -124,9 +110,4 @@ export function railIconAction(
   if (collapsed) return { do: "expand", kind: target };
   if (activeKind === target) return { do: "collapse" };
   return { do: "switch", kind: target };
-}
-
-export function setTabbarHeight(px: number | null): void {
-  panelLayout.tabbarHeight = clampTabbarHeight(px);
-  persist();
 }

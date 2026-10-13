@@ -1,4 +1,4 @@
-# v2.1.15 b1 手测清单
+# v2.1.15 手测清单
 
 > 每项必须先完成前置准备，再按步骤执行；只有理想结果全部满足才记通过。
 > 出现任何异常时记录时间、分支/构建号、窗口 target、工作区路径形态和完整报错。
@@ -111,3 +111,83 @@
 - 本地 direct-write 改成高频 CLI spawn → 记为性能回归，不合并；
 - fresh lease 残留 → fail；
 - bash/PTY 行为本批不得回归。
+## b4：顶部状态栏拖拽边界 + F3 方案裁决
+
+### b4-T1：顶部状态栏不再参与上下拖拽
+
+**前置准备**
+
+- 分支 `2.1.15-b4-ui-history-model` 已构建并启动 debug Workbench；
+- 至少打开一个 workspace；
+- TabBar 中存在 bash / codex / claude 至少两类标签；
+- 记录窗口尺寸、UI 字号、构建号。
+
+**精确操作步骤**
+
+1. 将鼠标移到顶部 bash/codex/claude 状态栏及其底部边缘；
+2. 按住左键从状态栏区域内垂直拖动 20–40 px；
+3. 从状态栏底部边缘垂直拖动 20–40 px；
+4. 释放后切换到另一个 tab；
+5. 关闭 Workbench，重新打开同一 workspace。
+
+**字段级理想结果**
+
+- 步骤 2/3 中光标不出现 `row-resize`；
+- TabBar 高度无变化；
+- 终端区域顶边不被推开；
+- 重启后 TabBar 仍为自然高度，旧 `panel-layout` 中的 `tabbarHeight` 不生效；
+- 切 tab 后仍无高度漂移。
+
+**异常判定**
+
+- 任一路径出现状态栏高度变化或 `row-resize` → fail；
+- 状态栏与终端之间无边框 → fail。
+
+### b4-T2：侧边栏与分屏边界回归
+
+**前置准备**
+
+- 与 b4-T1 同一 Workbench 实例；
+- Explorer 未折叠；
+- 当前 workspace 至少一个终端 tab。
+
+**精确操作步骤**
+
+1. 拖动 Explorer 右侧 handle 左右移动；
+2. 双击该 handle；
+3. 重新展开 Explorer；
+4. 在终端内 split 出两个 pane；
+5. 拖动 pane 间 divider；
+6. 切换 tab 后回到 split tab；重启 Workbench 后重新打开同一 workspace，确认按 O9 r2 进入全新单 Bash tab。
+
+**字段级理想结果**
+
+- Explorer handle 拖动有效，panel 宽度被限制在 240–600 px 的既有区间（可见 dock 含 40 px rail，为 280–640 px）；
+- 双击折叠、rail 展开恢复正常；
+- pane divider 拖动改变分屏比例；
+- tab 切换时 split pane 数量、比例与焦点无本批新增回归；重启后按 O9 r2 恒为全新单 Bash tab，不要求自动恢复布局。
+
+**异常判定**
+
+- Explorer 拖拽失效 → fail；
+- pane divider 拖拽失效 → fail；
+- 同一 Workbench 进程内的 tab 切换导致会话重开或输出丢失 → fail；按 O9 r2 重开 workspace 后的全新单 Bash 不判 fail。
+
+### b4-T3：F3 方案裁决项
+
+**前置准备**
+
+- 阅读 `docs/plans/2.1.15-dev-plans/b4-ui-history-model.md` 的 F3 推荐方案与 8 个开放裁决点。
+
+**精确操作步骤**
+
+1. 逐项确认 Work Record 粒度、自动分组、bash/cc-switch、flat 视图、删除语义、runtime provenance、归档可见性、实施顺序。
+
+**理想结果**
+
+- 每项均有用户明确裁决；
+- 裁决记录写入 `decisions.md` 后才允许实施对应代码。
+
+**异常判定**
+
+- 缺任一裁决即实施 F3 代码 → 违反 D-2，不合并。

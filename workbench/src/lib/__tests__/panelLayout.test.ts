@@ -1,6 +1,7 @@
 /**
- * panelLayout (FIX-3): clamp bounds, persistence round-trip, corrupt-JSON
- * fallback, and the appScale zoom derivation.
+ * panelLayout (FIX-3, b4 F1): explorer geometry, persistence, corrupt-JSON
+ * fallback, and appScale. The old TabBar-height model is intentionally gone:
+ * the top bash/codex/claude bar is no longer a vertical resize boundary.
  *
  * Module state is a singleton — each test re-imports via resetModules so
  * readPersisted() runs against a freshly seeded localStorage.
@@ -33,18 +34,22 @@ describe("clamp bounds", () => {
     expect(m.clampExplorerWidth(320)).toBe(320);
   });
 
-  it("clamps tabbar height to 40..120 (null passes through as natural)", async () => {
-    const m = await fresh();
-    expect(m.clampTabbarHeight(null)).toBeNull();
-    expect(m.clampTabbarHeight(20)).toBe(40); // below natural height ⇒ scrollbar
-    expect(m.clampTabbarHeight(500)).toBe(120);
-    expect(m.clampTabbarHeight(64.4)).toBe(64);
-    expect(m.clampTabbarHeight(Number.NaN)).toBeNull();
-  });
-
   it("non-finite explorer width falls back to the default", async () => {
     const m = await fresh();
     expect(m.clampExplorerWidth(Number.NaN)).toBe(320);
+  });
+});
+
+describe("legacy tabbar geometry", () => {
+  it("ignores the persisted tabbar height (b4 F1)", async () => {
+    window.localStorage.setItem(KEY, JSON.stringify({
+      explorerWidth: 480, explorerCollapsed: true, tabbarHeight: 110,
+    }));
+    const m = await fresh();
+    expect({ ...m.panelLayout }).toEqual({
+      explorerWidth: 480, explorerCollapsed: true,
+    });
+    expect("tabbarHeight" in m.panelLayout).toBe(false);
   });
 });
 
@@ -52,7 +57,7 @@ describe("persistence", () => {
   it("defaults on a cold store", async () => {
     const m = await fresh();
     expect({ ...m.panelLayout }).toEqual({
-      explorerWidth: 320, explorerCollapsed: false, tabbarHeight: null,
+      explorerWidth: 320, explorerCollapsed: false,
     });
   });
 
@@ -60,18 +65,17 @@ describe("persistence", () => {
     const m = await fresh();
     m.setExplorerWidth(5000);        // clamped to 600
     m.setExplorerCollapsed(true);
-    m.setTabbarHeight(30);           // clamped to 40
     expect({ ...m.panelLayout }).toEqual({
-      explorerWidth: 600, explorerCollapsed: true, tabbarHeight: 40,
+      explorerWidth: 600, explorerCollapsed: true,
     });
     const raw = JSON.parse(window.localStorage.getItem(KEY) ?? "{}");
     expect(raw).toEqual({
-      explorerWidth: 600, explorerCollapsed: true, tabbarHeight: 40,
+      explorerWidth: 600, explorerCollapsed: true,
     });
 
     const m2 = await fresh();        // readPersisted runs against the store
     expect({ ...m2.panelLayout }).toEqual({
-      explorerWidth: 600, explorerCollapsed: true, tabbarHeight: 40,
+      explorerWidth: 600, explorerCollapsed: true,
     });
   });
 
@@ -95,7 +99,7 @@ describe("persistence", () => {
       JSON.stringify({ explorerWidth: "wide", explorerCollapsed: "yes", tabbarHeight: [] }));
     m = await fresh();
     expect({ ...m.panelLayout }).toEqual({
-      explorerWidth: 320, explorerCollapsed: false, tabbarHeight: null,
+      explorerWidth: 320, explorerCollapsed: false,
     });
   });
 });
