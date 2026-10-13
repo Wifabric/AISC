@@ -198,7 +198,7 @@
 
 **环境**
 
-- 分支：`2.1.15-b6-work-record-collection`，修复基线 `5124839`，修复提交 `afe1f83`。
+- 分支：`2.1.15-b6-work-record-collection`，修复基线 `5124839`，修复提交 `afe1f83`，新 tab 身份关联提交 `a71b16f`。
 - 本地 debug Workbench，Vite 源刷新后连接 `http://localhost:9222`。
 - 工作区：`E:\pt\b6-manual`，隔离 provider transcript fixture。
 
@@ -208,14 +208,17 @@
 | --- | --- | --- |
 | Work Records 刷新双通道 | PASS | UI 打开后新增 `b6 refresh fixture` transcript，点击 Work Records「刷新」后未切换视图，unfiled 立即显示该 fixture。 |
 | T3 移出成员后 unfiled 立即恢复 | PASS | `b6-manual` 中 `init` 成功移出；未手动刷新时该会话立即出现在未归档会话，成员列表清空。 |
-| T6 删除运行中成员 | BLOCKED | 尝试恢复 `b6-delete-running` 成员后 Codex 显示「codex 需要登录」；未登录、未伪造 running session，也未执行删除。 |
+| 新开 provider tab 身份关联 | PASS（单测） | `a71b16f` 记录 provider conversation 快照；唯一新增且唯一 pending live tab 时才建立当前 Workbench 会话内关联，歧义时不关联、不关闭。已覆盖唯一关联与歧义拒绝。 |
+| T6 删除运行中成员 | BLOCKED | 先后尝试恢复 `b6-delete-running` 成员时，Codex 显示「codex 需要登录」；Claude fixture `847f9a08-781e-45a7-8c75-a2874ec0c50c` 显示「claude 需要登录」。未登录、未伪造 running session，也未执行删除。 |
 
 **缺陷修复范围**
 
 - Collection 删除前按成员 `conversation_id` 匹配 `resumeConversationId`，await 匹配 live pane 的 `close_session()` 后再调用物理级联删除。
+- 新开 Claude/Codex tab 在 open session 前记录 provider conversation 快照；Work Records mount、refresh、delete 时尝试保守关联。该关联只保存在当前 Workbench 会话内存中，不持久化、不修改 transcript，也不使用 `runtime_id` 判定身份。
 - Work Records 刷新同时刷新 ledger 和 provider conversations。
 - 成员移出成功后立即 reload ledger，恢复 unfiled。
 
-**未闭合边界**
+**当前边界**
 
-- 新开 provider tab 若没有 `resumeConversationId`，无法安全证明它与成员 conversation 的身份关系；不得用 agent 或 `runtime_id` 批量关闭。需用户裁决后续身份关联方案后才能宣称 T6 全量覆盖。
+- `a71b16f` 补充了无 `resumeConversationId` 时的保守身份关联：仅在同一 agent 恰好一个 pending live tab 且 conversation 快照恰好新增一个时关联；任何歧义都不关联、不关闭。不得用 agent 或 `runtime_id` 批量关闭。
+- T6 仍需真实登录/配置后的 Claude 或 Codex live session 完成实机删除验证；当前登录阻塞不记 PASS。
