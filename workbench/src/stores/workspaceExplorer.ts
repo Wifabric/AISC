@@ -67,7 +67,7 @@ interface ExplorerCache {
   stale: boolean;
 }
 
-export type ExplorerKind = "explorer" | "conversations" | "artifacts" | "services";
+export type ExplorerKind = "explorer" | "work-records" | "conversations" | "artifacts" | "services";
 
 /** Stage 11 (D11-02/D11-03): the in-app file clipboard. Short-lived store
  *  state — copy never touches the OS text clipboard. Single source entry
@@ -703,6 +703,11 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       }
       if (kind === "conversations") {
         void this.loadConversations(true);
+      } else if (kind === "work-records") {
+        void import("./workRecords").then(({ useWorkRecordsStore }) => {
+          const records = useWorkRecordsStore();
+          if (this.workspace) void records.load(this.workspace);
+        });
       } else if (kind === "services") {
         void import("./runtime").then(({ useRuntimeStore }) =>
           useRuntimeStore().refreshWebServices());

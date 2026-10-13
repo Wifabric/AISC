@@ -26,6 +26,7 @@ import { buildChangeTree, gitTypeOf, subtreeBadge, type ChangeTreeNode } from ".
 import { setExplorerCollapsed } from "../../lib/panelLayout";
 import { validateBasename } from "./basename";
 import ChangeBadge from "./ChangeBadge.vue";
+import WorkRecordsView from "./WorkRecordsView.vue";
 import TypeIcon from "./TypeIcon.vue";
 import type { ConversationSummary, WorkspaceNode } from "../../types";
 
@@ -328,6 +329,7 @@ const servicesSupported = computed(() => runtime.capability?.runtime_services ??
 /** P2-3 手测 r2: the header titles itself with the ACTIVE view's name. */
 const TITLE_KEY: Record<string, string> = {
   explorer: "explorer.tab.files",
+  "work-records": "explorer.tab.workRecords",
   conversations: "explorer.tab.conversations",
   artifacts: "explorer.tab.artifacts",
   services: "explorer.tab.services",
@@ -812,6 +814,13 @@ function onToolbarRefresh() {
     void explorer.loadConversations(true);
     return;
   }
+  if (explorer.activeKind === "work-records") {
+    void import("../../stores/workRecords").then(({ useWorkRecordsStore }) => {
+      const records = useWorkRecordsStore();
+      void records.reload();
+    });
+    return;
+  }
   void explorer.refreshRoot();
 }
 
@@ -1032,7 +1041,7 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- v2.1.7 S5c: shared top search (VSCode-style). Applies to the active
          panel: files tab = flat match list over every loaded directory;
          artifacts tab = filters every group. Hidden on the services tab. -->
-    <div v-if="artifactFilter !== 'services'" class="explorer-search">
+    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records'" class="explorer-search">
       <input
         v-model="panelSearch"
         type="search"
@@ -1209,6 +1218,15 @@ function onTreeKeydown(e: KeyboardEvent) {
         <p v-if="explorer.errors['']" class="explorer-error">{{ explorer.errors[""] }}</p>
       </template>
     </div>
+
+    <!-- v2.1.15 b6: Work Records aggregates provider conversations while
+         All Sessions keeps its unchanged flat history semantics. -->
+    <WorkRecordsView
+      v-else-if="artifactFilter === 'work-records'"
+      key="work-records"
+      :workspace="explorer.workspace"
+      @switch="explorer.activateView"
+    />
 
     <!-- Artifacts panel -->
     <!-- v2.1.8 T4 手测反馈 #3: agent history panel (own tab). Left click

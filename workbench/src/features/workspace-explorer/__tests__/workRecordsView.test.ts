@@ -1,0 +1,169 @@
+/**
+ * v2.1.15 b6 Task 6 — Work Records view acceptance behavior.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { flushPromises, mount } from "@vue/test-utils";
+import { i18n } from "../../../i18n";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { workRecordDelete, workRecordList } from "../../../lib/ipc";
+import { useWorkspaceExplorerStore } from "../../../stores/workspaceExplorer";
+import WorkRecordsView from "../WorkRecordsView.vue";
+import type { WorkRecordListResult } from "../../../types";
+
+vi.mock("../../../lib/ipc", () => ({
+  conversationList: vi.fn(async () => ({ schema_version: 1, conversations: [] })),
+  conversationPreflight: vi.fn(),
+  conversationDelete: vi.fn(),
+  conversationRename: vi.fn(),
+  workspaceList: vi.fn(),
+  workspaceOpen: vi.fn(),
+  workspaceCreateFile: vi.fn(),
+  workspaceCreateDir: vi.fn(),
+  workspaceCopyEntry: vi.fn(),
+  workspaceRename: vi.fn(),
+  workspaceReveal: vi.fn(),
+  workspaceCopyPath: vi.fn(),
+  workspaceWatchStart: vi.fn(),
+  workspaceWatchStop: vi.fn(),
+  logUiEvent: vi.fn(),
+  artifactList: vi.fn(),
+  artifactInspect: vi.fn(),
+  artifactRefresh: vi.fn(),
+  workRecordList: vi.fn(),
+  workRecordCreate: vi.fn(),
+  workRecordRename: vi.fn(),
+  workRecordActivate: vi.fn(),
+  workRecordDeactivate: vi.fn(),
+  workRecordArchive: vi.fn(),
+  workRecordRestore: vi.fn(),
+  workRecordAddMember: vi.fn(),
+  workRecordRemoveMember: vi.fn(),
+  workRecordDelete: vi.fn(),
+  workRecordReconcile: vi.fn(),
+}));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
+
+const conversationId = "01a04ca9-d3f6-7021-b9e7-50d48d818c65";
+const member = {
+  member_key: `codex:${conversationId}`,
+  agent: "codex" as const,
+  conversation_id: conversationId,
+  runtime_id: null,
+  source: "manual" as const,
+  added_at: "2026-01-01T00:00:00Z",
+};
+const activeCollection = {
+  id: "active-1",
+  title: "Feature",
+  status: "active" as const,
+  created_at: "t",
+  updated_at: "t",
+  archived_at: null,
+  members: [member],
+};
+const archivedCollection = {
+  ...activeCollection,
+  id: "archived-1",
+  title: "Old",
+  status: "archived" as const,
+  archived_at: "t",
+};
+const provider = {
+  conversation_id: conversationId,
+  agent: "codex" as const,
+  title: "Provider",
+  started_at: null,
+  last_at: null,
+  message_count: 1,
+  file_size: 10,
+  resumable: true,
+};
+
+function listResult(): WorkRecordListResult {
+  return {
+    schema_version: "aisc.work-collections/v1",
+    active_collection_id: "active-1",
+    collections: [activeCollection, archivedCollection],
+    unfiled: [provider],
+  };
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  i18n.global.locale.value = "zh-CN";
+  vi.clearAllMocks();
+  vi.mocked(workRecordList).mockResolvedValue(listResult());
+  vi.mocked(confirm).mockResolvedValue(true);
+});
+
+async function mountView() {
+  const explorer = useWorkspaceExplorerStore();
+  explorer.workspace = "/ws";
+  explorer.conversations = [provider];
+  const wrapper = mount(WorkRecordsView, {
+    props: { workspace: "/ws" },
+    global: { plugins: [i18n] },
+  });
+  await flushPromises();
+  return { wrapper, explorer };
+}
+
+describe("WorkRecordsView", () => {
+  it("hides archived collections by default and shows them with the switch", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.findAll("[data-testid=collection]").map((w) => w.attributes("data-id")))
+      .toEqual(["active-1"]);
+    await wrapper.find("[data-testid=show-archived]").setValue(true);
+    expect(wrapper.findAll("[data-testid=collection]").map((w) => w.attributes("data-id")))
+      .toEqual(["active-1", "archived-1"]);
+  });
+
+  it("marks the active collection and shows unfiled rows", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.find("[data-testid=collection][data-id=active-1]").attributes("data-active")).toBe("true");
+    expect(wrapper.find("[data-testid=unfiled]").text()).toContain("Provider");
+  });
+
+  it("uses one ordinary confirmation containing count and permanent-delete wording", async () => {
+    const { wrapper } = await mountView();
+    await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const [message, options] = vi.mocked(confirm).mock.calls[0] as [string, { title: string; kind: string }];
+    expect(message).toContain("1");
+    expect(message).toContain("永久删除");
+    expect(options.kind).toBe("warning");
+    expect(workRecordDelete).toHaveBeenCalledWith("/ws", activeCollection.id);
+  });
+
+  it("shows partial delete failures", async () => {
+    vi.mocked(workRecordDelete).mockResolvedValue({
+      deleted: true,
+      collection_id: activeCollection.id,
+      terminated_session_ids: [],
+      deleted_members: [],
+      failed_members: [{ ...member, stage: "delete", reason: "locked transcript" }],
+    });
+    const { wrapper } = await mountView();
+    await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
+    const failures = wrapper.find("[data-testid=delete-failures]");
+    expect(failures.exists()).toBe(true);
+    expect(failures.text()).toContain("locked transcript");
+  });
+
+  it("disables resume for a missing transcript", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "/ws";
+    explorer.conversations = [];
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    const button = wrapper.find(`[data-testid="resume-${member.member_key}"]`);
+    expect(button.exists()).toBe(true);
+    expect(button.attributes("disabled")).toBeDefined();
+    expect(button.text()).toContain("缺失");
+  });
+});

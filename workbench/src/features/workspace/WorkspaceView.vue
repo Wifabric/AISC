@@ -67,6 +67,7 @@ const wsStore = useWorkspacesStore();
 const servicesSupported = computed(() => store.capability?.runtime_services ?? false);
 const RAIL_ITEMS = [
   { kind: "explorer", labelKey: "explorer.tab.files", icon: "folder" },
+  { kind: "work-records", labelKey: "explorer.tab.workRecords", icon: "layers" },
   { kind: "conversations", labelKey: "explorer.tab.conversations", icon: "clock" },
   { kind: "artifacts", labelKey: "explorer.tab.artifacts", icon: "box" },
   { kind: "services", labelKey: "explorer.tab.services", icon: "globe" },
@@ -439,6 +440,10 @@ function setPaneTreeRef(tabId: string) {
             >
               <svg v-if="item.icon === 'folder'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5z" />
+              </svg>
+              <svg v-else-if="item.icon === 'layers'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                <path d="M8 2.5 14 6l-6 3.5L2 6z" />
+                <path d="m2 9.5 6 3.5 6-3.5" />
               </svg>
               <svg v-else-if="item.icon === 'clock'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" />
