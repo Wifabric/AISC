@@ -11,13 +11,13 @@
 | b1 | SSH 远程会话启动阻塞排查修复 | P0 | `2.1.15-b1-remote-ssh-recovery` | 已完成 |
 | b2 | Windows 工作区路径大小写归一与历史去重 | P1 | `2.1.15-b2-workspace-path-identity` | 已完成 |
 | b3 | CLI 输出后的终端滚动稳定性 | P1 | `2.1.15-b3-terminal-output-scroll` | 已完成 |
-| b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 本地验证完成 / PR 收口中 |
+| b4 | 顶部状态栏拖拽边界与历史会话模型调研 | P2 | `2.1.15-b4-ui-history-model` | 已完成 |
 | b5 | PTY 输出流断流修复（b1 手测发现） | P1 | `2.1.15-b5-pty-output-stream` | 已完成 |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。
 
-2026-10-13 状态：b1 / b2 / b3 / b5 已并回 `develop`；b4 的 F1 已通过本地门禁与实机手测，F3 方案与 8 个开放裁决点已入档，等待 PR CI 与用户裁决。b3 的 Codex `0.154` ED3 主路径
+2026-10-13 状态：b1 / b2 / b3 / b4 / b5 已并回 `develop`。b4 的 F1 已通过本地门禁、实机手测、PR CI 与 develop CI；F3 方案与 8 个开放裁决点已入档，实施仍等待用户裁决。b3 的 Codex `0.154` ED3 主路径
 与终端协议响应已实机/自动化验证；`0.162.1` 在该次远程环境中 TUI 未完成渲染，
 详见 [b3-terminal-output-scroll.md](b3-terminal-output-scroll.md) 执行状态。b5 的
 pump timeout/EINTR 修复已通过 transport、Workbench UI 数据面 >70s 长流验证；

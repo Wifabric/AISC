@@ -292,5 +292,5 @@ powershell -ExecutionPolicy Bypass -File scripts/local-gates.ps1
   first pane 宽度变化约 -79 px，键盘微调 +29 px；同进程切 tab 无新增回归。
   进程重启重开 workspace 按 O9 r2 进入全新单 Bash；HANDTEST 已同步该既有裁决，
   不把自动恢复布局列为 b4 门禁。
-- [ ] PR CI 全绿并 ff-only 合回 develop。
-- [ ] README / todo 账本收口。
+- [x] PR CI 全绿并 ff-only 合回 develop：PR #8 3/3 绿；develop 完整 CI（Workbench、CLI sidecar、NSIS、Linux/macOS bundle）全绿。
+- [x] README / todo 账本收口：b4 标记完成；F3 明确留待用户裁决后另行实施。
