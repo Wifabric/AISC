@@ -7,6 +7,7 @@
 pub mod cache;
 pub mod cli;
 pub mod conversation;
+pub mod work_record;
 pub mod data_root;
 pub mod docker_admin;
 pub mod docker_ownership;
@@ -82,6 +83,11 @@ use conversation::{
     conversation_delete, conversation_list, conversation_preflight, conversation_read,
     conversation_rename,
 };
+use work_record::{
+    work_record_activate, work_record_add_member, work_record_archive, work_record_create,
+    work_record_deactivate, work_record_delete, work_record_list, work_record_reconcile,
+    work_record_remove_member, work_record_rename, work_record_restore,
+};
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
     build_image, cancel_build, cancel_runtime_start, cc_switch_add, cc_switch_delete,
@@ -147,6 +153,17 @@ pub fn run(cli_arg: Option<String>) {
             conversation_delete,
             conversation_rename,
             conversation_read,
+            work_record_list,
+            work_record_create,
+            work_record_rename,
+            work_record_activate,
+            work_record_deactivate,
+            work_record_archive,
+            work_record_restore,
+            work_record_add_member,
+            work_record_remove_member,
+            work_record_delete,
+            work_record_reconcile,
             write_session,
             resize_session,
             session_read_spool,
