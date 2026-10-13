@@ -77,6 +77,7 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 - **资源管理器（文件）**：目录树懒加载、右键新建/重命名/复制/粘贴、拖拽文件进终端（自动转容器路径）、顶部搜索（支持模糊与 `/正则/`）。
 - **变更面板**：Agent 产出与文件改动统一呈现——徽章区分类型（新增/修改/删除/移动）与来源（Agent 登记或系统检测），支持分类筛选与搜索。
 - **历史会话**：会话列表可查看聊天式只读对话记录（claude/codex 双侧）。
+- **工作记录**：把 provider 会话聚合成 Work Record / Collection。active Collection 自动收容新开的 Claude/Codex 会话；支持重命名、设为 Active、归档/恢复、手动加入/移出。删除 Collection 前会普通确认一次，然后级联删除成员 transcript；删除失败会列出成员、阶段和原因。`bash` / `cc-switch` 不进入工作记录。
 - **服务面板**：容器内通过 `aisc-web-expose <端口>` 注册的 Web 服务，可从面板一键在宿主浏览器打开。
 - **Provider 管理**：顶栏进入 Providers 页。基于内置模板清单添加（见下），填入 API Key 即可使用，切换即时生效、无需重启；添加时可直接「拉取模型」验证 Key 与端点（无效 Key 会明确报「API Key 无效或被上游拒绝」）。
 - **网络与用量**（设置页）：代理模式可导入机场订阅（自动转换为容器 TUN 配置）；用量面板聚合各工作区 token 消耗与余量。
@@ -244,6 +245,9 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc switch` | `--name`, `--label`, `--quick PROVIDER` | 打开 cc-switch TUI，或快速切换 Claude Provider |
 | `aisc provider set-key` | `PROVIDER_ID`, `--name`, `--label`, `--agent` | 打开 cc-switch provider 安全交互编辑器；凭据不进命令行参数 |
 | `aisc conversation read` | 会话定位参数 | 聊天式只读对话查看器（历史会话阅读） |
+| `aisc work-record list/reconcile` | `--workspace` | 列出或重新对账 Work Record / Collection 与未归档会话 |
+| `aisc work-record create/rename/activate/deactivate/archive/restore` | `--workspace`, `--title`, `--collection-id` 等 | 管理 Work Record 元数据与生命周期 |
+| `aisc work-record add/remove/delete` | `--workspace`, `--collection-id`, `--agent`, `--conversation-id` 等 | 手动整理成员或级联删除 Collection（CLI 只删除 transcript；live PTY 由 Workbench 预先编排关闭） |
 | `aisc worklog list/rename/archive` | `--id` 等 | 工作区 PTY 会话账本（开关钩子自动记账，fail-open） |
 | `aisc config validate/effective` | `--config`, `--workspace` | 校验/展示合并配置与来源 |
 | `aisc profile list/show` | 全局选项 | 只读列出/显示 Profile |

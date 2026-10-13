@@ -14,11 +14,8 @@
 
 ## 当前状态
 
-- **本文只到计划为止，未实施。**
-- 执行状态中的实施 checkbox 全部未勾选。
-- 实施启动前必须从最新 `develop` 创建分支：
-  `2.1.15-b6-work-record-collection`。
-- b4 的 F3 调研已完成；本文件承接 2026-10-13 用户对 8 个开放点的裁决。
+- 已实施并 ff-only 合入 `develop`：PR [#9](https://github.com/Wifabric/AISC/pull/9)，合并 HEAD `dd0dfa8`。
+- 本地门禁、PR CI、develop CI 与实机手测记录见 `HANDTEST.md`。
 
 ## 目标
 
@@ -655,13 +652,13 @@ Store / UI：
 
 ### Task 8：实机手测与合并
 
-- [ ] 启动 debug Workbench。
-- [ ] 按 b6 手测清单执行；通过后将清单同步到 `HANDTEST.md`。
-- [ ] 推送分支并创建 PR。
-- [ ] PR CI 全绿。
-- [ ] ff-only 合回 `develop`。
-- [ ] 观察 develop CI 全绿。
-- [ ] 更新 README / todo / b6 执行状态后，用纯 docs commit 收口。
+- [x] 启动 debug Workbench。
+- [x] 按 b6 手测清单执行；通过后将清单同步到 `HANDTEST.md`。
+- [x] 推送分支并创建 PR。
+- [x] PR CI 全绿。
+- [x] ff-only 合回 `develop`。
+- [x] 观察 develop CI 全绿。
+- [x] 更新 README / todo / b6 执行状态后，用纯 docs commit 收口。
 
 ---
 
@@ -716,14 +713,14 @@ Store / UI：
 
 ## 执行状态
 
-- [ ] Task 1：分支与红灯。
-- [ ] Task 2：Collection 数据层。
-- [ ] Task 3：CLI 命令。
-- [ ] Task 4：Tauri IPC。
-- [ ] Task 5：前端类型 / IPC / store。
-- [ ] Task 6：Work Records 视图。
-- [ ] Task 7：全量本地门禁。
-- [ ] Task 8：实机手测与合并。
-- [ ] README / todo 收口。
+- [x] Task 1：分支与红灯。
+- [x] Task 2：Collection 数据层。
+- [x] Task 3：CLI 命令。
+- [x] Task 4：Tauri IPC。
+- [x] Task 5：前端类型 / IPC / store。
+- [x] Task 6：Work Records 视图。
+- [x] Task 7：全量本地门禁。
+- [x] Task 8：实机手测与合并。
+- [x] README / todo 收口：README 已补充 Work Records 使用面与 CLI 参考；仓库无独立 TODO 文件。
 
 > 截止点：本文档入库即停止。不得在本次计划任务中继续实施 Task 1。
