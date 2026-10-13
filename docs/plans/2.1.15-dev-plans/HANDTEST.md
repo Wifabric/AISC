@@ -191,3 +191,31 @@
 **异常判定**
 
 - 缺任一裁决即实施 F3 代码 → 违反 D-2，不合并。
+
+## b6：Work Record / Collection
+
+### 2026-10-13 缺陷修复复测执行记录
+
+**环境**
+
+- 分支：`2.1.15-b6-work-record-collection`，修复基线 `5124839`，修复提交 `afe1f83`。
+- 本地 debug Workbench，Vite 源刷新后连接 `http://localhost:9222`。
+- 工作区：`E:\pt\b6-manual`，隔离 provider transcript fixture。
+
+**本轮实测**
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| Work Records 刷新双通道 | PASS | UI 打开后新增 `b6 refresh fixture` transcript，点击 Work Records「刷新」后未切换视图，unfiled 立即显示该 fixture。 |
+| T3 移出成员后 unfiled 立即恢复 | PASS | `b6-manual` 中 `init` 成功移出；未手动刷新时该会话立即出现在未归档会话，成员列表清空。 |
+| T6 删除运行中成员 | BLOCKED | 尝试恢复 `b6-delete-running` 成员后 Codex 显示「codex 需要登录」；未登录、未伪造 running session，也未执行删除。 |
+
+**缺陷修复范围**
+
+- Collection 删除前按成员 `conversation_id` 匹配 `resumeConversationId`，await 匹配 live pane 的 `close_session()` 后再调用物理级联删除。
+- Work Records 刷新同时刷新 ledger 和 provider conversations。
+- 成员移出成功后立即 reload ledger，恢复 unfiled。
+
+**未闭合边界**
+
+- 新开 provider tab 若没有 `resumeConversationId`，无法安全证明它与成员 conversation 的身份关系；不得用 agent 或 `runtime_id` 批量关闭。需用户裁决后续身份关联方案后才能宣称 T6 全量覆盖。

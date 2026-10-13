@@ -446,9 +446,11 @@ Store / UI：
    - 不要求输入名称，不显示逐项勾选，不二次强确认。
 3. 前端先找出本 Workbench 中与成员 conversation 匹配的 live PTY tab/session，
    逐个调用现有 `close_session()`；结果进入 `terminated_session_ids`。
-4. 调用 `work_record_delete`。
+   - 安全匹配依据是 tab 的 `resumeConversationId`；`runtime_id` 不参与匹配。
+   - 新开且尚无 `resumeConversationId` 的 provider tab 目前没有安全身份依据，
+     不得按 agent 批量关闭；如要覆盖该边界，须先补充身份关联裁决和实现。
+4. 调用 `work_record_delete`。CLI 不用 `runtime_id` 反查或终止 session。
 5. CLI 按成员顺序：
-   - 若该成员仍有可识别的运行中 session，先复用现有 session terminate 能力；
    - transcript 已不存在时按“已删除”处理，只移除弱引用，不算失败；
    - transcript 存在时调用 `conversation.delete_conversation()` 物理删除；
    - 单个成员失败不中断整批，继续处理后续成员。
