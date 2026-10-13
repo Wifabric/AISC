@@ -222,3 +222,37 @@
 
 - `a71b16f` 补充了无 `resumeConversationId` 时的保守身份关联：仅在同一 agent 恰好一个 pending live tab 且 conversation 快照恰好新增一个时关联；任何歧义都不关联、不关闭。不得用 agent 或 `runtime_id` 批量关闭。
 - T6 已在 Codex 配置可用后用真实 running session 完成实机删除验证；未匹配身份的 live tab 未被批量关闭。
+
+## b7：会话退出自动关闭标签（2026-10-14 追加）
+
+### T1：process_exit 自退直接关闭标签
+
+**前置准备**
+
+- 本地 debug Workbench（develop ≥ `ecddb2d`，或本分支构建）；
+- 工作区可用，runtime 正常启动。
+
+**精确操作步骤**
+
+1. 打开一个 bash 标签，在其中执行 `exit`；
+2. 观察标签行为；
+3. 新开一个 codex 标签（已配置 provider），执行 `/quit` 退出；
+4. 观察标签行为；
+5. 开一个 bash 标签并 split 出第二个 pane，在其中一个 pane 里 `exit`；
+6. 观察标签与另一 pane；
+7. 回归 b6：Work Records 中删除一个 running 成员，观察其标签与会话。
+
+**理想结果**
+
+- 步骤 2/4：对应标签直接消失，不出现 `[Session exited...]` 横幅残留；
+  焦点迁移到相邻标签；
+- 步骤 6：仅退出的 pane 消失，split 与另一 pane 保留；
+- 步骤 7：成员会话终止、collection 移除，对应标签自动关闭，无误伤
+  （b6 T6 语义不回退）。
+
+**异常判定**
+
+- 任一自退标签残留 exited 横幅 → fail；
+- split 中退出一个 pane 导致整个标签或无辜 pane 关闭 → fail；
+- `transport_error`（如杀掉 serve）应保留标签进入 disconnected 展示，
+  若直接关闭标签 → fail（此为诊断通道）。
