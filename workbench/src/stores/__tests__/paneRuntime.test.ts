@@ -95,11 +95,12 @@ describe("store session ops route through the active pane (A-G17-5)", () => {
     expect(tab.panes[id].sessionId).not.toBeNull();
     expect(tab.sessionId).toBe(tab.panes[id].sessionId); // projection synced
     expect(tab.panes[id].sessionState).toBe("running");
-    // A PTY exit event (store channel) finalizes the pane + projection.
+    // b7: a process_exit self-exit finalizes the pane, then auto-closes the
+    // tab instead of lingering with an exited banner.
     lastChannel().onmessage?.({ type: "exit", reason: "process_exit", exitCode: 0 });
-    expect(tab.panes[id].sessionState).toBe("exited");
+    expect(tab.panes[id].sessionState).toBe("exited"); // committed before removal
     expect(tab.panes[id].exit?.reason).toBe("process_exit");
-    expect(tab.exit?.reason).toBe("process_exit");
+    expect(s.tabs.find((t) => t.tabId === id)).toBeUndefined();
   });
 
   it("first PTY output promotes a starting pane to running (onTabOpenOk)", async () => {
@@ -334,5 +335,64 @@ describe("restore of unconfigured claude|codex panes (G-17 feedback 2026-08-10)"
     // Configured codex must open a session (TUI), NOT stay idle/dormant.
     expect(["starting", "running"]).toContain(tab.panes["p1"].sessionState);
     expect(tab.panes["p1"].sessionId).not.toBeNull();
+  });
+});
+
+describe("b7: session exit auto-closes the tab", () => {
+  it("process_exit on the last tab removes it and focus falls to null", async () => {
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    const id = s.createTab("bash")!;
+    await tick();
+    s.onTabSessionExit(id, "process_exit", 1);
+    expect(s.tabs.find((t) => t.tabId === id)).toBeUndefined();
+    expect(s.activeTabId).toBeNull();
+  });
+
+  it("process_exit in a split removes only the exited pane and keeps the tab", async () => {
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    const id = s.createTab("bash")!;
+    await tick();
+    const claudePane = s.splitTabPane(id, "horizontal", "claude")!;
+    await tick();
+    expect(s.tabs.find((t) => t.tabId === id)).toBeDefined();
+    s.onTabSessionExit(id, "process_exit", 0); // bash pane self-exits
+    const tab = s.tabs.find((t) => t.tabId === id);
+    expect(tab).toBeDefined();
+    expect(tab!.panes[id]).toBeUndefined(); // exited pane removed
+    expect(tab!.panes[claudePane]).toBeDefined(); // sibling kept
+  });
+
+  it("transport_error keeps the tab for diagnosis", async () => {
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    const id = s.createTab("bash")!;
+    await tick();
+    s.onTabSessionExit(id, "transport_error", null);
+    const tab = s.tabs.find((t) => t.tabId === id);
+    expect(tab).toBeDefined();
+    expect(tab!.panes[id].sessionState).toBe("disconnected");
+    expect(tab!.panes[id].exit?.reason).toBe("transport_error");
+  });
+
+  it("user_close finalize after tab close (x) removes the tab", async () => {
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    const first = s.createTab("bash")!;
+    const firstChannel = channels[0]; // channel bound to the FIRST tab's pane
+    const second = s.createTab("bash")!;
+    await tick();
+    s.activateTab(first);
+    await tick();
+    s.closeTab(first); // sends close_session; Exit finalizes later
+    await tick();
+    firstChannel.onmessage?.({ type: "exit", reason: "user_close", exitCode: null });
+    expect(s.tabs.find((t) => t.tabId === first)).toBeUndefined();
+    expect(s.activeTabId).toBe(second);
   });
 });

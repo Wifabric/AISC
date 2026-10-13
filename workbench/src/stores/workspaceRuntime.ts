@@ -1225,11 +1225,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         (pendingChunks[paneId] ??= []).push({ b64: ev.bytes, offset: ev.offset });
         scheduleStreamFlush();
       } else if (ev.type === "exit") {
+        // b7: delegate to the single exit path so the auto-close behavior
+        // (and any future finalization logic) cannot drift from the inline
+        // duplicate that used to live here.
         if (!p.exit) {
-          p.exit = { reason: ev.reason, exitCode: ev.exitCode };
-          p.sessionState = ev.reason === "transport_error" ? "disconnected" : "exited";
-          syncProjection(tab);
-          void ipc.ackSessionExit(sid).catch(() => null);
+          onTabSessionExit(paneId, ev.reason, ev.exitCode);
         }
       } else if (ev.type === "error") {
         if (!TERMINAL_STATES.includes(p.sessionState)) {
@@ -1673,6 +1673,40 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (p.sessionId) {
       void ipc.ackSessionExit(p.sessionId).catch(() => null); // TTL sweeps if lost
     }
+    // b7: a self-exited session (process_exit, or the user_close finalize
+    // after tab ×) closes its UI instead of lingering as an exited banner
+    // tab. transport_error/disconnected stays for diagnosis.
+    if (reason === "process_exit" || reason === "user_close") {
+      autoCloseExitedPane(tab, paneId);
+    }
+  }
+
+  /** b7: remove a pane whose session reached a clean exit. A single-pane tab
+   * is removed like removeTab (focus falls to the neighbor); a split loses
+   * only the exited leaf - no dormant leaf, because A-G17-5 covers
+   * user-initiated closes, not self-exits. The session is already terminal,
+   * so no close_session is sent; the Exit ack lets Rust reap. */
+  function autoCloseExitedPane(tab: Tab, paneId: string) {
+    const p = tab.panes[paneId];
+    if (!p || p.sessionState !== "exited") return;
+    if (tab.tree.kind === "pane") {
+      const idx = tabs.value.indexOf(tab);
+      tabs.value.splice(idx, 1);
+      if (activeTabId.value === tab.tabId) {
+        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+      }
+    } else {
+      const removed = removeLeaf(tab.tree, paneId);
+      delete tab.panes[paneId];
+      if (removed !== null) {
+        tab.tree = removed;
+        if (!tab.panes[tab.activePaneId]) {
+          tab.activePaneId = firstLeaf(tab.tree)?.paneId ?? "";
+        }
+      }
+      syncProjection(tab);
+    }
+    scheduleSave();
   }
 
   /** Ensure the runtime is ready per preflight's recommended_action (start /
