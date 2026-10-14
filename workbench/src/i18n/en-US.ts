@@ -755,6 +755,8 @@ export const enUS: Record<string, string> = {
   "explorer.conversations.menuFork": "Fork session",
   "explorer.conversations.reason.codexNoFork": "Codex CLI does not support fork",
   "workRecords.tree.toggle": "Expand or collapse child sessions",
+"workRecords.moveOut": "Move to unfiled",
+  "workRecords.moveTo": "Move to {title}",
   "explorer.conversations.menuDelete": "Delete",
   "explorer.conversations.deleteTitle": "Delete conversation",
   "explorer.conversations.deleteConfirm": "Delete this conversation?\n\"{title}\"\nThis cannot be undone.",

@@ -54,3 +54,19 @@
 - Frontend：WorkRecordsView 测试覆盖 All Sessions 删除、行规格、inline rename、
   拖拽 reorder/move、右键菜单、active 联动。
 - 手测：真实 Codex /fork 后刷新可见父子树；拖拽排序/移动持久；长标题不溢出。
+
+## 执行状态（2026-10-14）
+
+- 数据层：`unfiled_order` / reorder collections / reorder members /
+  reorder unfiled / atomic move 已实现；旧 ledger 缺失字段保持兼容。
+- Codex fork：`session_meta.payload.history_base.thread_id` 已输出为
+  `parent_thread_id`；subagent 优先级保留。
+- CLI/Rust IPC：新增 4 个 reorder/move 命令与 argv/wire 测试。
+- UI：移除 Work Records 内嵌 All Sessions；Collection/会话 inline rename；
+  Collection 卡片与成员/未归档行支持拖拽排序、跨 Collection/未归档移动；
+  会话右键菜单支持恢复/删除/重命名/移入/移出；长标题与行样式统一；
+  顶部当前 tab 的 resume conversation 自动激活所属 Collection。
+- 刷新：conversation scan 数量变化时自动 reconcile Work Records，Codex /fork
+  新 rollout 不再依赖手动刷新。
+- 验证：Python 1398 passed / 53 skipped；Rust lib 351 passed / 1 ignored；
+  Vitest 74 files / 572 tests；vue-tsc、frontend build、`cargo --no-run` 通过。

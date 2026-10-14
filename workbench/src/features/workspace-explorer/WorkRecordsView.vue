@@ -1,16 +1,14 @@
 <script setup lang="ts">
 /**
- * Work Records view (b6; b8 visual/tree refactor). Collections are actions
- * symbolically; All Sessions reuses the conversation pane; Codex child
- * sessions stay folded beneath their parent in collection member lists.
+ * v2.1.15 b11: ordered Work Records with provider-child trees, drag/drop,
+ * context menus, and inline rename. Collection order is persisted in the CLI.
  */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useWorkRecordsStore } from "../../stores/workRecords";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
-import ConversationsPane from "./ConversationsPane.vue";
 import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
 import type { WorkRecordMember, WorkRecordCollection } from "../../types";
@@ -20,22 +18,29 @@ const { t } = useI18n();
 const records = useWorkRecordsStore();
 const explorer = useWorkspaceExplorerStore();
 const runtime = useRuntimeStore();
-const view = ref<"records" | "all">("records");
 const showArchived = ref(false);
 const newTitle = ref("");
-const selectedCollection = ref<string | null>(null);
-const editTitles = ref<Record<string, string>>({});
+const renamingCollectionId = ref<string | null>(null);
+const renamingConversationKey = ref<string | null>(null);
+const renameValue = ref("");
 const expandedMembers = ref(new Set<string>());
 const expandedUnfiled = ref(new Set<string>());
+const contextMenu = ref<{
+  x: number;
+  y: number;
+  collectionId: string | null;
+  memberKey: string;
+  agent: "claude" | "codex";
+  conversationId: string;
+} | null>(null);
 
 const visibleCollections = computed(() =>
   showArchived.value ? records.collections : records.collections.filter((item) => item.status === "active"),
 );
-
 const conversationBy = computed(() => {
   const out = new Map<string, ConversationSummary>();
   for (const item of explorer.conversations) {
-    out.set(`${item.agent}:${item.conversation_id.toLowerCase()}`, item);
+    out.set(item.agent + ":" + item.conversation_id.toLowerCase(), item);
   }
   return out;
 });
@@ -48,28 +53,37 @@ async function createCollection() {
   const title = newTitle.value.trim();
   if (!title) return;
   const created = await records.create(title);
-  if (created) {
-    newTitle.value = "";
-    selectedCollection.value = created.id;
-  }
+  if (created) newTitle.value = "";
 }
 
-async function renameCollection(id: string) {
-  const title = (editTitles.value[id] ?? "").trim();
-  if (!title) return;
-  const updated = await records.rename(id, title);
-  if (updated) editTitles.value[id] = "";
+function beginCollectionRename(collection: WorkRecordCollection) {
+  renamingCollectionId.value = collection.id;
+  renameValue.value = collection.title;
+  void nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>("[data-testid='collection-rename-input']");
+    input?.focus();
+    input?.select();
+  });
+}
+
+async function commitCollectionRename(id: string) {
+  const title = renameValue.value.trim();
+  const current = records.byId(id);
+  renamingCollectionId.value = null;
+  if (!title || !current || title === current.title) return;
+  await records.rename(id, title);
+  await records.reload();
 }
 
 async function removeCollection(id: string, title: string) {
   const memberCount = records.byId(id)?.members.length ?? 0;
-  const message = t("workRecords.deleteConfirm", { title, count: memberCount });
-  const ok = await confirm(message, { title: t("workRecords.deleteTitle"), kind: "warning" });
+  const ok = await confirm(
+    t("workRecords.deleteConfirm", { title, count: memberCount }),
+    { title: t("workRecords.deleteTitle"), kind: "warning" },
+  );
   if (!ok) return;
   await explorer.loadConversations(true);
   await runtime.resolvePendingConversationAssociations(explorer.conversations);
-  // Known live resume sessions close before CLI cascade deletion; tabs without
-  // a safe conversation identity remain untouched (b6 behavior).
   await runtime.closeLiveConversationSessions(
     (records.byId(id)?.members ?? []).map((member) => member.conversation_id),
   );
@@ -87,15 +101,39 @@ async function removeMember(id: string, agent: "claude" | "codex", conversationI
   if (removed) await records.reload();
 }
 
-async function addUnfiled(item: ConversationSummary) {
-  const target = selectedCollection.value ?? records.activeCollectionId;
-  if (!target) return;
-  await records.addMember(target, item.agent, item.conversation_id);
-}
-
 async function resumeMember(memberKey: string) {
   const item = memberConversation(memberKey);
   if (item?.resumable) await explorer.resumeConversation(item);
+}
+
+function beginConversationRename(memberKey: string) {
+  const item = memberConversation(memberKey);
+  if (!item) return;
+  renamingConversationKey.value = memberKey;
+  renameValue.value = item.title;
+  void nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>("[data-testid='conversation-rename-input']");
+    input?.focus();
+    input?.select();
+  });
+}
+
+async function commitConversationRename(item: ConversationSummary) {
+  const title = renameValue.value.trim();
+  renamingConversationKey.value = null;
+  if (!title || title === item.title) return;
+  await explorer.renameConversation(item, title);
+  await records.reload();
+}
+
+async function deleteConversation(item: ConversationSummary) {
+  const ok = await confirm(
+    t("explorer.conversations.deleteConfirm", { title: item.title }),
+    { kind: "warning", title: t("explorer.conversations.deleteTitle") },
+  );
+  if (!ok) return;
+  await explorer.deleteConversation(item);
+  await records.reload();
 }
 
 interface MemberTreeRow {
@@ -105,13 +143,11 @@ interface MemberTreeRow {
   parentKey: string | null;
 }
 
-/** Collection members are provider identities; build a local tree without
- * relying on runtime ids. A missing parent is promoted, never dropped. */
 function memberTree(collection: WorkRecordCollection): MemberTreeRow[] {
   const byId = new Map(collection.members.map((member) => [member.conversation_id.toLowerCase(), member]));
   const children = new Map<string, WorkRecordMember[]>();
   for (const member of collection.members) {
-    const conversation = conversationBy.value.get(`${member.agent}:${member.conversation_id.toLowerCase()}`);
+    const conversation = conversationBy.value.get(member.agent + ":" + member.conversation_id.toLowerCase());
     const parentId = conversation?.parent_thread_id?.toLowerCase();
     const parentMember = parentId ? byId.get(parentId) : undefined;
     const key = parentMember ? parentMember.conversation_id.toLowerCase() : "";
@@ -136,28 +172,6 @@ function memberVisible(row: MemberTreeRow): boolean {
   return !row.parentKey || expandedMembers.value.has(row.parentKey);
 }
 
-const unfiledTreeRows = computed(() => buildConversationTreeRows(records.unfiled));
-
-function unfiledParentKey(row: ConversationTreeRow): string | null {
-  if (row.depth === 0) return null;
-  const parentId = row.conversation.parent_thread_id?.toLowerCase();
-  return parentId && records.unfiled.some((item) => item.conversation_id.toLowerCase() === parentId)
-    ? parentId
-    : null;
-}
-
-function unfiledVisible(row: ConversationTreeRow): boolean {
-  const parentKey = unfiledParentKey(row);
-  return !parentKey || expandedUnfiled.value.has(parentKey);
-}
-
-function toggleUnfiled(conversationId: string): void {
-  const key = conversationId.toLowerCase();
-  const next = new Set(expandedUnfiled.value);
-  if (!next.delete(key)) next.add(key);
-  expandedUnfiled.value = next;
-}
-
 function toggleMember(member: WorkRecordMember): void {
   const key = member.conversation_id.toLowerCase();
   const next = new Set(expandedMembers.value);
@@ -165,50 +179,161 @@ function toggleMember(member: WorkRecordMember): void {
   expandedMembers.value = next;
 }
 
+const unfiledTreeRows = computed(() => buildConversationTreeRows(records.unfiled));
+function unfiledKey(item: ConversationSummary): string {
+  return item.agent + ":" + item.conversation_id.toLowerCase();
+}
+function unfiledParentKey(row: ConversationTreeRow): string | null {
+  if (row.depth === 0) return null;
+  const parentId = row.conversation.parent_thread_id?.toLowerCase();
+  return parentId && records.unfiled.some((item) => item.conversation_id.toLowerCase() === parentId)
+    ? parentId
+    : null;
+}
+function unfiledVisible(row: ConversationTreeRow): boolean {
+  const parentKey = unfiledParentKey(row);
+  return !parentKey || expandedUnfiled.value.has(parentKey);
+}
+function toggleUnfiled(conversationId: string): void {
+  const key = conversationId.toLowerCase();
+  const next = new Set(expandedUnfiled.value);
+  if (!next.delete(key)) next.add(key);
+  expandedUnfiled.value = next;
+}
+
+interface DragMemberPayload {
+  collectionId: string | null;
+  memberKey: string;
+  agent: "claude" | "codex";
+  conversationId: string;
+}
+function setMemberDrag(event: DragEvent, payload: DragMemberPayload) {
+  event.dataTransfer?.setData("application/x-aisc-work-record-member", JSON.stringify(payload));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+function memberDragStart(event: DragEvent, collectionId: string, member: WorkRecordMember) {
+  setMemberDrag(event, { collectionId, memberKey: member.member_key, agent: member.agent, conversationId: member.conversation_id });
+}
+function unfiledDragStart(event: DragEvent, item: ConversationSummary) {
+  setMemberDrag(event, { collectionId: null, memberKey: unfiledKey(item), agent: item.agent, conversationId: item.conversation_id });
+}
+function draggedMember(event: DragEvent): DragMemberPayload | null {
+  const raw = event.dataTransfer?.getData("application/x-aisc-work-record-member");
+  if (!raw) return null;
+  try { return JSON.parse(raw) as DragMemberPayload; } catch { return null; }
+}
+function areaKeys(collectionId: string | null): string[] {
+  if (collectionId === null) return unfiledTreeRows.value.map((row) => unfiledKey(row.conversation));
+  return (records.byId(collectionId)?.members ?? []).map((member) => member.member_key);
+}
+function orderWithKey(keys: string[], key: string, beforeKey?: string): string[] {
+  const without = keys.filter((item) => item !== key);
+  const index = beforeKey ? keys.indexOf(beforeKey) : without.length;
+  without.splice(index < 0 ? without.length : index, 0, key);
+  return without;
+}
+async function dropMember(event: DragEvent, targetCollectionId: string | null, targetMemberKey?: string) {
+  event.preventDefault();
+  event.stopPropagation();
+  const source = draggedMember(event);
+  if (!source) return;
+  const next = orderWithKey(areaKeys(targetCollectionId), source.memberKey, targetMemberKey);
+  if (source.collectionId === targetCollectionId) {
+    if (targetCollectionId === null) await records.reorderUnfiled(next);
+    else await records.reorderMembers(targetCollectionId, next);
+  } else if (source.collectionId === null && targetCollectionId !== null) {
+    await records.addMember(targetCollectionId, source.agent, source.conversationId);
+    await records.reorderMembers(targetCollectionId, next);
+  } else if (source.collectionId !== null && targetCollectionId !== null) {
+    await records.moveMember(source.collectionId, targetCollectionId, source.agent, source.conversationId, next);
+  } else if (source.collectionId !== null) {
+    await records.moveMember(source.collectionId, null, source.agent, source.conversationId, next);
+  }
+}
+function collectionDragStart(event: DragEvent, collection: WorkRecordCollection) {
+  event.dataTransfer?.setData("application/x-aisc-work-record-collection", collection.id);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+async function dropCollection(event: DragEvent, targetId: string) {
+  event.preventDefault();
+  event.stopPropagation();
+  const sourceId = event.dataTransfer?.getData("application/x-aisc-work-record-collection");
+  if (!sourceId || sourceId === targetId) return;
+  const ids = records.collections.map((item) => item.id);
+  const from = ids.indexOf(sourceId);
+  const to = ids.indexOf(targetId);
+  if (from < 0 || to < 0) return;
+  ids.splice(to, 0, ...ids.splice(from, 1));
+  await records.reorderCollections(ids);
+}
+function openMemberMenu(event: MouseEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary) {
+  event.preventDefault();
+  contextMenu.value = {
+    x: event.clientX,
+    y: event.clientY,
+    collectionId,
+    memberKey: member?.member_key ?? unfiledKey(item),
+    agent: item.agent,
+    conversationId: item.conversation_id,
+  };
+}
+function closeMenu() { contextMenu.value = null; }
+async function moveFromMenu(targetId: string | null) {
+  const menu = contextMenu.value;
+  if (!menu) return;
+  const next = orderWithKey(areaKeys(targetId), menu.memberKey);
+  if (menu.collectionId) {
+    await records.moveMember(menu.collectionId, targetId, menu.agent, menu.conversationId, next);
+  } else if (targetId) {
+    await records.addMember(targetId, menu.agent, menu.conversationId);
+    await records.reorderMembers(targetId, next);
+  }
+  closeMenu();
+}
+
+const activeConversationId = computed(() => {
+  const tab = runtime.tabs.find((item) => item.tabId === runtime.activeTabId);
+  return tab?.resumeConversationId?.toLowerCase() ?? null;
+});
+watch(activeConversationId, (conversationId) => {
+  if (!conversationId) return;
+  const owner = records.collections.find((collection) =>
+    collection.members.some((member) => member.conversation_id.toLowerCase() === conversationId),
+  );
+  if (owner && owner.id !== records.activeCollectionId) void records.activate(owner.id);
+});
+watch(visibleCollections, (collections) => {
+  const first = collections.find((item) => item.status === "active");
+  if (!records.activeCollectionId && first) void records.activate(first.id);
+}, { immediate: true });
+watch(() => explorer.conversations, (_value, old) => {
+  if (old.length === explorer.conversations.length) return;
+  void records.reconcile();
+});
 onMounted(async () => {
+  window.addEventListener("click", closeMenu);
   if (props.workspace) {
     await Promise.all([records.load(props.workspace), explorer.loadConversations(true)]);
     await runtime.resolvePendingConversationAssociations(explorer.conversations);
   }
 });
-
+onBeforeUnmount(() => window.removeEventListener("click", closeMenu));
 watch(() => props.workspace, async (workspace) => {
   records.setWorkspace(workspace);
-  if (workspace) {
-    await Promise.all([records.load(workspace), explorer.loadConversations(true)]);
-  }
+  if (workspace) await Promise.all([records.load(workspace), explorer.loadConversations(true)]);
 });
 </script>
 
 <template>
   <div class="explorer-body work-records-panel">
     <div class="work-record-switches">
-      <button
-        class="ui-button sm"
-        :class="{ active: view === 'records' }"
-        type="button"
-        data-testid="work-records-tab"
-        @click="view = 'records'"
-      >{{ t("workRecords.title") }}</button>
-      <button
-        class="ui-button sm"
-        :class="{ active: view === 'all' }"
-        type="button"
-        data-testid="all-sessions"
-        @click="view = 'all'"
-      >{{ t("workRecords.allSessions") }}</button>
-      <template v-if="view === 'records'">
-        <label class="work-record-checkbox">
-          <input v-model="showArchived" type="checkbox" data-testid="show-archived" />
-          {{ t("workRecords.showArchived") }}
-        </label>
-        <button class="ui-icon-button sm" type="button" :title="t('workRecords.refresh')" :aria-label="t('workRecords.refresh')" @click="refreshWorkRecords()">⟳</button>
-      </template>
+      <label class="work-record-checkbox">
+        <input v-model="showArchived" type="checkbox" data-testid="show-archived" />
+        {{ t("workRecords.showArchived") }}
+      </label>
+      <button class="ui-icon-button sm" type="button" :title="t('workRecords.refresh')" :aria-label="t('workRecords.refresh')" data-testid="refresh-work-records" @click="refreshWorkRecords()">⟳</button>
     </div>
 
-    <ConversationsPane v-if="view === 'all'" />
-
-    <template v-else>
       <p v-if="records.error" class="explorer-error" role="alert">{{ records.error }}</p>
 
       <div class="work-record-create">
@@ -240,161 +365,94 @@ watch(() => props.workspace, async (workspace) => {
         data-testid="collection"
         :data-id="collection.id"
         :data-active="collection.id === records.activeCollectionId ? 'true' : 'false'"
+        draggable="true"
+        @dragstart="collectionDragStart($event, collection)"
+        @dragover.prevent
+        @drop="dropCollection($event, collection.id)"
       >
         <header class="work-record-head">
-          <h4>{{ collection.title }}</h4>
+          <input
+            v-if="renamingCollectionId === collection.id"
+            v-model="renameValue"
+            class="title-input collection-title-input"
+            type="text"
+            data-testid="collection-rename-input"
+            @keydown.enter.prevent="commitCollectionRename(collection.id)"
+            @keydown.esc.prevent="renamingCollectionId = null"
+            @blur="commitCollectionRename(collection.id)"
+          >
+          <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ collection.title }}</h4>
           <span v-if="collection.id === records.activeCollectionId" class="work-record-active">{{ t("workRecords.active") }}</span>
           <span v-else-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
+          <span class="head-actions">
+            <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" :data-testid="'rename-' + collection.id" @click.stop="beginCollectionRename(collection)">✎</button>
+            <button v-if="collection.id !== records.activeCollectionId && collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.activate')" :aria-label="t('workRecords.activate')" @click.stop="records.activate(collection.id)">◎</button>
+            <button v-if="collection.id === records.activeCollectionId" class="ui-icon-button sm" type="button" :title="t('workRecords.deactivate')" :aria-label="t('workRecords.deactivate')" @click.stop="records.deactivate()">○</button>
+            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.archive')" :aria-label="t('workRecords.archive')" @click.stop="records.archive(collection.id)">🗄</button>
+            <button v-else class="ui-icon-button sm" type="button" :title="t('workRecords.restore')" :aria-label="t('workRecords.restore')" @click.stop="records.restore(collection.id)">♻</button>
+            <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.delete')" :aria-label="t('workRecords.delete')" :data-testid="'delete-' + collection.id" @click.stop="removeCollection(collection.id, collection.title)">✕</button>
+          </span>
         </header>
 
-        <div class="work-record-actions">
-          <input
-            v-model="editTitles[collection.id]"
-            type="text"
-            :placeholder="t('workRecords.newTitle')"
-            :aria-label="t('workRecords.rename')"
-          />
-          <button
-            class="ui-icon-button sm"
-            type="button"
-            :disabled="!(editTitles[collection.id] ?? '').trim()"
-            :title="t('workRecords.rename')"
-            :aria-label="t('workRecords.rename')"
-            @click="renameCollection(collection.id)"
-          >✎</button>
-          <button
-            v-if="collection.id !== records.activeCollectionId && collection.status === 'active'"
-            class="ui-icon-button sm"
-            type="button"
-            :title="t('workRecords.activate')"
-            :aria-label="t('workRecords.activate')"
-            @click="records.activate(collection.id)"
-          >◎</button>
-          <button
-            v-if="collection.id === records.activeCollectionId"
-            class="ui-icon-button sm"
-            type="button"
-            :title="t('workRecords.deactivate')"
-            :aria-label="t('workRecords.deactivate')"
-            @click="records.deactivate()"
-          >○</button>
-          <button
-            v-if="collection.status === 'active'"
-            class="ui-icon-button sm"
-            type="button"
-            :title="t('workRecords.archive')"
-            :aria-label="t('workRecords.archive')"
-            @click="records.archive(collection.id)"
-          >🗄</button>
-          <button
-            v-else
-            class="ui-icon-button sm"
-            type="button"
-            :title="t('workRecords.restore')"
-            :aria-label="t('workRecords.restore')"
-            @click="records.restore(collection.id)"
-          >♻</button>
-          <button
-            class="ui-icon-button sm danger"
-            type="button"
-            :title="t('workRecords.delete')"
-            :aria-label="t('workRecords.delete')"
-            :data-testid="`delete-${collection.id}`"
-            @click="removeCollection(collection.id, collection.title)"
-          >✕</button>
-        </div>
-
-        <ul class="work-record-members">
+        <ul class="work-record-members" @dragover.prevent @drop="dropMember($event, collection.id)">
           <template v-for="row in memberTree(collection)" :key="row.member.member_key">
-            <li v-if="memberVisible(row)">
-              <span
-                class="member-tree-indent"
-                :class="{ branch: row.depth > 0 }"
-                :style="{ width: `${row.depth * 14}px` }"
-              />
-              <button
-                v-if="row.childCount"
-                class="conversation-twisty"
-                type="button"
-                :aria-expanded="expandedMembers.has(row.member.conversation_id.toLowerCase())"
-                :aria-label="t('workRecords.tree.toggle')"
-                :data-testid="`member-toggle-${row.member.member_key}`"
-                @click="toggleMember(row.member)"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                  <path :d="expandedMembers.has(row.member.conversation_id.toLowerCase()) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" />
-                </svg>
+            <li
+              v-if="memberVisible(row)"
+              draggable="true"
+              :data-testid="'member-' + row.member.member_key"
+              @dragstart="memberDragStart($event, collection.id, row.member)"
+              @dragover.prevent
+              @drop.stop="dropMember($event, collection.id, row.member.member_key)"
+              @contextmenu.prevent="openMemberMenu($event, collection.id, row.member, memberConversation(row.member.member_key)!)"
+            >
+              <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
+              <button v-if="row.childCount" class="conversation-twisty" type="button" :aria-expanded="expandedMembers.has(row.member.conversation_id.toLowerCase())" :aria-label="t('workRecords.tree.toggle')" :data-testid="'member-toggle-' + row.member.member_key" @click.stop="toggleMember(row.member)">
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="expandedMembers.has(row.member.conversation_id.toLowerCase()) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" /></svg>
                 <span class="conversation-child-count">{{ row.childCount }}</span>
               </button>
               <span v-else class="conversation-twisty spacer" aria-hidden="true" />
-              <span class="member-title">
-                {{ memberConversation(row.member.member_key)?.title || t("workRecords.missing") }}
-              </span>
+              <input v-if="renamingConversationKey === row.member.member_key" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @keydown.enter.prevent="commitConversationRename(memberConversation(row.member.member_key)!)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(memberConversation(row.member.member_key)!)">
+              <span v-else class="member-title">{{ memberConversation(row.member.member_key)?.title || t("workRecords.missing") }}</span>
               <span class="member-agent">{{ row.member.agent }}</span>
-              <button
-                class="ui-icon-button sm"
-                type="button"
-                :data-testid="`resume-${row.member.member_key}`"
-                :disabled="!memberConversation(row.member.member_key)?.resumable"
-                :title="memberConversation(row.member.member_key)?.resumable ? t('workRecords.resume') : t('workRecords.missing')"
-                :aria-label="memberConversation(row.member.member_key)?.resumable ? t('workRecords.resume') : t('workRecords.missing')"
-                @click="resumeMember(row.member.member_key)"
-              >{{ memberConversation(row.member.member_key)?.resumable ? "▶" : "🚫" }}</button>
-              <button
-                class="ui-icon-button sm danger"
-                type="button"
-                :title="t('workRecords.remove')"
-                :aria-label="t('workRecords.remove')"
-                @click="removeMember(collection.id, row.member.agent, row.member.conversation_id)"
-              >✕</button>
+              <button class="ui-icon-button sm" type="button" :data-testid="'resume-' + row.member.member_key" :disabled="!memberConversation(row.member.member_key)?.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" @click.stop="resumeMember(row.member.member_key)">▶</button>
+              <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(row.member.member_key)">✎</button>
+              <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.remove')" :aria-label="t('workRecords.remove')" @click.stop="removeMember(collection.id, row.member.agent, row.member.conversation_id)">✕</button>
             </li>
           </template>
         </ul>
         <p v-if="!collection.members.length" class="work-record-no-members">{{ t("workRecords.noMembers") }}</p>
       </article>
 
-      <section v-if="records.unfiled.length" class="work-record-unfiled">
+      <section v-if="records.unfiled.length" class="work-record work-record-unfiled" data-testid="unfiled-container" @dragover.prevent @drop="dropMember($event, null)">
         <h4>{{ t("workRecords.unfiled") }}</h4>
-        <template v-for="row in unfiledTreeRows" :key="`${row.conversation.agent}:${row.conversation.conversation_id}`">
-          <div v-if="unfiledVisible(row)" class="unfiled-row" data-testid="unfiled">
-            <span
-              class="member-tree-indent"
-              :class="{ branch: row.depth > 0 }"
-              :style="{ width: `${row.depth * 14}px` }"
-            />
-            <button
-              v-if="row.childCount"
-              class="conversation-twisty"
-              type="button"
-              :aria-expanded="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase())"
-              :aria-label="t('workRecords.tree.toggle')"
-              :data-testid="`unfiled-toggle-${row.conversation.agent}:${row.conversation.conversation_id}`"
-              @click="toggleUnfiled(row.conversation.conversation_id)"
+        <div class="work-record-members">
+          <template v-for="row in unfiledTreeRows" :key="unfiledKey(row.conversation)">
+            <div
+              v-if="unfiledVisible(row)"
+              class="unfiled-row"
+              draggable="true"
+              :data-testid="'unfiled-' + unfiledKey(row.conversation)"
+              @dragstart="unfiledDragStart($event, row.conversation)"
+              @dragover.prevent
+              @drop.stop="dropMember($event, null, unfiledKey(row.conversation))"
+              @contextmenu.prevent="openMemberMenu($event, null, null, row.conversation)"
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                <path :d="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase()) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" />
-              </svg>
-              <span class="conversation-child-count">{{ row.childCount }}</span>
-            </button>
-            <span v-else class="conversation-twisty spacer" aria-hidden="true" />
-            <span class="member-title">{{ row.conversation.title }}</span>
-            <span class="member-agent">{{ row.conversation.agent }}</span>
-            <select v-model="selectedCollection" :aria-label="t('workRecords.selectCollection')">
-              <option :value="records.activeCollectionId">{{ t("workRecords.activeCollection") }}</option>
-              <option v-for="collection in records.activeCollections" :key="collection.id" :value="collection.id">
-                {{ collection.title }}
-              </option>
-            </select>
-            <button
-              class="ui-icon-button sm"
-              type="button"
-              :title="t('workRecords.add')"
-              :aria-label="t('workRecords.add')"
-              @click="addUnfiled(row.conversation)"
-            >＋</button>
-          </div>
-        </template>
+              <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
+              <button v-if="row.childCount" class="conversation-twisty" type="button" :aria-expanded="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase())" :aria-label="t('workRecords.tree.toggle')" :data-testid="'unfiled-toggle-' + row.conversation.agent + ':' + row.conversation.conversation_id" @click.stop="toggleUnfiled(row.conversation.conversation_id)">
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase()) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" /></svg>
+                <span class="conversation-child-count">{{ row.childCount }}</span>
+              </button>
+              <span v-else class="conversation-twisty spacer" aria-hidden="true" />
+              <input v-if="renamingConversationKey === unfiledKey(row.conversation)" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @keydown.enter.prevent="commitConversationRename(row.conversation)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(row.conversation)">
+              <span v-else class="member-title">{{ row.conversation.title }}</span>
+              <span class="member-agent">{{ row.conversation.agent }}</span>
+              <button class="ui-icon-button sm" type="button" :disabled="!row.conversation.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" :data-testid="'resume-' + unfiledKey(row.conversation)" @click.stop="explorer.resumeConversation(row.conversation)">▶</button>
+              <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(unfiledKey(row.conversation))">✎</button>
+            </div>
+          </template>
+        </div>
       </section>
+
 
       <section v-if="records.failures().length" class="work-record-failures" data-testid="delete-failures">
         <h4>{{ t("workRecords.failures") }}</h4>
@@ -404,7 +462,17 @@ watch(() => props.workspace, async (workspace) => {
           </li>
         </ul>
       </section>
-    </template>
+    <Teleport to="body">
+      <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
+        <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
+        <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
+        <button type="button" @click="deleteConversation(memberConversation(contextMenu.memberKey)!); closeMenu()">{{ t("workRecords.delete") }}</button>
+        <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
+        <template v-for="collection in records.activeCollections" :key="collection.id">
+          <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ t("workRecords.moveTo", { title: collection.title }) }}</button>
+        </template>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -413,29 +481,31 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-switches { display:flex; align-items:center; gap:var(--space-1); flex-wrap:wrap; }
 .work-record-checkbox { display:inline-flex; gap:4px; align-items:center; font-size:var(--font-sm); }
 .work-record-create { display:flex; gap:var(--space-1); }
-.work-record-create input, .work-record-actions input, .work-record-unfiled select { min-width:0; }
-.work-record { border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2); }
-.work-record-head { display:flex; align-items:center; gap:var(--space-1); }
-.work-record-head h4 { margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.work-record-active, .work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; }
-.work-record-actions { display:flex; gap:var(--space-1); margin-top:var(--space-1); flex-wrap:wrap; align-items:center; }
-.work-record-actions input { flex:1; min-width:80px; }
-.work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; gap:4px; }
-.work-record-members li { display:flex; align-items:center; gap:var(--space-1); }
+.work-record-create input { min-width:0; flex:1; }
+.work-record { border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2); background:var(--surface); }
+.work-record.active { border-color:var(--accent); }
+.work-record-head { display:flex; align-items:center; gap:var(--space-1); min-height:28px; }
+.collection-title { margin:0; min-width:80px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.title-input { height:20px; min-width:40px; flex:1; padding:0 4px; background:var(--surface-3); color:var(--text); border:var(--border-w) solid var(--accent); border-radius:var(--radius-sm); font:inherit; outline:none; }
+.head-actions { display:flex; align-items:center; gap:2px; flex:0 0 auto; }
+.work-record-active, .work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; white-space:nowrap; }
+.work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; gap:4px; min-height:24px; }
+.work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; }
+.work-record-members li:hover, .unfiled-row:hover { background:var(--surface-hover); }
 .member-title { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .member-agent { color:var(--text-faint); font-size:var(--font-xs); }
 .member-tree-indent { flex:0 0 auto; align-self:stretch; }
 .member-tree-indent.branch { border-right:1px solid var(--border-2); margin-right:4px; }
-.unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:24px; padding:0 var(--space-2); border-radius:var(--radius-sm); color:var(--text-2); white-space:nowrap; }
-.unfiled-row:hover { background:var(--surface-hover); }
-.unfiled-row select { min-width:96px; }
 .conversation-twisty { display:inline-flex; align-items:center; gap:3px; flex:0 0 auto; height:20px; padding:0 3px; background:none; border:none; color:var(--text-muted); border-radius:var(--radius-sm); cursor:pointer; }
 .conversation-twisty:hover { color:var(--text); background:var(--surface-hover); }
 .conversation-twisty.spacer { width:14px; padding:0; }
 .conversation-child-count { font-size:10px; }
 .work-record-no-members { color:var(--text-faint); font-size:var(--font-xs); }
-.work-record-unfiled, .work-record-failures { margin-top:var(--space-2); border-top:var(--border-w) solid var(--border); padding-top:var(--space-1); }
-.work-record-unfiled h4, .work-record-failures h4 { margin:0 0 var(--space-1); }
-.work-record-failures { color:var(--error); }
+.work-record-unfiled { margin-top:var(--space-2); }
+.work-record-unfiled h4 { margin:0 0 var(--space-1); }
+.work-record-failures { margin-top:var(--space-2); color:var(--error); }
 .ui-icon-button.danger { color:var(--error); }
+.work-record-menu { position:fixed; z-index:1000; display:grid; min-width:160px; padding:4px; border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface); box-shadow:var(--shadow-menu); }
+.work-record-menu button { justify-content:flex-start; padding:5px 8px; border:none; background:none; color:var(--text); text-align:left; border-radius:var(--radius-sm); cursor:pointer; }
+.work-record-menu button:hover { background:var(--surface-hover); }
 </style>

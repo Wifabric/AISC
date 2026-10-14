@@ -646,6 +646,30 @@ def _build_parser() -> _AiscArgumentParser:
     wr_rem.add_argument("--id", required=True)
     wr_rem.add_argument("--agent", required=True, choices=["claude", "codex"])
     wr_rem.add_argument("--conversation-id", required=True)
+    wr_reorder_collections = wrsub.add_parser(
+        "reorder-collections", help="Reorder work records", allow_abbrev=False)
+    _add_global_args(wr_reorder_collections, is_subparser=True)
+    wr_reorder_collections.add_argument("--workspace", type=str, default=None)
+    wr_reorder_collections.add_argument("--ids", required=True, nargs="+")
+    wr_reorder_members = wrsub.add_parser(
+        "reorder-members", help="Reorder members in a work record", allow_abbrev=False)
+    _add_global_args(wr_reorder_members, is_subparser=True)
+    wr_reorder_members.add_argument("--workspace", type=str, default=None)
+    wr_reorder_members.add_argument("--id", required=True)
+    wr_reorder_members.add_argument("--member-keys", required=True, nargs="+")
+    wr_reorder_unfiled = wrsub.add_parser(
+        "reorder-unfiled", help="Reorder unfiled provider conversations", allow_abbrev=False)
+    _add_global_args(wr_reorder_unfiled, is_subparser=True)
+    wr_reorder_unfiled.add_argument("--workspace", type=str, default=None)
+    wr_reorder_unfiled.add_argument("--member-keys", required=True, nargs="+")
+    wr_move = wrsub.add_parser(
+        "move", help="Move a member between work record and unfiled", allow_abbrev=False)
+    _add_global_args(wr_move, is_subparser=True)
+    wr_move.add_argument("--workspace", type=str, default=None)
+    wr_move.add_argument("--from-id", required=True)
+    wr_move.add_argument("--to-id", default=None)
+    wr_move.add_argument("--member-key", required=True)
+    wr_move.add_argument("--destination-order", default=None, nargs="+")
     wr_del = wrsub.add_parser("delete", help="Delete a work record and member transcripts",
                               allow_abbrev=False)
     _add_global_args(wr_del, is_subparser=True)
@@ -2192,12 +2216,16 @@ def _cmd_work_record(
         cmd_work_record_deactivate,
         cmd_work_record_delete,
         cmd_work_record_list,
+        cmd_work_record_move,
         cmd_work_record_reconcile,
         cmd_work_record_remove,
         cmd_work_record_rename,
         cmd_work_record_restore,
         print_work_record_delete,
         print_work_record_list,
+        cmd_work_record_reorder_collections,
+        cmd_work_record_reorder_members,
+        cmd_work_record_reorder_unfiled,
     )
 
     sub = args.work_record_command
@@ -2228,6 +2256,20 @@ def _cmd_work_record(
     if sub == "remove":
         return cmd_work_record_remove(
             workspace, args.id, args.agent, args.conversation_id
+        ), 0, []
+    if sub == "reorder-collections":
+        return cmd_work_record_reorder_collections(workspace, args.ids), 0, []
+    if sub == "reorder-members":
+        return cmd_work_record_reorder_members(workspace, args.id, args.member_keys), 0, []
+    if sub == "reorder-unfiled":
+        return cmd_work_record_reorder_unfiled(workspace, args.member_keys), 0, []
+    if sub == "move":
+        return cmd_work_record_move(
+            workspace,
+            args.from_id,
+            args.member_key,
+            to_collection_id=args.to_id,
+            destination_order=args.destination_order,
         ), 0, []
     if sub == "delete":
         data = cmd_work_record_delete(workspace, args.id)

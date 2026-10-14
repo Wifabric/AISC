@@ -420,11 +420,11 @@ async function consumeBootParams(): Promise<void> {
   bootParamsSettled.value = false;
   await settingsStore.refreshTarget();
   if (machine) {
-    await settingsStore.switchTarget(machine);
+    await settingsStore.switchTarget(machine, wsPath);
   } else if (wsPath?.startsWith("/")) {
     const name = settingsStore.target?.machine?.name
       ?? settingsStore.doc?.remoteMachines?.[0]?.name ?? null;
-    if (settingsStore.target?.kind !== "remote") await settingsStore.switchTarget(name);
+    if (settingsStore.target?.kind !== "remote") await settingsStore.switchTarget(name, wsPath);
   }
   if (!ws.openLauncher()) return; // cap guard (harmless in a fresh window)
   if (!wsPath) return; // remote launcher window — the picker carries on

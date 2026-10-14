@@ -138,18 +138,29 @@ fn resolve_workspace_binding(
     global.map(|machine| TargetBinding::Remote(machine.clone())).unwrap_or(TargetBinding::Local)
 }
 
-pub(crate) fn bind_workspace_target(
+pub(crate) fn bind_workspace_machine(
     app: &tauri::AppHandle,
     workspace: &str,
-    target: &CliTarget,
+    machine: Option<RemoteMachine>,
 ) -> Result<(), WorkbenchError> {
     let map = app.state::<WorkspaceTargets>();
     let mut guard = map
         .0
         .lock()
         .map_err(|_| WorkbenchError::cli_protocol().with_detail("workspace target lock"))?;
-    guard.insert(workspace_target_key(workspace), target_binding(target));
+    guard.insert(
+        workspace_target_key(workspace),
+        machine.map(TargetBinding::Remote).unwrap_or(TargetBinding::Local),
+    );
     Ok(())
+}
+
+pub(crate) fn bind_workspace_target(
+    app: &tauri::AppHandle,
+    workspace: &str,
+    target: &CliTarget,
+) -> Result<(), WorkbenchError> {
+    bind_workspace_machine(app, workspace, binding_machine(&target_binding(target)))
 }
 
 fn workspace_binding(app: &tauri::AppHandle, workspace: &str) -> Option<TargetBinding> {
@@ -215,11 +226,15 @@ pub async fn target_set(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     name: String,
+    workspace: Option<String>,
 ) -> Result<TargetInfo, WorkbenchError> {
     let machine = machine_by_name(&app, &name)?;
     // W3: the switch is THIS window's only — other windows keep driving
     // their machines (see WindowTargets).
     set_window_target(&app, &window, Some(machine.clone()))?;
+    if let Some(workspace) = workspace.as_deref() {
+        bind_workspace_machine(&app, workspace, Some(machine.clone()))?;
+    }
     // Tunnels bound to the PREVIOUS machine must not shadow the new one on
     // the same ports — tear them all down on every switch (tunnels remain
     // process-global resources; port collisions are real).
@@ -239,9 +254,13 @@ pub async fn target_set(
 pub async fn target_clear(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
+    workspace: Option<String>,
 ) -> Result<TargetInfo, WorkbenchError> {
     crate::tunnel::close_all_tunnels(app.state::<crate::tunnel::TunnelRegistry>().inner());
     set_window_target(&app, &window, None)?;
+    if let Some(workspace) = workspace.as_deref() {
+        bind_workspace_machine(&app, workspace, None)?;
+    }
     Ok(TargetInfo { machine: None, kind: "local" })
 }
 

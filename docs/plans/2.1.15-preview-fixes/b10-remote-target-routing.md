@@ -56,3 +56,9 @@ Workbench 没有走远端 serve；`start_runtime` / `open_session` 实际取得
   watcher/workspace/runtime 业务路径使用。
 - 验证：`cargo check --lib` 通过；`cargo test -p workbench --lib` 351 passed /
   1 ignored；`cargo test -p workbench --no-run` 通过。
+
+- 启动前绑定补充：`target_set` / `target_clear` 接收可选 workspace，并把当前
+  target 立即写入 workspace binding；远端窗口 boot 与已打开 workspace 后切换
+  target 均不再等待第一次 runtime start。
+- CLI preview 版本升至 `0.1.5.dev0`，为远端分发新增 Work Record reorder/move
+  命令并避免 TestPyPI 同版本重复上传。

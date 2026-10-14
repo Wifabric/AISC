@@ -1199,6 +1199,20 @@ export interface WorkRecordRemoveResult {
   member_key?: string;
 }
 
+export interface WorkRecordCollectionsResult {
+  collections: WorkRecordCollection[];
+}
+
+export interface WorkRecordUnfiledResult {
+  unfiled: ConversationSummary[];
+}
+
+export interface WorkRecordMoveResult {
+  member?: WorkRecordMember;
+  member_key?: string;
+  collection_id?: string | null;
+}
+
 export interface WorkRecordDeleteFailure extends WorkRecordMember {
   stage: "terminate" | "delete";
   reason: string;

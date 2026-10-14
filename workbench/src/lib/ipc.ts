@@ -176,6 +176,44 @@ export const workRecordRemoveMember = (
     conversationId,
   });
 
+export const workRecordReorderCollections = (workspace: string, ids: string[]) =>
+  invoke<import("../types").WorkRecordCollectionsResult>("work_record_reorder_collections", {
+    workspace,
+    ids,
+  });
+
+export const workRecordReorderMembers = (
+  workspace: string,
+  id: string,
+  memberKeys: string[],
+) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_reorder_members", {
+    workspace,
+    id,
+    memberKeys,
+  });
+
+export const workRecordReorderUnfiled = (workspace: string, memberKeys: string[]) =>
+  invoke<import("../types").WorkRecordUnfiledResult>("work_record_reorder_unfiled", {
+    workspace,
+    memberKeys,
+  });
+
+export const workRecordMoveMember = (
+  workspace: string,
+  fromId: string,
+  memberKey: string,
+  toId?: string | null,
+  destinationOrder?: string[],
+) =>
+  invoke<import("../types").WorkRecordMoveResult>("work_record_move_member", {
+    workspace,
+    fromId,
+    memberKey,
+    toId: toId ?? null,
+    destinationOrder: destinationOrder ?? null,
+  });
+
 export const workRecordDelete = (workspace: string, id: string) =>
   invoke<import("../types").WorkRecordDeleteResult>("work_record_delete", { workspace, id });
 
@@ -400,8 +438,8 @@ export const ccSwitchFetchModels = (
 // --- 2.1.10 R4b: which machine the Workbench drives ---
 export const targetGet = () =>
   invoke<import("../types").TargetInfo>("target_get");
-export const targetSet = (name: string) =>
-  invoke<import("../types").TargetInfo>("target_set", { name });
+export const targetSet = (name: string, workspace?: string | null) =>
+  invoke<import("../types").TargetInfo>("target_set", { name, workspace: workspace ?? null });
 
 /** v2.1.13 remote CLI pairing: soft version probe (the
  * serve_protocol hard gate is unchanged). verdict:
@@ -415,8 +453,8 @@ export interface RemoteCliInfo {
 }
 export const remoteCliInfo = (machine: string) =>
   invoke<RemoteCliInfo>("remote_cli_info", { machine });
-export const targetClear = () =>
-  invoke<import("../types").TargetInfo>("target_clear");
+export const targetClear = (workspace?: string | null) =>
+  invoke<import("../types").TargetInfo>("target_clear", { workspace: workspace ?? null });
 
 // --- IDEA-2 (2d): subscription + usage data plane ---
 // The subscription URL / content ride the CLI child's stdin on the Rust side

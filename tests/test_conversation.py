@@ -450,6 +450,28 @@ class TestParentThreadTree:
         path.write_text(json.dumps(meta) + "\n" + json.dumps(user) + "\n",
                         encoding="utf-8")
 
+    def test_codex_history_base_fork_carries_parent_thread_id(self, ws_env):
+        ws, ws_dir = ws_env
+        dest = ws_dir / "codex" / "sessions" / "2026" / "10" / "14"
+        dest.mkdir(parents=True)
+        self._write_rollout(
+            dest / f"rollout-2026-10-14T02-47-11-{self.PARENT_ID}.jsonl",
+            self.PARENT_ID, "user")
+        fork_path = dest / f"rollout-2026-10-14T02-47-16-{self.CHILD_ID}.jsonl"
+        payload = {"session_id": self.CHILD_ID, "id": self.CHILD_ID,
+                   "thread_source": "user",
+                   "history_base": {"thread_id": self.PARENT_ID}}
+        meta = {"timestamp": "2026-10-14T02:47:16.000Z",
+                "type": "session_meta", "payload": payload}
+        user = {"timestamp": "2026-10-14T02:47:17.000Z",
+                "type": "response_item",
+                "payload": {"type": "message", "role": "user",
+                            "content": [{"type": "input_text", "text": "fork"}]}}
+        fork_path.write_text(json.dumps(meta) + "\n" + json.dumps(user) + "\n", encoding="utf-8")
+        result = list_conversations(str(ws))
+        by_id = {e["conversation_id"]: e for e in result["conversations"]}
+        assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
+
     def test_codex_subagent_carries_parent_thread_id(self, ws_env):
         ws, ws_dir = ws_env
         dest = ws_dir / "codex" / "sessions" / "2026" / "10" / "14"

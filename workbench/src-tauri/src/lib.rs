@@ -86,7 +86,8 @@ use conversation::{
 use work_record::{
     work_record_activate, work_record_add_member, work_record_archive, work_record_create,
     work_record_deactivate, work_record_delete, work_record_list, work_record_reconcile,
-    work_record_remove_member, work_record_rename, work_record_restore,
+    work_record_move_member, work_record_reorder_collections,
+    work_record_reorder_members, work_record_reorder_unfiled, work_record_remove_member, work_record_rename, work_record_restore,
 };
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
@@ -162,6 +163,10 @@ pub fn run(cli_arg: Option<String>) {
             work_record_archive,
             work_record_restore,
             work_record_add_member,
+            work_record_move_member,
+            work_record_reorder_collections,
+            work_record_reorder_members,
+            work_record_reorder_unfiled,
             work_record_remove_member,
             work_record_delete,
             work_record_reconcile,

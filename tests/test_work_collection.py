@@ -17,6 +17,7 @@ CLAUDE_ID = "c8931e67-2321-492d-8557-4158e3ef2ee7"
 CODEX_ID = "01a04ca9-d3f6-7021-b9e7-50d48d818c65"
 CODEX_ID_2 = "01a04ca9-d3f6-7021-b9e7-50d48d818c66"
 CODEX_ID_3 = "01a04ca9-d3f6-7021-b9e7-50d48d818c67"
+CODEX_ID_4 = "01a04ca9-d3f6-7021-b9e7-50d48d818c68"
 
 
 @pytest.fixture
@@ -376,6 +377,62 @@ class TestDeleteCollection:
 
 
 
+class TestOrderAndMovement:
+    def test_reorders_collections_and_members_atomically(self, ws_env, work_collection):
+        _ws, _ws_dir, runtime = ws_env
+        one = work_collection.create(runtime, title="one")
+        two = work_collection.create(runtime, title="two")
+        work_collection.add_member(runtime, one["id"], agent="codex", conversation_id=CODEX_ID)
+        work_collection.add_member(runtime, one["id"], agent="codex", conversation_id=CODEX_ID_2)
+        result = work_collection.reorder_collections(runtime, [two["id"], one["id"]])
+        assert [c["id"] for c in result["collections"]] == [two["id"], one["id"]]
+        member_order = [_key("codex", CODEX_ID_2), _key("codex", CODEX_ID)]
+        updated = work_collection.reorder_members(runtime, one["id"], member_order)
+        assert [m["member_key"] for m in updated["members"]] == member_order
+        with pytest.raises(CliError):
+            work_collection.reorder_members(runtime, one["id"], member_order[:1])
+        with pytest.raises(CliError):
+            work_collection.reorder_collections(runtime, [one["id"]])
+
+    def test_unfiled_order_is_persistent_and_appends_new_sessions(self, ws_env, work_collection):
+        ws, ws_dir, runtime = ws_env
+        _codex(ws_dir, CODEX_ID)
+        _codex(ws_dir, CODEX_ID_2)
+        _codex(ws_dir, CODEX_ID_3)
+        requested = [_key("codex", CODEX_ID_3), _key("codex", CODEX_ID), _key("codex", CODEX_ID_2)]
+        result = work_collection.reorder_unfiled(runtime, str(ws), requested)
+        assert [x["conversation_id"] for x in result["unfiled"]] == [CODEX_ID_3, CODEX_ID, CODEX_ID_2]
+        assert work_collection.unfiled(runtime, str(ws))[0]["conversation_id"] == CODEX_ID_3
+        _codex(ws_dir, CODEX_ID_4)
+        assert work_collection.unfiled(runtime, str(ws))[-1]["conversation_id"] == CODEX_ID_4
+        with pytest.raises(CliError):
+            work_collection.reorder_unfiled(runtime, str(ws), requested[:1])
+
+    def test_moves_members_between_collections_and_unfiled(self, ws_env, work_collection):
+        ws, ws_dir, runtime = ws_env
+        _codex(ws_dir, CODEX_ID)
+        _codex(ws_dir, CODEX_ID_2)
+        source = work_collection.create(runtime, title="source")
+        target = work_collection.create(runtime, title="target")
+        work_collection.add_member(runtime, source["id"], agent="codex", conversation_id=CODEX_ID)
+        moved_key = _key("codex", CODEX_ID)
+        moved = work_collection.move_member(
+            runtime, source["id"], target["id"], moved_key,
+            destination_order=[moved_key],
+        )
+        assert moved["member"]["member_key"] == moved_key
+        doc = work_collection.load(runtime)
+        assert doc["collections"][0]["members"] == []
+        assert [m["member_key"] for m in doc["collections"][1]["members"]] == [moved_key]
+        unfiled_order = [moved_key, _key("codex", CODEX_ID_2)]
+        moved_out = work_collection.move_member(
+            runtime, target["id"], None, moved_key,
+            destination_order=unfiled_order,
+        )
+        assert moved_out["member_key"] == moved_key
+        assert [x["conversation_id"] for x in work_collection.unfiled(runtime, str(ws))] == [CODEX_ID, CODEX_ID_2]
+
+
 class TestWorkRecordCli:
     """Task 3: `aisc work-record` parser/dispatch is a thin JSON surface."""
 
@@ -407,6 +464,22 @@ class TestWorkRecordCli:
               "agent": "claude", "conversation_id": CLAUDE_ID}),
             (["work-record", "delete", "--workspace", "/ws", "--id", "c1"],
              {"work_record_command": "delete", "workspace": "/ws", "id": "c1"}),
+            (["work-record", "reorder-collections", "--workspace", "/ws", "--ids", "c2", "c1"],
+             {"work_record_command": "reorder-collections", "workspace": "/ws",
+              "ids": ["c2", "c1"]}),
+            (["work-record", "reorder-members", "--workspace", "/ws", "--id", "c1",
+              "--member-keys", "codex:a", "codex:b"],
+             {"work_record_command": "reorder-members", "workspace": "/ws", "id": "c1",
+              "member_keys": ["codex:a", "codex:b"]}),
+            (["work-record", "reorder-unfiled", "--workspace", "/ws",
+              "--member-keys", "codex:b", "codex:a"],
+             {"work_record_command": "reorder-unfiled", "workspace": "/ws",
+              "member_keys": ["codex:b", "codex:a"]}),
+            (["work-record", "move", "--workspace", "/ws", "--from-id", "c1",
+              "--member-key", "codex:a", "--destination-order", "codex:a", "codex:b"],
+             {"work_record_command": "move", "workspace": "/ws", "from_id": "c1",
+              "to_id": None, "member_key": "codex:a",
+              "destination_order": ["codex:a", "codex:b"]}),
             (["work-record", "reconcile", "--workspace", "/ws"],
              {"work_record_command": "reconcile", "workspace": "/ws"}),
         ]

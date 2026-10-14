@@ -755,6 +755,8 @@ export const zhCN = {
   "explorer.conversations.menuFork": "分支（fork）",
   "explorer.conversations.reason.codexNoFork": "Codex CLI 暂不支持 fork",
   "workRecords.tree.toggle": "展开或折叠子会话",
+"workRecords.moveOut": "移出到未归档",
+  "workRecords.moveTo": "移入 {title}",
   "explorer.conversations.menuDelete": "删除",
   "explorer.conversations.deleteTitle": "删除历史对话",
   "explorer.conversations.deleteConfirm": "确定删除这条历史对话吗？\n「{title}」\n此操作不可撤销。",

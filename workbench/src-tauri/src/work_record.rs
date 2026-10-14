@@ -111,6 +111,59 @@ fn work_record_remove_member_argv(
     finish_argv(argv)
 }
 
+fn push_values(argv: &mut Vec<String>, flag: &str, values: &[String]) {
+    argv.push(flag.into());
+    argv.extend(values.iter().cloned());
+}
+
+fn work_record_reorder_collections_argv(
+    workspace: &str,
+    collection_ids: &[String],
+) -> Vec<String> {
+    let mut argv = base_argv(workspace, "reorder-collections");
+    push_values(&mut argv, "--ids", collection_ids);
+    finish_argv(argv)
+}
+
+fn work_record_reorder_members_argv(
+    workspace: &str,
+    id: &str,
+    member_keys: &[String],
+) -> Vec<String> {
+    let mut argv = base_argv(workspace, "reorder-members");
+    argv.extend(["--id".into(), id.into()]);
+    push_values(&mut argv, "--member-keys", member_keys);
+    finish_argv(argv)
+}
+
+fn work_record_reorder_unfiled_argv(
+    workspace: &str,
+    member_keys: &[String],
+) -> Vec<String> {
+    let mut argv = base_argv(workspace, "reorder-unfiled");
+    push_values(&mut argv, "--member-keys", member_keys);
+    finish_argv(argv)
+}
+
+fn work_record_move_member_argv(
+    workspace: &str,
+    from_id: &str,
+    to_id: Option<&str>,
+    member_key: &str,
+    destination_order: Option<&Vec<String>>,
+) -> Vec<String> {
+    let mut argv = base_argv(workspace, "move");
+    argv.extend(["--from-id".into(), from_id.into()]);
+    if let Some(to) = to_id {
+        argv.extend(["--to-id".into(), to.into()]);
+    }
+    argv.extend(["--member-key".into(), member_key.into()]);
+    if let Some(order) = destination_order {
+        push_values(&mut argv, "--destination-order", order);
+    }
+    finish_argv(argv)
+}
+
 fn work_record_delete_argv(workspace: &str, id: &str) -> Vec<String> {
     let mut argv = base_argv(workspace, "delete");
     argv.extend(["--id".into(), id.into()]);
@@ -195,6 +248,28 @@ pub struct WorkRecordRemoveResult {
     pub removed: bool,
     #[serde(default)]
     pub member_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkRecordCollectionsResult {
+    #[serde(default)]
+    pub collections: Vec<WorkRecordCollection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkRecordUnfiledResult {
+    #[serde(default)]
+    pub unfiled: Vec<ConversationSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkRecordMoveResult {
+    #[serde(default)]
+    pub member: Option<WorkRecordMember>,
+    #[serde(default)]
+    pub member_key: Option<String>,
+    #[serde(default)]
+    pub collection_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -427,6 +502,56 @@ pub async fn work_record_remove_member(
 }
 
 #[tauri::command]
+pub async fn work_record_reorder_collections(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    ids: Vec<String>,
+) -> Result<WorkRecordCollectionsResult, WorkbenchError> {
+    let argv = work_record_reorder_collections_argv(&workspace, &ids);
+    run_work_record(&workspace, &app, &window, argv, WORK_RECORD_TIMEOUT, "work record reorder collections").await
+}
+
+#[tauri::command]
+pub async fn work_record_reorder_members(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    id: String,
+    member_keys: Vec<String>,
+) -> Result<WorkRecordCollectionResult, WorkbenchError> {
+    let argv = work_record_reorder_members_argv(&workspace, &id, &member_keys);
+    run_work_record(&workspace, &app, &window, argv, WORK_RECORD_TIMEOUT, "work record reorder members").await
+}
+
+#[tauri::command]
+pub async fn work_record_reorder_unfiled(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    member_keys: Vec<String>,
+) -> Result<WorkRecordUnfiledResult, WorkbenchError> {
+    let argv = work_record_reorder_unfiled_argv(&workspace, &member_keys);
+    run_work_record(&workspace, &app, &window, argv, WORK_RECORD_TIMEOUT, "work record reorder unfiled").await
+}
+
+#[tauri::command]
+pub async fn work_record_move_member(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    from_id: String,
+    to_id: Option<String>,
+    member_key: String,
+    destination_order: Option<Vec<String>>,
+) -> Result<WorkRecordMoveResult, WorkbenchError> {
+    let argv = work_record_move_member_argv(
+        &workspace, &from_id, to_id.as_deref(), &member_key, destination_order.as_ref(),
+    );
+    run_work_record(&workspace, &app, &window, argv, WORK_RECORD_TIMEOUT, "work record move member").await
+}
+
+#[tauri::command]
 pub async fn work_record_delete(
     app: AppHandle,
     window: tauri::WebviewWindow,
@@ -543,6 +668,33 @@ mod tests {
         );
         assert_eq!(remove[1], "remove");
         assert!(!remove.contains(&"--force".to_string()));
+    }
+
+    #[test]
+    fn order_and_move_argv_shapes() {
+        let collections = work_record_reorder_collections_argv(
+            "C:/ws", &["id-2".into(), "id-1".into()],
+        );
+        assert_eq!(collections[1], "reorder-collections");
+        assert!(collections.contains(&"--ids".into()));
+        assert!(collections.contains(&"id-2".into()));
+        let members = work_record_reorder_members_argv(
+            "C:/ws", "id-1", &["codex:b".into(), "codex:a".into()],
+        );
+        assert_eq!(members[1], "reorder-members");
+        assert!(members.contains(&"--member-keys".into()));
+        let unfiled = work_record_reorder_unfiled_argv(
+            "C:/ws", &["codex:b".into(), "codex:a".into()],
+        );
+        assert_eq!(unfiled[1], "reorder-unfiled");
+        let moved = work_record_move_member_argv(
+            "C:/ws", "from-1", Some("to-1"), "codex:a",
+            Some(&vec!["codex:a".into(), "codex:b".into()]),
+        );
+        assert_eq!(moved[1], "move");
+        for flag in ["--from-id", "--to-id", "--member-key", "--destination-order"] {
+            assert!(moved.contains(&flag.to_string()));
+        }
     }
 
     #[test]

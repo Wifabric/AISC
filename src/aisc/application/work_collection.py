@@ -206,6 +206,38 @@ def _member_key(agent: str, conversation_id: str) -> str:
     return f"{agent}:{conversation_id.lower()}"
 
 
+def _require_exact_order(requested: List[str], current: List[str], *, noun: str) -> None:
+    if len(requested) != len(set(requested)):
+        raise CliError(
+            message=f"Duplicate {noun} key in reorder request",
+            exit_code=2,
+            error_code="AISC_ERR_USAGE",
+        )
+    if set(requested) != set(current):
+        raise CliError(
+            message=f"{noun} reorder request does not match current items",
+            exit_code=1,
+            error_code="AISC_ERR_WORK_COLLECTION_ORDER_CONFLICT",
+        )
+
+
+def _ordered_unfiled(doc: Dict[str, Any], items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_key = {
+        _member_key(item["agent"], item["conversation_id"]): item
+        for item in items
+    }
+    ordered: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for key in doc.get("unfiled_order", []):
+        item = by_key.get(key)
+        if item is None:
+            continue
+        ordered.append(item)
+        seen.add(key)
+    ordered.extend(item for key, item in by_key.items() if key not in seen)
+    return ordered
+
+
 def _existing_member_keys(doc: Dict[str, Any]) -> set[str]:
     return {
         member.get("member_key")
@@ -491,11 +523,120 @@ def unfiled(registry_root: Any, workspace: str) -> List[Dict[str, Any]]:
     """Compute supported provider conversations not belonging to any Collection."""
     doc = load(registry_root)
     member_keys = _existing_member_keys(doc)
-    return [
+    items = [
         item
         for item in _supported_conversations(workspace)
         if _member_key(item["agent"], item["conversation_id"]) not in member_keys
     ]
+    return _ordered_unfiled(doc, items)
+
+
+def reorder_collections(registry_root: Any, collection_ids: List[str]) -> Dict[str, Any]:
+    with _ledger_lock(registry_root):
+        doc = load(registry_root)
+        current = [item["id"] for item in doc["collections"]]
+        _require_exact_order(collection_ids, current, noun="collection")
+        by_id = {item["id"]: item for item in doc["collections"]}
+        doc["collections"] = [by_id[item_id] for item_id in collection_ids]
+        _write(registry_root, doc)
+        return {"collections": copy.deepcopy(doc["collections"])}
+
+
+def reorder_members(
+    registry_root: Any,
+    collection_id: str,
+    member_keys: List[str],
+) -> Dict[str, Any]:
+    with _ledger_lock(registry_root):
+        doc = load(registry_root)
+        collection = _find(doc, collection_id)
+        current = [item["member_key"] for item in collection["members"]]
+        _require_exact_order(member_keys, current, noun="member")
+        by_key = {item["member_key"]: item for item in collection["members"]}
+        collection["members"] = [by_key[key] for key in member_keys]
+        collection["updated_at"] = _now_iso()
+        _write(registry_root, doc)
+        return copy.deepcopy(collection)
+
+
+def reorder_unfiled(
+    registry_root: Any,
+    workspace: str,
+    member_keys: List[str],
+) -> Dict[str, Any]:
+    with _ledger_lock(registry_root):
+        doc = load(registry_root)
+        existing = _existing_member_keys(doc)
+        items = [
+            item
+            for item in _supported_conversations(workspace)
+            if _member_key(item["agent"], item["conversation_id"]) not in existing
+        ]
+        current = [_member_key(item["agent"], item["conversation_id"]) for item in items]
+        _require_exact_order(member_keys, current, noun="unfiled member")
+        doc["unfiled_order"] = member_keys
+        _write(registry_root, doc)
+        return {"unfiled": _ordered_unfiled(doc, items)}
+
+
+def move_member(
+    registry_root: Any,
+    from_collection_id: str,
+    to_collection_id: Optional[str],
+    member_key: str,
+    *,
+    destination_order: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Atomically move one member to another Collection, or out to unfiled."""
+    with _ledger_lock(registry_root):
+        doc = load(registry_root)
+        source = _find(doc, from_collection_id)
+        member = next(
+            (item for item in source["members"] if item.get("member_key") == member_key),
+            None,
+        )
+        if member is None:
+            raise CliError(
+                message=f"Conversation is not a member: {member_key}",
+                exit_code=3,
+                error_code="AISC_ERR_WORK_COLLECTION_MEMBER_NOT_FOUND",
+            )
+        source["members"] = [
+            item for item in source["members"] if item.get("member_key") != member_key
+        ]
+        source["updated_at"] = _now_iso()
+        if to_collection_id is None:
+            order = list(destination_order or [member_key])
+            if member_key not in order:
+                raise CliError(
+                    message="Moved member missing from unfiled destination order",
+                    exit_code=2,
+                    error_code="AISC_ERR_USAGE",
+                )
+            doc["unfiled_order"] = order
+            _write(registry_root, doc)
+            return {"member": copy.deepcopy(member), "member_key": member_key, "collection_id": None}
+
+        target = _find(doc, to_collection_id)
+        if target["id"] != source["id"] and member_key in _existing_member_keys(doc):
+            raise CliError(
+                message=f"Conversation is already in another work collection: {member_key}",
+                exit_code=1,
+                error_code="AISC_ERR_WORK_COLLECTION_MEMBER_EXISTS",
+            )
+        target["members"].append(member)
+        target["updated_at"] = _now_iso()
+        if destination_order is not None:
+            current = [item["member_key"] for item in target["members"]]
+            _require_exact_order(destination_order, current, noun="member")
+            by_key = {item["member_key"]: item for item in target["members"]}
+            target["members"] = [by_key[key] for key in destination_order]
+        _write(registry_root, doc)
+        return {
+            "member": copy.deepcopy(member),
+            "member_key": member_key,
+            "collection_id": target["id"],
+        }
 
 
 def _runtime_root(workspace: str) -> Path:

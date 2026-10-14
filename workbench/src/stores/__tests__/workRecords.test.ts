@@ -12,6 +12,7 @@ import {
   workRecordDeactivate,
   workRecordDelete,
   workRecordList,
+  workRecordMoveMember,
   workRecordRemoveMember,
   workRecordRename,
   workRecordRestore,
@@ -30,6 +31,10 @@ vi.mock("../../lib/ipc", () => ({
   workRecordRemoveMember: vi.fn(),
   workRecordDelete: vi.fn(),
   workRecordReconcile: vi.fn(),
+  workRecordReorderCollections: vi.fn(),
+  workRecordReorderMembers: vi.fn(),
+  workRecordReorderUnfiled: vi.fn(),
+  workRecordMoveMember: vi.fn(),
 }));
 
 const member = {
@@ -141,18 +146,24 @@ describe("workRecords store", () => {
     expect(s.byId("collection-1")?.members).toHaveLength(0);
   });
 
-  it("move fails loudly and reloads when add-after-remove fails", async () => {
+  it("moves atomically and reloads the joined view", async () => {
     const s = useWorkRecordsStore();
     await s.load("/ws");
-    vi.mocked(workRecordRemoveMember).mockResolvedValue({ removed: true });
-    vi.mocked(workRecordAddMember).mockRejectedValue(new Error("add failed"));
-    vi.mocked(workRecordList).mockResolvedValue(listResult());
-    await expect(s.moveMember(
+    vi.mocked(workRecordMoveMember).mockResolvedValue({
+      member,
+      member_key: member.member_key,
+      collection_id: "collection-2",
+    });
+    const moved = await s.moveMember(
       "collection-1", "collection-2", "codex",
       "01a04ca9-d3f6-7021-b9e7-50d48d818c65",
-    )).rejects.toThrow("add failed");
+      [member.member_key],
+    );
+    expect(moved).toBe(true);
+    expect(workRecordMoveMember).toHaveBeenCalledWith(
+      "/ws", "collection-1", member.member_key, "collection-2", [member.member_key],
+    );
     expect(workRecordList).toHaveBeenLastCalledWith("/ws");
-    expect(s.byId("collection-1")?.members).toEqual([member]);
   });
 
   it("records successful and partial delete outcomes", async () => {

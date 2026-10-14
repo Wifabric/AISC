@@ -108,6 +108,49 @@ def cmd_work_record_remove(
     )
 
 
+def cmd_work_record_reorder_collections(workspace: str, collection_ids: list[str]) -> Dict[str, Any]:
+    wc = _collection_module()
+    return wc.reorder_collections(_registry(workspace), collection_ids)
+
+
+def cmd_work_record_reorder_members(
+    workspace: str,
+    collection_id: str,
+    member_keys: list[str],
+) -> Dict[str, Any]:
+    wc = _collection_module()
+    return {
+        "collection": wc.reorder_members(
+            _registry(workspace), collection_id, member_keys
+        )
+    }
+
+
+def cmd_work_record_reorder_unfiled(
+    workspace: str,
+    member_keys: list[str],
+) -> Dict[str, Any]:
+    wc = _collection_module()
+    return wc.reorder_unfiled(_registry(workspace), workspace, member_keys)
+
+
+def cmd_work_record_move(
+    workspace: str,
+    from_collection_id: str,
+    member_key: str,
+    to_collection_id: str | None = None,
+    destination_order: list[str] | None = None,
+) -> Dict[str, Any]:
+    wc = _collection_module()
+    return wc.move_member(
+        _registry(workspace),
+        from_collection_id,
+        to_collection_id,
+        member_key,
+        destination_order=destination_order,
+    )
+
+
 def cmd_work_record_delete(workspace: str, collection_id: str) -> Dict[str, Any]:
     wc = _collection_module()
     return wc.delete_collection(workspace, collection_id)

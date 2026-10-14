@@ -9,8 +9,13 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   conversationList,
   conversationPreflight,
+  workRecordAddMember,
   workRecordDelete,
   workRecordList,
+  workRecordReorderCollections,
+  workRecordReorderMembers,
+  workRecordRename,
+  workRecordMoveMember,
   workRecordRemoveMember,
 } from "../../../lib/ipc";
 import { useWorkspaceExplorerStore } from "../../../stores/workspaceExplorer";
@@ -47,8 +52,15 @@ vi.mock("../../../lib/ipc", () => ({
   workRecordRemoveMember: vi.fn(),
   workRecordDelete: vi.fn(),
   workRecordReconcile: vi.fn(),
+  workRecordReorderCollections: vi.fn(),
+  workRecordReorderMembers: vi.fn(),
+  workRecordReorderUnfiled: vi.fn(),
+  workRecordMoveMember: vi.fn(),
 }));
 const runtimeMock = vi.hoisted(() => ({
+  tabs: [] as unknown[],
+  activeTabId: null as string | null,
+  activateTab: vi.fn(),
   createTab: vi.fn(() => ({ id: "tab-1" })),
   closeLiveConversationSessions: vi.fn(async () => {}),
   resolvePendingConversationAssociations: vi.fn(async () => 0),
@@ -138,7 +150,7 @@ describe("WorkRecordsView", () => {
   it("marks the active collection and shows unfiled rows", async () => {
     const { wrapper } = await mountView();
     expect(wrapper.find("[data-testid=collection][data-id=active-1]").attributes("data-active")).toBe("true");
-    expect(wrapper.find("[data-testid=unfiled]").text()).toContain("Provider");
+    expect(wrapper.find("[data-testid^='unfiled-']").text()).toContain("Provider");
   });
 
   it("uses one ordinary confirmation containing count and permanent-delete wording", async () => {
@@ -215,8 +227,8 @@ describe("WorkRecordsView", () => {
     await flushPromises();
 
     expect(workRecordList).toHaveBeenCalledTimes(2);
-    expect(wrapper.find(`[data-testid="resume-${member.member_key}"]`).exists()).toBe(false);
-    expect(wrapper.find("[data-testid=unfiled]").text()).toContain("Provider");
+    expect(wrapper.find(`[data-testid=collection] [data-testid="resume-${member.member_key}"]`).exists()).toBe(false);
+    expect(wrapper.find("[data-testid^='unfiled-']").text()).toContain("Provider");
   });
 
   it("resolves pending new provider tabs after refresh", async () => {
@@ -229,35 +241,13 @@ describe("WorkRecordsView", () => {
     expect(runtimeMock.resolvePendingConversationAssociations).toHaveBeenLastCalledWith([provider]);
   });
 
-  it("opens All Sessions inside Work Records without switching to History", async () => {
-    const { wrapper, explorer } = await mountView();
-    explorer.activateView = vi.fn();
-    await wrapper.find("[data-testid=all-sessions]").trigger("click");
-    expect(wrapper.findComponent({ name: "ConversationsPane" }).exists()).toBe(true);
-    expect(wrapper.find(".conversation-row").text()).toContain("Provider");
-    expect(explorer.activateView).not.toHaveBeenCalled();
+  it("does not embed an All Sessions mode inside Work Records", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.find("[data-testid=all-sessions]").exists()).toBe(false);
+    expect(wrapper.findComponent({ name: "ConversationsPane" }).exists()).toBe(false);
   });
 
-  it("keeps a search-matched child under its parent in All Sessions", async () => {
-    const explorer = useWorkspaceExplorerStore();
-    explorer.workspace = "/ws";
-    const parent = { ...provider, conversation_id: "parent-1", title: "Parent", parent_thread_id: null };
-    const child = { ...provider, conversation_id: "child-1", title: "Child", parent_thread_id: "parent-1" };
-    explorer.conversations = [parent, child];
-    vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [parent, child] });
-    const wrapper = mount(WorkRecordsView, {
-      props: { workspace: "/ws" },
-      global: { plugins: [i18n] },
-    });
-    await flushPromises();
-    await wrapper.find("[data-testid=all-sessions]").trigger("click");
-    await wrapper.find('[data-testid="conversations-search"]').setValue("Child");
-    const rows = wrapper.findAll(".conversation-row");
-    expect(rows).toHaveLength(2);
-    expect(rows[0].text()).toContain("Parent");
-    expect(rows[1].text()).toContain("Child");
-    expect(rows[1].attributes("style")).toContain("padding-left: 20px");
-  });
+
 
   it("folds a collection child under its parent by default", async () => {
     const childId = "child-1";
@@ -346,6 +336,114 @@ describe("WorkRecordsView", () => {
     expect(runtimeMock.createTab).toHaveBeenCalledWith("codex", member.conversation_id, false);
   });
 
+  it("renames a collection through an inline editor only after clicking rename", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.find("[data-testid=collection-rename-input]").exists()).toBe(false);
+    await wrapper.find("[data-testid=rename-active-1]").trigger("click");
+    const input = wrapper.find("[data-testid=collection-rename-input]");
+    expect(input.exists()).toBe(true);
+    await input.setValue("Renamed record");
+    await input.trigger("keydown.enter");
+    await flushPromises();
+    expect(workRecordRename).toHaveBeenCalledWith("/ws", "active-1", "Renamed record");
+  });
+
+  function fakeDataTransfer(initial: Record<string, string> = {}) {
+    const data = new Map(Object.entries(initial));
+    return {
+      effectAllowed: "none",
+      setData: vi.fn((type: string, value: string) => data.set(type, value)),
+      getData: vi.fn((type: string) => data.get(type) ?? ""),
+    };
+  }
+
+  it("persists member drag reorder inside a collection", async () => {
+    const first = { ...member, member_key: "codex:first", conversation_id: "first" };
+    const second = { ...member, member_key: "codex:second", conversation_id: "second" };
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      collections: [{ ...activeCollection, members: [first, second] }],
+      unfiled: [],
+    });
+    vi.mocked(workRecordReorderMembers).mockResolvedValue({
+      collection: { ...activeCollection, members: [second, first] },
+    });
+    const wrapper = mount(WorkRecordsView, { props: { workspace: "/ws" }, global: { plugins: [i18n] } });
+    await flushPromises();
+    const transfer = fakeDataTransfer({
+      "application/x-aisc-work-record-member": JSON.stringify({
+        collectionId: "active-1",
+        memberKey: "codex:first",
+        agent: "codex",
+        conversationId: "first",
+      }),
+    });
+    await wrapper.find("[data-testid='member-codex:second']").trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    expect(workRecordReorderMembers).toHaveBeenCalledWith("/ws", "active-1", ["codex:second", "codex:first"]);
+  });
+
+  it("moves an unfiled conversation into a collection by drag", async () => {
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      collections: [{ ...activeCollection, members: [{ ...member, member_key: "codex:target", conversation_id: "target" }] }],
+    });
+    vi.mocked(workRecordReorderMembers).mockResolvedValue({
+      collection: { ...activeCollection, members: [member] },
+    });
+    vi.mocked(workRecordAddMember).mockResolvedValue({ member });
+    const wrapper = mount(WorkRecordsView, { attachTo: document.body, props: { workspace: "/ws" }, global: { plugins: [i18n] } });
+    await flushPromises();
+    const transfer = fakeDataTransfer({
+      "application/x-aisc-work-record-member": JSON.stringify({
+        collectionId: null,
+        memberKey: member.member_key,
+        agent: "codex",
+        conversationId: member.conversation_id,
+      }),
+    });
+    await wrapper.find("[data-testid='member-codex:target']").trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    expect(workRecordMoveMember).not.toHaveBeenCalled();
+    expect(workRecordReorderMembers).toHaveBeenCalledWith("/ws", "active-1", [member.member_key, "codex:target"]);
+  });
+
+  it("persists collection drag reorder", async () => {
+    vi.mocked(workRecordReorderCollections).mockResolvedValue({
+      collections: [archivedCollection, activeCollection],
+    });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    await wrapper.find("[data-testid=show-archived]").setValue(true);
+    const transfer = fakeDataTransfer({
+      "application/x-aisc-work-record-collection": "active-1",
+    });
+    await wrapper.find("[data-id=archived-1]").trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    expect(workRecordReorderCollections).toHaveBeenCalledWith("/ws", ["archived-1", "active-1"]);
+  });
+
+  it("offers move targets from a member context menu", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "/ws";
+    explorer.conversations = [provider];
+    vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [provider] });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n], stubs: { teleport: true } },
+    });
+    await flushPromises();
+    await wrapper.find(`[data-testid="unfiled-${provider.agent}:${provider.conversation_id}"]`).trigger("contextmenu", { clientX: 20, clientY: 30 });
+    await flushPromises();
+    const menu = wrapper.find("[data-testid=work-record-context-menu]");
+    expect(menu.exists()).toBe(true);
+    expect(menu.text()).toContain("恢复");
+    expect(menu.text()).toContain("移入 Feature");
+  });
+
   it("disables resume for a missing transcript", async () => {
     const explorer = useWorkspaceExplorerStore();
     explorer.workspace = "/ws";
@@ -359,6 +457,5 @@ describe("WorkRecordsView", () => {
     const button = wrapper.find(`[data-testid="resume-${member.member_key}"]`);
     expect(button.exists()).toBe(true);
     expect(button.attributes("disabled")).toBeDefined();
-    expect(button.attributes("aria-label")).toContain("缺失");
   });
 });

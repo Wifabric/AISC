@@ -220,23 +220,73 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     }
   }
 
+  async function reorderCollections(ids: string[]): Promise<boolean> {
+    if (!workspace.value) return false;
+    error.value = null;
+    try {
+      const result = await ipc.workRecordReorderCollections(workspace.value, ids);
+      collections.value = result.collections;
+      return true;
+    } catch (e) {
+      error.value = messageOf(e);
+      return false;
+    }
+  }
+
+  async function reorderMembers(
+    id: string,
+    memberKeys: string[],
+  ): Promise<WorkRecordCollection | null> {
+    if (!workspace.value) return null;
+    error.value = null;
+    try {
+      const result = await ipc.workRecordReorderMembers(workspace.value, id, memberKeys);
+      if (result.collection) replaceCollection(result.collection);
+      return result.collection;
+    } catch (e) {
+      error.value = messageOf(e);
+      return null;
+    }
+  }
+
+  async function reorderUnfiled(memberKeys: string[]): Promise<boolean> {
+    if (!workspace.value) return false;
+    error.value = null;
+    try {
+      const result = await ipc.workRecordReorderUnfiled(workspace.value, memberKeys);
+      unfiled.value = result.unfiled;
+      return true;
+    } catch (e) {
+      error.value = messageOf(e);
+      return false;
+    }
+  }
+
   async function moveMember(
     fromId: string,
-    toId: string,
+    toId: string | null,
     agent: "claude" | "codex",
     conversationId: string,
+    destinationOrder?: string[],
   ): Promise<boolean> {
-    const removed = await removeMember(fromId, agent, conversationId);
-    if (!removed) {
+    if (!workspace.value) return false;
+    error.value = null;
+    const memberKey = `${agent}:${conversationId.toLowerCase()}`;
+    try {
+      await ipc.workRecordMoveMember(
+        workspace.value,
+        fromId,
+        memberKey,
+        toId,
+        destinationOrder,
+      );
+      await load(workspace.value);
+      return true;
+    } catch (e) {
+      error.value = messageOf(e);
       await reload();
-      throw new Error(error.value ?? "add failed");
+      return false;
     }
-    const added = await addMember(toId, agent, conversationId);
-    if (!added) {
-      await reload();
-      throw new Error(error.value ?? "add failed");
-    }
-    return true;
   }
 
   async function deleteCollection(id: string): Promise<WorkRecordDeleteResult | null> {
@@ -293,6 +343,9 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     addMember,
     removeMember,
     moveMember,
+    reorderCollections,
+    reorderMembers,
+    reorderUnfiled,
     delete: deleteCollection,
     reconcile,
     failures,

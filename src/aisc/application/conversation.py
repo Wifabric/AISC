@@ -187,26 +187,26 @@ class _FileScan:
 
 
 def _codex_parent_thread_id(meta: Dict[str, Any]) -> Optional[str]:
-    """b8 R3: return the parent thread id when *meta* is a subagent
-    rollout's session_meta; None for top-level (thread_source != subagent)
-    or malformed metas. Shape (live-verified 2026-10-14):
-    ``payload.source.subagent.thread_spawn.parent_thread_id``."""
+    """Return subagent spawn parent or Codex /fork history_base parent."""
     payload = meta.get("payload")
     if not isinstance(payload, dict):
         return None
-    if payload.get("thread_source") != "subagent":
-        return None
-    source = payload.get("source")
-    if not isinstance(source, dict):
-        return None
-    sub = source.get("subagent")
-    if not isinstance(sub, dict):
-        return None
-    spawn = sub.get("thread_spawn")
-    if not isinstance(spawn, dict):
-        return None
-    parent = spawn.get("parent_thread_id")
-    return parent if isinstance(parent, str) and parent else None
+    if payload.get("thread_source") == "subagent":
+        source = payload.get("source")
+        if isinstance(source, dict):
+            sub = source.get("subagent")
+            if isinstance(sub, dict):
+                spawn = sub.get("thread_spawn")
+                if isinstance(spawn, dict):
+                    parent = spawn.get("parent_thread_id")
+                    if isinstance(parent, str) and parent:
+                        return parent
+    history_base = payload.get("history_base")
+    if isinstance(history_base, dict):
+        parent = history_base.get("thread_id")
+        if isinstance(parent, str) and parent:
+            return parent
+    return None
 
 
 def _scan_file(path: Path, agent: str, head_only: bool) -> _FileScan:

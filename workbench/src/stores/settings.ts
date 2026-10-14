@@ -384,9 +384,12 @@ export const useSettingsStore = defineStore("settings", () => {
         targetError.value = (e as { message?: string })?.message || String(e);
       }
     },
-    async switchTarget(name: string | null): Promise<void> {
+    async switchTarget(name: string | null, workspace?: string | null): Promise<void> {
+      const activeWorkspace = (workspace ?? useWorkspacesStore().activeRuntime.workspace.value.trim()) || null;
       try {
-        targetRef.value = name ? await ipc.targetSet(name) : await ipc.targetClear();
+        targetRef.value = name
+          ? await ipc.targetSet(name, activeWorkspace)
+          : await ipc.targetClear(activeWorkspace);
         targetError.value = null;
       } catch (e) {
         targetError.value = (e as { message?: string; technical_detail?: string })
