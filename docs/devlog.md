@@ -2,6 +2,24 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.15-preview.2 / b9 阻断修复（2026-10-14）
+
+- **用户 preview.1 实测反馈**：Windows 远端仍无 bash prompt、所有 bash open 触发
+  `fork_session` TypeError、Work Records child 重复/长标题按钮溢出/树状不可见。
+- **P0 修复**：`open_session` 签名贯通 `fork_session`；真实 command→application
+  调用链测试补齐。
+- **远端配对**：serve protocol 3→4，CLI bump `0.1.4.dev0`。旧 Windows 远端
+  0.1.3 会在握手阶段明确要求升级，不再落入半配对 PTY 无输出。
+- **Work Records**：修正 member tree parent 判定，collection child 默认折叠且
+  展开后单次显示；未归档会话复用 tree builder；行首 indent/引导线替代整行
+  padding，长标题下操作按钮保留在卡片内。
+- **门禁**：Python 1394 passed / 53 skipped；Vitest 74 files / 568 tests；
+  Rust lib 349 passed / 1 ignored；frontend build、vue-tsc、`cargo test --no-run`
+  通过。PR #14 与 develop 全路径 CI 全绿。
+- **发布**：`v2.1.15-preview.2` NSIS prerelease 资产就位；
+  `cli-v0.1.4.dev0` PyPI workflow success，TestPyPI 包索引可见。
+- **待实测**：`docs/plans/2.1.15-preview-fixes/HANDTEST.md` b9-T1–T3。
+
 # v2.1.15-preview.1 发布（2026-10-14）
 
 - 发布提交：`a86003e fix(vendor): refresh session wrapper checksum`；tag

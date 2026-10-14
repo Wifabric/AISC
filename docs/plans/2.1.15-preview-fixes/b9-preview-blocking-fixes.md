@@ -73,3 +73,6 @@
 
 - 合并与 CI：PR #14 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、
   Linux/macOS bundle、NSIS 全绿，已 ff-only 合入 `072befc`。
+
+- 发布：`v2.1.15-preview.2` tag workflow success，GitHub Release prerelease 资产
+  就位；`cli-v0.1.4.dev0` PyPI publish workflow success，TestPyPI 版本索引可见。
