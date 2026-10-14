@@ -2,6 +2,20 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.15-preview.1 发布（2026-10-14）
+
+- 发布提交：`a86003e fix(vendor): refresh session wrapper checksum`；tag
+  `v2.1.15-preview.1` 指向该提交。
+- b8 改动 `container/aisc-session-wrapper` 后首次全路径 CI 暴露 vendor checksum
+  过期；`tools/vendor-verify.sh` 全量 1519 checksum 通过，packaging 188 tests
+  OK，Bundle Linux/macOS 与 NSIS 分支 dispatch 均 success。
+- `develop` 触发的 CLI sidecar、Bundle Linux/macOS、NSIS installer 全绿；tag
+  NSIS workflow success。
+- GitHub Release 已核验：`v2.1.15-preview.1 (preview)`，prerelease=true，
+  draft=false；资产 `AISC-Workbench-2.1.15-preview.1-setup.exe` 与 `.sha256`
+  就位。
+- 本条为当前账本补充；release notes、todo、devlog 与计划归档已随发布链路收口。
+
 # v2.1.15 b1–b8 开发闭环（2026-10-14）
 
 - **b1 远程 SSH**：lease target 保存 claim 时机器快照，heartbeat/release 不再漂到

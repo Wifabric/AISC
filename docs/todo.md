@@ -216,7 +216,7 @@
 
 # 待解决
 
-# v2.1.15-target（2026-10-12 开题；2026-10-14 b1–b8 开发闭环；计划已归档 docs/archive/2.1.15-dev-plans/）
+# v2.1.15-target（2026-10-12 开题；2026-10-14 b1–b8 开发闭环，v2.1.15-preview.1 已发布；计划已归档 docs/archive/2.1.15-dev-plans/）
 - P0 fix
   - [x] SSH 远程电脑后卡在 CLI bash 光标，或打开会话报错；先分析诊断包并复现，修复远端 shell/PTY/会话开启链路（反馈 F5；b1 已闭环）
 - fix

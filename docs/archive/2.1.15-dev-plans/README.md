@@ -26,7 +26,7 @@ PR #9 已合并，本地门禁与 develop CI 全绿，T6 实机验证（真实 r
 README 与 CLI 参考已补充 Work Records 用法，详见
 [b6-work-record-collection.md](b6-work-record-collection.md) 执行状态。2026-10-14 用户裁定收尾前追加两个修复批次：b7（会话退出自动关闭标签）与
 b8（Work Records UI 树状重构与历史合并），已全部实机/自动化验证、CI 全绿并
-ff-only 并回 `develop`。b1–b8 阶段开发闭环，进入 `v2.1.15-preview.1` 收尾发布。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
+ff-only 并回 `develop`。b1–b8 阶段开发闭环，`v2.1.15-preview.1` 已发布为阶段 preview。b3 的 Codex `0.154` ED3 主路径与终端协议响应已实机/自动化
 验证；`0.162.1` 在该次远程环境中 TUI 未完成渲染，详见
 [b3-terminal-output-scroll.md](b3-terminal-output-scroll.md) 执行状态。b5 的
 pump timeout/EINTR 修复已通过 transport、Workbench UI 数据面 >70s 长流验证；
