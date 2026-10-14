@@ -46,11 +46,11 @@ from aisc.cli.output import build_envelope
 from aisc.domain.models import CliError
 
 #: Wire protocol version. Human labels v1.1 (PTY) / v1.2 (fs.*) were additive
-#: while the field stayed 1; v1.3 (D-10: generic `cli` op + ready `home`)
-#: BUMPS the field to 3 and drops cross-version compatibility by ruling —
+#: while the field stayed 1; v1.4 (PTY stream timeout/EINTR fix + session fork semantics)
+#: BUMPS the field to 4 and drops cross-version compatibility by ruling —
 #: both ends ship from one repo, a mismatch is a hard client-side error
 #: ("upgrade the remote aisc"), never a silent per-op-ssh fallback.
-SERVE_PROTOCOL = 3
+SERVE_PROTOCOL = 4
 
 #: Grace period for an in-flight op when the loop is asked to stop (s).
 SHUTDOWN_GRACE_SECONDS = 3.0

@@ -52,3 +52,21 @@
 - Windows 远端需在远端安装同协议的下一跳 AISC/CLI 后复测；
   当前从本机探测 `10.147.20.90:22` 超时，暂无法只读取样远端版本。
 - Claude fork 仍需有 Claude transcript 的环境做实机回归。
+
+## 执行状态（2026-10-14）
+
+- P0 session open：已补真实 command→application 调用链测试；红灯精确复现
+  `TypeError: open_session() got an unexpected keyword argument 'fork_session'`。
+  `open_session` 接收并转发 `fork_session` 后目标测试转绿。
+- P0 远端配对：Python/Rust 均新增 protocol 4 契约测试，红灯复现 `3 != 4`；
+  双端 `SERVE_PROTOCOL` 已升至 4，CLI 开发版本升至 `0.1.4.dev0` 并补 release notes。
+- P1 Work Records：修正 member tree 的 parent 判定来源；缩进改为专用 leading
+  indent，不再把整行右推；unfiled 列表复用 conversation tree builder。
+- 目标测试：session/serve 93 passed；WorkRecordsView 15 passed；Rust protocol
+  契约测试 passed；vue-tsc passed。
+- 全量门禁：Python 1394 passed / 53 skipped；Rust lib 349 passed / 1 ignored；
+  Vitest 74 files / 568 tests；vue-tsc passed；`cargo test --no-run` 与前端 build
+  均通过。
+- 待办：PR CI 全绿后合并，发布下一跳 preview，再按 `HANDTEST.md` 完成
+  b9-T1–T3 实机验证。远端 `10.147.20.90:22` 当前从本机连接超时，Windows
+  远端版本采样待机器可达后补充。

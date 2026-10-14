@@ -11,6 +11,7 @@ import { useWorkRecordsStore } from "../../stores/workRecords";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import ConversationsPane from "./ConversationsPane.vue";
+import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
 import type { WorkRecordMember, WorkRecordCollection } from "../../types";
 
@@ -25,6 +26,7 @@ const newTitle = ref("");
 const selectedCollection = ref<string | null>(null);
 const editTitles = ref<Record<string, string>>({});
 const expandedMembers = ref(new Set<string>());
+const expandedUnfiled = ref(new Set<string>());
 
 const visibleCollections = computed(() =>
   showArchived.value ? records.collections : records.collections.filter((item) => item.status === "active"),
@@ -100,6 +102,7 @@ interface MemberTreeRow {
   member: WorkRecordMember;
   depth: number;
   childCount: number;
+  parentKey: string | null;
 }
 
 /** Collection members are provider identities; build a local tree without
@@ -121,7 +124,7 @@ function memberTree(collection: WorkRecordCollection): MemberTreeRow[] {
     for (const member of children.get(parentKey) ?? []) {
       const key = member.conversation_id.toLowerCase();
       if (stack.has(key)) continue;
-      rows.push({ member, depth, childCount: (children.get(key) ?? []).length });
+      rows.push({ member, depth, childCount: (children.get(key) ?? []).length, parentKey: parentKey || null });
       visit(key, depth + 1, new Set([...stack, key]));
     }
   };
@@ -129,10 +132,30 @@ function memberTree(collection: WorkRecordCollection): MemberTreeRow[] {
   return rows;
 }
 
-function memberVisible(collection: WorkRecordCollection, row: MemberTreeRow): boolean {
-  const parentId = (row.member as WorkRecordMember & { parent_thread_id?: string | null }).parent_thread_id?.toLowerCase();
-  if (!parentId || !collection.members.some((member) => member.conversation_id.toLowerCase() === parentId)) return true;
-  return expandedMembers.value.has(parentId);
+function memberVisible(row: MemberTreeRow): boolean {
+  return !row.parentKey || expandedMembers.value.has(row.parentKey);
+}
+
+const unfiledTreeRows = computed(() => buildConversationTreeRows(records.unfiled));
+
+function unfiledParentKey(row: ConversationTreeRow): string | null {
+  if (row.depth === 0) return null;
+  const parentId = row.conversation.parent_thread_id?.toLowerCase();
+  return parentId && records.unfiled.some((item) => item.conversation_id.toLowerCase() === parentId)
+    ? parentId
+    : null;
+}
+
+function unfiledVisible(row: ConversationTreeRow): boolean {
+  const parentKey = unfiledParentKey(row);
+  return !parentKey || expandedUnfiled.value.has(parentKey);
+}
+
+function toggleUnfiled(conversationId: string): void {
+  const key = conversationId.toLowerCase();
+  const next = new Set(expandedUnfiled.value);
+  if (!next.delete(key)) next.add(key);
+  expandedUnfiled.value = next;
 }
 
 function toggleMember(member: WorkRecordMember): void {
@@ -283,7 +306,12 @@ watch(() => props.workspace, async (workspace) => {
 
         <ul class="work-record-members">
           <template v-for="row in memberTree(collection)" :key="row.member.member_key">
-            <li v-if="memberVisible(collection, row)" :style="{ paddingLeft: `${row.depth * 14}px` }">
+            <li v-if="memberVisible(row)">
+              <span
+                class="member-tree-indent"
+                :class="{ branch: row.depth > 0 }"
+                :style="{ width: `${row.depth * 14}px` }"
+              />
               <button
                 v-if="row.childCount"
                 class="conversation-twisty"
@@ -327,27 +355,45 @@ watch(() => props.workspace, async (workspace) => {
 
       <section v-if="records.unfiled.length" class="work-record-unfiled">
         <h4>{{ t("workRecords.unfiled") }}</h4>
-        <div
-          v-for="item in records.unfiled"
-          :key="`${item.agent}:${item.conversation_id}`"
-          class="explorer-row artifact-row"
-          data-testid="unfiled"
-        >
-          <span class="explorer-name">{{ item.title }}</span>
-          <select v-model="selectedCollection" :aria-label="t('workRecords.selectCollection')">
-            <option :value="records.activeCollectionId">{{ t("workRecords.activeCollection") }}</option>
-            <option v-for="collection in records.activeCollections" :key="collection.id" :value="collection.id">
-              {{ collection.title }}
-            </option>
-          </select>
-          <button
-            class="ui-icon-button sm"
-            type="button"
-            :title="t('workRecords.add')"
-            :aria-label="t('workRecords.add')"
-            @click="addUnfiled(item)"
-          >＋</button>
-        </div>
+        <template v-for="row in unfiledTreeRows" :key="`${row.conversation.agent}:${row.conversation.conversation_id}`">
+          <div v-if="unfiledVisible(row)" class="unfiled-row" data-testid="unfiled">
+            <span
+              class="member-tree-indent"
+              :class="{ branch: row.depth > 0 }"
+              :style="{ width: `${row.depth * 14}px` }"
+            />
+            <button
+              v-if="row.childCount"
+              class="conversation-twisty"
+              type="button"
+              :aria-expanded="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase())"
+              :aria-label="t('workRecords.tree.toggle')"
+              :data-testid="`unfiled-toggle-${row.conversation.agent}:${row.conversation.conversation_id}`"
+              @click="toggleUnfiled(row.conversation.conversation_id)"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path :d="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase()) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" />
+              </svg>
+              <span class="conversation-child-count">{{ row.childCount }}</span>
+            </button>
+            <span v-else class="conversation-twisty spacer" aria-hidden="true" />
+            <span class="member-title">{{ row.conversation.title }}</span>
+            <span class="member-agent">{{ row.conversation.agent }}</span>
+            <select v-model="selectedCollection" :aria-label="t('workRecords.selectCollection')">
+              <option :value="records.activeCollectionId">{{ t("workRecords.activeCollection") }}</option>
+              <option v-for="collection in records.activeCollections" :key="collection.id" :value="collection.id">
+                {{ collection.title }}
+              </option>
+            </select>
+            <button
+              class="ui-icon-button sm"
+              type="button"
+              :title="t('workRecords.add')"
+              :aria-label="t('workRecords.add')"
+              @click="addUnfiled(row.conversation)"
+            >＋</button>
+          </div>
+        </template>
       </section>
 
       <section v-if="records.failures().length" class="work-record-failures" data-testid="delete-failures">
@@ -378,6 +424,11 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-members li { display:flex; align-items:center; gap:var(--space-1); }
 .member-title { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .member-agent { color:var(--text-faint); font-size:var(--font-xs); }
+.member-tree-indent { flex:0 0 auto; align-self:stretch; }
+.member-tree-indent.branch { border-right:1px solid var(--border-2); margin-right:4px; }
+.unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:24px; padding:0 var(--space-2); border-radius:var(--radius-sm); color:var(--text-2); white-space:nowrap; }
+.unfiled-row:hover { background:var(--surface-hover); }
+.unfiled-row select { min-width:96px; }
 .conversation-twisty { display:inline-flex; align-items:center; gap:3px; flex:0 0 auto; height:20px; padding:0 3px; background:none; border:none; color:var(--text-muted); border-radius:var(--radius-sm); cursor:pointer; }
 .conversation-twisty:hover { color:var(--text); background:var(--surface-hover); }
 .conversation-twisty.spacer { width:14px; padding:0; }

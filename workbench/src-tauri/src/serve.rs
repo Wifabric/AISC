@@ -27,10 +27,10 @@ use crate::cli::{CliTarget, Envelope, SshTarget};
 use crate::error::WorkbenchError;
 
 /// Serve wire protocol this client speaks (must equal the Python side's
-/// `SERVE_PROTOCOL`). v1.3 (D-10): generic `cli` op + ready `home`; the bump
-/// 1→3 is a hard pairing — a mismatch is an "upgrade the remote aisc" error,
+/// `SERVE_PROTOCOL`). v1.4 (PTY stream timeout/EINTR fix + session fork semantics); the bump
+/// 3→4 is a hard pairing — a mismatch is an "upgrade the remote aisc" error,
 /// never a silent per-op-ssh fallback (user ruling 2026-09-09).
-pub const SERVE_PROTOCOL: u64 = 3;
+pub const SERVE_PROTOCOL: u64 = 4;
 
 /// The `ready` banner — the session's handshake.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
@@ -825,6 +825,11 @@ pub async fn remote_cli_info(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn serve_protocol_is_four_after_fork_and_pty_stream_fixes() {
+        assert_eq!(SERVE_PROTOCOL, 4);
+    }
 
     #[test]
     fn cli_version_compare_normalizes_dev_and_rejects_garbage() {

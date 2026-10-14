@@ -199,6 +199,7 @@ def open_session(
     executor: Any,
     registry_root: Any,
     resume_conversation_id: Optional[str] = None,
+    fork_session: bool = False,
 ) -> Any:
     """Open an interactive agent session via ``docker exec -it``.
 
@@ -219,6 +220,7 @@ def open_session(
         executor=executor,
         registry_root=registry_root,
         resume_conversation_id=resume_conversation_id,
+        fork_session=fork_session,
     )
     return executor.open_interactive(container_name, docker_argv, env=env)
 

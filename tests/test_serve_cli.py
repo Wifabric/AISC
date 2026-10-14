@@ -2,7 +2,7 @@
 command by reusing the one-shot CLI's own dispatch under captured stdio.
 
 In-process tests exercise the op directly via ``_run_op``; one subprocess
-test pins the v1.3 ready banner (serve_protocol 3 + home) over real pipes.
+test pins the v1.4 ready banner (serve_protocol 4 + home) over real pipes.
 """
 
 from __future__ import annotations
@@ -184,11 +184,11 @@ class CliOpSubprocessTests(unittest.TestCase):
         self.assertTrue(line.strip(), "serve closed stdout unexpectedly")
         return json.loads(line)
 
-    def test_v13_banner_has_protocol_three_and_home(self) -> None:
+    def test_v14_banner_has_protocol_four_and_home(self) -> None:
         proc = self._spawn()
         banner = self._readline(proc)
         self.assertEqual(banner["type"], "ready")
-        self.assertEqual(banner["serve_protocol"], 3)
+        self.assertEqual(banner["serve_protocol"], 4)
         self.assertTrue(banner["home"], "ready banner must carry the remote home path")
         proc.stdin.close()
 

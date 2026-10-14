@@ -90,6 +90,21 @@ class TestSessionFork(unittest.TestCase):
         assert argv[-3:] == ["--fork-session", "--resume-id", self.RESUME_ID]
 
     @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
+    def test_cmd_session_open_real_chain_forwards_fork(self, _resolve):
+        """The command and application layers must share the fork keyword."""
+        from aisc.cli.commands.session import cmd_session_open
+
+        exec_ = FakeDockerExecutor()
+        with tempfile.TemporaryDirectory() as tmp:
+            _data, code = cmd_session_open(
+                RT, SID, "claude", workspace=tmp, executor=exec_,
+                resume_conversation_id=self.RESUME_ID, fork_session=True,
+            )
+        assert code == 0
+        argv = exec_.interactive_calls[0][1]
+        assert argv[-3:] == ["--fork-session", "--resume-id", self.RESUME_ID]
+
+    @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
     def test_codex_fork_is_rejected(self, _resolve):
         with self.assertRaises(CliError) as cm:
             build_session_exec(
