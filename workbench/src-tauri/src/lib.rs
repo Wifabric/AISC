@@ -134,6 +134,7 @@ pub fn run(cli_arg: Option<String>) {
         .manage(cli_arg_state)
         .manage(SessionRegistry::default())
         .manage(target::WindowTargets::default())
+        .manage(target::WorkspaceTargets::default())
         .manage(StartOps::default())
         .manage(BuildOps::default())
         .manage(OpMutexes::default())

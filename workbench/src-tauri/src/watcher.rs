@@ -494,16 +494,10 @@ pub struct RemoteWatcher {
 impl RemoteWatcher {
     pub fn start(
         app: AppHandle,
+        target: crate::cli::SshTarget,
         workspace: String,
         extra_ignore: Vec<String>,
     ) -> Result<Self, WorkbenchError> {
-        let target = match app.state::<crate::target::ActiveTarget>().current() {
-            Some(m) => m.to_ssh_target(),
-            None => {
-                return Err(WorkbenchError::cli_protocol()
-                    .with_detail("remote watcher started without a remote target"))
-            }
-        };
         let (tx, rx) = mpsc::sync_channel::<(String, String, String)>(RAW_CHANNEL_CAP);
         let stop = Arc::new(Mutex::new(false));
         let stop_loop = Arc::clone(&stop);
@@ -609,6 +603,7 @@ impl RemoteWatcher {
 #[tauri::command]
 pub async fn workspace_watch_start(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<(), WorkbenchError> {
     // Read the user-configured explorer ignores so the watcher does not emit
@@ -622,10 +617,13 @@ pub async fn workspace_watch_start(
     };
     // R3 (D-9): dual path — remote targets watch via fs.change over the
     // pooled serve session; local keeps the notify watcher bit-for-bit.
-    let watcher = if app.state::<crate::target::ActiveTarget>().current().is_some() {
-        WatcherKind::Remote(RemoteWatcher::start(app.clone(), workspace.clone(), extra_ignore)?)
-    } else {
-        WatcherKind::Local(WorkspaceWatcher::start(app.clone(), Path::new(&workspace), extra_ignore)?)
+    let watcher = match crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
+        crate::cli::CliTarget::Remote(target) => WatcherKind::Remote(
+            RemoteWatcher::start(app.clone(), target, workspace.clone(), extra_ignore)?,
+        ),
+        crate::cli::CliTarget::Local(_) => WatcherKind::Local(
+            WorkspaceWatcher::start(app.clone(), Path::new(&workspace), extra_ignore)?,
+        ),
     };
     let state = app.state::<WatcherState>();
     let mut guard = state.0.lock().unwrap();

@@ -62,6 +62,18 @@ pub struct ActiveTarget(pub Mutex<Option<RemoteMachine>>);
 #[derive(Default)]
 pub struct WindowTargets(pub Mutex<HashMap<String, Option<RemoteMachine>>>);
 
+/// A workspace keeps the target that launched its runtime. This survives
+/// calls from another WebviewWindow and prevents a later/global target switch
+/// from silently repointing an already-materialized workspace.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TargetBinding {
+    Local,
+    Remote(RemoteMachine),
+}
+
+#[derive(Default)]
+pub struct WorkspaceTargets(pub Mutex<HashMap<String, TargetBinding>>);
+
 impl ActiveTarget {
     pub fn current(&self) -> Option<RemoteMachine> {
         self.0.lock().ok().and_then(|g| g.clone())
@@ -80,7 +92,93 @@ pub struct TargetInfo {
     pub kind: &'static str,
 }
 
-#[tauri::command]
+
+pub(crate) fn workspace_target_key(workspace: &str) -> String {
+    let normalized = workspace.replace('\\', "/");
+    let trimmed = normalized.trim_matches('/');
+    if trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':' {
+        let drive = trimmed[..1].to_ascii_lowercase();
+        format!("{drive}:{}", &trimmed[1..])
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn target_binding(target: &CliTarget) -> TargetBinding {
+    match target {
+        CliTarget::Local(_) => TargetBinding::Local,
+        CliTarget::Remote(remote) => TargetBinding::Remote(RemoteMachine {
+            name: remote.host.clone(),
+            host: remote.host.clone(),
+            user: None,
+            port: remote.port,
+            key_path: remote.key_path.clone(),
+        }),
+    }
+}
+
+fn binding_machine(binding: &TargetBinding) -> Option<RemoteMachine> {
+    match binding {
+        TargetBinding::Local => None,
+        TargetBinding::Remote(machine) => Some(machine.clone()),
+    }
+}
+
+fn resolve_workspace_binding(
+    workspace: Option<&TargetBinding>,
+    window: Option<&RemoteMachine>,
+    global: Option<&RemoteMachine>,
+) -> TargetBinding {
+    if let Some(binding) = workspace {
+        return binding.clone();
+    }
+    if let Some(machine) = window {
+        return TargetBinding::Remote(machine.clone());
+    }
+    global.map(|machine| TargetBinding::Remote(machine.clone())).unwrap_or(TargetBinding::Local)
+}
+
+pub(crate) fn bind_workspace_target(
+    app: &tauri::AppHandle,
+    workspace: &str,
+    target: &CliTarget,
+) -> Result<(), WorkbenchError> {
+    let map = app.state::<WorkspaceTargets>();
+    let mut guard = map
+        .0
+        .lock()
+        .map_err(|_| WorkbenchError::cli_protocol().with_detail("workspace target lock"))?;
+    guard.insert(workspace_target_key(workspace), target_binding(target));
+    Ok(())
+}
+
+fn workspace_binding(app: &tauri::AppHandle, workspace: &str) -> Option<TargetBinding> {
+    app.state::<WorkspaceTargets>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&workspace_target_key(workspace)).cloned())
+}
+
+/// W3 + b10: workspace affinity wins; a session call from another WebviewWindow
+/// cannot fall back to the wrong local/global target once a runtime exists.
+pub async fn resolve_target_for_workspace(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+    workspace: &str,
+) -> Result<CliTarget, WorkbenchError> {
+    let window_machine = window_target(app, window);
+    let global_machine = app.state::<ActiveTarget>().current();
+    let binding = resolve_workspace_binding(
+        workspace_binding(app, workspace).as_ref(),
+        window_machine.as_ref(),
+        global_machine.as_ref(),
+    );
+    match binding_machine(&binding) {
+        None => Ok(CliTarget::Local(crate::session::resolve_cli(app).await?)),
+        Some(machine) => Ok(CliTarget::Remote(machine.to_ssh_target())),
+    }
+}#[tauri::command]
 pub async fn target_get(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -193,5 +291,50 @@ pub async fn resolve_target_for(
     match window_target(app, window) {
         None => Ok(CliTarget::Local(crate::session::resolve_cli(app).await?)),
         Some(m) => Ok(CliTarget::Remote(m.to_ssh_target())),
+    }
+}
+
+#[cfg(test)]
+mod workspace_routing_tests {
+    use super::*;
+
+    fn machine(name: &str) -> RemoteMachine {
+        RemoteMachine {
+            name: name.into(),
+            host: format!("{name}.local"),
+            user: Some("user".into()),
+            port: Some(22),
+            key_path: None,
+        }
+    }
+
+    #[test]
+    fn workspace_binding_wins_over_window_and_global_targets() {
+        let binding = TargetBinding::Remote(machine("workspace-machine"));
+        let resolved = resolve_workspace_binding(
+            Some(&binding),
+            Some(&machine("window-machine")),
+            Some(&machine("global-machine")),
+        );
+        assert_eq!(resolved, TargetBinding::Remote(machine("workspace-machine")));
+    }
+
+    #[test]
+    fn local_workspace_binding_is_not_hijacked_by_remote_global() {
+        let resolved = resolve_workspace_binding(
+            Some(&TargetBinding::Local),
+            Some(&machine("window-machine")),
+            Some(&machine("global-machine")),
+        );
+        assert_eq!(resolved, TargetBinding::Local);
+    }
+
+    #[test]
+    fn workspace_keys_normalize_windows_drive_but_preserve_posix_case() {
+        assert_eq!(
+            workspace_target_key("C:\\Users\\Alan\\App"),
+            workspace_target_key("c:/Users/Alan/App"),
+        );
+        assert_ne!(workspace_target_key("/ws/A"), workspace_target_key("/ws/a"));
     }
 }

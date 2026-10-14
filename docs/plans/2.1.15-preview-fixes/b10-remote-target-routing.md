@@ -40,3 +40,19 @@ Workbench 没有走远端 serve；`start_runtime` / `open_session` 实际取得
 - 不改 serve protocol；
 - 不改远端 CLI 语义；
 - 不恢复多 workspace 共享一个 target 的旧行为。
+
+## 执行状态（2026-10-14）
+
+- 红灯：新增 workspace routing 纯测试，首跑因 `TargetBinding` / resolver / key
+  函数不存在而编译失败；随后三项测试转绿。
+- 实现：新增 `WorkspaceTargets` 与 `TargetBinding`；`start_runtime` 在执行 CLI
+  前绑定 workspace target，并记录不含 workspace 路径的 `target_route` 日志。
+- 路由替换：runtime/session/conversation/work-record/workspace 相关命令按
+  workspace binding 路由；`session.open` 记录实际 Local/Remote。
+- 漏点修复：`workspace_watch_start` 接收当前 window 并按 workspace binding
+  选择 remote watcher；Explorer mutation 判定改为 workspace/window target；
+  `runtime_poll_light` 在 remote window 直接禁用本机 Docker 直连。
+- 业务代码中 `ActiveTarget` 直读只剩 target.rs 的兼容 fallback，不再被
+  watcher/workspace/runtime 业务路径使用。
+- 验证：`cargo check --lib` 通过；`cargo test -p workbench --lib` 351 passed /
+  1 ignored；`cargo test -p workbench --no-run` 通过。

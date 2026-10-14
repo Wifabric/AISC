@@ -1714,7 +1714,7 @@ pub async fn workspace_list(
     // fs is never consulted (or copied). Artifact badges stay a local-index
     // projection and therefore don't ride the remote path yet (remote
     // artifact registry is a follow-up).
-    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for(&app, &window).await? {
+    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
         return list_remote(&t, &workspace, &relative_dir, cursor.unwrap_or(0)).await;
     }
 
@@ -1820,7 +1820,7 @@ pub async fn workspace_open(
     // temporary copy, then the system opener. The copy is a view, never a
     // sync — edits there do NOT flow back (the honest semantics VS Code's
     // Download gesture has too).
-    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for(&app, &window).await? {
+    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
         let pool = crate::serve::global_pool();
         let data = crate::serve::fs_op(
             pool,
@@ -1950,7 +1950,7 @@ pub async fn workspace_upload_image(
     };
     let mut relative = format!(".aisc/uploads/{stamp}-{stem}{ext}");
 
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     if let crate::cli::CliTarget::Remote(t) = target {
         let pool = crate::serve::global_pool();
         // best-effort: an existing directory makes mkdir report an error we
@@ -2015,8 +2015,11 @@ pub async fn workspace_upload_image(
     })
 }
 
-async fn is_remote(app: &AppHandle) -> bool {
-    app.state::<crate::target::ActiveTarget>().current().is_some()
+async fn is_remote(app: &AppHandle, window: &tauri::WebviewWindow, workspace: &str) -> bool {
+    matches!(
+        crate::target::resolve_target_for_workspace(app, window, workspace).await,
+        Ok(crate::cli::CliTarget::Remote(_))
+    )
 }
 
 /// R3 (D-9): one helper for the remote leg of every Explorer mutation —
@@ -2033,7 +2036,7 @@ async fn remote_mutation(
     entry_relative: String,
     entry_kind: &str,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
-    let target = match crate::target::resolve_target_for(app, &window).await? {
+    let target = match crate::target::resolve_target_for_workspace(app, &window, workspace).await? {
         crate::cli::CliTarget::Remote(t) => t,
         crate::cli::CliTarget::Local(_) => unreachable!("remote_mutation on local target"),
     };
@@ -2056,7 +2059,7 @@ pub async fn workspace_create_file(
     name: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
     let relative = if relative_dir.is_empty() { name.clone() } else { format!("{relative_dir}/{name}") };
-    if is_remote(&app).await {
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
             &app, &window, &workspace, "fs.write",
             &serde_json::json!({ "root": workspace, "path": relative, "base64": "" }),
@@ -2076,7 +2079,7 @@ pub async fn workspace_create_dir(
     name: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
     let relative = if relative_dir.is_empty() { name.clone() } else { format!("{relative_dir}/{name}") };
-    if is_remote(&app).await {
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
             &app, &window, &workspace, "fs.mkdir",
             &serde_json::json!({ "root": workspace, "path": relative }),
@@ -2101,10 +2104,10 @@ pub async fn workspace_copy_entry(
     } else {
         format!("{}/{}", destination_relative_dir, file_name)
     };
-    if is_remote(&app).await {
+    if is_remote(&app, &window, &workspace).await {
         // Remote copy = fs.read + fs.write over the pooled session (files
         // only for now; a bounded remote dir copy rides a later fs.copy op).
-        let target = match crate::target::resolve_target_for(&app, &window).await? {
+        let target = match crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
             crate::cli::CliTarget::Remote(t) => t,
             crate::cli::CliTarget::Local(_) => unreachable!(),
         };
@@ -2145,7 +2148,7 @@ pub async fn workspace_rename(
         None => (String::new(), relative_path.clone()),
     };
     let new_relative = if parent.is_empty() { new_name.clone() } else { format!("{parent}/{new_name}") };
-    if is_remote(&app).await {
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
             &app, &window, &workspace, "fs.rename",
             &serde_json::json!({ "root": workspace, "from": relative_path, "to": new_relative }),

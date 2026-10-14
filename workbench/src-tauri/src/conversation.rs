@@ -259,7 +259,7 @@ pub async fn conversation_list(
     window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<ConversationListResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_list_argv(&workspace);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -279,7 +279,7 @@ pub async fn conversation_preflight(
     conversation_id: String,
     agent: String,
 ) -> Result<ConversationPreflightResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_preflight_argv(&workspace, &conversation_id, &agent);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -304,7 +304,7 @@ pub async fn conversation_delete(
     conversation_id: String,
     agent: String,
 ) -> Result<ConversationDeleteResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_delete_argv(&workspace, &conversation_id, &agent);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -330,7 +330,7 @@ pub async fn conversation_rename(
     agent: String,
     title: String,
 ) -> Result<ConversationRenameResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_rename_argv(&workspace, &conversation_id, &agent, &title);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -361,7 +361,7 @@ pub async fn conversation_read(
     if !is_conversation_uuid(&conversation_id) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
     }
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_read_argv(&workspace, &conversation_id, &agent, tail, before);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;

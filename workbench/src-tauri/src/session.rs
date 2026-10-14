@@ -330,7 +330,7 @@ pub async fn canonical_workspace_for(
     window: &tauri::WebviewWindow,
     raw: &str,
 ) -> Result<String, WorkbenchError> {
-    let target = crate::target::resolve_target_for(app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(app, &window, raw).await?;
     match target {
         crate::cli::CliTarget::Local(_) => canonical_workspace(raw),
         crate::cli::CliTarget::Remote(t) => {
@@ -464,7 +464,15 @@ pub async fn open_session(
         gen
     };
 
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &ws).await?;
+    crate::logging::append_event(
+        "info", "app", "target_route", None, serde_json::json!({
+            "command": "session.open",
+            "kind": match &target { crate::cli::CliTarget::Local(_) => "local", crate::cli::CliTarget::Remote(_) => "remote" },
+            "machine": match &target { crate::cli::CliTarget::Local(_) => None, crate::cli::CliTarget::Remote(t) => Some(t.host.clone()) },
+            "window": window.label()
+        }),
+    );
 
     // O2 (D-11): full output spool at <data-root>/sessions/<sid>.spool.
     // A missing/invalid data root means NO spool — memory-only degradation,

@@ -240,6 +240,7 @@ pub struct WorkRecordReconcileResult {
 }
 
 async fn run_work_record<T>(
+    workspace: &str,
     app: &AppHandle,
     window: &tauri::WebviewWindow,
     argv: Vec<String>,
@@ -249,7 +250,7 @@ async fn run_work_record<T>(
 where
     T: serde::de::DeserializeOwned,
 {
-    let target = crate::target::resolve_target_for(app, window).await?;
+    let target = crate::target::resolve_target_for_workspace(app, window, workspace).await?;
     let env: Envelope =
         run_control_target(&target, argv, timeout, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -267,7 +268,7 @@ pub async fn work_record_list(
     workspace: String,
 ) -> Result<WorkRecordListResult, WorkbenchError> {
     let argv = work_record_list_argv(&workspace);
-    run_work_record(&app, &window, argv, WORK_RECORD_TIMEOUT, "work record list").await
+    run_work_record(&workspace,&app, &window, argv, WORK_RECORD_TIMEOUT, "work record list").await
 }
 
 #[tauri::command]
@@ -279,6 +280,7 @@ pub async fn work_record_create(
 ) -> Result<WorkRecordCollectionResult, WorkbenchError> {
     let argv = work_record_create_argv(&workspace, &title);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -298,6 +300,7 @@ pub async fn work_record_rename(
 ) -> Result<WorkRecordCollectionResult, WorkbenchError> {
     let argv = work_record_rename_argv(&workspace, &id, &title);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -316,6 +319,7 @@ pub async fn work_record_activate(
 ) -> Result<WorkRecordActiveResult, WorkbenchError> {
     let argv = work_record_activate_argv(&workspace, &id);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -333,6 +337,7 @@ pub async fn work_record_deactivate(
 ) -> Result<WorkRecordActiveResult, WorkbenchError> {
     let argv = work_record_deactivate_argv(&workspace);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -351,6 +356,7 @@ pub async fn work_record_archive(
 ) -> Result<WorkRecordCollectionResult, WorkbenchError> {
     let argv = work_record_archive_argv(&workspace, &id);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -369,6 +375,7 @@ pub async fn work_record_restore(
 ) -> Result<WorkRecordCollectionResult, WorkbenchError> {
     let argv = work_record_restore_argv(&workspace, &id);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -395,7 +402,7 @@ pub async fn work_record_add_member(
         &conversation_id,
         runtime_id.as_ref(),
     );
-    run_work_record(&app, &window, argv, WORK_RECORD_TIMEOUT, "work record add").await
+    run_work_record(&workspace,&app, &window, argv, WORK_RECORD_TIMEOUT, "work record add").await
 }
 
 #[tauri::command]
@@ -409,6 +416,7 @@ pub async fn work_record_remove_member(
 ) -> Result<WorkRecordRemoveResult, WorkbenchError> {
     let argv = work_record_remove_member_argv(&workspace, &id, &agent, &conversation_id);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -427,6 +435,7 @@ pub async fn work_record_delete(
 ) -> Result<WorkRecordDeleteResult, WorkbenchError> {
     let argv = work_record_delete_argv(&workspace, &id);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
@@ -444,6 +453,7 @@ pub async fn work_record_reconcile(
 ) -> Result<WorkRecordReconcileResult, WorkbenchError> {
     let argv = work_record_reconcile_argv(&workspace);
     run_work_record(
+        &workspace,
         &app,
         &window,
         argv,
