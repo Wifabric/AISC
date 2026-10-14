@@ -216,7 +216,7 @@
 
 # 待解决
 
-# v2.1.15-target（2026-10-12 开题：反馈站 5 条；计划 docs/plans/2.1.15-dev-plans/）
+# v2.1.15-target（2026-10-12 开题；2026-10-14 b1–b8 开发闭环；计划已归档 docs/archive/2.1.15-dev-plans/）
 - P0 fix
   - [x] SSH 远程电脑后卡在 CLI bash 光标，或打开会话报错；先分析诊断包并复现，修复远端 shell/PTY/会话开启链路（反馈 F5；b1 已闭环）
 - fix
@@ -229,5 +229,5 @@
 - 追加（b1 手测发现）
   - [x] PTY 输出流在初始输出后停止而输入仍可达；修复 pump 误判 timeout/EINTR 为 EOF（b5 已闭环）
 - 追加（收尾前修复，2026-10-14 用户裁定）
-  - [ ] bash/codex/claude 会话退出后直接关闭标签，不保留 exited 横幅（b7）
-  - [ ] Work Records UI 树状重构：动作符号化、右键菜单（重命名/fork）、子代理会话折叠、树状展示、历史并入全部会话（b8）
+  - [x] bash/codex/claude 会话退出后直接关闭标签，不保留 exited 横幅（b7 已闭环）
+  - [x] Work Records UI 树状重构：动作符号化、右键菜单（重命名/fork）、子代理会话折叠、树状展示、历史并入全部会话（b8 已闭环）

@@ -58,3 +58,32 @@
 
 **影响面**：新增 `work-collections.json` / `aisc work-record` / Tauri work-record
 IPC / Workbench Work Records 视图；实施移交 b6。
+
+## D-4（2026-10-14 用户裁定，收尾前追加批次）
+
+**问题**：收尾检查发现会话自退后保留 exited 僵尸标签；同时用户对 Work Records
+UI 提出 4 项收尾前修复。
+
+**裁定**：
+
+1. 追加 b7：bash / codex / claude 会话因 `process_exit` 自退时直接关闭标签；
+   `transport_error` / `failed` 保留现场。
+2. 追加 b8：Work Records 操作符号化、会话右键菜单、Codex 子代理树状折叠、
+   同记录树状组织，并把旧 History 模块并入「全部会话」。
+3. 两项均为收尾前修复，不扩大其他版本范围；完成后才进入 preview 收尾。
+
+**影响面**：`workspaceRuntime` 标签生命周期、Work Records / ConversationsPane、
+conversation scan / IPC `parent_thread_id`、HANDTEST b7/b8。
+
+## D-5（2026-10-14 实测定案，fork 边界）
+
+**问题**：Claude 与 Codex 的 CLI fork 能力不一致，Work Records 右键分支不能
+伪装成统一语义。
+
+**裁定**：
+
+1. Claude 使用原生 `--resume <id> --fork-session`，右键分支开放。
+2. Codex 无 CLI 原生 fork，`resume` 续写原 rollout；禁止手工改写 rollout，
+   右键分支禁用并提示「Codex CLI 暂不支持 fork」。
+
+**影响面**：session fork 链路仅覆盖 Claude；Codex 分支入口为显式禁用态。

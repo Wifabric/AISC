@@ -2,6 +2,30 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.15 b1–b8 开发闭环（2026-10-14）
+
+- **b1 远程 SSH**：lease target 保存 claim 时机器快照，heartbeat/release 不再漂到
+  global target；runtime stop 显式释放 lease。远程 T1–T3 复测通过。
+- **b2 Windows 路径身份**：历史身份按 Windows 大小写/分隔符归一折叠，显示形态保留，
+  最近列表和删除不再产生大小写孪生。
+- **b3 终端滚动**：明确 xterm 查询响应、用户回看与输出跟随的所有权边界；CLI 输出
+  不再把视口抢回顶部。
+- **b4 UI 边界与模型调研**：顶部状态栏退出上下拖拽；Work Record / Collection 8 项
+  开放点经用户裁定后移交 b6。
+- **b5 PTY 断流**：Docker PTY pump 将 timeout/EINTR 继续读，不再误判 EOF；transport
+  与 Workbench UI 长流验证通过。
+- **b6 Work Record / Collection**：落地 CLI、Rust IPC、前端 Work Records、active 收容、
+  归档、加入/移出、运行成员终止和物理级联删除及部分失败提示。
+- **b7 自退关标签**：process_exit 自退直接移除 pane/tab；split 只移除退出 pane；
+  transport_error/failed 保留现场。bash、codex、split、b6 级联实机 PASS。
+- **b8 Work Records UI**：动作符号化、右键查看/恢复/重命名/分支/删除、Codex 子代理
+  parent-child 树状折叠、搜索保留祖先路径；旧 History 并入 Work Records「全部会话」。
+  Claude fork 开放，Codex fork 因 CLI 无原生能力显式禁用。
+- **门禁**：各批分支本地门禁与 PR CI 全绿后 ff-only 回 develop；b8 Rust CI 补齐
+  serve_ssh 集成调用参数后 frontend/cli/rust 三项全绿。
+- **发布准备**：Workbench 开发版本升至 2.1.15，新增 v2.1.15-preview.1
+  release notes；阶段计划移入 docs/archive/2.1.15-dev-plans/，进入 preview 验证窗。
+
 # v2.1.15 开题：反馈收集与首轮回复（2026-10-12）
 
 - 反馈数据仓库已切到 `Wifabric/aisc-issues-feedback`。按其根 README 开发者流程，

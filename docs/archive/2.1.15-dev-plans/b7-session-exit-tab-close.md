@@ -40,3 +40,12 @@
 ## 分支
 
 `2.1.15-b7-session-exit-tab-close`（从 develop 切出）。
+
+## 执行状态（2026-10-14）
+
+- 修复提交：`ecddb2d fix(workbench): auto-close tabs when a session exits on its own`。
+- 单测：`paneRuntime` 覆盖 process_exit 单 pane 关 tab、split 只移除退出 pane、
+  焦点迁移、transport_error 保留现场；既有 runtime tab 套件全绿。
+- 实机：HANDTEST b7-T1 四项 PASS——bash 自退、codex `/quit`、split 单 pane
+  退出、b6 级联删除 live tab 收口均直接关闭且无误伤；详见 `HANDTEST.md`。
+- 合并：CI 全绿后 ff-only 并回 `develop`。

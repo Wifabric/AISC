@@ -96,3 +96,15 @@
 - 实测：HANDTEST T7 执行记录已回填；两项实机中发现的集成缺陷已修复。
 - 门禁：Python 1350 OK（62 skipped），Frontend build + 565 tests 全绿，
   Rust lib 347 passed（1 ignored），`git diff --check` PASS。
+
+### CI 修复与合并（2026-10-14）
+
+- PR #11 Rust CI 首跑失败：`tests/serve_ssh.rs` 调用
+  `spawn_serve_pty_session` 时漏传新增的 `fork_session` 参数；本机此前只跑
+  `--lib`，未覆盖该集成测试编译。
+- 修复提交：`4891de8 fix(workbench): stabilize rust ci for b8`，测试调用补
+  `false`（非 fork）。修复前本机复现 E0061；修复后
+  `cargo test -p workbench --test serve_ssh` 通过，`cargo test -p workbench --no-run`
+  通过，Rust lib 347 passed / 1 ignored。
+- PR #11 最新提交 frontend / cli / rust 三项 CI 全绿；分支已 ff-only 并回
+  `develop`。
