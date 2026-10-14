@@ -256,3 +256,25 @@
 - split 中退出一个 pane 导致整个标签或无辜 pane 关闭 → fail；
 - `transport_error`（如杀掉 serve）应保留标签进入 disconnected 展示，
   若直接关闭标签 → fail（此为诊断通道）。
+
+### 2026-10-14 T1 实测执行记录
+
+**环境**
+
+- 分支：develop `a0f28a6`（含 b7 修复提交 `ecddb2d`）；
+- 本地 debug Workbench（`npm run tauri dev` + WebView2 CDP 127.0.0.1:9222）；
+- 工作区：`E:\pt\b6-manual`，runtime 镜像复用；
+- 原生确认框经 Win32 消息确认（插件对话框无法由 CDP 驱动）。
+
+**本轮实测**
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| T1a bash `exit` 自退 | PASS | 单 bash 标签内执行 `exit` → 标签直接消失，无 exited 横幅残留，回到「没有打开的标签」空态。 |
+| T1b codex `/quit` 自退 | PASS | codex 标签执行 `/quit` → 会话 exit 上报（stream 证据 `agent=codex exit_code=1`）→ 标签自动关闭；旁侧 bash 标签不受影响。 |
+| T1c split 单 pane 退出 | PASS | bash 标签左右分屏（2 pane）后退出其一 → 该 pane 移除，标签与另一 pane 保留，无 dormant leaf。 |
+| T1d b6 级联回归 | PASS | 恢复 collection 成员为 live 后删除 collection：`closeLiveConversationSessions` 关闭 live 成员 → user_close Exit → 标签自动关闭；无关 bash 标签未误伤；transcript 删除失败的成员（WinError 5 文件占用）由 b6 部分失败 UI 显式列出。 |
+
+**异常记录**
+
+- 无。`transport_error` 保留标签行为由单测覆盖（paneRuntime 套件 b7 用例），本轮未做实机断链。
