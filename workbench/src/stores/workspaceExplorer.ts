@@ -752,7 +752,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
      *  an inline row error; success hands off to createTab, which threads
      *  the id through openPane → open_session → wrapper `--resume-id`.
      *  Returns true when the resume tab was created. */
-    async resumeConversation(c: ConversationSummary): Promise<boolean> {
+    async resumeConversation(c: ConversationSummary, forkSession = false): Promise<boolean> {
       if (!this.workspace) return false;
       delete this.resumeErrors[c.conversation_id];
       try {
@@ -771,12 +771,14 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       // A live tab that already resumed this conversation: activate it
       // instead of spawning a duplicate resume — the provider refuses a
       // second resume of a live session (手测反馈).
-      const live = runtime.findLiveResumeTab?.(c.conversation_id);
+      // A fork intentionally creates a new provider session, so a live tab
+      // resuming the source conversation must not hijack the action.
+      const live = !forkSession ? runtime.findLiveResumeTab?.(c.conversation_id) : null;
       if (live) {
         runtime.activateTab(live.tabId);
         return true;
       }
-      return runtime.createTab(c.agent, c.conversation_id) !== null;
+      return runtime.createTab(c.agent, c.conversation_id, forkSession) !== null;
     },
 
     /** Rename a conversation (手测反馈 #2): persists a title override in the

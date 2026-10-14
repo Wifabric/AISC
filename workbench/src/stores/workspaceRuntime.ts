@@ -1190,7 +1190,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * the session channel + output buffer so a Terminal remount (e.g. a split
    * restructuring the tree) never re-opens or drops the session (A-G17-2:
    * open failure keeps a failed pane). */
-  async function openPane(tab: Tab, paneId: string, resumeConversationId?: string | null) {
+  async function openPane(
+    tab: Tab,
+    paneId: string,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ) {
     const p = tab.panes[paneId];
     if (!p || p.sessionState === "starting" || p.sessionState === "running") return;
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
@@ -1246,11 +1251,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         workspace.value.trim(),
         ch,
         resumeConversationId ?? null,
+        forkSession,
       );
       // v2.1.8 T4: remember the conversation this tab resumed so the
       // History panel can activate the live tab instead of re-resuming
       // (a second provider resume on a live session fails).
-      if (resumeConversationId) {
+      // A fork tab becomes a new provider conversation; do not map it back
+      // to the source id or later source resumes would activate the fork.
+      if (resumeConversationId && !forkSession) {
         tab.resumeConversationId = resumeConversationId;
       }
       if (p.sessionState === "starting") {
@@ -1396,11 +1404,15 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * store-owned session channel (openPane). G-17. v2.1.8 T4: an optional
    * resume conversation id applies to THIS open only (reopen flows pass
    * nothing and behave exactly as before). */
-  function openTab(tabId: string, resumeConversationId?: string | null) {
+  function openTab(
+    tabId: string,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ) {
     const tab = findTab(tabId);
     if (!tab) return;
     activeTabId.value = tabId;
-    void openPane(tab, tab.activePaneId, resumeConversationId);
+    void openPane(tab, tab.activePaneId, resumeConversationId, forkSession);
     scheduleSave();
   }
 
@@ -1422,13 +1434,17 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * per-Runtime leaf cap. The tab opens immediately (Step 5c routes
    * unconfigured claude/codex to the guide state instead). v2.1.8 T4:
    * `resumeConversationId` rides to open_session for history resume. */
-  function createTab(agent: LaunchAgent, resumeConversationId?: string | null): string | null {
+  function createTab(
+    agent: LaunchAgent,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
     activeTabId.value = tabId;
-    void maybeOpenCreated(tabId, agent, resumeConversationId);
+    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession);
     scheduleSave();
     return tabId;
   }
@@ -1463,6 +1479,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     tabId: string,
     agent: LaunchAgent,
     resumeConversationId?: string | null,
+    forkSession = false,
   ) {
     if (agent === "claude" || agent === "codex") {
       const outcome = await loadProviderStatus(agent);
@@ -1479,7 +1496,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         if (association) pendingConversationAssociations.set(tabId, association);
       }
     }
-    openTab(tabId, resumeConversationId);
+    openTab(tabId, resumeConversationId, forkSession);
   }
 
   /** v2.1.8 T4: a LIVE tab that already resumed this conversation. The

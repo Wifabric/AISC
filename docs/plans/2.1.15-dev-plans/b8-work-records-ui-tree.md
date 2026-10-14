@@ -80,3 +80,19 @@
 ## 分支
 
 `2.1.15-b8-work-records-ui-tree`（从 develop 切出）。
+
+
+## 执行状态（2026-10-14）
+
+- R0：已完成，结论见上节。
+- R3 后端：`conversation scan` 输出 `parent_thread_id`；Rust IPC wire
+  struct 同步保留该字段，避免 serde 静默丢弃。
+- R4：侧边栏历史入口与 command palette 入口移除；Work Records 内嵌
+  `ConversationsPane` 承接搜索 / 恢复 / 只读 / 重命名 / 删除。
+- R1+R2：Work Records 操作符号化；会话右键菜单支持查看 / 恢复 / 重命名 /
+  分支 / 删除；Claude fork 开放，Codex fork 禁用并显示原因。
+- R3 UI：新增纯函数 conversation tree；All Sessions 与 collection members
+  均按 parent→child 展示，child 默认折叠，可展开；搜索 child 保留祖先路径。
+- 实测：HANDTEST T7 执行记录已回填；两项实机中发现的集成缺陷已修复。
+- 门禁：Python 1350 OK（62 skipped），Frontend build + 565 tests 全绿，
+  Rust lib 347 passed（1 ignored），`git diff --check` PASS。

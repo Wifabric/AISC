@@ -221,7 +221,7 @@ def _codex_resume_overrides() -> list:
     return argv
 
 
-def _agent_argv(agent: str, resume_id: Optional[str]) -> Tuple[str, list]:
+def _agent_argv(agent: str, resume_id: Optional[str], fork_session: bool = False) -> Tuple[str, list]:
     """Resolve (binary, argv) for an ``open`` request.
 
     v2.1.8 T4 (design §2): ``--resume-id`` converts to the provider-native
@@ -233,8 +233,11 @@ def _agent_argv(agent: str, resume_id: Optional[str]) -> Tuple[str, list]:
     """
     if resume_id:
         if agent == "claude":
-            return "claude", ["claude", "--resume", resume_id]
+            fork_argv = ["--fork-session"] if fork_session else []
+            return "claude", ["claude", "--resume", resume_id] + fork_argv
         if agent == "codex":
+            if fork_session:
+                raise ValueError("agent does not support --fork-session: codex")
             return "codex", ["codex", "resume", resume_id] + _codex_resume_overrides()
         raise ValueError(f"agent does not support --resume-id: {agent}")
     if agent == "bash":
@@ -330,7 +333,7 @@ def _cmd_open(args: argparse.Namespace) -> int:
     env["AISC_AGENT"] = args.agent
 
     try:
-        binary, argv = _agent_argv(args.agent, args.resume_id)
+        binary, argv = _agent_argv(args.agent, args.resume_id, args.fork_session)
     except ValueError as exc:
         _fail(str(exc))
     if binary == "zsh":
@@ -553,6 +556,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # v2.1.8 T4: optional provider conversation id → provider-native resume
     # argv (claude --resume <id> / codex resume <id>); see _agent_argv.
     p_open.add_argument("--resume-id", default=None)
+    p_open.add_argument("--fork-session", action="store_true")
 
     sub.add_parser("list")
 

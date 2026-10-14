@@ -41,7 +41,7 @@ export interface CommandCtx {
     closeWorkspace: () => void;
     runDoctor: () => void;
     toggleSidebar: () => void;
-    showView: (kind: "explorer" | "conversations" | "artifacts" | "services") => void;
+    showView: (kind: "explorer" | "artifacts" | "services") => void;
     servicesSupported: () => boolean;
   };
 }
@@ -82,10 +82,6 @@ export function buildCommands(): CommandEntry[] {
     {
       id: "view.files", labelKey: "explorer.tab.files", groupKey: "palette.group.view",
       when: ready, run: (c) => c.app.showView("explorer"),
-    },
-    {
-      id: "view.conversations", labelKey: "explorer.tab.conversations", groupKey: "palette.group.view",
-      when: ready, run: (c) => c.app.showView("conversations"),
     },
     {
       id: "view.artifacts", labelKey: "explorer.tab.artifacts", groupKey: "palette.group.view",

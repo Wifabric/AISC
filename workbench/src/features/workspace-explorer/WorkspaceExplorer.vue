@@ -17,7 +17,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 import { useI18n } from "vue-i18n";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { errorCodeOf, useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import { WORKSPACE_PATH_MIME } from "../../lib/workspaceDnd";
@@ -27,8 +26,9 @@ import { setExplorerCollapsed } from "../../lib/panelLayout";
 import { validateBasename } from "./basename";
 import ChangeBadge from "./ChangeBadge.vue";
 import WorkRecordsView from "./WorkRecordsView.vue";
+import ConversationsPane from "./ConversationsPane.vue";
 import TypeIcon from "./TypeIcon.vue";
-import type { ConversationSummary, WorkspaceNode } from "../../types";
+import type { WorkspaceNode } from "../../types";
 
 const { t } = useI18n();
 const explorer = useWorkspaceExplorerStore();
@@ -41,7 +41,6 @@ const focusIndex = ref(-1);
 // --- Stage 11: target-aware context menu ---
 
 type MenuTarget =
-  | { kind: "conversation"; conversationId: string; agent: "claude" | "codex"; title: string }
   | { kind: "root" }
   | { kind: "dir"; relativePath: string }
   /** `renamable`: the row exists in the loaded tree, so the inline rename
@@ -116,8 +115,6 @@ const searchMatcher = computed<((hay: string) => 0 | 1 | 2) | null>(() =>
 const searchPlaceholder = computed(() =>
   explorer.activeKind === "artifacts"
     ? t("explorer.searchArtifacts")
-    : explorer.activeKind === "conversations"
-    ? t("explorer.searchConversations")
     : t("explorer.searchFiles"),
 );
 /** Flat match list over EVERY loaded directory (not just expanded ones) —
@@ -208,115 +205,6 @@ function onRowClick(node: ChangeTreeNode): void {
 function subtreeCount(node: ChangeTreeNode): number {
   return subtreeBadge(node).count;
 }
-// --- v2.1.8 T4: agent history conversations ---
-
-/** Two-call resume orchestration happens in the store (preflight →
- *  createTab); a preflight failure stays inline on the row (design §1c).
- *  A successful resume closes the panel's search box state only — the new
- *  tab takes focus via createTab's activation. */
-async function onResumeConversation(c: ConversationSummary): Promise<void> {
-  await explorer.resumeConversation(c);
-}
-// --- v2.1.8 T4 手测反馈 #2: inline conversation rename ---
-const renamingConvId = ref<string | null>(null);
-const convRenameValue = ref("");
-const convRenameInputEl = ref<HTMLInputElement | null>(null);
-
-function beginConversationRename(conversationId: string, currentTitle: string) {
-  menu.value = null;
-  renamingConvId.value = conversationId;
-  convRenameValue.value = currentTitle;
-  // Focus after the input mounts (next tick of the reactive render).
-  void nextTick(() => convRenameInputEl.value?.focus());
-}
-function cancelConversationRename() {
-  renamingConvId.value = null;
-  convRenameValue.value = "";
-}
-async function commitConversationRename(c: ConversationSummary): Promise<void> {
-  const title = convRenameValue.value.trim();
-  const id = renamingConvId.value;
-  cancelConversationRename();
-  if (!title || id !== c.conversation_id) return;
-  try {
-    await explorer.renameConversation(c, title);
-    flash("explorer.conversations.renamed");
-  } catch (e) {
-    flash(errorI18nKey(e), undefined, "warn");
-  }
-}
-async function onResumeConversationById(
-  conversationId: string,
-  agent: "claude" | "codex",
-): Promise<void> {
-  const c = explorer.conversations.find((x) => x.conversation_id === conversationId);
-  if (c) await explorer.resumeConversation(c);
-  else await explorer.resumeConversation({ agent, conversation_id: conversationId } as ConversationSummary);
-}
-/** Menu 删除: confirm first (destructive, removes the session file), then
- *  delegate to the store which refreshes the list. */
-async function deleteConversationFromMenu(target: {
-  conversationId: string;
-  agent: "claude" | "codex";
-  title: string;
-}): Promise<void> {
-  menu.value = null;
-  const ok = await confirm(
-    t("explorer.conversations.deleteConfirm", { title: target.title }),
-    { kind: "warning", title: t("explorer.conversations.deleteTitle") },
-  );
-  if (!ok) return;
-  try {
-    await explorer.deleteConversation({
-      conversation_id: target.conversationId,
-      agent: target.agent,
-    } as ConversationSummary);
-    flash("explorer.conversations.deleted");
-  } catch (e) {
-    flash(errorI18nKey(e), undefined, "warn");
-  }
-}
-/** Human text for an entry that cannot be resumed (CLI annotation). */
-function conversationReasonText(reason?: string): string {
-  if (reason === "file_too_large") return t("explorer.conversations.reason.fileTooLarge");
-  if (reason === "malformed") return t("explorer.conversations.reason.malformed");
-  return t("explorer.conversations.reason.unknown");
-}
-/** v2.1.8 T4: history rows filtered by the shared search box (title match). */
-const conversationsFiltered = computed(() => {
-  const matcher = searchMatcher.value;
-  if (matcher === null) return explorer.conversations;
-  return explorer.conversations.filter((c) => matcher(c.title.toLowerCase()) > 0);
-});
-
-/** 批 8 手测: group by agent ONLY when both agents have history — a lone
- * agent's list stays flat (a single section header is noise, not info). Group
- * order follows each group's most recent activity; rows keep the store's
- * recency order inside their group. */
-type ConversationRow =
-  | { kind: "header"; key: string; agent: "claude" | "codex"; label: string; count: number }
-  | { kind: "row"; key: string; c: ConversationSummary };
-
-const conversationRows = computed<ConversationRow[]>(() => {
-  const list = conversationsFiltered.value;
-  const claude = list.filter((c) => c.agent === "claude");
-  const codex = list.filter((c) => c.agent === "codex");
-  if (!(claude.length && codex.length)) {
-    return list.map((c) => ({ kind: "row" as const, key: c.agent + ":" + c.conversation_id, c }));
-  }
-  const recency = (items: ConversationSummary[]) =>
-    Math.max(0, ...items.map((c) => Date.parse(c.last_at ?? "") || 0));
-  const groups = [
-    { agent: "claude" as const, label: t("explorer.conversations.group.claude"), items: claude },
-    { agent: "codex" as const, label: t("explorer.conversations.group.codex"), items: codex },
-  ].sort((a, b) => recency(b.items) - recency(a.items));
-  const out: ConversationRow[] = [];
-  for (const g of groups) {
-    out.push({ kind: "header", key: "header:" + g.agent, agent: g.agent, label: g.label, count: g.items.length });
-    for (const c of g.items) out.push({ kind: "row", key: c.agent + ":" + c.conversation_id, c });
-  }
-  return out;
-});
 function dirOf(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i === -1 ? "" : p.slice(0, i);
@@ -330,7 +218,6 @@ const servicesSupported = computed(() => runtime.capability?.runtime_services ??
 const TITLE_KEY: Record<string, string> = {
   explorer: "explorer.tab.files",
   "work-records": "explorer.tab.workRecords",
-  conversations: "explorer.tab.conversations",
   artifacts: "explorer.tab.artifacts",
   services: "explorer.tab.services",
 };
@@ -675,34 +562,6 @@ async function pasteInto(destinationDir: string) {
 
 function buildMenuItems(target: MenuTarget): MenuAction[] {
   const actions: MenuAction[] = [];
-  if (target.kind === "conversation") {
-    // v2.1.8 T4 手测反馈: 打开 / 重命名 / 删除; left click already opens.
-    // 批 2: 查看对话 = read-only transcript viewer (no resume side effects).
-    actions.push(
-      {
-        id: "view",
-        label: t("history.viewMenu"),
-        run: () =>
-          explorer.openConversationViewer(target.agent, target.conversationId, target.title),
-      },
-      {
-        id: "open",
-        label: t("explorer.open"),
-        run: () => void onResumeConversationById(target.conversationId, target.agent),
-      },
-      {
-        id: "rename",
-        label: t("explorer.menu.rename"),
-        run: () => beginConversationRename(target.conversationId, target.title),
-      },
-      {
-        id: "delete",
-        label: t("explorer.conversations.menuDelete"),
-        run: () => void deleteConversationFromMenu(target),
-      },
-    );
-    return actions;
-  }
   const pasteDisabled = !explorer.canPaste();
   const noWorkspace = !runtime.workspace;
   if (target.kind === "root") {
@@ -782,11 +641,6 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
 
 async function openFromMenu(target: MenuTarget) {
   menu.value = null;
-  if (target.kind === "conversation") {
-    // Conversation rows resume instead of opening a file; the menu item
-    // already ran onResumeConversationById — nothing to do here.
-    return;
-  }
   if (target.kind === "dir") {
     await explorer.toggleDir(target.relativePath);
     return;
@@ -1225,91 +1079,18 @@ function onTreeKeydown(e: KeyboardEvent) {
       v-else-if="artifactFilter === 'work-records'"
       key="work-records"
       :workspace="explorer.workspace"
-      @switch="explorer.activateView"
     />
 
     <!-- Artifacts panel -->
     <!-- v2.1.8 T4 手测反馈 #3: agent history panel (own tab). Left click
          resumes; right click offers 打开/删除 (design §1c two-call flow). -->
-    <div v-else-if="artifactFilter === 'conversations'" key="conversations" class="explorer-body conversations-panel">
-      <p v-if="explorer.conversationsLoading" class="explorer-empty">
-        {{ t("explorer.loading") }}
-      </p>
-      <p v-else-if="explorer.conversationsError" class="explorer-empty">
-        {{ t("explorer.conversations.loadFailed") }}
-      </p>
-      <p v-else-if="!conversationsFiltered.length" class="explorer-empty">
-        {{ t("explorer.empty.conversations") }}
-      </p>
-      <template v-else>
-        <template v-for="r in conversationRows" :key="r.key">
-          <p v-if="r.kind === 'header'" class="conversation-group-label" :data-agent="r.agent">
-            {{ r.label }} <span class="explorer-label">{{ r.count }}</span>
-          </p>
-          <div
-            v-else
-            class="explorer-row artifact-row conversation-row"
-            role="button"
-            :title="t('explorer.conversations.resumeTooltip')"
-            @click="onResumeConversation(r.c)"
-            @contextmenu.prevent.stop="
-              openMenuAt({ kind: 'conversation', conversationId: r.c.conversation_id, agent: r.c.agent, title: r.c.title }, $event.clientX, $event.clientY)"
-          >
-            <span
-              v-if="renamingConvId === r.c.conversation_id"
-              class="name-input-row conversation-rename"
-            >
-              <input
-                :ref="(el) => (convRenameInputEl = (el as HTMLInputElement | null))"
-                v-model="convRenameValue"
-                type="text"
-                @click.stop
-                @keydown.enter.prevent="commitConversationRename(r.c)"
-                @keydown.esc.prevent="cancelConversationRename"
-                @blur="cancelConversationRename"
-              />
-            </span>
-            <span v-else class="explorer-name conversation-title" :title="r.c.title">
-              {{ r.c.title }}
-            </span>
-            <span v-if="r.c.message_count !== null" class="explorer-label">
-              {{ t("explorer.conversations.msgCount", { n: r.c.message_count }) }}
-            </span>
-            <!-- 批 2 聊天式 UI: read-only viewer entry (hover chip; resume
-                 stays the row's primary click action). -->
-            <span
-              class="cv-view-chip conversation-pill"
-              role="button"
-              tabindex="-1"
-              :title="t('history.viewTooltip')"
-              @click.stop="explorer.openConversationViewer(r.c.agent, r.c.conversation_id, r.c.title)"
-            >{{ t("history.viewMenu") }}</span>
-            <!-- FIX-1 (2.1.10): agent glyphs with distinct color families —
-                 the old plain-text badge read as noise at a glance. -->
-            <span
-              class="explorer-badge agent-glyph conversation-pill"
-              :class="r.c.agent === 'claude' ? 'agent-claude' : 'agent-codex'"
-              :title="r.c.agent"
-              aria-hidden="true"
-            ><span class="glyph">{{ r.c.agent === "claude" ? "✳" : "◈" }}</span>{{ r.c.agent }}</span>
-            <div
-              v-if="explorer.resumeErrors[r.c.conversation_id]"
-              class="conversation-resume-error"
-            >
-              {{ explorer.resumeErrors[r.c.conversation_id] }}
-            </div>
-            <div v-else-if="!r.c.resumable" class="conversation-resume-error">
-              {{ conversationReasonText(r.c.unavailable_reason) }}
-            </div>
-          </div>
-        </template>
-      </template>
-    </div>
+    <!-- b8 R4: History is no longer a standalone module. The same pane is
+         embedded by Work Records > All Sessions. -->
+    <ConversationsPane
+      v-else-if="artifactFilter === 'conversations'"
+      key="conversations"
+    />
 
-    <!-- 2.1.9 T6 (user ruling 2026-08-31): agent self-registration proved
-         unreliable — drop the classification taxonomy (kind sections,
-         filter chips, attribution badges). The panel is a FLAT change list
-         + the shared search box (substring/subsequence fuzzy + /regex/). -->
     <div v-else-if="artifactFilter === 'artifacts'" key="artifacts" class="explorer-body artifacts-panel">
       <!-- v2.1.13 D-6: source indicator - git (authoritative, local repo,
            read-only status/diff) or the watcher session-log fallback. -->

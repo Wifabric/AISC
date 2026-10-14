@@ -908,6 +908,8 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Workspace path (default: current directory)")
     sso.add_argument("--resume-id", type=str, default=None,
                      help="Provider conversation ID to resume (claude|codex only, v2.1.8 T4)")
+    sso.add_argument("--fork-session", action="store_true",
+                     help="Fork while resuming (Claude only, b8 R2)")
 
     # session list
     ssl = ssub.add_parser("list", help="List sessions in a runtime", allow_abbrev=False)
@@ -2468,6 +2470,7 @@ def _cmd_session(
             agent=args.agent,
             workspace=args.workspace,
             resume_conversation_id=args.resume_id,
+            fork_session=args.fork_session,
         )
         errors: List[Dict[str, Any]] = []
         if exit_code != 0 and data.get("error"):

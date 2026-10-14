@@ -155,6 +155,34 @@ describe("provider gate (A-G08-2)", () => {
   });
 });
 
+describe("fork resume (b8 R2)", () => {
+  it("passes the fork flag to open_session and does not bind the source id", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({
+      provider_name: "official",
+      route_mode: "official-direct",
+      auth_status: "configured",
+      observed_at: "x",
+    });
+    mockIpc.openSession.mockClear();
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const id = s.createTab("claude", "24b70882-2d45-4cec-a9e2-66f8c012481f", true)!;
+    await tick();
+    await tick();
+    expect(mockIpc.openSession).toHaveBeenCalledWith(
+      "rid",
+      expect.any(String),
+      "claude",
+      "/ws",
+      expect.anything(),
+      "24b70882-2d45-4cec-a9e2-66f8c012481f",
+      true,
+    );
+    expect(s.tabs.find((tab) => tab.tabId === id)?.resumeConversationId).toBeUndefined();
+  });
+});
+
 describe("removeTab (A-G08-6)", () => {
   async function threeTabs() {
     const s = useRuntimeStore();

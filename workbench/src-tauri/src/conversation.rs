@@ -173,6 +173,10 @@ pub struct ConversationSummary {
     pub file_size: u64,
     #[serde(default)]
     pub resumable: bool,
+    /// b8 R3: preserve the parent link through IPC; serde otherwise drops
+    /// unknown fields and the frontend tree would promote children to roots.
+    #[serde(default)]
+    pub parent_thread_id: Option<String>,
     #[serde(default)]
     pub unavailable_reason: Option<String>,
 }
@@ -396,6 +400,21 @@ mod tests {
         assert_eq!(argv[i + 1], "24b70882-2d45-4cec-a9e2-66f8c012481f");
         let i = argv.iter().position(|a| a == "--agent").unwrap();
         assert_eq!(argv[i + 1], "codex");
+    }
+
+    #[test]
+    fn conversation_summary_preserves_parent_thread_id() {
+        let value = serde_json::json!({
+            "conversation_id": "01a1384e-94b7-7012-8cd2-f1afa3dfbc76",
+            "agent": "codex",
+            "title": "Reply with exactly: CHILD_OK",
+            "parent_thread_id": "01a1384e-819d-75c0-a6c5-e7c12d9a45b0"
+        });
+        let summary = serde_json::from_value::<ConversationSummary>(value).unwrap();
+        assert_eq!(
+            summary.parent_thread_id.as_deref(),
+            Some("01a1384e-819d-75c0-a6c5-e7c12d9a45b0")
+        );
     }
 
     #[test]

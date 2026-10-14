@@ -61,6 +61,7 @@ export const openSession = (
   workspace: string,
   onEvent: Channel<PtyEvent>,
   resumeConversationId?: string | null,
+  forkSession = false,
 ) =>
   invoke<SessionSnapshot>("open_session", {
     runtimeId,
@@ -70,6 +71,8 @@ export const openSession = (
     onEvent,
     // v2.1.8 T4: provider conversation id for resume (None = normal open).
     resumeConversationId: resumeConversationId ?? null,
+    // b8 R2: Claude-only fork resume (creates a new provider session).
+    forkSession,
   });
 
 // --- v2.1.8 T4: agent conversation discovery (captured, no PTY) ---

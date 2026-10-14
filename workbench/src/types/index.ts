@@ -137,6 +137,8 @@ export interface ConversationSummary {
   message_count: number | null;
   file_size: number;
   resumable: boolean;
+  /** b8 R3: Codex child rollout → parent thread id; null for roots/Claude. */
+  parent_thread_id?: string | null;
   unavailable_reason?: "file_too_large" | "malformed" | "unsupported";
 }
 

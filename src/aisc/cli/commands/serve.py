@@ -340,6 +340,7 @@ def _op_session_open(args: argparse.Namespace, payload: Dict[str, Any],
     agent = str(payload.get("agent") or "")
     workspace = payload.get("workspace")
     resume = payload.get("resume_conversation_id")
+    fork_session = payload.get("fork_session") is True
 
     # Resolution/validation speaks the DockerExecutor interface (run_captured
     # etc. — RealDockerExecutor, docker CLI); the PTY stream is SDK-only
@@ -357,6 +358,7 @@ def _op_session_open(args: argparse.Namespace, payload: Dict[str, Any],
         executor=executor,
         registry_root=registry_root,
         resume_conversation_id=resume if isinstance(resume, str) else None,
+        fork_session=fork_session,
     )
 
     cols = int(payload.get("cols") or DEFAULT_COLS)

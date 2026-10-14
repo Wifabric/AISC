@@ -76,6 +76,7 @@ def build_session_exec(
     executor: Any,
     registry_root: Any,
     resume_conversation_id: Optional[str] = None,
+    fork_session: bool = False,
 ) -> Tuple[str, List[str], Optional[Dict[str, str]]]:
     """Resolve + validate + construct the exec for one interactive session.
 
@@ -131,6 +132,13 @@ def build_session_exec(
         "--agent", agent,
     ]
 
+    if fork_session and resume_conversation_id is None:
+        raise CliError(
+            message="Invalid conversation ID: None",
+            exit_code=2,
+            error_code="AISC_ERR_CONVERSATION_INVALID_ID",
+        )
+
     if resume_conversation_id is not None:
         from aisc.application.conversation import (
             ERROR_INVALID_AGENT as _CONV_INVALID_AGENT,
@@ -149,6 +157,14 @@ def build_session_exec(
                 exit_code=2,
                 error_code=_CONV_INVALID_AGENT,
             )
+        if fork_session:
+            if agent != "claude":
+                raise CliError(
+                    message=f"agent does not support --fork-session: {agent}",
+                    exit_code=2,
+                    error_code=_CONV_INVALID_AGENT,
+                )
+            docker_argv += ["--fork-session"]
         docker_argv += ["--resume-id", resume_conversation_id]
 
     # v2.1.7 S6: bash sessions import the tutorial `help` function from the

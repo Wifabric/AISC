@@ -58,6 +58,10 @@ vi.mock("../../../stores/runtime", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 
 const conversationId = "01a04ca9-d3f6-7021-b9e7-50d48d818c65";
+const withParent = (parentThreadId: string | null) => ({
+  ...member,
+  parent_thread_id: parentThreadId,
+}) as typeof member;
 const member = {
   member_key: `codex:${conversationId}`,
   agent: "codex" as const,
@@ -193,7 +197,7 @@ describe("WorkRecordsView", () => {
 
   it("refreshes both ledger and provider conversations", async () => {
     const { wrapper } = await mountView();
-    const refresh = wrapper.findAll("button").find((button) => button.text() === "刷新");
+    const refresh = wrapper.findAll("button").find((button) => button.attributes("title") === "刷新");
     await refresh!.trigger("click");
     await flushPromises();
 
@@ -208,7 +212,7 @@ describe("WorkRecordsView", () => {
       collections: [{ ...activeCollection, members: [] }],
     });
     vi.mocked(workRecordRemoveMember).mockResolvedValue({ removed: true, member_key: member.member_key });
-    const remove = wrapper.findAll("button").find((button) => button.text() === "移出");
+    const remove = wrapper.findAll("button").find((button) => button.attributes("title") === "移出");
     await remove!.trigger("click");
     await flushPromises();
 
@@ -220,11 +224,70 @@ describe("WorkRecordsView", () => {
   it("resolves pending new provider tabs after refresh", async () => {
     const { wrapper } = await mountView();
     runtimeMock.resolvePendingConversationAssociations.mockClear();
-    const refresh = wrapper.findAll("button").find((button) => button.text() === "刷新");
+    const refresh = wrapper.findAll("button").find((button) => button.attributes("title") === "刷新");
     await refresh!.trigger("click");
     await flushPromises();
 
     expect(runtimeMock.resolvePendingConversationAssociations).toHaveBeenLastCalledWith([provider]);
+  });
+
+  it("opens All Sessions inside Work Records without switching to History", async () => {
+    const { wrapper, explorer } = await mountView();
+    explorer.activateView = vi.fn();
+    await wrapper.find("[data-testid=all-sessions]").trigger("click");
+    expect(wrapper.findComponent({ name: "ConversationsPane" }).exists()).toBe(true);
+    expect(wrapper.find(".conversation-row").text()).toContain("Provider");
+    expect(explorer.activateView).not.toHaveBeenCalled();
+  });
+
+  it("keeps a search-matched child under its parent in All Sessions", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "/ws";
+    const parent = { ...provider, conversation_id: "parent-1", title: "Parent", parent_thread_id: null };
+    const child = { ...provider, conversation_id: "child-1", title: "Child", parent_thread_id: "parent-1" };
+    explorer.conversations = [parent, child];
+    vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [parent, child] });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    await wrapper.find("[data-testid=all-sessions]").trigger("click");
+    await wrapper.find('[data-testid="conversations-search"]').setValue("Child");
+    const rows = wrapper.findAll(".conversation-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("Parent");
+    expect(rows[1].text()).toContain("Child");
+    expect(rows[1].attributes("style")).toContain("padding-left: 20px");
+  });
+
+  it("folds a collection child under its parent by default", async () => {
+    const childId = "child-1";
+    const parent = { ...provider, conversation_id: "parent-1", title: "Parent", parent_thread_id: null };
+    const child = { ...provider, conversation_id: childId, title: "Child", parent_thread_id: "parent-1" };
+    const collection: WorkRecordListResult["collections"][number] = {
+      ...activeCollection,
+      members: [
+        { ...member, member_key: "codex:parent-1", conversation_id: "parent-1" },
+        { ...withParent("parent-1"), member_key: "codex:child-1", conversation_id: childId },
+      ],
+    };
+    useWorkspaceExplorerStore().conversations = [parent, child];
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      collections: [collection],
+      active_collection_id: collection.id,
+      unfiled: [],
+    });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Parent");
+    expect(wrapper.text()).not.toContain("Child");
+    await wrapper.find('[data-testid="member-toggle-codex:parent-1"]').trigger("click");
+    expect(wrapper.text()).toContain("Child");
   });
 
   it("disables resume for a missing transcript", async () => {
@@ -240,6 +303,6 @@ describe("WorkRecordsView", () => {
     const button = wrapper.find(`[data-testid="resume-${member.member_key}"]`);
     expect(button.exists()).toBe(true);
     expect(button.attributes("disabled")).toBeDefined();
-    expect(button.text()).toContain("缺失");
+    expect(button.attributes("aria-label")).toContain("缺失");
   });
 });

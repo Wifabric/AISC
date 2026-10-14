@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 from aisc.adapters.docker_ import FakeDockerExecutor
 from aisc.application.session import (
     _resolve_running_container,
+    build_session_exec,
     list_sessions,
     open_session,
     terminate_session,
@@ -74,7 +75,36 @@ class TestAgentValidation(unittest.TestCase):
 # open_session
 # ---------------------------------------------------------------------------
 
-class TestOpenSession(unittest.TestCase):
+class TestSessionFork(unittest.TestCase):
+    """b8 R2: Claude fork rides the controlled argv; other engines rejected."""
+
+    RESUME_ID = "24b70882-2d45-4cec-a9e2-66f8c012481f"
+
+    @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
+    def test_claude_fork_appends_flag(self, _resolve):
+        _container, argv, _env = build_session_exec(
+            RT, SID, "claude", Mock(), REG,
+            resume_conversation_id=self.RESUME_ID,
+            fork_session=True,
+        )
+        assert argv[-3:] == ["--fork-session", "--resume-id", self.RESUME_ID]
+
+    @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
+    def test_codex_fork_is_rejected(self, _resolve):
+        with self.assertRaises(CliError) as cm:
+            build_session_exec(
+                RT, SID, "codex", Mock(), REG,
+                resume_conversation_id=self.RESUME_ID,
+                fork_session=True,
+            )
+        assert "does not support --fork-session" in cm.exception.message
+
+    @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
+    def test_fork_requires_resume_id(self, _resolve):
+        with self.assertRaises(CliError) as cm:
+            build_session_exec(RT, SID, "claude", Mock(), REG, fork_session=True)
+        assert "Invalid conversation ID" in cm.exception.message
+
     @patch("aisc.application.session._resolve_running_container", return_value=CONTAINER)
     def test_open_constructs_controlled_argv(self, _resolve):
         exec_ = FakeDockerExecutor()

@@ -278,3 +278,88 @@
 **异常记录**
 
 - 无。`transport_error` 保留标签行为由单测覆盖（paneRuntime 套件 b7 用例），本轮未做实机断链。
+
+
+## b8：Work Records UI 树状重构与历史合并（2026-10-14 追加）
+
+### T7：历史并入、树状展示、符号化与右键操作
+
+**前置准备**
+
+- 本地 debug Workbench（分支 `2.1.15-b8-work-records-ui-tree`）；
+- 工作区 runtime 正常，`explorer.conversations` 中至少有：一个 Codex parent session 及其 child/subagent session；一个已配置 Claude session；
+- 保留一个可安全删除的测试 transcript，不使用重要工作会话。
+
+**精确操作步骤**
+
+1. 检查左侧 activity rail 与命令面板：确认没有独立「历史」入口；
+2. 打开 Work Records → 点击「全部会话」，确认列表仍在 Work Records 模块内渲染；
+3. 在「全部会话」搜索 parent / child / Claude 标题；
+4. 观察同一 agent 下 parent/child 展示：默认只展开 parent 节点，child 折叠；点击 parent 的展开符后 child 可见；
+5. 对同一条会话分别尝试：左键恢复、只读查看图标、右键菜单（查看 / 恢复 / 重命名 / 分支 / 删除）；
+6. 对 Claude 会话执行右键 → 分支；确认新建 tab，源 transcript 不被续写，列表出现新会话；
+7. 对 Codex 会话打开右键；确认「分支」禁用并能看到「Codex CLI 暂不支持 fork」原因；
+8. 重命名一条测试会话后刷新；确认标题持久；
+9. 删除一条测试会话；确认原生确认后从「全部会话」消失；
+10. 回归 b6：新建/恢复一条会话加入 Work Record，再删除 collection，确认对应 live tab 自动关闭且无 delete failure。
+
+**理想结果**
+
+- 步骤 1：侧边栏、命令面板均无 History/conversations 模块入口；
+- 步骤 2：「全部会话」是 Work Records 内部视图，不再切换到旧 tab；
+- 步骤 3：搜索能命中 child；即使 parent 标题不匹配，child 也保留在 parent 路径下；
+- 步骤 4：Codex child 只出现在 parent 下，默认折叠；孤儿 child 平铺兜底；
+- 步骤 5：恢复/删除/重命名/查看能力全部保留；菜单项语义正确；
+- 步骤 6：Claude fork 新建独立会话；source transcript 不增长；
+- 步骤 7：Codex fork 明确禁用且有原因，不禁用整个菜单；
+- 步骤 8/9：重命名与删除后列表立即刷新；
+- 步骤 10：b6 T6 级联删除与 b7 自动关 tab 不回退。
+
+**异常判定**
+
+- child 作为独立顶层重复显示 → fail；
+- 「全部会话」跳回旧历史 tab 或丢失搜索/重命名/删除/恢复/只读查看 → fail；
+- Codex fork 可点击或 Claude fork 续写源 transcript → fail；
+- Work Record 成员树把 child 放到 parent 外或删除时丢失成员 → fail。
+
+### 2026-10-14 T7 实测执行记录
+
+**环境**
+
+- 分支：`2.1.15-b8-work-records-ui-tree`（R0+R3 后端 `da5e80a` + b8 实施工作区）；
+- 本地 debug Workbench（`npm run tauri dev` + WebView2 CDP `127.0.0.1:9222`）；
+- 工作区：`E:\pt\b6-manual`；dev CLI 临时 pin 到当前源码
+  `.venv\Scripts\aisc.exe`，避免 10/13 旧 sidecar 掩盖 R0 字段；
+- Codex fixture：parent `01a1384e-819d-75c0-a6c5-e7c12d9a45b0` /
+  child `01a1384e-94b7-7012-8cd2-f1afa3dfbc76`。
+
+**实机结果**
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| 历史入口移除 | PASS | activity rail 只有文件 / 工作记录 / 变更 / 服务 / 网络与用量 / 设置；命令面板视图组无 History/conversations 入口。 |
+| 「全部会话」内嵌 Work Records | PASS | Work Records 顶部切换 `work-records-tab` / `all-sessions`；会话列表保留在 Work Records 面板内，无旧 tab 切换。 |
+| Codex 子代理默认折叠 | PASS（修复后） | 初测发现 IPC 丢 `parent_thread_id`：Rust wire struct 未声明该字段，serde 丢弃后 child 提升为 root。补 Rust `ConversationSummary.parent_thread_id` 后，parent 带 `1` 折叠符，child 默认不可见；展开后 child depth 缩进为 20px。 |
+| 搜索 child 保留祖先 | PASS（修复后） | 初测搜索先扁平过滤导致 parent 不在列表中；将过滤交给 tree builder 后，搜索 `CHILD_OK` 同时显示 parent（6px）与 child（20px）。已补组件回归测试。 |
+| 右键菜单 | PASS | Codex 会话菜单显示查看 / 恢复 / 重命名 / 分支 / 删除；Codex「分支」禁用，tooltip 为「Codex CLI 暂不支持 fork」。 |
+| 只读查看 | PASS | 「👁」与右键查看均打开只读回放，显示消息范围和「输入请恢复会话」，可关闭。 |
+| 重命名 | PASS | 右键重命名 fixture 为 `b8 rename test`；刷新后 UI 与 CLI 列表均持久。测后已恢复原名。 |
+| Claude fork | 受限 | 当前工作区无 Claude provider / transcript，未做实机 fork；全链路（前端 IPC / Rust validation / Python wrapper / CLI）由单测覆盖。 |
+| 左键恢复 Codex fixture | 受限 | preflight PASS 且 store 返回创建 tab，但 Codex provider 会话立即退出，b7 的 process_exit 自动关 tab 使 tab 不残留；无法在本轮维持 live tab。恢复/查看能力未丢失。 |
+| 删除会话 | 受限 | 右键删除能打开原生「删除历史对话」确认；自动化驱动确认键在该 Tauri 对话框上不可靠，fixture 文件同时被进程占用（WinError 5）。删除 IPC / store 刷新 / Rust & Python 删除链路由单测覆盖，未记 PASS。 |
+| Work Record 临时创建 / 符号化 | PASS | 新建 `b8 regression` 后操作展示为 ✎ / ◎ / 🗄 / ✕，未归档会话加入为 ＋；测后临时 collection 已删除。 |
+| b6/b7 回归 | 单测 PASS | T6 级联删除与 b7 自动关 tab 已有既有实机记录；本轮新增成员树折叠与 runtime tab 单测通过。因 Codex fixture 无法维持 live，未重复 T6 实机删除。 |
+
+**缺陷修复范围**
+
+- Rust `conversation::ConversationSummary` 增加 `parent_thread_id`，防止
+  CLI→IPC 反序列化丢弃父子链；新增 wire 反序列化测试。
+- ConversationsPane 不再先按搜索扁平过滤，再交给 tree builder；搜索使用
+  全量会话，让 child 命中保留 ancestor 路径；新增 All Sessions 搜索测试。
+
+**门禁**
+
+- Python：1350 tests OK，62 skipped（输出含既有 AGGREGATE/演示 FAIL 文本，进程 exit 0）。
+- Frontend：`npm run build` PASS；`npx vitest run` 74 files / 565 tests PASS。
+- Rust：`cargo test -p workbench --lib` 347 passed / 1 ignored。
+- `git diff --check` PASS。
