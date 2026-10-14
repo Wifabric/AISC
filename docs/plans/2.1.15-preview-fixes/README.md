@@ -6,4 +6,4 @@ Preview 验证窗内的阻断修复索引。按 DEVELOP_WIKI §1.1 preview 迭�
 
 | 批 | 内容 | 分支 | 终态 |
 | --- | --- | --- | --- |
-| b9 | preview.1 反馈四项阻断修复 | `2.1.15-b9-preview-blocking-fixes` | 进行中 |
+| b9 | preview.1 反馈四项阻断修复 | `2.1.15-b9-preview-blocking-fixes` | 已合入 develop，待 preview.2 实测 |

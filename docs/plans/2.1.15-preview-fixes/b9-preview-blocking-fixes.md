@@ -70,3 +70,6 @@
 - 待办：PR CI 全绿后合并，发布下一跳 preview，再按 `HANDTEST.md` 完成
   b9-T1–T3 实机验证。远端 `10.147.20.90:22` 当前从本机连接超时，Windows
   远端版本采样待机器可达后补充。
+
+- 合并与 CI：PR #14 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、
+  Linux/macOS bundle、NSIS 全绿，已 ff-only 合入 `072befc`。
