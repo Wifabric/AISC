@@ -8,4 +8,5 @@ Preview 验证窗内的阻断修复索引。按 DEVELOP_WIKI §1.1 preview 迭�
 | --- | --- | --- | --- |
 | b9 | preview.1 反馈四项阻断修复 | `2.1.15-b9-preview-blocking-fixes` | 已发布 preview.2，待 b9-T1–T3 实测 |
 | b10 | 远端 target 路由与 workspace 绑定修复 | `2.1.15-b10-remote-routing-and-work-records-ux` | 已合入 develop，待 preview.3 实测 |
-| b11 | Work Records 拖拽、右键菜单与呈现一致性 | `2.1.15-b10-remote-routing-and-work-records-ux` | 已实施，待 PR CI 与实机 |
+| b11 | Work Records 拖拽、右键菜单与呈现一致性 | `2.1.15-b10-remote-routing-and-work-records-ux` | 已发布 preview.3，待实机 |
+| b12 | preview.3 四项字段反馈修复 | `2.1.15-b12-preview3-field-fixes` | 进行中 |
