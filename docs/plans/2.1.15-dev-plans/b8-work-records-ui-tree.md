@@ -26,6 +26,29 @@
 - fork：CLI 目前无 fork 能力（已核实）。Claude 侧 `--resume <id>
   --fork-session` 原生支持待核实版本；Codex 侧 fork 支持待调研。
 
+## R0 调研结论（2026-10-14 实测定案）
+
+1. **Codex 子代理父子链**（容器内 codex 实测 spawn + 检查 rollout）：
+   - 子代理产生独立 rollout 文件（文件名 = 子线程 id），父 rollout 不变；
+   - 子 rollout 首行 `session_meta`：`thread_source == "subagent"`，
+     `source.subagent.thread_spawn.parent_thread_id = <父线程 id>`，
+     另有 `depth` / `agent_nickname`；
+   - 注意：子 rollout 的 `payload.session_id` 字段**继承父线程 id**，
+     而 AISC 扫描器的 conversation id 取自**文件名**（子线程 id）——
+     这就是 Work Records 里 child session 作为独立条目重复出现的根因；
+   - 顶层会话 `thread_source == "user"`。
+2. **Claude 子代理**：sidechain 消息写在**同一个** transcript 文件内
+   （`isSidechain: true`），不产生独立 child session 文件；树状/折叠
+   只需对 codex 生效，claude 天然单节点。
+3. **Fork**：
+   - Claude Code 2.1.273 原生支持 `--resume <id> --fork-session`
+     （恢复时生成新 session id）→ fork 菜单项可用；
+   - Codex 无 CLI 原生 fork：`codex resume` 续写原 rollout（实测 exec
+     resume 后原文件追加，无新文件）；Desktop 的 fork 是 IDE 层实现
+     （新 rollout + `history_base.thread_id` 指源）。CLI 复刻需手改
+     rollout 内部 ordinal/thread_id 引用，风险不可接受 → **codex fork
+     菜单项禁用并提示**。
+
 ## 实施顺序
 
 1. **R0 小调研（先行，只读）**：

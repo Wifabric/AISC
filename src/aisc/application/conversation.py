@@ -180,6 +180,33 @@ class _FileScan:
     malformed_seen: bool = False
     _first_raw: Optional[str] = None
     _good_raw: Optional[str] = None
+    # b8 R3: codex subagent rollouts carry their parent thread id in the
+    # first-line session_meta (source.subagent.thread_spawn); claude has
+    # none (sidechains live inside the same file).
+    parent_thread_id: Optional[str] = None
+
+
+def _codex_parent_thread_id(meta: Dict[str, Any]) -> Optional[str]:
+    """b8 R3: return the parent thread id when *meta* is a subagent
+    rollout's session_meta; None for top-level (thread_source != subagent)
+    or malformed metas. Shape (live-verified 2026-10-14):
+    ``payload.source.subagent.thread_spawn.parent_thread_id``."""
+    payload = meta.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("thread_source") != "subagent":
+        return None
+    source = payload.get("source")
+    if not isinstance(source, dict):
+        return None
+    sub = source.get("subagent")
+    if not isinstance(sub, dict):
+        return None
+    spawn = sub.get("thread_spawn")
+    if not isinstance(spawn, dict):
+        return None
+    parent = spawn.get("parent_thread_id")
+    return parent if isinstance(parent, str) and parent else None
 
 
 def _scan_file(path: Path, agent: str, head_only: bool) -> _FileScan:
@@ -209,6 +236,9 @@ def _scan_file(path: Path, agent: str, head_only: bool) -> _FileScan:
             if not isinstance(obj, dict):
                 continue
             state.parseable += 1
+            if agent == "codex" and state.parent_thread_id is None \
+                    and obj.get("type") == "session_meta":
+                state.parent_thread_id = _codex_parent_thread_id(obj)
             ts = obj.get("timestamp")
             if isinstance(ts, str) and ts:
                 if state.first_ts is None:
@@ -272,6 +302,7 @@ def _summarize(agent: str, conv_id: str, file_size: int,
         "message_count": message_count,
         "file_size": file_size,
         "resumable": resumable,
+        "parent_thread_id": scan.parent_thread_id,
     }
     if not resumable:
         entry["unavailable_reason"] = reason

@@ -416,3 +416,80 @@ class TestConversationRead:
         with pytest.raises(CliError) as exc:
             self._read(ws, agent="bash")
         assert exc.value.error_code == "AISC_ERR_CONVERSATION_INVALID_AGENT"
+
+
+class TestParentThreadTree:
+    """b8 R3: codex subagent rollouts carry parent linkage; claude has none.
+
+    Real-world shape (2026-10-14 live spawn probe, codex rollout v1):
+    - child session_meta: thread_source="subagent",
+      source.subagent.thread_spawn.parent_thread_id=<parent thread id>;
+    - top-level sessions: thread_source="user";
+    - child payload.session_id inherits the PARENT id, but the scanner's
+      conversation id comes from the FILENAME (child thread id).
+    """
+
+    PARENT_ID = "01a1384e-819d-75c0-a6c5-e7c12d9a45b0"
+    CHILD_ID = "01a1384e-94b7-7012-8cd2-f1afa3dfbc76"
+
+    @staticmethod
+    def _write_rollout(path, thread_id, thread_source="user", parent_id=None):
+        payload = {"session_id": thread_id, "id": thread_id,
+                   "thread_source": thread_source}
+        if thread_source == "subagent":
+            payload["source"] = {"subagent": {"thread_spawn": {
+                "parent_thread_id": parent_id, "depth": 1,
+                "agent_nickname": "Ohm"}}}
+        meta = {"timestamp": "2026-10-14T02:47:11.000Z",
+                "type": "session_meta", "payload": payload}
+        user = {"timestamp": "2026-10-14T02:47:12.000Z",
+                "type": "response_item",
+                "payload": {"type": "message", "role": "user",
+                            "content": [{"type": "input_text",
+                                         "text": "hello"}]}}
+        path.write_text(json.dumps(meta) + "\n" + json.dumps(user) + "\n",
+                        encoding="utf-8")
+
+    def test_codex_subagent_carries_parent_thread_id(self, ws_env):
+        ws, ws_dir = ws_env
+        dest = ws_dir / "codex" / "sessions" / "2026" / "10" / "14"
+        dest.mkdir(parents=True)
+        self._write_rollout(
+            dest / f"rollout-2026-10-14T02-47-11-{self.PARENT_ID}.jsonl",
+            self.PARENT_ID, "user")
+        self._write_rollout(
+            dest / f"rollout-2026-10-14T02-47-16-{self.CHILD_ID}.jsonl",
+            self.CHILD_ID, "subagent", self.PARENT_ID)
+        result = list_conversations(str(ws))
+        by_id = {e["conversation_id"]: e for e in result["conversations"]}
+        assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
+        assert by_id[self.PARENT_ID]["parent_thread_id"] is None
+
+    def test_codex_head_scan_still_carries_parent(self, ws_env):
+        """Oversized files are head-scanned; the meta line is line 1, so the
+        linkage must survive head_only mode."""
+        ws, ws_dir = ws_env
+        dest = ws_dir / "codex" / "sessions" / "2026" / "10" / "14"
+        dest.mkdir(parents=True)
+        target = dest / f"rollout-2026-10-14T02-47-16-{self.CHILD_ID}.jsonl"
+        self._write_rollout(target, self.CHILD_ID, "subagent", self.PARENT_ID)
+        with target.open("a", encoding="utf-8") as fh:
+            filler = {"timestamp": "2026-10-14T02:47:13.000Z",
+                      "type": "response_item",
+                      "payload": {"type": "message", "role": "assistant",
+                                  "content": [{"type": "output_text",
+                                               "text": "x" * 4096}]}}
+            while target.stat().st_size <= MAX_JSONL_BYTES + 1024:
+                fh.write(json.dumps(filler) + "\n")
+        result = list_conversations(str(ws))
+        by_id = {e["conversation_id"]: e for e in result["conversations"]}
+        assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
+        assert by_id[self.CHILD_ID]["resumable"] is False
+
+    def test_claude_entries_have_no_parent(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_claude(ws_dir, "claude_normal.jsonl")
+        result = list_conversations(str(ws))
+        for entry in result["conversations"]:
+            if entry["agent"] == "claude":
+                assert entry["parent_thread_id"] is None
