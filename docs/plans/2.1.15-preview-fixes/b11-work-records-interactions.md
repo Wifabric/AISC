@@ -70,3 +70,6 @@
   新 rollout 不再依赖手动刷新。
 - 验证：Python 1398 passed / 53 skipped；Rust lib 351 passed / 1 ignored；
   Vitest 74 files / 572 tests；vue-tsc、frontend build、`cargo --no-run` 通过。
+
+- PR #15 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、Linux/macOS bundle、
+  NSIS 全绿，已 ff-only 合入 `458432c`。

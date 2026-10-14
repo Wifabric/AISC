@@ -62,3 +62,6 @@ Workbench 没有走远端 serve；`start_runtime` / `open_session` 实际取得
   target 均不再等待第一次 runtime start。
 - CLI preview 版本升至 `0.1.5.dev0`，为远端分发新增 Work Record reorder/move
   命令并避免 TestPyPI 同版本重复上传。
+
+- PR #15 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、Linux/macOS bundle、
+  NSIS 全绿，已 ff-only 合入 `458432c`。
