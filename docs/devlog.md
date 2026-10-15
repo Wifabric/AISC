@@ -3,7 +3,7 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
-# v2.1.15 b14 preview.5 字段修复（2026-10-15，待 PR CI / preview.6）
+# v2.1.15-preview.6 / b14 preview.5 字段修复（2026-10-15）
 
 - **协议提示**：`wsl-base` 远端 CLI 原 `0.1.3` / serve protocol 3，preview.5
   Workbench 要求 protocol 4；Settings 现在保留 `technical_detail`，直接显示
@@ -16,7 +16,10 @@
 - **Docker 展示**：同一 image ID 的 `node` 与 `docker.1ms.run/library/node`
   tag 聚合为一行，删除仍按 ID，retag 使用第一条 ref。
 - **门禁**：Python 1403 passed / 53 skipped；Rust lib 359 passed / 1 ignored；
-  Vitest 75 files / 590 tests；vue-tsc 通过。
+  Vitest 75 files / 590 tests；vue-tsc 通过；PR #18 三 job 全绿；develop
+  Workbench / Bundle / NSIS 全绿，手动 dispatch 的三平台 CLI sidecar 全绿。
+- **发布**：`v2.1.15-preview.6` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；CLI 维持 `0.1.7.dev0`。等待用户实机复测。
 
 
 # v2.1.15-preview.5 / b13 远程工作区模型修复（2026-10-15）

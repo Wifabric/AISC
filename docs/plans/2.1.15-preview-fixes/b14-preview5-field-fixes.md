@@ -78,5 +78,10 @@
   协议错误来源；已从 TestPyPI 升级 CLI 到 `0.1.7.dev0`，ready banner 现为
   protocol 4，`maintenance cache-usage` 可用。其旧 aisc-bundle 目录仍显示
   `0.1.3`，不影响本批协议 / 磁盘命令，后续随远端安装器或 bundle 更新。
-- 下一步：push 分支 → PR CI → ff-only merge develop → develop 全路径 CI →
-  Workbench `v2.1.15-preview.6` → 用户复测。
+- PR #18 frontend / cli / rust 全绿，已 ff-only 合入 develop `1f08636`。
+- develop Workbench / Bundle Linux+macOS / NSIS 全绿；CLI sidecar 虽因本批
+  无 Python 路径变更未自动触发，已手动 dispatch，三平台 sidecar 全绿。
+- 发布完成：`v2.1.15-preview.6` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 资产就位。CLI 维持 `0.1.7.dev0`，无新 CLI tag。
+- 待办：用户升级 preview.6 后复测协议提示、远程首载、Recent 机器路由和
+  同 ID image tag 聚合。
