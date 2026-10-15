@@ -96,5 +96,11 @@
   GUI/CLI 双版本与 CLI envelope 解析修正。
 - 本地门禁：Python 1412 passed / 53 skipped；Rust lib 361 passed / 1 ignored；
   Vitest 75 files / 594 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
-- 下一步：push → PR CI → ff-only merge develop → develop 全路径 CI →
-  Workbench `v2.1.15-preview.7` + CLI `0.1.8.dev0` / TestPyPI → 用户复测。
+- PR #19 frontend / cli / rust 全绿，已 ff-only 合入 develop `e727245`。
+- develop Workbench / CLI sidecar / Linux+macOS bundle / NSIS 全绿。
+- 发布完成：`v2.1.15-preview.7` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 资产就位；`cli-v0.1.8.dev0` PyPI workflow success，
+  TestPyPI `0.1.8.dev0` 可安装。
+- 待办：用户升级本机 Workbench preview.7 与远端 CLI `0.1.8.dev0` 后复测：
+  更新、中文重命名、Work Records 折叠/去 Active/静默删除、Claude 树、
+  Docker 统计与 alias 去重。

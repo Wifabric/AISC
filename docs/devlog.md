@@ -3,7 +3,7 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
-# v2.1.15 b15 preview.6 字段修复（2026-10-15，待 PR CI / preview.7）
+# v2.1.15-preview.7 / b15 preview.6 字段修复（2026-10-15）
 
 - **更新**：GitHub 请求按 system proxy → direct 双策略各重试 3 次；下载与 sha256
   sidecar 同样走 fallback；设置页分别显示 Workbench GUI 与内置 CLI current/latest，
@@ -19,7 +19,11 @@
   打 bare tag 后移除同 ID mirror alias；用 RootFS layer 前缀证据安全管理 AISC
   构建引入的基础镜像。
 - **门禁**：Python 1412 passed / 53 skipped；Rust lib 361 passed / 1 ignored；
-  Vitest 75 files / 594 tests；vue-tsc 通过。
+  Vitest 75 files / 594 tests；vue-tsc 通过；PR #19 三 job 全绿；develop
+  Workbench / CLI sidecar / Bundle / NSIS 全绿。
+- **发布**：`v2.1.15-preview.7` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；`cli-v0.1.8.dev0` PyPI workflow success，TestPyPI
+  版本可安装。等待用户实机复测。
 
 # v2.1.15-preview.6 / b14 preview.5 字段修复（2026-10-15）
 
