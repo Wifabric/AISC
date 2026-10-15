@@ -282,10 +282,14 @@ onBeforeUnmount(() => {
 watch(
   () => runtime.workspace,
   (ws) => {
-    if (ws && explorer.workspace !== ws) {
-      explorer.setWorkspace(ws);
-      void explorer.refreshRoot();
-    }
+    if (!ws) return;
+    // b14 race: App's watcher may set explorer.workspace first. This
+    // component can also mount before runtime.workspace exists, so its
+    // onMounted load is skipped. The runtime transition must ALWAYS own one
+    // root refresh; otherwise the first remote tree stays empty until manual
+    // refresh.
+    if (explorer.workspace !== ws) explorer.setWorkspace(ws);
+    void explorer.refreshRoot();
   },
 );
 
