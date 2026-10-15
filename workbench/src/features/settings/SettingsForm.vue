@@ -351,8 +351,11 @@ async function onCacheCleanup() {
 }
 
 // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
-function dockerActionableCount(b: { owned: unknown[]; legacy_owned: unknown[] }): number {
-  return b.owned.length + b.legacy_owned.length;
+function dockerActionableCount(b: {
+  owned: Array<{ id: string }>;
+  legacy_owned: Array<{ id: string }>;
+}): number {
+  return new Set([...b.owned, ...b.legacy_owned].map((row) => row.id)).size;
 }
 
 /** Compact preview rows: one per actionable/unverified bucket, names capped. */
@@ -389,7 +392,13 @@ async function onDockerRebuild() {
 // Every action double-gates: a confirm dialog naming the resource, then the
 // CLI's in-lock ownership re-verification (unverified refuses server-side).
 const managementBusyLocal = ref(false);
-type ManageRow = { id: string; name: string; state?: string; ownership: string };
+type ManageRow = {
+  id: string;
+  name: string;
+  retagName?: string;
+  state?: string;
+  ownership: string;
+};
 
 const manageContainers = computed<ManageRow[]>(() => {
   const r = store.dockerReport;
@@ -406,12 +415,28 @@ const manageContainers = computed<ManageRow[]>(() => {
 const manageImages = computed<ManageRow[]>(() => {
   const r = store.dockerReport;
   if (!r || !r.dockerAvailable) return [];
-  return [...r.images.owned, ...r.images.legacy_owned].map((row) => ({
-    id: row.id,
-    name: row.name,
-    ownership: row.ownership,
-  }));
+  const byId = new Map<string, ManageRow>();
+  for (const row of [...r.images.owned, ...r.images.legacy_owned]) {
+    const existing = byId.get(row.id);
+    if (!existing) {
+      byId.set(row.id, {
+        id: row.id,
+        name: row.name,
+        retagName: row.name,
+        ownership: row.ownership,
+      });
+      continue;
+    }
+    // Docker lists each repo tag separately even when they point at the same
+    // image ID. One physical image gets one management row; both refs remain
+    // visible so the user can see where it came from.
+    const refs = existing.name.split(", ");
+    if (!refs.includes(row.name)) refs.push(row.name);
+    existing.name = refs.join(", ");
+  }
+  return [...byId.values()];
 });
+
 
 async function onContainerAction(name: string, action: "start" | "stop" | "rm"): Promise<void> {
   if (managementBusyLocal.value) return;
@@ -878,7 +903,7 @@ async function reopenOnboarding() {
                   <span class="mr-state">—</span>
                   <span class="mr-actions">
                     <button class="danger" :disabled="store.managementBusy !== null" @click="onImageRm(row.id, row.name)">{{ t("settings.docker.manage.rm") }}</button>
-                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.name)">{{ t("settings.docker.manage.retag") }}</button>
+                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.retagName ?? row.name)">{{ t("settings.docker.manage.retag") }}</button>
                   </span>
                 </div>
               </div>

@@ -152,6 +152,34 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     return { store, wrapper };
   }
 
+  it("groups duplicate repo tags with the same image ID into one row", async () => {
+    const store = useSettingsStore();
+    await store.load();
+    store.dockerReport = {
+      dockerAvailable: true,
+      dockerReason: "ok",
+      containers: { owned: [], legacy_owned: [], unverified: [] },
+      images: {
+        owned: [
+          { id: "sha256:same", name: "docker.1ms.run/library/node:22-slim", image: "docker.1ms.run/library/node:22-slim", status: "", tag: "", ownership: "owned", state: "present", reason: "label" },
+          { id: "sha256:same", name: "node:22-slim", image: "node:22-slim", status: "", tag: "", ownership: "owned", state: "present", reason: "label" },
+        ],
+        legacy_owned: [],
+        unverified: [],
+      },
+      danglingOwned: [],
+      warnings: [],
+    };
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    const imageRows = wrapper.findAll(".manage-row");
+    expect(imageRows).toHaveLength(1);
+    expect(imageRows[0]!.text()).toContain("docker.1ms.run/library/node:22-slim");
+    expect(imageRows[0]!.text()).toContain("node:22-slim");
+    expect(wrapper.text()).toContain("镜像 1 个");
+    wrapper.unmount();
+  });
+
   it("cleanup/rebuild disabled before any scan, enabled after one loads", async () => {
     mockIpc.dockerScan.mockResolvedValue({
       dockerAvailable: true, dockerReason: "ok",
