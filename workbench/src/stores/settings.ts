@@ -263,6 +263,30 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  /** b16: one Docker data plane — ownership scan plus itemized inspect. */
+  async function refreshDockerResources(): Promise<void> {
+    const [scan, inspect] = await Promise.all([
+      ipc.dockerScan("upgrade"),
+      ipc.cacheInspect(),
+    ]);
+    dockerReport.value = scan;
+    inspectReport.value = inspect;
+    for (const warning of scan.warnings) dockerLogLine(`⚠ ${warning}`);
+    for (const warning of inspect.warnings) dockerLogLine(`⚠ ${warning}`);
+  }
+
+  async function scanDockerResources(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      await refreshDockerResources();
+    } catch (e) {
+      dockerError.value = errorText(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
   /** Full clean (uninstall context: containers + images). The scan preview
    * rides the card above; the CLI re-scans under the maintenance lock
    * anyway (invariant: never trust a stale list). */
@@ -282,8 +306,17 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       if (r.skippedUnverified.length)
         dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
-      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
-      dockerReport.value = await ipc.dockerScan("upgrade");
+
+      const cache = await ipc.cacheCleanup(24);
+      for (const prune of cache.prunes) {
+        dockerLogLine(
+          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
+        );
+      }
+      for (const warning of [...r.warnings, ...cache.warnings]) {
+        dockerLogLine(`⚠ ${warning}`);
+      }
+      await refreshDockerResources();
     } catch (e) {
       dockerError.value = errorText(e);
     } finally {
@@ -424,6 +457,7 @@ export const useSettingsStore = defineStore("settings", () => {
     dockerError,
     dockerLog,
     loadDockerScan,
+    scanDockerResources,
     runDockerCleanup,
     runDockerRebuild,
     readOnly,

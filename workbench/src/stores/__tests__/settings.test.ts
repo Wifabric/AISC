@@ -17,6 +17,7 @@ const mockIpc = vi.hoisted(() => ({
   resetGuiSettings: vi.fn(),
   resolveLocale: vi.fn().mockResolvedValue("zh-CN"),
   dockerScan: vi.fn(),
+  cacheCleanup: vi.fn().mockResolvedValue({ prunes: [], warnings: [], rows_after: [] }),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
   targetGet: vi.fn().mockResolvedValue(null),

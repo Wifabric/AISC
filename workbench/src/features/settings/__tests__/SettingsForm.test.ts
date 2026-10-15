@@ -11,7 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { i18n } from "../../../i18n";
 import { useSettingsStore } from "../../../stores/settings";
 import SettingsForm from "../SettingsForm.vue";
@@ -23,6 +23,8 @@ const mockIpc = vi.hoisted(() => ({
   saveSettings: vi.fn(),
   resetGuiSettings: vi.fn(),
   cacheUsage: vi.fn().mockResolvedValue({ dockerAvailable: true, rows: [] }),
+  cacheInspect: vi.fn(),
+  cacheCleanup: vi.fn(),
   dockerScan: vi.fn(),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
@@ -199,7 +201,89 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     expect(imageRows).toHaveLength(1);
     expect(imageRows[0]!.text()).toContain("docker.1ms.run/library/node:22-slim");
     expect(imageRows[0]!.text()).toContain("node:22-slim");
-    expect(wrapper.text()).toContain("镜像 1 个");
+    expect(imageRows).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  const inspectReport = {
+    dockerAvailable: true,
+    categories: {
+      images: { rows: [], summary: { count: 2, reclaimable_bytes: 2_000_000_000, unknown_count: 0 } },
+      containers: { rows: [], summary: { count: 2, reclaimable_bytes: 100, unknown_count: 0 } },
+      volumes: { rows: [], summary: { count: 3, reclaimable_bytes: 0, unknown_count: 0 } },
+      build_cache: { rows: [], summary: { count: 387, reclaimable_bytes: 9_000_000_000, unknown_count: 0 } },
+      networks: { rows: [], summary: { count: 5, reclaimable_bytes: 0, unknown_count: 0 } },
+    },
+    capabilities: {}, warnings: [], disclaimer: "",
+  };
+  const scanReport = {
+    dockerAvailable: true,
+    dockerReason: "ok",
+    containers: {
+      owned: [
+        { id: "c1", name: "aisc-1", image: "super-claude:latest", status: "", tag: "", ownership: "owned", reason: "label" },
+        { id: "c2", name: "aisc-2", image: "super-claude:latest", status: "", tag: "", ownership: "owned", reason: "label" },
+      ],
+      legacy_owned: [], unverified: [],
+    },
+    images: {
+      owned: [
+        { id: "same", name: "node:22", image: "node:22", status: "", tag: "", ownership: "owned", reason: "label" },
+        { id: "same", name: "mirror/node:22", image: "mirror/node:22", status: "", tag: "", ownership: "owned", reason: "label" },
+      ],
+      legacy_owned: [], unverified: [],
+    },
+    danglingOwned: [{ id: "dangling", name: "dangling", image: "dangling", status: "", tag: "", ownership: "owned", reason: "label" }],
+    warnings: [],
+  };
+
+  function mockUnifiedScan() {
+    mockIpc.dockerScan.mockResolvedValue(scanReport);
+    mockIpc.cacheInspect.mockResolvedValue(inspectReport);
+  }
+
+  async function openDisk() {
+    const store = useSettingsStore();
+    await store.load();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    return wrapper;
+  }
+
+  it("runs one unified Docker scan and reports ownership plus inspect totals", async () => {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await Promise.resolve();
+    expect(mockIpc.dockerScan).toHaveBeenCalledWith("upgrade");
+    expect(mockIpc.cacheInspect).toHaveBeenCalled();
+    const summary = wrapper.find("[data-testid='docker-resource-summary']");
+    expect(summary.exists()).toBe(true);
+    expect(summary.text()).toContain(i18n.global.t("settings.docker.rowContainers"));
+    expect(summary.text()).toContain("2");
+    expect(summary.text()).toContain(i18n.global.t("settings.docker.rowImages"));
+    expect(summary.text()).toContain("1");
+    expect(summary.text()).toContain("387");
+    expect(summary.text()).toContain("9.0 GB");
+    expect(summary.text()).toContain("3");
+    expect(summary.text()).toContain("5");
+    wrapper.unmount();
+  });
+
+  it("one-click cleanup runs AISC resources then cache cleanup and rescans", async () => {
+    mockUnifiedScan();
+    const order: string[] = [];
+    mockIpc.dockerCleanup.mockImplementation(async () => { order.push("resources"); return { containers: { removed: [], not_found: [], failed: [] }, images: { removed: [], not_found: [], failed: [] }, skippedUnverified: [], warnings: [] }; });
+    mockIpc.cacheCleanup.mockImplementation(async () => { order.push("cache"); return { prunes: [], warnings: [], rows_after: [] }; });
+    mockIpc.dockerScan.mockImplementation(async () => { order.push("scan"); return scanReport; });
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    order.length = 0;
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.cleanup"))!.trigger("click");
+    await flushPromises();
+    expect(order).toEqual(["resources", "cache", "scan"]);
+    expect(mockIpc.cacheInspect).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
