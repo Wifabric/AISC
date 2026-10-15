@@ -54,3 +54,6 @@
   drive-letter browse、更新检查后保留“再次检查”均已实现。
 - 目标验证：Python serve/work collection/conversation 51 passed；Rust browse/path
   3 passed；Frontend WorkRecords + picker + settings 37 passed；vue-tsc 通过。
+
+- PR #16 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、Linux/macOS bundle、
+  NSIS 全绿，已 ff-only 合入 `45df391`。
