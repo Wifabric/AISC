@@ -3,7 +3,7 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
-# v2.1.15 b16 preview.7 字段修复（2026-10-15，待 PR CI / preview.8）
+# v2.1.15-preview.8 / b16 preview.7 字段修复（2026-10-15）
 
 - **Work Records**：新建 Collection 默认折叠，标题行保留成员计数，手动展开后显示成员。
 - **Help 菜单**：原诊断入口改名「运行诊断」；文档入口改名「帮助文档」；新增
@@ -18,7 +18,10 @@
   Build Cache / Volumes / Networks；一键清理依次执行 AISC 资源清理与 24h cache cleanup
   并重新扫描。
 - **门禁**：Python 1412 passed / 53 skipped；Rust lib 362 passed / 1 ignored；
-  Vitest 76 files / 599 tests；vue-tsc 通过。
+  Vitest 76 files / 599 tests；vue-tsc 通过；PR #20 三 job 全绿；develop
+  Workbench / Bundle / NSIS 全绿，手动 dispatch 的三平台 CLI sidecar 全绿。
+- **发布**：`v2.1.15-preview.8` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；CLI 维持 `0.1.8.dev0`。等待用户实机复测。
 
 # v2.1.15-preview.7 / b15 preview.6 字段修复（2026-10-15）
 

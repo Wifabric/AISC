@@ -105,5 +105,10 @@
   `df91326` 磁盘与缓存合并为统一 Docker 资源面板与组合清理。
 - 本地门禁：Python 1412 passed / 53 skipped；Rust lib 362 passed / 1 ignored；
   Vitest 76 files / 599 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
-- 下一步：push → PR CI → ff-only merge develop → develop 全路径 CI →
-  Workbench `v2.1.15-preview.8` → 用户复测。
+- PR #20 frontend / cli / rust 全绿，已 ff-only 合入 develop `cf8b740`。
+- develop Workbench / Bundle Linux+macOS / NSIS 全绿；本批无 Python 变更，
+  手动 dispatch 的三平台 CLI sidecar 也全绿。
+- 发布完成：`v2.1.15-preview.8` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 资产就位。CLI 维持 `0.1.8.dev0`，无新 CLI tag。
+- 待办：用户升级 preview.8 后复测 Work Record 默认折叠、Help/About、fit 弹层、
+  更新检查、统一 Docker 资源数值与组合清理。
