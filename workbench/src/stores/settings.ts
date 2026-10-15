@@ -21,6 +21,14 @@ function cloneDoc(d: SettingsDocument): SettingsDocument {
   return JSON.parse(JSON.stringify(d)) as SettingsDocument;
 }
 
+function errorText(e: unknown): string {
+  const err = e as { message?: string; technical_detail?: string };
+  const message = err?.message ?? String(e);
+  const detail = err?.technical_detail;
+  if (!detail || detail === message) return message;
+  return `${message}：${detail}`;
+}
+
 export const useSettingsStore = defineStore("settings", () => {
   const doc = ref<SettingsDocument | null>(null);
   /** Last known disk state (after load/save/reset). `dirty` compares against it. */
@@ -202,7 +210,7 @@ export const useSettingsStore = defineStore("settings", () => {
     try {
       cacheUsage.value = await ipc.cacheUsage();
     } catch (e) {
-      cacheError.value = (e as { message?: string })?.message ?? String(e);
+      cacheError.value = errorText(e);
     } finally {
       cacheBusy.value = false;
     }
@@ -222,7 +230,7 @@ export const useSettingsStore = defineStore("settings", () => {
       if (cacheLog.value.length > 20) cacheLog.value.splice(0, cacheLog.value.length - 20);
       cacheUsage.value = { dockerAvailable: true, rows: result.rows_after };
     } catch (e) {
-      cacheError.value = (e as { message?: string })?.message ?? String(e);
+      cacheError.value = errorText(e);
     } finally {
       cacheBusy.value = false;
     }
@@ -249,7 +257,7 @@ export const useSettingsStore = defineStore("settings", () => {
       dockerReport.value = await ipc.dockerScan("upgrade");
       for (const w of dockerReport.value.warnings) dockerLogLine(`⚠ ${w}`);
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
     } finally {
       dockerBusy.value = false;
     }
@@ -277,7 +285,7 @@ export const useSettingsStore = defineStore("settings", () => {
       for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
       dockerReport.value = await ipc.dockerScan("upgrade");
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
     } finally {
       dockerBusy.value = false;
     }
@@ -296,7 +304,7 @@ export const useSettingsStore = defineStore("settings", () => {
       }
       for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
     } finally {
       dockerRebuilding.value = false;
     }
@@ -319,10 +327,7 @@ export const useSettingsStore = defineStore("settings", () => {
       await loadDockerScan(); // re-scan refreshes rows (删前必重扫的 UI 面)
       return null;
     } catch (e) {
-      const msg =
-        (e as { message?: string })?.message ??
-        (e as { technical_detail?: string })?.technical_detail ??
-        String(e);
+      const msg = errorText(e);
       dockerLogLine(`\u26a0 ${msg}`);
       return msg;
     } finally {
@@ -352,7 +357,7 @@ export const useSettingsStore = defineStore("settings", () => {
       }
       inspectReport.value = report;
     } catch (e) {
-      inspectError.value = (e as { message?: string })?.message ?? String(e);
+      inspectError.value = errorText(e);
     } finally {
       inspectBusy.value = false;
     }

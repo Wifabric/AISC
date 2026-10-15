@@ -202,6 +202,18 @@ describe("docker admin panel (2.1.12 B3)", () => {
     expect(s.dockerError).toBeNull();
   });
 
+  it("keeps the serve protocol technical detail for remote upgrade guidance", async () => {
+    mockIpc.dockerScan.mockRejectedValue({
+      message: "AISC CLI 输出不符合协议",
+      technical_detail: "serve protocol mismatch: client 4, remote 3 — upgrade the aisc CLI on the target machine",
+    });
+    const s = useSettingsStore();
+    await s.loadDockerScan();
+    expect(s.dockerError).toContain("AISC CLI 输出不符合协议");
+    expect(s.dockerError).toContain("client 4, remote 3");
+    expect(s.dockerError).toContain("upgrade the aisc CLI");
+  });
+
   it("loadDockerScan failure lands in dockerError, report untouched", async () => {
     mockIpc.dockerScan.mockRejectedValue({ message: "docker down" });
     const s = useSettingsStore();
