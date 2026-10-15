@@ -12,6 +12,7 @@ import {
   conversationList,
   conversationPreflight,
   workRecordAddMember,
+  workRecordCreate,
   workRecordDelete,
   workRecordList,
   workRecordReorderCollections,
@@ -160,6 +161,23 @@ describe("WorkRecordsView", () => {
     expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(false);
     await wrapper.find("[data-testid=collection-toggle-active-1]").trigger("click");
     expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(true);
+  });
+
+  it("creates a new work record collapsed by default", async () => {
+    vi.mocked(workRecordCreate).mockResolvedValue({
+      collection: { ...activeCollection, id: "new-record", title: "新工作记录", members: [] },
+    });
+    const { wrapper } = await mountView();
+    await wrapper.find("[data-testid=new-work-record-title]").setValue("新工作记录");
+    await wrapper.find("[data-testid=new-work-record-title]").trigger("keydown.enter");
+    await flushPromises();
+    expect(workRecordCreate).toHaveBeenCalledWith("/ws", "新工作记录");
+    const card = wrapper.find("[data-testid=collection][data-id=new-record]");
+    expect(card.exists()).toBe(true);
+    expect(card.text()).toContain("新工作记录");
+    expect(card.find(".work-record-members").exists()).toBe(false);
+    await wrapper.find("[data-testid=collection-toggle-new-record]").trigger("click");
+    expect(card.find(".work-record-members").exists()).toBe(true);
   });
 
   it("does not show or auto-select an Activate collection", async () => {

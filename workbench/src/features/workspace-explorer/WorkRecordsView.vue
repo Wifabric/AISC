@@ -60,7 +60,12 @@ async function createCollection() {
   const title = newTitle.value.trim();
   if (!title) return;
   const created = await records.create(title);
-  if (created) newTitle.value = "";
+  if (created) {
+    // b16: a new record is a container header first; the user expands it on
+    // demand. Existing records keep their current expansion state.
+    collapsedCollections.value = new Set([...collapsedCollections.value, created.id]);
+    newTitle.value = "";
+  }
 }
 
 function beginCollectionRename(collection: WorkRecordCollection) {
