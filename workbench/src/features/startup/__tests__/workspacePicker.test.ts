@@ -107,6 +107,63 @@ describe("recents cap + inline expand (⑦)", () => {
     expect(w.findAll(".recent")).toHaveLength(8);
   });
 
+  it("labels and routes a Windows remote recent by its recorded machine", async () => {
+    const ws = useWorkspacesStore();
+    ws.history = {
+      schema_version: 2,
+      revision: 1,
+      workspaces: [{
+        path: "E:\\test",
+        machine_name: "win-test",
+        machine_host: "10.147.20.7",
+        last_used_at: "2026-10-15T00:00:00Z",
+        last_agent: "bash",
+        pinned: false,
+        runtime: null,
+        layout: null,
+      }],
+    };
+    ws.historyRevision = 1;
+    const w = mountPicker();
+    expect(w.find(".r-machine").text()).toBe("win-test");
+    await w.find(".recent").trigger("click");
+    await flushPromises();
+    expect(mockIpc.targetSet).toHaveBeenCalledWith("win-test", null);
+    expect(mockIpc.workspacePathExists).toHaveBeenCalledWith("E:\\test");
+  });
+
+  it("routes a legacy SSH-host machine record to its configured profile", async () => {
+    const { useSettingsStore } = await import("../../../stores/settings");
+    const settings = useSettingsStore();
+    settings.doc = {
+      ...settings.doc,
+      remoteMachines: [{
+        name: "win-test", host: "10.147.20.7", user: "admin", port: 22, keyPath: null,
+      }],
+    } as never;
+    const ws = useWorkspacesStore();
+    ws.history = {
+      schema_version: 2,
+      revision: 1,
+      workspaces: [{
+        path: "E:\\projects",
+        machine_name: "admin@10.147.20.7",
+        machine_host: "admin@10.147.20.7",
+        last_used_at: "2026-10-15T00:00:00Z",
+        last_agent: "bash",
+        pinned: false,
+        runtime: null,
+        layout: null,
+      }],
+    };
+    ws.historyRevision = 1;
+    const w = mountPicker();
+    expect(w.find(".r-machine").text()).toBe("win-test");
+    await w.find(".recent").trigger("click");
+    await flushPromises();
+    expect(mockIpc.targetSet).toHaveBeenCalledWith("win-test", null);
+  });
+
   it("renders all rows without a toggle when history fits the cap", () => {
     const ws = useWorkspacesStore();
     ws.history = historyWith(5);
@@ -134,7 +191,7 @@ describe("moved/deleted click guard (⑧)", () => {
 
     mockIpc.loadHistory.mockResolvedValue(historyWith(0));
     await w.findAll(".foot button")[2].trigger("click"); // 清除记录（foot: cancel/export/clear）
-    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", 1);
+    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", null, 1);
     expect(mockIpc.workspaceHistoryRemove).not.toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
@@ -152,7 +209,7 @@ describe("moved/deleted click guard (⑧)", () => {
 
     mockIpc.loadHistory.mockResolvedValue(historyWith(0));
     await w.findAll(".foot button")[2].trigger("click"); // 清除记录
-    expect(mockIpc.workspaceHistoryRemove).toHaveBeenCalledWith("C:\\ws\\project-1", 1);
+    expect(mockIpc.workspaceHistoryRemove).toHaveBeenCalledWith("C:\\ws\\project-1", null, 1);
     expect(mockIpc.workspaceForget).not.toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
@@ -207,7 +264,7 @@ describe("forget flow (⑦)", () => {
 
     await w.findAll(".foot button")[2].trigger("click"); // 彻底忘记（foot: cancel/export/confirm）
     await flushPromises();
-    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", 3);
+    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", undefined, 3);
     expect(mockIpc.loadHistory).toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
@@ -327,6 +384,51 @@ describe("F2-B: remote browse dialog (explorer model: click selects, dblclick de
     const input = w.find("input.workspace");
     expect((input.element as HTMLInputElement).value).toBe("/home/tv/projects");
     expect(w.find('[role="dialog"]').exists()).toBe(false);
+  });
+
+  it("switches to another remote drive root", async () => {
+    mockIpc.remoteBrowse
+      .mockResolvedValueOnce({
+        cwd: "C:/Users/admin", root: "C:/", home: "C:/Users/admin",
+        roots: [
+          { name: "C:", path: "C:/" },
+          { name: "D:", path: "D:/" },
+        ],
+        entries: [{ name: "test-ws", isDir: true }],
+      })
+      .mockResolvedValueOnce({
+        cwd: "D:/", root: "D:/", home: "C:/Users/admin",
+        roots: [
+          { name: "C:", path: "C:/" },
+          { name: "D:", path: "D:/" },
+        ],
+        entries: [{ name: "Projects", isDir: true }],
+      });
+    const w = await mountRemote();
+    await w.findAll("button").find((b) => b.text() === "选择")!.trigger("click");
+    await flushPromises();
+    const roots = w.find(".browse-roots");
+    expect(roots.exists()).toBe(true);
+    await roots.setValue("D:/");
+    await flushPromises();
+    expect(mockIpc.remoteBrowse).toHaveBeenLastCalledWith("D:/", false);
+    expect(w.find(".browse-path").text()).toBe("D:/");
+    expect(w.find(".browse-item").text()).toContain("Projects");
+  });
+
+  it("opens the remote browser for a Windows drive-letter workspace path", async () => {
+    mockIpc.remoteBrowse.mockResolvedValue({
+      cwd: "C:/Users/admin", root: "C:/Users/admin",
+      entries: [{ name: "test-ws", isDir: true }],
+    });
+    const w = await mountRemote();
+    const ws = useWorkspacesStore();
+    ws.activeRuntime.workspace.value = "C:\\Users\\admin";
+    const btn = w.findAll("button").find((b) => b.text() === "选择")!;
+    await btn.trigger("click");
+    await flushPromises();
+    expect(mockIpc.remoteBrowse).toHaveBeenLastCalledWith("C:\\Users\\admin", false);
+    expect(w.find(".browse-path").text()).toBe("C:/Users/admin");
   });
 
   it("local target: browse keeps the native dialog path (no remote IPC)", async () => {

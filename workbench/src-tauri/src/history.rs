@@ -35,13 +35,17 @@ pub enum HistoryError {
     /// (renamed to `history.json.corrupt`) so the app can still start.
     Corrupt(String),
     /// File schema_version is missing or unsupported. Left untouched.
-    UnsupportedSchema { found: Option<u64> },
+    UnsupportedSchema {
+        found: Option<u64>,
+    },
     /// Could not acquire the cross-process lock within the timeout. Fail-closed:
     /// no lockless write (02 §九).
     LockTimeout,
     /// `expected_revision` did not match the on-disk revision (concurrent write).
     /// Caller reloads, merges its own workspace, and retries.
-    Conflict { current_revision: u64 },
+    Conflict {
+        current_revision: u64,
+    },
 }
 
 impl std::fmt::Display for HistoryError {
@@ -100,6 +104,12 @@ impl WorkbenchHistory {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct WorkspaceRecord {
     pub path: String,
+    /// b13: machine that drives this workspace. `None` means the local
+    /// machine; the same path on two machines is two workspaces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_host: Option<String>,
     #[serde(default)]
     pub last_used_at: String,
     #[serde(default)]
@@ -187,6 +197,63 @@ pub struct TabRecord {
     pub extra: serde_json::Value,
 }
 
+/// Workspace-path IDENTITY key for history matching (b2, F4): NTFS is
+/// case-insensitive, so `E:\proj` and `e:/proj` name the same directory and
+/// must share one history record. POSIX paths are case-sensitive -> verbatim.
+/// The DISPLAY path is never rewritten here; only matching uses this key.
+fn remote_machine_tokens(record: &WorkspaceRecord) -> [Option<&str>; 2] {
+    [
+        record.machine_name.as_deref(),
+        record.machine_host.as_deref(),
+    ]
+}
+
+fn equivalent_remote_machine(a: &WorkspaceRecord, b: &WorkspaceRecord) -> bool {
+    let [a_name, a_host] = remote_machine_tokens(a);
+    let [b_name, b_host] = remote_machine_tokens(b);
+    fn normalize(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|v| !v.is_empty())
+    }
+    let a_values: Vec<&str> = [normalize(a_name), normalize(a_host)]
+        .into_iter()
+        .flatten()
+        .collect();
+    let b_values: Vec<&str> = [normalize(b_name), normalize(b_host)]
+        .into_iter()
+        .flatten()
+        .collect();
+    if a_values.is_empty() || b_values.is_empty() {
+        return false;
+    }
+    a_values.iter().any(|a| {
+        b_values.iter().any(|b| {
+            a == b
+                || a.split_once('@').map(|(_, host)| host) == Some(*b)
+                || b.split_once('@').map(|(_, host)| host) == Some(*a)
+        })
+    })
+}
+
+fn workspace_records_equivalent(a: &WorkspaceRecord, b: &WorkspaceRecord) -> bool {
+    path_identity_key(&a.path) == path_identity_key(&b.path) && equivalent_remote_machine(a, b)
+}
+
+fn workspace_record_identity_key(record: &WorkspaceRecord) -> String {
+    let machine = record.machine_name.as_deref().unwrap_or("").trim();
+    format!("{machine}\u{0}{}", path_identity_key(&record.path))
+}
+
+fn path_identity_key(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', "\\").to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
+
 /// Patch a window submits to `save`. Workspaces are upserted by path; other
 /// workspaces on disk are preserved (02 §九 "多窗口只 patch 自己拥有的").
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -200,7 +267,10 @@ pub struct HistoryPatch {
 /// Isolate a corrupt history file (rename to `.corrupt`) so a fresh one can be
 /// written while the corrupt bytes stay available for diagnosis.
 fn isolate_corrupt(dir: &Path) {
-    let _ = fs::rename(dir.join(HISTORY_FILE), dir.join(format!("{HISTORY_FILE}.corrupt")));
+    let _ = fs::rename(
+        dir.join(HISTORY_FILE),
+        dir.join(format!("{HISTORY_FILE}.corrupt")),
+    );
 }
 
 /// Load `dir/history.json` and normalize it to the current schema.
@@ -223,15 +293,16 @@ pub fn load(dir: &Path) -> Result<(WorkbenchHistory, bool), HistoryError> {
             };
             let found = value.get("schema_version").and_then(|v| v.as_u64());
             match found {
-                Some(v) if v == SCHEMA_VERSION => {
-                    match serde_json::from_value(value) {
-                        Ok(h) => Ok((h, false)),
-                        Err(e) => {
-                            isolate_corrupt(dir);
-                            Err(HistoryError::Corrupt(e.to_string()))
-                        }
+                Some(v) if v == SCHEMA_VERSION => match serde_json::from_value(value) {
+                    Ok(mut h) => {
+                        let deduped = dedupe_workspace_paths(&mut h);
+                        Ok((h, deduped))
                     }
-                }
+                    Err(e) => {
+                        isolate_corrupt(dir);
+                        Err(HistoryError::Corrupt(e.to_string()))
+                    }
+                },
                 Some(1) => match serde_json::from_value::<WorkbenchHistory>(value) {
                     Ok(mut h) => {
                         migrate_v1_to_v2(&mut h);
@@ -271,6 +342,30 @@ fn migrate_v1_to_v2(h: &mut WorkbenchHistory) {
             }
         }
     }
+}
+
+/// Collapse history records whose paths share one identity key (b2, F4):
+/// keep the `last_used_at`-latest record per key (and its display path).
+/// Returns true when anything was removed (caller re-persists). No-op when
+/// every path already has a unique key.
+fn dedupe_workspace_paths(h: &mut WorkbenchHistory) -> bool {
+    let mut best: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, ws) in h.workspaces.iter().enumerate() {
+        let key = workspace_record_identity_key(ws);
+        match best.get(&key) {
+            Some(&j) if h.workspaces[j].last_used_at >= ws.last_used_at => {}
+            _ => {
+                best.insert(key, i);
+            }
+        }
+    }
+    if best.len() == h.workspaces.len() {
+        return false;
+    }
+    let mut keep: Vec<usize> = best.values().copied().collect();
+    keep.sort_unstable();
+    h.workspaces = keep.into_iter().map(|i| h.workspaces[i].clone()).collect();
+    true
 }
 
 /// Load and persist the v1 -> v2 migration under the cross-process lock when the
@@ -344,6 +439,7 @@ pub fn remove_workspace(
     dir: &Path,
     expected_revision: u64,
     path: &str,
+    machine_name: Option<&str>,
 ) -> Result<(u64, bool), HistoryError> {
     fs::create_dir_all(dir).map_err(|e| HistoryError::Io(e.to_string()))?;
     let lock_file = acquire_lock(dir)?;
@@ -355,7 +451,21 @@ pub fn remove_workspace(
             });
         }
         let before = current.workspaces.len();
-        current.workspaces.retain(|w| w.path != path);
+        let remove_record = WorkspaceRecord {
+            path: path.to_string(),
+            machine_name: machine_name.map(str::to_string),
+            machine_host: None,
+            last_used_at: String::new(),
+            pinned: false,
+            last_agent: String::new(),
+            runtime: None,
+            layout: None,
+            extra: serde_json::Value::Null,
+        };
+        let remove_key = workspace_record_identity_key(&remove_record);
+        current
+            .workspaces
+            .retain(|w| workspace_record_identity_key(w) != remove_key);
         if current.workspaces.len() == before {
             return Ok((current.revision, false));
         }
@@ -425,20 +535,35 @@ fn save_locked(
             current_revision: current.revision,
         });
     }
-    // Merge: upsert patch workspaces by path; preserve others and their
-    // unknown fields.
+    // Merge: upsert patch workspaces by IDENTITY key (Windows folds case,
+    // POSIX exact); preserve others and their unknown fields. The original
+    // record's path stays as the display form (F4: keep the user's case).
     for ws in &patch.workspaces {
-        if let Some(slot) = current.workspaces.iter_mut().find(|w| w.path == ws.path) {
+        let key = workspace_record_identity_key(ws);
+        let slot_index = current
+            .workspaces
+            .iter()
+            .position(|w| workspace_record_identity_key(w) == key)
+            .or_else(|| {
+                current
+                    .workspaces
+                    .iter()
+                    .position(|w| workspace_records_equivalent(w, ws))
+            });
+        if let Some(index) = slot_index {
+            let slot = &mut current.workspaces[index];
             let old = slot.clone();
+            let display_path = old.path.clone();
             *slot = ws.clone();
+            slot.path = display_path;
             merge_workspace(&old, slot);
         } else {
             current.workspaces.push(ws.clone());
         }
     }
     current.revision += 1;
-    let bytes = serde_json::to_vec_pretty(&current)
-        .map_err(|e| HistoryError::Corrupt(e.to_string()))?;
+    let bytes =
+        serde_json::to_vec_pretty(&current).map_err(|e| HistoryError::Corrupt(e.to_string()))?;
     atomic_write(&dir.join(HISTORY_FILE), &bytes).map_err(|e| HistoryError::Io(e.to_string()))?;
     Ok(current.revision)
 }
@@ -461,9 +586,25 @@ pub async fn load_history(app: AppHandle) -> Result<WorkbenchHistory, WorkbenchE
 #[tauri::command]
 pub async fn save_history(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     expected_revision: u64,
-    patch: HistoryPatch,
+    mut patch: HistoryPatch,
 ) -> Result<u64, WorkbenchError> {
+    // Stamp each record with the configured driving machine. This is additive
+    // schema data: control Workbench settings stay local, while workspace
+    // records remain distinguishable across machines.
+    for record in &mut patch.workspaces {
+        match crate::target::workspace_machine(&app, &window, &record.path) {
+            Some(machine) => {
+                record.machine_name = Some(machine.name);
+                record.machine_host = Some(machine.host);
+            }
+            None => {
+                record.machine_name = None;
+                record.machine_host = None;
+            }
+        }
+    }
     let dir = config_dir(&app)?;
     save(&dir, expected_revision, &patch).map_err(map_history_error)
 }
@@ -472,6 +613,233 @@ pub async fn save_history(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    // --- b2 (F4): Windows path case-insensitive identity matching ---
+
+    #[test]
+    fn identity_key_folds_case_on_windows_identity_on_posix() {
+        // Contract: NTFS is case-insensitive -> fold for matching; POSIX
+        // filesystems are case-sensitive -> the key is the path verbatim.
+        #[cfg(windows)]
+        {
+            assert_eq!(path_identity_key("C:\\Ws\\A"), path_identity_key("c:/ws/a"));
+            assert_eq!(path_identity_key("C:\\Ws\\A"), "c:\\ws\\a");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(path_identity_key("/ws/A"), "/ws/A");
+            assert_ne!(path_identity_key("/ws/A"), path_identity_key("/ws/a"));
+        }
+    }
+
+    #[test]
+    fn workspace_identity_includes_machine() {
+        let dir = tempdir().unwrap();
+        let record = |machine: Option<&str>, path: &str, used: &str| WorkspaceRecord {
+            path: path.into(),
+            machine_name: machine.map(str::to_string),
+            machine_host: None,
+            last_used_at: used.into(),
+            pinned: false,
+            last_agent: "bash".into(),
+            runtime: None,
+            layout: None,
+            extra: serde_json::Value::Null,
+        };
+        let rev = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![record(None, "/ws/project", "t1")],
+            },
+        )
+        .unwrap();
+        let rev = save(
+            dir.path(),
+            rev,
+            &HistoryPatch {
+                workspaces: vec![record(Some("machine-a"), "/ws/project", "t2")],
+            },
+        )
+        .unwrap();
+        let h = load(dir.path()).unwrap().0;
+        assert_eq!(
+            h.workspaces.len(),
+            2,
+            "local and remote same paths stay distinct"
+        );
+
+        // The same machine's record upserts rather than adding a duplicate.
+        let rev = save(
+            dir.path(),
+            rev,
+            &HistoryPatch {
+                workspaces: vec![record(Some("machine-a"), "/ws/project", "t3")],
+            },
+        )
+        .unwrap();
+        let h = load(dir.path()).unwrap().0;
+        assert_eq!(h.workspaces.len(), 2);
+        assert_eq!(
+            h.workspaces
+                .iter()
+                .find(|w| w.machine_name.as_deref() == Some("machine-a"))
+                .unwrap()
+                .last_used_at,
+            "t3"
+        );
+
+        let (_rev, removed) =
+            remove_workspace(dir.path(), rev, "/ws/project", Some("machine-a")).unwrap();
+        assert!(removed);
+        let h = load(dir.path()).unwrap().0;
+        assert_eq!(h.workspaces.len(), 1);
+        assert_eq!(h.workspaces[0].machine_name, None);
+    }
+
+    #[test]
+    fn upsert_replaces_ssh_host_machine_alias_with_configured_name() {
+        let dir = tempdir().unwrap();
+        let alias = WorkspaceRecord {
+            path: "E:\\projects".into(),
+            machine_name: Some("admin@10.147.20.7".into()),
+            machine_host: Some("admin@10.147.20.7".into()),
+            last_used_at: "t1".into(),
+            pinned: false,
+            last_agent: "bash".into(),
+            runtime: None,
+            layout: None,
+            extra: serde_json::Value::Null,
+        };
+        let rev = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![alias.clone()],
+            },
+        )
+        .unwrap();
+        let canonical = WorkspaceRecord {
+            machine_name: Some("win-test".into()),
+            machine_host: Some("10.147.20.7".into()),
+            last_used_at: "t2".into(),
+            ..alias.clone()
+        };
+        save(
+            dir.path(),
+            rev,
+            &HistoryPatch {
+                workspaces: vec![canonical],
+            },
+        )
+        .unwrap();
+        let h = load(dir.path()).unwrap().0;
+        assert_eq!(
+            h.workspaces.len(),
+            1,
+            "SSH-host alias must migrate, not duplicate"
+        );
+        assert_eq!(h.workspaces[0].machine_name.as_deref(), Some("win-test"));
+        assert_eq!(h.workspaces[0].machine_host.as_deref(), Some("10.147.20.7"));
+    }
+
+    #[test]
+    fn upsert_matches_by_identity_key() {
+        // Windows: `e:\proj` must merge into the existing `E:\proj` record,
+        // keeping the ORIGINAL path as the display form. POSIX: case variants
+        // are genuinely different directories and stay distinct (the guard
+        // against breaking case-sensitive semantics).
+        let dir = tempdir().unwrap();
+        let (first, second) = if cfg!(windows) {
+            ("E:\\proj", "e:/proj")
+        } else {
+            ("/ws/A", "/ws/a")
+        };
+        let rev1 = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: first.into(),
+                    last_used_at: "t1".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let rev2 = save(
+            dir.path(),
+            rev1,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: second.into(),
+                    last_used_at: "t2".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let _ = rev2;
+        let h = load(dir.path()).unwrap().0;
+        if cfg!(windows) {
+            assert_eq!(h.workspaces.len(), 1, "case variants must merge on Windows");
+            assert_eq!(
+                h.workspaces[0].path, first,
+                "display keeps the original case"
+            );
+            assert_eq!(h.workspaces[0].last_used_at, "t2", "patch fields win");
+        } else {
+            assert_eq!(h.workspaces.len(), 2, "POSIX case variants stay distinct");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn remove_windows_matches_case_variant() {
+        let dir = tempdir().unwrap();
+        let rev = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![WorkspaceRecord {
+                    path: "E:\\proj".into(),
+                    last_used_at: "t1".into(),
+                    ..Default::default()
+                }],
+            },
+        )
+        .unwrap();
+        let (_rev, removed) = remove_workspace(dir.path(), rev, "e:\\proj", None).unwrap();
+        assert!(removed, "remove must hit the case variant");
+        let h = load(dir.path()).unwrap().0;
+        assert!(h.workspaces.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn load_windows_dedupes_case_variants_latest_wins() {
+        let dir = tempdir().unwrap();
+        let body = serde_json::json!({
+            "schema_version": SCHEMA_VERSION,
+            "revision": 4,
+            "workspaces": [
+                { "path": "E:\\proj", "last_used_at": "t1" },
+                { "path": "e:\\proj", "last_used_at": "t2" },
+                { "path": "D:\\other", "last_used_at": "t0" }
+            ]
+        });
+        std::fs::write(dir.path().join(HISTORY_FILE), body.to_string()).unwrap();
+        let (h, migrated) = load(dir.path()).unwrap();
+        assert!(migrated, "dedup must mark the file for re-persist");
+        assert_eq!(h.workspaces.len(), 2);
+        let proj = h
+            .workspaces
+            .iter()
+            .find(|w| w.path.contains("proj"))
+            .expect("proj record kept");
+        assert_eq!(proj.path, "e:\\proj", "the LATEST variant's display wins");
+        assert_eq!(proj.last_used_at, "t2");
+    }
 
     #[test]
     fn load_missing_file_is_empty() {
@@ -531,7 +899,7 @@ mod tests {
             }],
         };
         save(dir.path(), 0, &patch).unwrap(); // rev -> 1
-        // A second "window" writes in between:
+                                              // A second "window" writes in between:
         let patch2 = HistoryPatch {
             workspaces: vec![WorkspaceRecord {
                 path: "/b".into(),
@@ -539,7 +907,7 @@ mod tests {
             }],
         };
         save(dir.path(), 1, &patch2).unwrap(); // rev -> 2
-        // Stale caller still expects rev 1 -> conflict.
+                                               // Stale caller still expects rev 1 -> conflict.
         let err = save(dir.path(), 1, &patch).unwrap_err();
         assert!(matches!(
             err,
@@ -633,13 +1001,28 @@ mod tests {
         assert_eq!(rev, 1);
 
         let h = load(dir.path()).unwrap().0;
-        assert_eq!(h.extra.get("root_future").and_then(|v| v.get("a")), Some(&serde_json::json!(1)));
+        assert_eq!(
+            h.extra.get("root_future").and_then(|v| v.get("a")),
+            Some(&serde_json::json!(1))
+        );
         let ws = &h.workspaces[0];
-        assert_eq!(ws.extra.get("ws_future").and_then(|v| v.as_str()), Some("keep-me"));
+        assert_eq!(
+            ws.extra.get("ws_future").and_then(|v| v.as_str()),
+            Some("keep-me")
+        );
         let layout = ws.layout.as_ref().unwrap();
-        assert_eq!(layout.extra.get("layout_future").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            layout.extra.get("layout_future").and_then(|v| v.as_bool()),
+            Some(true)
+        );
         let tab = &layout.tabs[0];
-        assert_eq!(tab.extra.get("tab_future").and_then(|v| v.as_array()).map(|a| a.len()), Some(3));
+        assert_eq!(
+            tab.extra
+                .get("tab_future")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(3)
+        );
     }
 
     #[test]
@@ -720,7 +1103,11 @@ mod tests {
                 }
             }]
         });
-        fs::write(dir.join(HISTORY_FILE), serde_json::to_vec_pretty(&v1).unwrap()).unwrap();
+        fs::write(
+            dir.join(HISTORY_FILE),
+            serde_json::to_vec_pretty(&v1).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -738,7 +1125,10 @@ mod tests {
         assert_eq!(layout.tabs[1].tab_id, "t2");
         // Every flat tab became a single-leaf tree sharing the tab's UUID.
         for (tab, agent) in layout.tabs.iter().zip(["bash", "claude"]) {
-            let sl = tab.split_layout.as_ref().expect("split_layout present after migration");
+            let sl = tab
+                .split_layout
+                .as_ref()
+                .expect("split_layout present after migration");
             assert_eq!(sl.version, 1);
             assert_eq!(sl.active_pane_id, tab.tab_id);
             match &sl.root {
@@ -762,7 +1152,10 @@ mod tests {
         // On-disk file is now v2.
         let on_disk: serde_json::Value =
             serde_json::from_slice(&fs::read(dir.path().join(HISTORY_FILE)).unwrap()).unwrap();
-        assert_eq!(on_disk.get("schema_version").and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(
+            on_disk.get("schema_version").and_then(|v| v.as_u64()),
+            Some(2)
+        );
         assert!(on_disk["workspaces"][0]["layout"]["tabs"][0]["split_layout"].is_object());
         // Second load: no migration flag, revision preserved.
         let (h2, migrated2) = load(dir.path()).unwrap();
@@ -845,7 +1238,11 @@ mod tests {
         // builds from editing v2 files (A-G17-3 "旧版本拒写 v2").
         let dir = tempdir().unwrap();
         let v3 = serde_json::json!({"schema_version": 3, "revision": 0, "workspaces": []});
-        fs::write(dir.path().join(HISTORY_FILE), serde_json::to_vec(&v3).unwrap()).unwrap();
+        fs::write(
+            dir.path().join(HISTORY_FILE),
+            serde_json::to_vec(&v3).unwrap(),
+        )
+        .unwrap();
         let err = load(dir.path()).unwrap_err();
         assert!(matches!(
             err,
@@ -853,7 +1250,10 @@ mod tests {
         ));
         let on_disk: serde_json::Value =
             serde_json::from_slice(&fs::read(dir.path().join(HISTORY_FILE)).unwrap()).unwrap();
-        assert_eq!(on_disk.get("schema_version").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(
+            on_disk.get("schema_version").and_then(|v| v.as_u64()),
+            Some(3)
+        );
     }
 
     // --- v2.1.7 S2: record-only removal (forget transaction, §A) ---
@@ -874,7 +1274,7 @@ mod tests {
     fn remove_workspace_drops_the_entry_and_bumps_revision() {
         let dir = tempdir().unwrap();
         seed_for_remove(dir.path());
-        let (rev, removed) = remove_workspace(dir.path(), 1, "/ws/x").unwrap();
+        let (rev, removed) = remove_workspace(dir.path(), 1, "/ws/x", None).unwrap();
         assert!(removed);
         assert_eq!(rev, 2);
         let h = load(dir.path()).unwrap().0;
@@ -886,7 +1286,7 @@ mod tests {
         let dir = tempdir().unwrap();
         seed_for_remove(dir.path());
         // Different path: nothing matches, no write, revision unchanged.
-        let (rev, removed) = remove_workspace(dir.path(), 1, "/ws/other").unwrap();
+        let (rev, removed) = remove_workspace(dir.path(), 1, "/ws/other", None).unwrap();
         assert!(!removed);
         assert_eq!(rev, 1);
         assert_eq!(load(dir.path()).unwrap().0.workspaces.len(), 1);
@@ -896,8 +1296,13 @@ mod tests {
     fn remove_workspace_conflicts_on_stale_revision() {
         let dir = tempdir().unwrap();
         seed_for_remove(dir.path());
-        let err = remove_workspace(dir.path(), 99, "/ws/x").unwrap_err();
-        assert!(matches!(err, HistoryError::Conflict { current_revision: 1 }));
+        let err = remove_workspace(dir.path(), 99, "/ws/x", None).unwrap_err();
+        assert!(matches!(
+            err,
+            HistoryError::Conflict {
+                current_revision: 1
+            }
+        ));
         // Nothing changed on disk.
         assert_eq!(load(dir.path()).unwrap().0.workspaces.len(), 1);
     }

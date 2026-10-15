@@ -173,6 +173,10 @@ pub struct ConversationSummary {
     pub file_size: u64,
     #[serde(default)]
     pub resumable: bool,
+    /// b8 R3: preserve the parent link through IPC; serde otherwise drops
+    /// unknown fields and the frontend tree would promote children to roots.
+    #[serde(default)]
+    pub parent_thread_id: Option<String>,
     #[serde(default)]
     pub unavailable_reason: Option<String>,
 }
@@ -255,7 +259,7 @@ pub async fn conversation_list(
     window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<ConversationListResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_list_argv(&workspace);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -275,7 +279,7 @@ pub async fn conversation_preflight(
     conversation_id: String,
     agent: String,
 ) -> Result<ConversationPreflightResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_preflight_argv(&workspace, &conversation_id, &agent);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -300,7 +304,7 @@ pub async fn conversation_delete(
     conversation_id: String,
     agent: String,
 ) -> Result<ConversationDeleteResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_delete_argv(&workspace, &conversation_id, &agent);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -326,7 +330,7 @@ pub async fn conversation_rename(
     agent: String,
     title: String,
 ) -> Result<ConversationRenameResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_rename_argv(&workspace, &conversation_id, &agent, &title);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -357,7 +361,7 @@ pub async fn conversation_read(
     if !is_conversation_uuid(&conversation_id) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
     }
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = conversation_read_argv(&workspace, &conversation_id, &agent, tail, before);
     let env: Envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new())
         .await?;
@@ -396,6 +400,21 @@ mod tests {
         assert_eq!(argv[i + 1], "24b70882-2d45-4cec-a9e2-66f8c012481f");
         let i = argv.iter().position(|a| a == "--agent").unwrap();
         assert_eq!(argv[i + 1], "codex");
+    }
+
+    #[test]
+    fn conversation_summary_preserves_parent_thread_id() {
+        let value = serde_json::json!({
+            "conversation_id": "01a1384e-94b7-7012-8cd2-f1afa3dfbc76",
+            "agent": "codex",
+            "title": "Reply with exactly: CHILD_OK",
+            "parent_thread_id": "01a1384e-819d-75c0-a6c5-e7c12d9a45b0"
+        });
+        let summary = serde_json::from_value::<ConversationSummary>(value).unwrap();
+        assert_eq!(
+            summary.parent_thread_id.as_deref(),
+            Some("01a1384e-819d-75c0-a6c5-e7c12d9a45b0")
+        );
     }
 
     #[test]

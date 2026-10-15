@@ -307,6 +307,13 @@ class TestCodexResumeOverrides(unittest.TestCase):
         assert wrapper._agent_argv("codex", None)[1] == ["codex"]
         assert wrapper._agent_argv("claude", SID)[1] == ["claude", "--resume", SID]
 
+    def test_claude_fork_flag_and_codex_rejection(self):
+        assert wrapper._agent_argv("claude", SID, True)[1] == [
+            "claude", "--resume", SID, "--fork-session",
+        ]
+        with self.assertRaises(ValueError):
+            wrapper._agent_argv("codex", SID, True)
+
 
 if __name__ == "__main__":
     unittest.main()

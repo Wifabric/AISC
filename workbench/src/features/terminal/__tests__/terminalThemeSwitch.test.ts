@@ -80,6 +80,11 @@ vi.mock("@xterm/xterm", () => ({
         },
       },
     );
+    parser = {
+      registerCsiHandler(_id: unknown, _handler: (params: (number | number[])[]) => boolean) {
+        return { dispose() {} };
+      },
+    };
     loadAddon(addon: { activate?: (t: unknown) => void }) {
       addon?.activate?.(this);
     }

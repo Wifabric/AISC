@@ -482,6 +482,12 @@ impl WatcherKind {
     }
 }
 
+fn remote_event_relative_path(root: &str, abs_path: &str) -> Option<String> {
+    let root = root.replace('\\', "/").trim_end_matches('/').to_string();
+    let abs = abs_path.replace('\\', "/");
+    abs.strip_prefix(&format!("{root}/")).map(str::to_string)
+}
+
 /// Remote watcher: fs.watch over the pooled serve session; every fs.change
 /// batch is projected into the local raw-channel vocabulary and rides the
 /// SAME debounce_loop the notify path uses — batching, ignore semantics,
@@ -494,16 +500,10 @@ pub struct RemoteWatcher {
 impl RemoteWatcher {
     pub fn start(
         app: AppHandle,
+        target: crate::cli::SshTarget,
         workspace: String,
         extra_ignore: Vec<String>,
     ) -> Result<Self, WorkbenchError> {
-        let target = match app.state::<crate::target::ActiveTarget>().current() {
-            Some(m) => m.to_ssh_target(),
-            None => {
-                return Err(WorkbenchError::cli_protocol()
-                    .with_detail("remote watcher started without a remote target"))
-            }
-        };
         let (tx, rx) = mpsc::sync_channel::<(String, String, String)>(RAW_CHANNEL_CAP);
         let stop = Arc::new(Mutex::new(false));
         let stop_loop = Arc::clone(&stop);
@@ -524,7 +524,7 @@ impl RemoteWatcher {
         let pump_stop = Arc::clone(&stop);
         let pump = tokio::spawn(async move {
             let pool = crate::serve::global_pool();
-            let root = pump_ws.trim_end_matches('/').to_string();
+            let root = pump_ws.replace('\\', "/").trim_end_matches('/').to_string();
             let mut attempt: u32 = 0;
             'attach: loop {
                 if *pump_stop.lock().unwrap() {
@@ -569,13 +569,12 @@ impl RemoteWatcher {
                         continue;
                     };
                     for p in paths {
-                        let abs = p.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+                        let abs = p.get("path").and_then(|v| v.as_str()).unwrap_or_default().replace('\\', "/");
                         let change = p.get("change").and_then(|v| v.as_str()).unwrap_or("modified");
                         let kind = p.get("kind").and_then(|v| v.as_str()).unwrap_or("file");
-                        let Some(rel) = abs.strip_prefix(&format!("{root}/")) else {
+                        let Some(rel) = remote_event_relative_path(&root, &abs) else {
                             continue;
                         };
-                        let rel = rel.to_string();
                         let name = rel.rsplit('/').next().unwrap_or_default().to_string();
                         // Same filter as the local notify callback — ignore-set
                         // names never surface as changes.
@@ -609,6 +608,7 @@ impl RemoteWatcher {
 #[tauri::command]
 pub async fn workspace_watch_start(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     workspace: String,
 ) -> Result<(), WorkbenchError> {
     // Read the user-configured explorer ignores so the watcher does not emit
@@ -622,10 +622,13 @@ pub async fn workspace_watch_start(
     };
     // R3 (D-9): dual path — remote targets watch via fs.change over the
     // pooled serve session; local keeps the notify watcher bit-for-bit.
-    let watcher = if app.state::<crate::target::ActiveTarget>().current().is_some() {
-        WatcherKind::Remote(RemoteWatcher::start(app.clone(), workspace.clone(), extra_ignore)?)
-    } else {
-        WatcherKind::Local(WorkspaceWatcher::start(app.clone(), Path::new(&workspace), extra_ignore)?)
+    let watcher = match crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
+        crate::cli::CliTarget::Remote(target) => WatcherKind::Remote(
+            RemoteWatcher::start(app.clone(), target, workspace.clone(), extra_ignore)?,
+        ),
+        crate::cli::CliTarget::Local(_) => WatcherKind::Local(
+            WorkspaceWatcher::start(app.clone(), Path::new(&workspace), extra_ignore)?,
+        ),
     };
     let state = app.state::<WatcherState>();
     let mut guard = state.0.lock().unwrap();
@@ -650,6 +653,19 @@ pub async fn workspace_watch_stop(app: AppHandle) -> Result<(), WorkbenchError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_event_paths_normalize_windows_separators() {
+        assert_eq!(
+            remote_event_relative_path("C:/Users/admin", "C:\\Users\\admin\\new.txt"),
+            Some("new.txt".to_string())
+        );
+        assert_eq!(
+            remote_event_relative_path("C:/Users/admin", "C:/Users/admin/sub/new.txt"),
+            Some("sub/new.txt".to_string())
+        );
+        assert_eq!(remote_event_relative_path("/ws", "/other/new.txt"), None);
+    }
 
     #[test]
     fn batcher_dedups_and_reports_overflow() {

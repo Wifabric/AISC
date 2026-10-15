@@ -11,6 +11,7 @@ import type {
   BuildEvent,
   BuildProgressData,
   BuildStatus,
+  ConversationSummary,
   Freshness,
   HistoryPatch,
   LaunchAgent,
@@ -229,6 +230,15 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // single array replacement - high-frequency writes never hit the reactive
   // tree per chunk. O2 (D-11): chunks carry RAW offsets; the durable offsets
   // array rides the (non-reactive) paneByteCounts pattern.
+  /** b6: in-memory before-open conversation snapshots for newly created
+   * provider tabs. A tab is linked only when identity is unambiguous (see
+   * resolvePendingConversationAssociations); ambiguity is never guessed. */
+  type PendingConversationAssociation = {
+    knownConversationIds: Set<string>;
+    startedAt: string;
+  };
+  const pendingConversationAssociations = new Map<string, PendingConversationAssociation>();
+
   const pendingChunks: Record<string, StreamChunk[]> = {};
   const paneByteCounts: Record<string, number> = {};
   const paneOffsets: Record<string, number[]> = {};
@@ -1015,8 +1025,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * last confirmed config beats the built-in default), then preflight. This
    * makes preflight match the existing runtime (reuse/restart) instead of
    * spurious-conflicting with the default image. */
-  function selectRecentWorkspace(path: string) {
-    const rec = (deps.getHistory()?.workspaces ?? []).find((w) => w.path === path);
+  function selectRecentWorkspace(path: string, machineName?: string | null) {
+    const rec = (deps.getHistory()?.workspaces ?? []).find((w) =>
+      w.path === path && (w.machine_name ?? null) === (machineName ?? null));
     if (rec) {
       if (rec.runtime) {
         launch.value.image = rec.runtime.image;
@@ -1180,7 +1191,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * the session channel + output buffer so a Terminal remount (e.g. a split
    * restructuring the tree) never re-opens or drops the session (A-G17-2:
    * open failure keeps a failed pane). */
-  async function openPane(tab: Tab, paneId: string, resumeConversationId?: string | null) {
+  async function openPane(
+    tab: Tab,
+    paneId: string,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ) {
     const p = tab.panes[paneId];
     if (!p || p.sessionState === "starting" || p.sessionState === "running") return;
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
@@ -1215,11 +1231,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         (pendingChunks[paneId] ??= []).push({ b64: ev.bytes, offset: ev.offset });
         scheduleStreamFlush();
       } else if (ev.type === "exit") {
+        // b7: delegate to the single exit path so the auto-close behavior
+        // (and any future finalization logic) cannot drift from the inline
+        // duplicate that used to live here.
         if (!p.exit) {
-          p.exit = { reason: ev.reason, exitCode: ev.exitCode };
-          p.sessionState = ev.reason === "transport_error" ? "disconnected" : "exited";
-          syncProjection(tab);
-          void ipc.ackSessionExit(sid).catch(() => null);
+          onTabSessionExit(paneId, ev.reason, ev.exitCode);
         }
       } else if (ev.type === "error") {
         if (!TERMINAL_STATES.includes(p.sessionState)) {
@@ -1236,11 +1252,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         workspace.value.trim(),
         ch,
         resumeConversationId ?? null,
+        forkSession,
       );
       // v2.1.8 T4: remember the conversation this tab resumed so the
       // History panel can activate the live tab instead of re-resuming
       // (a second provider resume on a live session fails).
-      if (resumeConversationId) {
+      // A fork tab becomes a new provider conversation; do not map it back
+      // to the source id or later source resumes would activate the fork.
+      if (resumeConversationId && !forkSession) {
         tab.resumeConversationId = resumeConversationId;
       }
       if (p.sessionState === "starting") {
@@ -1386,11 +1405,15 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * store-owned session channel (openPane). G-17. v2.1.8 T4: an optional
    * resume conversation id applies to THIS open only (reopen flows pass
    * nothing and behave exactly as before). */
-  function openTab(tabId: string, resumeConversationId?: string | null) {
+  function openTab(
+    tabId: string,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ) {
     const tab = findTab(tabId);
     if (!tab) return;
     activeTabId.value = tabId;
-    void openPane(tab, tab.activePaneId, resumeConversationId);
+    void openPane(tab, tab.activePaneId, resumeConversationId, forkSession);
     scheduleSave();
   }
 
@@ -1412,13 +1435,17 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * per-Runtime leaf cap. The tab opens immediately (Step 5c routes
    * unconfigured claude/codex to the guide state instead). v2.1.8 T4:
    * `resumeConversationId` rides to open_session for history resume. */
-  function createTab(agent: LaunchAgent, resumeConversationId?: string | null): string | null {
+  function createTab(
+    agent: LaunchAgent,
+    resumeConversationId?: string | null,
+    forkSession = false,
+  ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
     activeTabId.value = tabId;
-    void maybeOpenCreated(tabId, agent, resumeConversationId);
+    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession);
     scheduleSave();
     return tabId;
   }
@@ -1430,10 +1457,30 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * Step 8 (04 §三 rule table): login_required and unknown ALSO route to the
    * guide state (supersedes the 2026-08-10 decision that login_required opened
    * directly - the spec now requires the conservative flow). */
+  async function startNewConversationAssociation(
+    agent: LaunchAgent,
+  ): Promise<PendingConversationAssociation | null> {
+    if (agent !== "claude" && agent !== "codex") return null;
+    try {
+      const result = await ipc.conversationList(workspace.value.trim());
+      return {
+        knownConversationIds: new Set(
+          result.conversations
+            .filter((item) => item.agent === agent)
+            .map((item) => item.conversation_id.toLowerCase()),
+        ),
+        startedAt: new Date().toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function maybeOpenCreated(
     tabId: string,
     agent: LaunchAgent,
     resumeConversationId?: string | null,
+    forkSession = false,
   ) {
     if (agent === "claude" || agent === "codex") {
       const outcome = await loadProviderStatus(agent);
@@ -1445,8 +1492,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         if (outcome !== "ok") void ensureProviderSettled(agent);
         return;
       }
+      if (!resumeConversationId) {
+        const association = await startNewConversationAssociation(agent);
+        if (association) pendingConversationAssociations.set(tabId, association);
+      }
     }
-    openTab(tabId, resumeConversationId);
+    openTab(tabId, resumeConversationId, forkSession);
   }
 
   /** v2.1.8 T4: a LIVE tab that already resumed this conversation. The
@@ -1489,6 +1540,72 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       }
     }
     syncProjection(tab);
+  }
+
+  /** b6: link a newly created provider transcript only when it is the unique
+   * unknown conversation for the unique pending provider tab of that agent.
+   * Any ambiguity keeps the tab unlinked; deletion then leaves it live. */
+  async function resolvePendingConversationAssociations(
+    conversations: ConversationSummary[],
+  ): Promise<number> {
+    const pending = [...pendingConversationAssociations.entries()].flatMap(([tabId, association]) => {
+      const tab = findTab(tabId);
+      if (!tab || tab.resumeConversationId) {
+        pendingConversationAssociations.delete(tabId);
+        return [];
+      }
+      const live = Object.values(tab.panes).some(
+        (pane) => pane.sessionState === "starting" || pane.sessionState === "running",
+      );
+      if (!live) {
+        pendingConversationAssociations.delete(tabId);
+        return [];
+      }
+      return [{ tabId, tab, association }];
+    });
+    const pendingByAgent = new Map<string, number>();
+    for (const item of pending) {
+      pendingByAgent.set(item.tab.agent, (pendingByAgent.get(item.tab.agent) ?? 0) + 1);
+    }
+
+    let resolved = 0;
+    for (const { tab, association } of pending) {
+      if ((pendingByAgent.get(tab.agent) ?? 0) !== 1) continue;
+      const candidates = conversations.filter(
+        (item) => item.agent === tab.agent
+          && !association.knownConversationIds.has(item.conversation_id.toLowerCase()),
+      );
+      if (candidates.length !== 1) continue;
+      tab.resumeConversationId = candidates[0].conversation_id;
+      pendingConversationAssociations.delete(tab.tabId);
+      resolved += 1;
+    }
+    return resolved;
+  }
+
+  /** b6: terminate only live sessions known to belong to the given provider
+   * conversations. `runtime_id` is deliberately not used for matching (D-3);
+   * newly created tabs are covered only after unambiguous snapshot resolution,
+   * and unmatched tabs are left untouched. */
+  async function closeLiveConversationSessions(conversationIds: string[]) {
+    const targets = new Set(conversationIds.map((id) => id.toLowerCase()));
+    const closes: Promise<unknown>[] = [];
+    for (const tab of tabs.value) {
+      const resumeId = tab.resumeConversationId?.toLowerCase();
+      if (!resumeId || !targets.has(resumeId)) continue;
+      for (const pane of Object.values(tab.panes)) {
+        if (
+          pane.sessionId &&
+          !TERMINAL_STATES.includes(pane.sessionState) &&
+          pane.sessionState !== "closing"
+        ) {
+          pane.sessionState = "closing";
+          closes.push(ipc.closeSession(pane.sessionId).catch(() => null));
+        }
+      }
+      syncProjection(tab);
+    }
+    await Promise.all(closes);
   }
 
   async function removeTab(tabId: string) {
@@ -1574,6 +1691,40 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (p.sessionId) {
       void ipc.ackSessionExit(p.sessionId).catch(() => null); // TTL sweeps if lost
     }
+    // b7: a self-exited session (process_exit, or the user_close finalize
+    // after tab ×) closes its UI instead of lingering as an exited banner
+    // tab. transport_error/disconnected stays for diagnosis.
+    if (reason === "process_exit" || reason === "user_close") {
+      autoCloseExitedPane(tab, paneId);
+    }
+  }
+
+  /** b7: remove a pane whose session reached a clean exit. A single-pane tab
+   * is removed like removeTab (focus falls to the neighbor); a split loses
+   * only the exited leaf - no dormant leaf, because A-G17-5 covers
+   * user-initiated closes, not self-exits. The session is already terminal,
+   * so no close_session is sent; the Exit ack lets Rust reap. */
+  function autoCloseExitedPane(tab: Tab, paneId: string) {
+    const p = tab.panes[paneId];
+    if (!p || p.sessionState !== "exited") return;
+    if (tab.tree.kind === "pane") {
+      const idx = tabs.value.indexOf(tab);
+      tabs.value.splice(idx, 1);
+      if (activeTabId.value === tab.tabId) {
+        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+      }
+    } else {
+      const removed = removeLeaf(tab.tree, paneId);
+      delete tab.panes[paneId];
+      if (removed !== null) {
+        tab.tree = removed;
+        if (!tab.panes[tab.activePaneId]) {
+          tab.activePaneId = firstLeaf(tab.tree)?.paneId ?? "";
+        }
+      }
+      syncProjection(tab);
+    }
+    scheduleSave();
   }
 
   /** Ensure the runtime is ready per preflight's recommended_action (start /
@@ -1929,6 +2080,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     reopenTab,
     createTab,
     findLiveResumeTab,
+    resolvePendingConversationAssociations,
+    closeLiveConversationSessions,
     removeTab,
     openCcSwitch,
     onTabOpenOk,

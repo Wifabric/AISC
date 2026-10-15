@@ -74,6 +74,28 @@ class FsOpTests(unittest.TestCase):
         self.assertNotIn("node_modules", names, "ignore parity with DEFAULT_IGNORE")
         self.assertNotIn("b.tmp", names, "temp files never surface")
 
+    def test_fs_roots_lists_navigation_roots(self) -> None:
+        data, code, errs = serve_fs.op_fs_roots(None, {}, None)
+        self.assertEqual(code, 0, errs)
+        if os.name == "nt":
+            paths = [r["path"] for r in data["roots"]]
+            self.assertIn("C:/", paths)
+            self.assertTrue(all(
+                len(path) == 3 and path[1] == ":" and path.endswith("/")
+                for path in paths
+            ))
+        else:
+            self.assertEqual(data["roots"], [{"name": "File System", "path": "/"}])
+
+    def test_windows_drive_roots_normalize_listdrives(self) -> None:
+        from unittest.mock import patch
+
+        with patch.object(os, "listdrives", return_value=["C:\\", "D:\\"], create=True):
+            self.assertEqual(
+                serve_fs._windows_drive_roots(os.listdrives),
+                [{"name": "C:", "path": "C:/"}, {"name": "D:", "path": "D:/"}],
+            )
+
     def test_list_pagination(self) -> None:
         for i in range(serve_fs.LIST_PAGE + 5):
             (self.root / f"f{i:04}.txt").write_text(str(i), encoding="utf-8")
@@ -166,6 +188,16 @@ class WatchRegistryTests(unittest.TestCase):
         self.assertIn("wdir", paths)
         # atomic-write residue never surfaces
         self.assertNotIn("w1.txt.aisc-tmp", paths)
+
+    @unittest.skipIf(os.name != "nt", "Windows drive-root contract")
+    def test_watch_op_accepts_windows_drive_root(self) -> None:
+        from types import SimpleNamespace
+
+        runtime = SimpleNamespace(fs_watches=SimpleNamespace(watch=lambda _root: None))
+        data, code, errs = serve_fs.op_fs_watch(
+            None, {"root": "C:/Users"}, runtime)
+        self.assertEqual(code, 0, errs)
+        self.assertEqual(data["root"], "C:/Users")
 
     def test_watch_op_requires_absolute_root(self) -> None:
         with self.assertRaises(CliError) as ctx:

@@ -239,6 +239,7 @@ fn session_open_argv(
     agent: &str,
     workspace: &str,
     resume_conversation_id: Option<&str>,
+    fork_session: bool,
 ) -> Vec<String> {
     let mut argv = vec![
         "session".into(),
@@ -257,6 +258,9 @@ fn session_open_argv(
     if let Some(id) = resume_conversation_id {
         argv.push("--resume-id".into());
         argv.push(id.into());
+        if fork_session {
+            argv.push("--fork-session".into());
+        }
     }
     argv
 }
@@ -267,7 +271,16 @@ fn session_open_argv(
 fn validate_resume(
     agent: &str,
     resume_conversation_id: Option<&str>,
+    fork_session: bool,
 ) -> Result<(), WorkbenchError> {
+    if fork_session {
+        if resume_conversation_id.is_none() {
+            return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
+        }
+        if agent != "claude" {
+            return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_AGENT"));
+        }
+    }
     if let Some(id) = resume_conversation_id {
         if !crate::conversation::is_conversation_uuid(id) {
             return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
@@ -317,14 +330,14 @@ pub async fn canonical_workspace_for(
     window: &tauri::WebviewWindow,
     raw: &str,
 ) -> Result<String, WorkbenchError> {
-    let target = crate::target::resolve_target_for(app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(app, &window, raw).await?;
     match target {
         crate::cli::CliTarget::Local(_) => canonical_workspace(raw),
         crate::cli::CliTarget::Remote(t) => {
-            let root = raw.trim_end_matches('/').to_string();
-            if !root.starts_with('/') {
+            let root = raw.trim().replace('\\', "/").trim_end_matches('/').to_string();
+            if !crate::workspace::is_remote_absolute_path(&root) {
                 return Err(WorkbenchError::map_aisc("AISC_ERR_WORKSPACE_INVALID")
-                    .with_detail(format!("remote workspace must be an absolute path: {raw}")));
+                    .with_detail(format!("remote workspace must be an absolute POSIX or Windows path: {raw}")));
             }
             let pool = crate::serve::global_pool();
             crate::serve::fs_op(
@@ -403,6 +416,7 @@ pub async fn open_session(
     workspace: String,
     on_event: Channel<PtyEvent>,
     resume_conversation_id: Option<String>,
+    fork_session: bool,
 ) -> Result<SessionSnapshot, WorkbenchError> {
     if !is_uuid_v4(&runtime_id) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_INVALID_RUNTIME_ID"));
@@ -413,7 +427,7 @@ pub async fn open_session(
     if !AGENTS.contains(&agent.as_str()) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_INVALID_AGENT"));
     }
-    validate_resume(&agent, resume_conversation_id.as_deref())?;
+    validate_resume(&agent, resume_conversation_id.as_deref(), fork_session)?;
     // Canonicalize before any spawn: the frontend raw string never becomes
     // Session identity (05 §4.1). Missing/unreadable workspace -> stable
     // workspace error, no child is started.
@@ -450,7 +464,15 @@ pub async fn open_session(
         gen
     };
 
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &ws).await?;
+    crate::logging::append_event(
+        "info", "app", "target_route", None, serde_json::json!({
+            "command": "session.open",
+            "kind": match &target { crate::cli::CliTarget::Local(_) => "local", crate::cli::CliTarget::Remote(_) => "remote" },
+            "machine": match &target { crate::cli::CliTarget::Local(_) => None, crate::cli::CliTarget::Remote(t) => Some(t.host.clone()) },
+            "window": window.label()
+        }),
+    );
 
     // O2 (D-11): full output spool at <data-root>/sessions/<sid>.spool.
     // A missing/invalid data root means NO spool — memory-only degradation,
@@ -466,7 +488,7 @@ pub async fn open_session(
     let spawned = match &target {
         crate::cli::CliTarget::Local(pin) => {
             let argv = session_open_argv(&runtime_id, &session_id, &agent, &ws,
-                                         resume_conversation_id.as_deref());
+                                         resume_conversation_id.as_deref(), fork_session);
             spawn_pipe_session(pin, argv, DEFAULT_COLS, DEFAULT_ROWS, event_tx, spool_path)
         }
         crate::cli::CliTarget::Remote(_) => {
@@ -477,6 +499,7 @@ pub async fn open_session(
                 &agent,
                 &ws,
                 resume_conversation_id.as_deref(),
+                fork_session,
                 DEFAULT_COLS,
                 DEFAULT_ROWS,
                 event_tx,
@@ -1340,7 +1363,7 @@ mod tests {
 
     #[test]
     fn open_argv_is_text_only_no_format() {
-        let argv = session_open_argv("rid", "sid", "bash", "/ws", None);
+        let argv = session_open_argv("rid", "sid", "bash", "/ws", None, false);
         assert_eq!(argv[0], "session");
         assert_eq!(argv[1], "open");
         assert!(argv.contains(&"--agent".into()));
@@ -1350,7 +1373,7 @@ mod tests {
 
     #[test]
     fn open_argv_includes_canonical_workspace() {
-        let argv = session_open_argv("rid", "sid", "bash", "C:/ws", None);
+        let argv = session_open_argv("rid", "sid", "bash", "C:/ws", None, false);
         let i = argv.iter().position(|a| a == "--workspace").unwrap();
         assert_eq!(argv[i + 1], "C:/ws");
     }
@@ -1364,6 +1387,7 @@ mod tests {
             "claude",
             "/ws",
             Some("24b70882-2d45-4cec-a9e2-66f8c012481f"),
+            false,
         );
         let i = argv.iter().position(|a| a == "--resume-id").unwrap();
         assert_eq!(argv[i + 1], "24b70882-2d45-4cec-a9e2-66f8c012481f");
@@ -1371,18 +1395,30 @@ mod tests {
     }
 
     #[test]
+    fn open_argv_appends_claude_fork_flag() {
+        let argv = session_open_argv(
+            "rid", "sid", "claude", "/ws",
+            Some("24b70882-2d45-4cec-a9e2-66f8c012481f"), true,
+        );
+        assert!(argv.contains(&"--fork-session".into()));
+    }
+
+    #[test]
     fn validate_resume_accepts_v7_codex_and_rejects_garbage() {
         // D-5: Codex ids are UUIDv7 — accepted; garbage is not.
-        assert!(validate_resume("codex", Some("01a04ca9-d3f6-7021-b9e7-50d48d818c65")).is_ok());
-        assert!(validate_resume("claude", Some("24b70882-2d45-4cec-a9e2-66f8c012481f")).is_ok());
-        assert!(validate_resume("claude", Some("not-a-uuid")).is_err());
-        assert!(validate_resume("claude", None).is_ok());
+        assert!(validate_resume("codex", Some("01a04ca9-d3f6-7021-b9e7-50d48d818c65"), false).is_ok());
+        assert!(validate_resume("claude", Some("24b70882-2d45-4cec-a9e2-66f8c012481f"), false).is_ok());
+        assert!(validate_resume("claude", Some("not-a-uuid"), false).is_err());
+        assert!(validate_resume("claude", None, false).is_ok());
+        assert!(validate_resume("claude", Some("24b70882-2d45-4cec-a9e2-66f8c012481f"), true).is_ok());
+        assert!(validate_resume("codex", Some("01a04ca9-d3f6-7021-b9e7-50d48d818c65"), true).is_err());
+        assert!(validate_resume("claude", None, true).is_err());
     }
 
     #[test]
     fn validate_resume_rejects_non_provider_agents() {
-        assert!(validate_resume("bash", Some("24b70882-2d45-4cec-a9e2-66f8c012481f")).is_err());
-        assert!(validate_resume("cc-switch", Some("24b70882-2d45-4cec-a9e2-66f8c012481f"))
+        assert!(validate_resume("bash", Some("24b70882-2d45-4cec-a9e2-66f8c012481f"), false).is_err());
+        assert!(validate_resume("cc-switch", Some("24b70882-2d45-4cec-a9e2-66f8c012481f"), false)
             .is_err());
     }
 

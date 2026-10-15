@@ -286,7 +286,15 @@ class InteractiveStreamHandle:
     def _pump_loop(self) -> None:
         try:
             while not self._stopped.is_set():
-                chunk = _sock_recv(self._sock, 65536)
+                try:
+                    chunk = _sock_recv(self._sock, 65536)
+                except (socket.timeout, TimeoutError, InterruptedError):
+                    # An upgraded exec socket may inherit a read timeout.
+                    # A timed-out idle read is not EOF; EINTR is also merely
+                    # "retry this read". Only a zero-byte read below is EOF.
+                    if self._stopped.is_set():
+                        break
+                    continue
                 if not chunk:
                     break
                 self._on_output(chunk)

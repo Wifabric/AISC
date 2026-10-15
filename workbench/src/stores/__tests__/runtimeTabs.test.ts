@@ -14,6 +14,7 @@ const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   closeSession: vi.fn().mockResolvedValue({ reason: "user_close", exitCode: null }),
   getProviderStatus: vi.fn().mockResolvedValue({}),
+  conversationList: vi.fn().mockResolvedValue({ schema_version: 1, conversations: [] }),
   loadHistory: vi.fn().mockResolvedValue({ schema_version: 2, revision: 0, workspaces: [] }),
   saveHistory: vi.fn().mockResolvedValue(1),
   negotiateCapabilities: vi.fn(),
@@ -154,6 +155,34 @@ describe("provider gate (A-G08-2)", () => {
   });
 });
 
+describe("fork resume (b8 R2)", () => {
+  it("passes the fork flag to open_session and does not bind the source id", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({
+      provider_name: "official",
+      route_mode: "official-direct",
+      auth_status: "configured",
+      observed_at: "x",
+    });
+    mockIpc.openSession.mockClear();
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const id = s.createTab("claude", "24b70882-2d45-4cec-a9e2-66f8c012481f", true)!;
+    await tick();
+    await tick();
+    expect(mockIpc.openSession).toHaveBeenCalledWith(
+      "rid",
+      expect.any(String),
+      "claude",
+      "/ws",
+      expect.anything(),
+      "24b70882-2d45-4cec-a9e2-66f8c012481f",
+      true,
+    );
+    expect(s.tabs.find((tab) => tab.tabId === id)?.resumeConversationId).toBeUndefined();
+  });
+});
+
 describe("removeTab (A-G08-6)", () => {
   async function threeTabs() {
     const s = useRuntimeStore();
@@ -199,6 +228,98 @@ describe("removeTab (A-G08-6)", () => {
     expect(s.tabs.find((t) => t.tabId === a)).toBeUndefined();
     expect(s.tabs).toHaveLength(2);
     void b;
+  });
+});
+
+describe("pending new provider conversation association (b6)", () => {
+  const configured = {
+    provider_name: "official",
+    route_mode: "official-direct",
+    auth_status: "configured",
+    observed_at: "x",
+  };
+
+  beforeEach(() => {
+    mockIpc.getProviderStatus.mockResolvedValue(configured);
+  });
+
+  it("links one pending live tab when the provider list gains exactly one conversation", async () => {
+    mockIpc.conversationList.mockResolvedValue({
+      schema_version: 1,
+      conversations: [{ agent: "codex", conversation_id: "old" }],
+    });
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const tabId = s.createTab("codex")!;
+    await tick();
+    await tick();
+
+    const resolved = await s.resolvePendingConversationAssociations([
+      { agent: "codex", conversation_id: "old" } as any,
+      { agent: "codex", conversation_id: "new" } as any,
+    ]);
+
+    expect(mockIpc.conversationList).toHaveBeenCalledWith("/ws");
+    expect(resolved).toBe(1);
+    expect(s.tabs.find((tab) => tab.tabId === tabId)?.resumeConversationId).toBe("new");
+  });
+
+  it("does not link when new provider conversations are ambiguous", async () => {
+    mockIpc.conversationList.mockResolvedValue({
+      schema_version: 1,
+      conversations: [{ agent: "codex", conversation_id: "old" }],
+    });
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const first = s.createTab("codex")!;
+    await tick();
+    await tick();
+    const second = s.createTab("codex")!;
+    await tick();
+    await tick();
+
+    const resolved = await s.resolvePendingConversationAssociations([
+      { agent: "codex", conversation_id: "old" } as any,
+      { agent: "codex", conversation_id: "new" } as any,
+    ]);
+
+    expect(resolved).toBe(0);
+    expect(s.tabs.find((tab) => tab.tabId === first)?.resumeConversationId).toBeUndefined();
+    expect(s.tabs.find((tab) => tab.tabId === second)?.resumeConversationId).toBeUndefined();
+  });
+});
+
+describe("closeLiveConversationSessions (b6 delete)", () => {
+  it("closes live panes only for matching resumed conversations", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({
+      provider_name: "official",
+      route_mode: "official-direct",
+      auth_status: "configured",
+      observed_at: "x",
+    });
+    const s = useRuntimeStore();
+    s.runtimeState = "running";
+    s.runtimeId = "rid";
+    s.workspace = "/ws";
+    const matchedId = s.createTab("codex")!;
+    const otherId = s.createTab("codex")!;
+    await tick();
+    await tick();
+    const matched = s.tabs.find((tab) => tab.tabId === matchedId)!;
+    const other = s.tabs.find((tab) => tab.tabId === otherId)!;
+    matched.resumeConversationId = "Conversation-1";
+    other.resumeConversationId = "conversation-2";
+
+    await s.closeLiveConversationSessions(["conversation-1", "conversation-3"]);
+
+    expect(mockIpc.closeSession).toHaveBeenCalledWith(matched.sessionId);
+    expect(mockIpc.closeSession).not.toHaveBeenCalledWith(other.sessionId);
+    expect(matched.sessionState).toBe("closing");
+    expect(other.sessionState).not.toBe("closing");
   });
 });
 

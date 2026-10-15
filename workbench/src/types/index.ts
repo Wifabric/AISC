@@ -137,6 +137,8 @@ export interface ConversationSummary {
   message_count: number | null;
   file_size: number;
   resumable: boolean;
+  /** b8 R3: Codex child rollout → parent thread id; null for roots/Claude. */
+  parent_thread_id?: string | null;
   unavailable_reason?: "file_too_large" | "malformed" | "unsupported";
 }
 
@@ -781,6 +783,8 @@ export interface PaneRuntime {
 
 export interface WorkspaceRecord {
   path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
   last_used_at: string;
   pinned: boolean;
   last_agent: string;
@@ -1148,4 +1152,86 @@ export interface WorkspaceMutationResult {
   operation: "create_file" | "create_dir" | "copy" | "rename";
   relative_path: string;
   kind: "dir" | "file";
+}
+// --- v2.1.15 b6: Work Record / Collection aggregate layer ---
+
+export type WorkRecordMemberSource = "manual" | "active_auto";
+
+export interface WorkRecordMember {
+  member_key: string;
+  agent: "claude" | "codex";
+  conversation_id: string;
+  runtime_id: string | null;
+  source: WorkRecordMemberSource;
+  added_at: string;
+}
+
+export interface WorkRecordCollection {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  members: WorkRecordMember[];
+}
+
+export interface WorkRecordListResult {
+  schema_version: string;
+  active_collection_id: string | null;
+  collections: WorkRecordCollection[];
+  unfiled: ConversationSummary[];
+}
+
+export interface WorkRecordCollectionResult {
+  collection: WorkRecordCollection;
+}
+
+export interface WorkRecordActiveResult {
+  active_collection_id: string | null;
+  previous_collection_id?: string | null;
+}
+
+export interface WorkRecordMemberResult {
+  member: WorkRecordMember;
+}
+
+export interface WorkRecordRemoveResult {
+  removed: boolean;
+  member_key?: string;
+}
+
+export interface WorkRecordCollectionsResult {
+  collections: WorkRecordCollection[];
+}
+
+export interface WorkRecordUnfiledResult {
+  unfiled: ConversationSummary[];
+}
+
+export interface WorkRecordMoveResult {
+  member?: WorkRecordMember;
+  member_key?: string;
+  collection_id?: string | null;
+}
+
+export interface WorkRecordDeleteFailure extends WorkRecordMember {
+  stage: "terminate" | "delete";
+  reason: string;
+}
+
+export interface WorkRecordDeleteResult {
+  deleted: boolean;
+  collection_id: string;
+  terminated_session_ids: string[];
+  deleted_members: WorkRecordMember[];
+  failed_members: WorkRecordDeleteFailure[];
+}
+
+export interface WorkRecordReconcileResult {
+  schema_version: string;
+  added: string[];
+  active_collection_id: string | null;
+  collections: WorkRecordCollection[];
+  observed_provider_keys: string[];
 }

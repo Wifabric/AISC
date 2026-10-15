@@ -21,6 +21,14 @@ function cloneDoc(d: SettingsDocument): SettingsDocument {
   return JSON.parse(JSON.stringify(d)) as SettingsDocument;
 }
 
+function errorText(e: unknown): string {
+  const err = e as { message?: string; technical_detail?: string };
+  const message = err?.message ?? String(e);
+  const detail = err?.technical_detail;
+  if (!detail || detail === message) return message;
+  return `${message}：${detail}`;
+}
+
 export const useSettingsStore = defineStore("settings", () => {
   const doc = ref<SettingsDocument | null>(null);
   /** Last known disk state (after load/save/reset). `dirty` compares against it. */
@@ -202,7 +210,7 @@ export const useSettingsStore = defineStore("settings", () => {
     try {
       cacheUsage.value = await ipc.cacheUsage();
     } catch (e) {
-      cacheError.value = (e as { message?: string })?.message ?? String(e);
+      cacheError.value = errorText(e);
     } finally {
       cacheBusy.value = false;
     }
@@ -222,7 +230,7 @@ export const useSettingsStore = defineStore("settings", () => {
       if (cacheLog.value.length > 20) cacheLog.value.splice(0, cacheLog.value.length - 20);
       cacheUsage.value = { dockerAvailable: true, rows: result.rows_after };
     } catch (e) {
-      cacheError.value = (e as { message?: string })?.message ?? String(e);
+      cacheError.value = errorText(e);
     } finally {
       cacheBusy.value = false;
     }
@@ -249,7 +257,31 @@ export const useSettingsStore = defineStore("settings", () => {
       dockerReport.value = await ipc.dockerScan("upgrade");
       for (const w of dockerReport.value.warnings) dockerLogLine(`⚠ ${w}`);
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** b16: one Docker data plane — ownership scan plus itemized inspect. */
+  async function refreshDockerResources(): Promise<void> {
+    const [scan, inspect] = await Promise.all([
+      ipc.dockerScan("upgrade"),
+      ipc.cacheInspect(),
+    ]);
+    dockerReport.value = scan;
+    inspectReport.value = inspect;
+    for (const warning of scan.warnings) dockerLogLine(`⚠ ${warning}`);
+    for (const warning of inspect.warnings) dockerLogLine(`⚠ ${warning}`);
+  }
+
+  async function scanDockerResources(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      await refreshDockerResources();
+    } catch (e) {
+      dockerError.value = errorText(e);
     } finally {
       dockerBusy.value = false;
     }
@@ -274,10 +306,19 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       if (r.skippedUnverified.length)
         dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
-      for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
-      dockerReport.value = await ipc.dockerScan("upgrade");
+
+      const cache = await ipc.cacheCleanup(24);
+      for (const prune of cache.prunes) {
+        dockerLogLine(
+          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
+        );
+      }
+      for (const warning of [...r.warnings, ...cache.warnings]) {
+        dockerLogLine(`⚠ ${warning}`);
+      }
+      await refreshDockerResources();
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
     } finally {
       dockerBusy.value = false;
     }
@@ -296,7 +337,7 @@ export const useSettingsStore = defineStore("settings", () => {
       }
       for (const w of r.warnings) dockerLogLine(`⚠ ${w}`);
     } catch (e) {
-      dockerError.value = (e as { message?: string })?.message ?? String(e);
+      dockerError.value = errorText(e);
     } finally {
       dockerRebuilding.value = false;
     }
@@ -319,10 +360,7 @@ export const useSettingsStore = defineStore("settings", () => {
       await loadDockerScan(); // re-scan refreshes rows (删前必重扫的 UI 面)
       return null;
     } catch (e) {
-      const msg =
-        (e as { message?: string })?.message ??
-        (e as { technical_detail?: string })?.technical_detail ??
-        String(e);
+      const msg = errorText(e);
       dockerLogLine(`\u26a0 ${msg}`);
       return msg;
     } finally {
@@ -352,7 +390,7 @@ export const useSettingsStore = defineStore("settings", () => {
       }
       inspectReport.value = report;
     } catch (e) {
-      inspectError.value = (e as { message?: string })?.message ?? String(e);
+      inspectError.value = errorText(e);
     } finally {
       inspectBusy.value = false;
     }
@@ -384,9 +422,13 @@ export const useSettingsStore = defineStore("settings", () => {
         targetError.value = (e as { message?: string })?.message || String(e);
       }
     },
-    async switchTarget(name: string | null): Promise<void> {
+    async switchTarget(name: string | null, workspace?: string | null): Promise<void> {
+      const activeWorkspace = (workspace ?? useWorkspacesStore().activeRuntime.workspace.value.trim()) || null;
       try {
-        targetRef.value = name ? await ipc.targetSet(name) : await ipc.targetClear();
+        targetRef.value = name
+          ? await ipc.targetSet(name, activeWorkspace)
+          : await ipc.targetClear(activeWorkspace);
+        useWorkspacesStore().setDriveMachine(targetRef.value?.machine?.name ?? null);
         targetError.value = null;
       } catch (e) {
         targetError.value = (e as { message?: string; technical_detail?: string })
@@ -415,6 +457,7 @@ export const useSettingsStore = defineStore("settings", () => {
     dockerError,
     dockerLog,
     loadDockerScan,
+    scanDockerResources,
     runDockerCleanup,
     runDockerRebuild,
     readOnly,

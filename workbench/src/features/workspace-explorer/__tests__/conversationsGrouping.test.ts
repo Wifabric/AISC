@@ -9,7 +9,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
 import { i18n } from "../../../i18n";
 import { useWorkspaceExplorerStore } from "../../../stores/workspaceExplorer";
-import WorkspaceExplorer from "../WorkspaceExplorer.vue";
+import ConversationsPane from "../ConversationsPane.vue";
 import type { ConversationSummary } from "../../../types";
 
 vi.mock("../../../lib/ipc", () => ({
@@ -50,7 +50,7 @@ function conv(id: string, agent: "claude" | "codex", lastAt: string): Conversati
 }
 
 function mountPanel(): ReturnType<typeof mount> {
-  return mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+  return mount(ConversationsPane, { global: { plugins: [i18n] } });
 }
 
 beforeEach(() => {
@@ -61,7 +61,6 @@ beforeEach(() => {
 describe("conversations panel agent grouping", () => {
   it("stays FLAT when only one agent has history (no section headers)", () => {
     const explorer = useWorkspaceExplorerStore();
-    explorer.activeKind = "conversations";
     explorer.conversations = [
       conv("c1", "codex", "2026-09-20T10:00:00Z"),
       conv("c2", "codex", "2026-09-19T10:00:00Z"),
@@ -79,7 +78,6 @@ describe("conversations panel agent grouping", () => {
 
   it("groups by agent when both have history; newest group first", () => {
     const explorer = useWorkspaceExplorerStore();
-    explorer.activeKind = "conversations";
     // Interleaved on purpose — the store list is global recency order.
     explorer.conversations = [
       conv("c1", "codex", "2026-09-20T10:00:00Z"),

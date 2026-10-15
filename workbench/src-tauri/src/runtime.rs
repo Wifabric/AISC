@@ -443,7 +443,7 @@ pub async fn open_runtime_service_url(
     if !(1024..=65535).contains(&port) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_USAGE"));
     }
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = runtime_services_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, SERVICES_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -520,7 +520,7 @@ pub async fn runtime_services(
     if uuid_ok(&runtime_id).is_none() {
         return Err(WorkbenchError::map_aisc("AISC_ERR_INVALID_RUNTIME_ID"));
     }
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = runtime_services_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, SERVICES_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -703,6 +703,14 @@ async fn cc_switch_call_value(
     input: Option<String>,
 ) -> Result<Value, WorkbenchError> {
     let target = crate::target::resolve_target_for(app, &window).await?;
+    // b13: provider/cc-switch state is workspace-runtime data. Make its drive
+    // target explicit in diagnostics instead of leaving users to infer it.
+    crate::logging::append_event(
+        "info", "app", "target_route", None, serde_json::json!({
+            "command": "cc-switch", "kind": target_kind(&target),
+            "machine": target_machine_name(&target), "window": window.label()
+        }),
+    );
     // 2.1.11 step2: provider ops ride the unified pooled serve via the
     // GENERIC input path (both Local and Remote arms) — the r7 step-1
     // special-case entry (run_serve_op_target) was folded away when the
@@ -1080,7 +1088,7 @@ pub async fn runtime_preflight(
     network: Option<String>,
     scope: Option<String>,
 ) -> Result<PreflightReport, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let mut argv = vec![
         "runtime".into(),
         "preflight".into(),
@@ -1119,7 +1127,7 @@ pub async fn runtime_inspect(
     runtime_id: String,
     workspace: String,
 ) -> Result<RuntimeSnapshot, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = runtime_inspect_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, STOP_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -1140,7 +1148,7 @@ pub async fn runtime_status(
     runtime_id: String,
     workspace: String,
 ) -> Result<Value, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = runtime_status_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, STOP_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -1163,17 +1171,29 @@ pub async fn runtime_status(
 #[tauri::command]
 pub async fn runtime_poll_light(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     runtime_id: String,
     workspace: String,
 ) -> Result<Value, WorkbenchError> {
     // G2 (2.1.10 R2c): the direct named-pipe/unix-socket connection reads
     // THIS machine's Docker — wrong machine under a remote target. Err makes
     // the frontend fall back to the CLI poll (the P6a-review R1 semantics).
-    if app.state::<crate::target::ActiveTarget>().current().is_some() {
+    if crate::target::window_machine(&app, &window).is_some() {
         return Err(WorkbenchError::cli_protocol()
             .with_detail("poll_light unavailable on a remote target — use the CLI poll"));
     }
     crate::docker_api::poll_light(std::path::Path::new(&workspace), &runtime_id).await
+}
+
+fn target_kind(target: &crate::cli::CliTarget) -> &'static str {
+    match target { crate::cli::CliTarget::Local(_) => "local", crate::cli::CliTarget::Remote(_) => "remote" }
+}
+
+fn target_machine_name(target: &crate::cli::CliTarget) -> Option<String> {
+    match target {
+        crate::cli::CliTarget::Local(_) => None,
+        crate::cli::CliTarget::Remote(t) => Some(t.host.clone()),
+    }
 }
 
 #[tauri::command]
@@ -1186,7 +1206,14 @@ pub async fn start_runtime(
     network: Option<String>,
     scope: Option<String>,
 ) -> Result<RuntimeStartResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
+    crate::target::bind_workspace_target(&app, &workspace, &target)?;
+    crate::logging::append_event(
+        "info", "app", "target_route", None, serde_json::json!({
+            "command": "runtime.start", "kind": target_kind(&target),
+            "machine": target_machine_name(&target), "window": window.label()
+        }),
+    );
     let start_ops = app.state::<StartOps>().inner().clone();
     let cancel = CancellationToken::new();
     let start_key = runtime_id.clone();
@@ -1274,7 +1301,7 @@ pub async fn runtime_restart(
     runtime_id: String,
     workspace: String,
 ) -> Result<RuntimeSnapshot, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let _op_guard = acquire_op_lock(app.state::<OpMutexes>().inner(), &runtime_id).await;
     let argv = runtime_restart_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, RESTART_TIMEOUT, CancellationToken::new()).await?;
@@ -1286,6 +1313,24 @@ pub async fn runtime_restart(
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("restart parse: {e}")))
 }
 
+/// Best-effort lease release after a successful runtime stop (T2 rework).
+///
+/// The container is already stopped when this runs; a release failure must
+/// never turn the stop IPC into an error - the 45s lease TTL is the designed
+/// safety net, mirroring the shutdown release_all_leases contract.
+pub(crate) async fn release_lease_best_effort<F, Fut>(workspace: &str, release: F)
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<bool, WorkbenchError>>,
+{
+    if let Err(e) = release(workspace.to_string()).await {
+        eprintln!(
+            "[stop_runtime] lease release failed for {workspace}: {} (TTL will expire it)",
+            e.code
+        );
+    }
+}
+
 #[tauri::command]
 pub async fn stop_runtime(
     app: AppHandle,
@@ -1293,13 +1338,22 @@ pub async fn stop_runtime(
     runtime_id: String,
     workspace: String,
 ) -> Result<RuntimeSnapshot, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let _op_guard = acquire_op_lock(app.state::<OpMutexes>().inner(), &runtime_id).await;
     let argv = runtime_stop_argv(&runtime_id, &workspace);
     let env = run_control_target(&target, argv, STOP_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
         return Err(e);
     }
+    // T2 rework: the container is stopped; best-effort release the workspace
+    // lease now instead of waiting for the 45s TTL. A release failure never
+    // blocks the stop result.
+    let app2 = app.clone();
+    let window2 = window.clone();
+    release_lease_best_effort(&workspace, |ws| async move {
+        crate::lease::lease_release(app2, window2, ws).await
+    })
+    .await;
     let data = env.data.unwrap_or(Value::Null);
     serde_json::from_value::<RuntimeSnapshot>(data)
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("stop parse: {e}")))
@@ -1312,7 +1366,7 @@ pub async fn list_runtimes(
     workspace: String,
     owner: Option<String>,
 ) -> Result<RuntimeListResult, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = runtime_list_argv(&workspace, owner.as_deref());
     let env = run_control_target(&target, argv, LIST_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -1331,7 +1385,7 @@ pub async fn remove_runtime(
     workspace: String,
     force: bool,
 ) -> Result<RuntimeSnapshot, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let _op_guard = acquire_op_lock(app.state::<OpMutexes>().inner(), &runtime_id).await;
     let argv = runtime_remove_argv(&runtime_id, &workspace, force);
     let env = run_control_target(&target, argv, REMOVE_TIMEOUT, CancellationToken::new()).await?;
@@ -1353,7 +1407,7 @@ pub async fn runtime_reconcile(
     workspace: String,
     instance_id: Option<String>,
 ) -> Result<ReconcilePayload, WorkbenchError> {
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let iid = match instance_id {
         Some(i) => i,
         None => app
@@ -1390,7 +1444,7 @@ pub async fn get_provider_status(
     if agent != "claude" && agent != "codex" {
         return Err(WorkbenchError::map_aisc("AISC_ERR_INVALID_AGENT"));
     }
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     let argv = provider_current_argv(&runtime_id, &agent, &workspace);
     let env = run_control_target(&target, argv, PROVIDER_TIMEOUT, CancellationToken::new()).await?;
     if let Some(e) = envelope_error(&env) {
@@ -2339,6 +2393,41 @@ mod tests {
         assert!(l.model_catalog.is_empty());
     }
 
+    // T2 rework (b1, 2026-10-12): stop_runtime must best-effort release the
+    // workspace lease after a successful CLI stop. Release failure never
+    // blocks the stop result — the 45s TTL is the designed safety net.
+
+    #[tokio::test]
+    async fn stop_release_helper_invokes_release_with_workspace() {
+        let released = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = released.clone();
+        release_lease_best_effort("C:\\ws-A", move |ws| {
+            let sink = sink.clone();
+            async move {
+                sink.lock().unwrap_or_else(|p| p.into_inner()).push(ws);
+                Ok(true)
+            }
+        })
+        .await;
+        assert_eq!(
+            *released.lock().unwrap_or_else(|p| p.into_inner()),
+            vec!["C:\\ws-A".to_string()],
+            "stop must hand the exact workspace to lease release"
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_release_helper_swallows_release_failure() {
+        // The stop IPC already succeeded; a failed release must NOT turn the
+        // stop result into an error (shutdown release_all_leases shares this
+        // best-effort contract).
+        let result: () = release_lease_best_effort("C:\\ws-B", |_ws| async {
+            Err(WorkbenchError::cli_protocol()
+                .with_detail("simulated release failure for test"))
+        })
+        .await;
+        let _ = result; // no panic reaching here = error was swallowed
+    }
     #[tokio::test]
     async fn op_lock_serializes_same_runtime() {
         let m = OpMutexes::default();
@@ -2365,3 +2454,5 @@ mod tests {
         drop(g2);
     }
 }
+
+

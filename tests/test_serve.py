@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -53,7 +54,7 @@ class ServeSubprocessTests(unittest.TestCase):
         proc = self._spawn()
         banner = self._readline(proc)
         self.assertEqual(banner["type"], "ready")
-        self.assertEqual(banner["serve_protocol"], 3)
+        self.assertEqual(banner["serve_protocol"], 4)
         self.assertTrue(banner["cli_version"])
 
         proc.stdin.write('{"id":"u1","op":"version","args":[]}\n')
@@ -132,6 +133,62 @@ class ServeInProcessTests(unittest.TestCase):
 
         return srv.ServeRuntime(io.StringIO())
 
+    def test_emit_bypasses_a_noop_textio_flush_on_windows_ssh_pipes(self) -> None:
+        """Field evidence: PyInstaller over Windows SSH can buffer TextIO.
+
+        Keeping stdin open showed no ready banner; it appeared only when the
+        process exited. Serve must write frames to the underlying OS pipe.
+        """
+        from aisc.cli.commands import serve as srv
+
+        class BufferedPipeIO(io.TextIOBase):
+            def __init__(self, fd: int) -> None:
+                self.fd = fd
+                self.buffer = ""
+
+            def fileno(self) -> int:
+                return self.fd
+
+            def write(self, value: str) -> int:
+                self.buffer += value
+                return len(value)
+
+            def flush(self) -> None:
+                pass  # deliberately model the broken wrapper behavior
+
+        rfd, wfd = os.pipe()
+        os.set_blocking(rfd, False)
+        self.addCleanup(os.close, rfd)
+        self.addCleanup(os.close, wfd)
+        runtime = srv.ServeRuntime(BufferedPipeIO(wfd))
+        runtime._emit({"type": "ready", "serve_protocol": 4})
+        time.sleep(0.01)
+        try:
+            raw = os.read(rfd, 4096)
+        except BlockingIOError:
+            raw = b''
+        self.assertIn(b'"type":"ready"', raw)
+        self.assertIn(b'"serve_protocol":4', raw)
+    def test_serve_does_not_reconfigure_a_blocked_frozen_stdin(self) -> None:
+        """Windows PyInstaller field evidence: stdin.reconfigure can block
+        until the SSH pipe closes, delaying the ready banner forever."""
+        import argparse
+        from aisc.cli.commands import serve as srv
+
+        class FrozenStdin:
+            def readline(self):
+                return ""
+
+            def reconfigure(self, **_kwargs):
+                raise AssertionError("stdin reconfigure must not be called")
+
+        stdout = io.StringIO()
+        ns = argparse.Namespace(stdio=True)
+        with mock.patch.object(srv.sys, "stdin", FrozenStdin()), \
+                mock.patch.object(srv.sys, "stdout", stdout):
+            self.assertEqual(srv.cmd_serve(ns), 0)
+        self.assertIn('"type":"ready"', stdout.getvalue())
+
     def test_cli_error_maps_to_envelope_errors(self) -> None:
         from aisc.cli.commands import serve as srv
         from aisc.domain.models import CliError
@@ -170,6 +227,37 @@ class ServeInProcessTests(unittest.TestCase):
         self.assertEqual(lines[0]["type"], "ready")
         self.assertEqual(lines[-1]["id"], "x")
         self.assertTrue(lines[-1]["ok"])
+
+    def test_serve_loop_reads_binary_stdin_as_utf8(self) -> None:
+        """Windows SSH frozen serve must not decode UTF-8 JSON via cp1252."""
+        from aisc.cli.commands import serve as srv
+
+        captured: dict = {}
+
+        def capture(_args, payload, _runtime):
+            captured.update(payload)
+            return {"title": payload["argv"][-1]}, 0, []
+
+        raw = json.dumps(
+            {"id": "u", "op": "unicode", "args": {"argv": ["work-record", "--title", "中文记录"]}},
+            ensure_ascii=False,
+        ).encode("utf-8") + b"\n"
+
+        class WindowsLikeStdin:
+            buffer = io.BytesIO(raw)
+
+            def readline(self):
+                # The b12 bug: text handle decoded UTF-8 bytes as cp1252 with
+                # surrogateescape before JSON parsing.
+                return self.buffer.readline().decode("cp1252", errors="surrogateescape")
+
+        stdout = io.StringIO()
+        with mock.patch.dict(srv.OPS, {"unicode": capture}):
+            rc = srv._serve_loop(WindowsLikeStdin(), stdout)
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["argv"][-1], "中文记录")
+        result = json.loads(stdout.getvalue().splitlines()[-1])
+        self.assertEqual(result["envelope"]["data"]["title"], "中文记录")
 
     def test_doctor_op_carries_report_exit_code(self) -> None:
         """doctor's exit code must ride the envelope (0 or 3), not a hard 0 —

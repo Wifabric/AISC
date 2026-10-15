@@ -90,6 +90,31 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("remote workspace initial load race (b14)", () => {
+  it("refreshes the root even when App's watcher pre-set explorer.workspace", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const runtime = useRuntimeStore();
+    const explorer = useWorkspaceExplorerStore();
+    const { workspaceList } = await import("../../../lib/ipc");
+    vi.mocked(workspaceList).mockClear();
+
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await flushPromises(); // mounted before runtime.workspace became available
+    expect(workspaceList).not.toHaveBeenCalled();
+
+    // App's watcher wins first and pre-sets the same workspace...
+    explorer.setWorkspace("C:/remote/ws");
+    // ...then this component's own watcher receives the runtime transition.
+    runtime.workspace = "C:/remote/ws";
+    await flushPromises();
+
+    expect(workspaceList).toHaveBeenCalledWith("C:/remote/ws", "", null);
+    expect(wrapper.findAll("[role=treeitem]").length).toBeGreaterThan(0);
+    wrapper.unmount();
+  });
+});
+
 describe("WorkspaceExplorer keyboard (3f, A-WX05-1)", () => {
   it("ArrowDown/ArrowUp move roving focus; Enter activates a file", async () => {
     await setup();

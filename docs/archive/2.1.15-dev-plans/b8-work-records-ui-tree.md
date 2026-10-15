@@ -1,0 +1,110 @@
+# v2.1.15 b8：Work Records UI 树状重构与历史合并
+
+> For agentic workers: 本文件是 b8 批次计划。执行须遵守分支先行、TDD、
+> 本地门禁与远程 CI 全绿后并回 develop。R2 fork 语义与 R3 父子链数据
+> 先做小调研再实施，调研结论记入本文件执行状态。
+
+## 目标
+
+用户裁定（2026-10-14，收尾前修复批次），Work Records 模块四项 UI 重构：
+
+- R1（反馈 #2）：操作符号化——恢复 / 删除 / 加入等动作改用图标符号，
+  整体视觉简化。
+- R2（反馈 #2）：会话条目右键菜单——重命名、分支（fork）。
+- R3（反馈 #3+#4）：子代理会话折叠与树状组织——child session 只在
+  parent 下折叠展示，同一工作记录内会话按树状结构组织。
+- R4（反馈 #5）：历史并入——移除侧边栏历史（conversations）模块入口，
+  Work Records 的「全部会话」直接在模块内展示全部会话。
+
+## 现状与技术要点
+
+- UI：`features/workspace-explorer/WorkRecordsView.vue`（当前平铺列表），
+  历史列表在 `WorkspaceExplorer.vue` conversations tab +
+  `features/history/ConversationViewer.vue`。
+- 后端：`src/aisc/cli/commands/work_record.py` 与成员扫描目前没有
+  parent-child 关联数据（已核实无 parent_thread 类字段）。
+- fork：CLI 目前无 fork 能力（已核实）。Claude 侧 `--resume <id>
+  --fork-session` 原生支持待核实版本；Codex 侧 fork 支持待调研。
+
+## R0 调研结论（2026-10-14 实测定案）
+
+1. **Codex 子代理父子链**（容器内 codex 实测 spawn + 检查 rollout）：
+   - 子代理产生独立 rollout 文件（文件名 = 子线程 id），父 rollout 不变；
+   - 子 rollout 首行 `session_meta`：`thread_source == "subagent"`，
+     `source.subagent.thread_spawn.parent_thread_id = <父线程 id>`，
+     另有 `depth` / `agent_nickname`；
+   - 注意：子 rollout 的 `payload.session_id` 字段**继承父线程 id**，
+     而 AISC 扫描器的 conversation id 取自**文件名**（子线程 id）——
+     这就是 Work Records 里 child session 作为独立条目重复出现的根因；
+   - 顶层会话 `thread_source == "user"`。
+2. **Claude 子代理**：sidechain 消息写在**同一个** transcript 文件内
+   （`isSidechain: true`），不产生独立 child session 文件；树状/折叠
+   只需对 codex 生效，claude 天然单节点。
+3. **Fork**：
+   - Claude Code 2.1.273 原生支持 `--resume <id> --fork-session`
+     （恢复时生成新 session id）→ fork 菜单项可用；
+   - Codex 无 CLI 原生 fork：`codex resume` 续写原 rollout（实测 exec
+     resume 后原文件追加，无新文件）；Desktop 的 fork 是 IDE 层实现
+     （新 rollout + `history_base.thread_id` 指源）。CLI 复刻需手改
+     rollout 内部 ordinal/thread_id 引用，风险不可接受 → **codex fork
+     菜单项禁用并提示**。
+
+## 实施顺序
+
+1. **R0 小调研（先行，只读）**：
+   - Codex rollout / Claude transcript 中父子 thread 关联字段的落点；
+   - 两引擎 fork 的 CLI 形态与风险。结论回填本文件。
+2. **R3 后端**：会话扫描补 parent_thread_id（缺失时置 null，UI 按
+   平铺兜底）；`aisc work-record list` / IPC 输出带上该字段。
+3. **R4 历史合并**：Explorer 移除 conversations 入口；Work Records
+   「全部会话」复用会话列表渲染展示全部会话（含恢复/删除）。
+4. **R1+R2 UI**：动作符号化；右键菜单（重命名、fork——fork 依赖 R0
+   结论，若某引擎不支持则该引擎菜单项禁用并提示）。
+5. **R3 UI**：树状展示与子会话折叠（默认折叠，可展开）。
+
+## 约束
+
+- 不使用 runtime_id 做身份匹配（b6 铁律延续）。
+- 删除/恢复/加入既有语义与确认保护不变，仅呈现层符号化。
+- b6 HANDTEST 用例不回退；R4 移除历史入口后原 conversations 能力
+  （搜索、重命名、删除、恢复）必须在「全部会话」中可用。
+
+## 验收形态
+
+- 单测：parent_thread_id 解析与平铺兜底；树状分组；conversations 能力
+  迁移后的 store 行为。
+- 手测：新增 T7（Work Records 树状展示 + 右键菜单 + 历史并入）写入
+  HANDTEST 并 PASS。
+- 全量本地门禁 + 远程 CI 全绿。
+
+## 分支
+
+`2.1.15-b8-work-records-ui-tree`（从 develop 切出）。
+
+
+## 执行状态（2026-10-14）
+
+- R0：已完成，结论见上节。
+- R3 后端：`conversation scan` 输出 `parent_thread_id`；Rust IPC wire
+  struct 同步保留该字段，避免 serde 静默丢弃。
+- R4：侧边栏历史入口与 command palette 入口移除；Work Records 内嵌
+  `ConversationsPane` 承接搜索 / 恢复 / 只读 / 重命名 / 删除。
+- R1+R2：Work Records 操作符号化；会话右键菜单支持查看 / 恢复 / 重命名 /
+  分支 / 删除；Claude fork 开放，Codex fork 禁用并显示原因。
+- R3 UI：新增纯函数 conversation tree；All Sessions 与 collection members
+  均按 parent→child 展示，child 默认折叠，可展开；搜索 child 保留祖先路径。
+- 实测：HANDTEST T7 执行记录已回填；两项实机中发现的集成缺陷已修复。
+- 门禁：Python 1350 OK（62 skipped），Frontend build + 565 tests 全绿，
+  Rust lib 347 passed（1 ignored），`git diff --check` PASS。
+
+### CI 修复与合并（2026-10-14）
+
+- PR #11 Rust CI 首跑失败：`tests/serve_ssh.rs` 调用
+  `spawn_serve_pty_session` 时漏传新增的 `fork_session` 参数；本机此前只跑
+  `--lib`，未覆盖该集成测试编译。
+- 修复提交：`4891de8 fix(workbench): stabilize rust ci for b8`，测试调用补
+  `false`（非 fork）。修复前本机复现 E0061；修复后
+  `cargo test -p workbench --test serve_ssh` 通过，`cargo test -p workbench --no-run`
+  通过，Rust lib 347 passed / 1 ignored。
+- PR #11 最新提交 frontend / cli / rust 三项 CI 全绿；分支已 ff-only 并回
+  `develop`。

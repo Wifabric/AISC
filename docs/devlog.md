@@ -2,6 +2,168 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+
+# v2.1.15 final 收口（2026-10-15）
+
+- 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
+  pre-release Release 记录与资产；git tag 保留为不可变发布标识。
+- b1–b16 与 preview.1–preview.8 反馈链全部收口；`2.1.15-dev-plans` 与
+  `2.1.15-preview-fixes` 均已归档。
+- CLI 升级为 `0.1.8` final，Workbench 发布 `v2.1.15` final。
+- 发布前门禁沿用 final release 清单；发布后执行 main 合并、tag CI、正式 PyPI、
+  Releases 清理与文档收口。
+
+# v2.1.15-preview.8 / b16 preview.7 字段修复（2026-10-15）
+
+- **Work Records**：新建 Collection 默认折叠，标题行保留成员计数，手动展开后显示成员。
+- **Help 菜单**：原诊断入口改名「运行诊断」；文档入口改名「帮助文档」；新增
+  「关于 AISC Workbench」弹窗，展示 Workbench、CLI、bundle、镜像、Claude Code、
+  Python 与平台版本。
+- **终端**：移除「fit 诊断（网格 5s 内 ≥6 次变化）— 截图反馈」自动弹层与相关探针状态。
+- **更新**：GitHub API 403 取证为 unauthenticated core quota（60/h，Remaining 0）。
+  更新检查改用 `releases.atom` 主通道，API 仅作 fallback；release 资产 URL 按稳定
+  download 规则构造。
+- **磁盘与缓存**：移除 Docker 资源上方的旧 df 摘要与独立 inspect 区。一个扫描动作同时
+  获取 ownership scan 与 itemized inspect，统一展示容器 / 镜像 / 悬空镜像 /
+  Build Cache / Volumes / Networks；一键清理依次执行 AISC 资源清理与 24h cache cleanup
+  并重新扫描。
+- **门禁**：Python 1412 passed / 53 skipped；Rust lib 362 passed / 1 ignored；
+  Vitest 76 files / 599 tests；vue-tsc 通过；PR #20 三 job 全绿；develop
+  Workbench / Bundle / NSIS 全绿，手动 dispatch 的三平台 CLI sidecar 全绿。
+- **发布**：`v2.1.15-preview.8` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；CLI 维持 `0.1.8.dev0`。等待用户实机复测。
+
+# v2.1.15-preview.7 / b15 preview.6 字段修复（2026-10-15）
+
+- **更新**：GitHub 请求按 system proxy → direct 双策略各重试 3 次；下载与 sha256
+  sidecar 同样走 fallback；设置页分别显示 Workbench GUI 与内置 CLI current/latest，
+  GUI 或 CLI 任一落后即引导下载同一个 installer 一并升级。
+- **中文**：Windows frozen serve 改从 `stdin.buffer` 按 UTF-8 读帧，修复远端
+  Work Record / 会话中文重命名乱码或 surrogate 错误。
+- **Claude 树**：从 resumed/forked JSONL 的历史 `session_id` 提取 parent thread，
+  同名 Claude 会话与 Codex 一样按 parent-child 折叠。
+- **Work Records**：Collection 与未归档区均可折叠；移除 Activate 状态与自动收容，
+  新会话默认 unfiled；删除确认改为自绘 dialog，不触发系统提示音。
+- **Docker**：修复 Docker verbose JSON string-boolean 解析导致 build cache 全部
+  误判 in-use 的统计错误；inspect images 按 image ID 聚合 repo tags；mirror 拉取
+  打 bare tag 后移除同 ID mirror alias；用 RootFS layer 前缀证据安全管理 AISC
+  构建引入的基础镜像。
+- **门禁**：Python 1412 passed / 53 skipped；Rust lib 361 passed / 1 ignored；
+  Vitest 75 files / 594 tests；vue-tsc 通过；PR #19 三 job 全绿；develop
+  Workbench / CLI sidecar / Bundle / NSIS 全绿。
+- **发布**：`v2.1.15-preview.7` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；`cli-v0.1.8.dev0` PyPI workflow success，TestPyPI
+  版本可安装。等待用户实机复测。
+
+# v2.1.15-preview.6 / b14 preview.5 字段修复（2026-10-15）
+
+- **协议提示**：`wsl-base` 远端 CLI 原 `0.1.3` / serve protocol 3，preview.5
+  Workbench 要求 protocol 4；Settings 现在保留 `technical_detail`，直接显示
+  client/remote 协议号与升级指引。该远端已升级 TestPyPI CLI `0.1.7.dev0`，
+  ready banner 为 protocol 4。
+- **远程 Explorer**：修复 App watcher 预先设置 workspace 后组件 watcher 跳过
+  `refreshRoot()` 的首载竞态，首次打开即列出远端目录。
+- **Recent 机器身份**：workspace binding 不再把配置名 `win-test` 降级成
+  `admin@10.147.20.7`；旧 history alias 会迁移，并按配置机器路由。
+- **Docker 展示**：同一 image ID 的 `node` 与 `docker.1ms.run/library/node`
+  tag 聚合为一行，删除仍按 ID，retag 使用第一条 ref。
+- **门禁**：Python 1403 passed / 53 skipped；Rust lib 359 passed / 1 ignored；
+  Vitest 75 files / 590 tests；vue-tsc 通过；PR #18 三 job 全绿；develop
+  Workbench / Bundle / NSIS 全绿，手动 dispatch 的三平台 CLI sidecar 全绿。
+- **发布**：`v2.1.15-preview.6` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；CLI 维持 `0.1.7.dev0`。等待用户实机复测。
+
+
+# v2.1.15-preview.5 / b13 远程工作区模型修复（2026-10-15）
+
+- **Help**：文档改用 Tauri opener 打开 `Wifabric/AISC` README；检查更新覆盖
+  checking / 已最新 / 可更新 / 失败四态 toast，可更新时直达安装引导。
+- **远程导航**：serve 新增 `fs.roots`（Windows 全盘符、POSIX `/`），Workbench
+  remote browse 解除 `$HOME` pin，支持盘符切换、面包屑、上一级与刷新；旧远端
+  降级到 home 所在根。CLI bump `0.1.7.dev0`，serve protocol 维持 4。
+- **机器身份**：history schema additive 增加 `machine_name/machine_host`，
+  upsert/dedupe/remove/focus 均按 machine + path；Recent 显示具体机器，同路径
+  不同机器不再合并或误删。
+- **数据面**：provider / cc-switch / conversation / work-record / runtime 保持
+  remote workspace target；cc-switch 增加 target_route 取证。控制端 remoteMachines
+  与 UI 设置仍留本机。远端 Windows watcher 接受 `C:/...` 并归一事件分隔符。
+- **实测取证**：远端 `C:/Users/admin` 非空可列；用户所选 `E:/test` 与
+  `test-ws` 在远端均为空目录，UI 应显示空态而非误判数据面故障。
+- **门禁**：Python 1403 passed / 53 skipped；Rust lib 357 passed / 1 ignored；
+  Vitest 75 files / 585 tests；vue-tsc 通过；PR #17 三 job 全绿；develop
+  Workbench / CLI sidecar / Linux+macOS bundle / NSIS 全绿。
+- **发布**：`v2.1.15-preview.5` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；`cli-v0.1.7.dev0` PyPI workflow success，TestPyPI
+  版本可安装。等待用户实机复测。
+# v2.1.15-preview.2 / b9 阻断修复（2026-10-14）
+
+- **用户 preview.1 实测反馈**：Windows 远端仍无 bash prompt、所有 bash open 触发
+  `fork_session` TypeError、Work Records child 重复/长标题按钮溢出/树状不可见。
+- **P0 修复**：`open_session` 签名贯通 `fork_session`；真实 command→application
+  调用链测试补齐。
+- **远端配对**：serve protocol 3→4，CLI bump `0.1.4.dev0`。旧 Windows 远端
+  0.1.3 会在握手阶段明确要求升级，不再落入半配对 PTY 无输出。
+- **Work Records**：修正 member tree parent 判定，collection child 默认折叠且
+  展开后单次显示；未归档会话复用 tree builder；行首 indent/引导线替代整行
+  padding，长标题下操作按钮保留在卡片内。
+- **门禁**：Python 1394 passed / 53 skipped；Vitest 74 files / 568 tests；
+  Rust lib 349 passed / 1 ignored；frontend build、vue-tsc、`cargo test --no-run`
+  通过。PR #14 与 develop 全路径 CI 全绿。
+- **发布**：`v2.1.15-preview.2` NSIS prerelease 资产就位；
+  `cli-v0.1.4.dev0` PyPI workflow success，TestPyPI 包索引可见。
+- **待实测**：`docs/plans/2.1.15-preview-fixes/HANDTEST.md` b9-T1–T3。
+
+# v2.1.15-preview.1 发布（2026-10-14）
+
+- 发布提交：`a86003e fix(vendor): refresh session wrapper checksum`；tag
+  `v2.1.15-preview.1` 指向该提交。
+- b8 改动 `container/aisc-session-wrapper` 后首次全路径 CI 暴露 vendor checksum
+  过期；`tools/vendor-verify.sh` 全量 1519 checksum 通过，packaging 188 tests
+  OK，Bundle Linux/macOS 与 NSIS 分支 dispatch 均 success。
+- `develop` 触发的 CLI sidecar、Bundle Linux/macOS、NSIS installer 全绿；tag
+  NSIS workflow success。
+- GitHub Release 已核验：`v2.1.15-preview.1 (preview)`，prerelease=true，
+  draft=false；资产 `AISC-Workbench-2.1.15-preview.1-setup.exe` 与 `.sha256`
+  就位。
+- 本条为当前账本补充；release notes、todo、devlog 与计划归档已随发布链路收口。
+
+# v2.1.15 b1–b8 开发闭环（2026-10-14）
+
+- **b1 远程 SSH**：lease target 保存 claim 时机器快照，heartbeat/release 不再漂到
+  global target；runtime stop 显式释放 lease。远程 T1–T3 复测通过。
+- **b2 Windows 路径身份**：历史身份按 Windows 大小写/分隔符归一折叠，显示形态保留，
+  最近列表和删除不再产生大小写孪生。
+- **b3 终端滚动**：明确 xterm 查询响应、用户回看与输出跟随的所有权边界；CLI 输出
+  不再把视口抢回顶部。
+- **b4 UI 边界与模型调研**：顶部状态栏退出上下拖拽；Work Record / Collection 8 项
+  开放点经用户裁定后移交 b6。
+- **b5 PTY 断流**：Docker PTY pump 将 timeout/EINTR 继续读，不再误判 EOF；transport
+  与 Workbench UI 长流验证通过。
+- **b6 Work Record / Collection**：落地 CLI、Rust IPC、前端 Work Records、active 收容、
+  归档、加入/移出、运行成员终止和物理级联删除及部分失败提示。
+- **b7 自退关标签**：process_exit 自退直接移除 pane/tab；split 只移除退出 pane；
+  transport_error/failed 保留现场。bash、codex、split、b6 级联实机 PASS。
+- **b8 Work Records UI**：动作符号化、右键查看/恢复/重命名/分支/删除、Codex 子代理
+  parent-child 树状折叠、搜索保留祖先路径；旧 History 并入 Work Records「全部会话」。
+  Claude fork 开放，Codex fork 因 CLI 无原生能力显式禁用。
+- **门禁**：各批分支本地门禁与 PR CI 全绿后 ff-only 回 develop；b8 Rust CI 补齐
+  serve_ssh 集成调用参数后 frontend/cli/rust 三项全绿。
+- **发布准备**：Workbench 开发版本升至 2.1.15，新增 v2.1.15-preview.1
+  release notes；阶段计划移入 docs/archive/2.1.15-dev-plans/，进入 preview 验证窗。
+
+# v2.1.15 开题：反馈收集与首轮回复（2026-10-12）
+
+- 反馈数据仓库已切到 `Wifabric/aisc-issues-feedback`。按其根 README 开发者流程，
+  对 2026-10-12 新增的 5 条反馈各追加一轮公开回复，并把 `submitted` 更新为
+  `replied`；不修改 `索引.md`、站点 schema、投票数或 `_pending`。
+- 五类输入已并入 `docs/plans/2.1.15-dev-plans`：SSH 远程会话阻塞（b1/P0）、
+  Windows 工作区路径大小写（b2）、终端滚动所有权（b3）、顶部状态栏拖拽边界与
+  历史/工作记录模型调研（b4）。
+- 反馈数据提交 `e597278 feedback: reply to 2026-10-12 reports` 已推送到其
+  `main`；站点详情/首页按 README 承诺在 5 分钟缓存后刷新。
+- 本条为纯 docs 开题记录；后续各批次实施仍按开发纪律分支先行，本地与远端门禁
+  全绿后再并回 `develop`。
+
 # v2.1.14 阶段后销账 + 面向用户 README 重写 + main 同步（2026-09-25）
 
 - **用户裁定**：维持 2.1.14（不开新版本），全部挂账销账——D-23（D-13 docker

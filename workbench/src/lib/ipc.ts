@@ -61,6 +61,7 @@ export const openSession = (
   workspace: string,
   onEvent: Channel<PtyEvent>,
   resumeConversationId?: string | null,
+  forkSession = false,
 ) =>
   invoke<SessionSnapshot>("open_session", {
     runtimeId,
@@ -70,6 +71,8 @@ export const openSession = (
     onEvent,
     // v2.1.8 T4: provider conversation id for resume (None = normal open).
     resumeConversationId: resumeConversationId ?? null,
+    // b8 R2: Claude-only fork resume (creates a new provider session).
+    forkSession,
   });
 
 // --- v2.1.8 T4: agent conversation discovery (captured, no PTY) ---
@@ -114,6 +117,108 @@ export const conversationRename = (
     title,
   });
 
+
+// --- v2.1.15 b6: Work Record / Collection IPC ---
+
+export const workRecordList = (workspace: string) =>
+  invoke<import("../types").WorkRecordListResult>("work_record_list", { workspace });
+
+export const workRecordCreate = (workspace: string, title: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_create", {
+    workspace,
+    title,
+  });
+
+export const workRecordRename = (workspace: string, id: string, title: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_rename", {
+    workspace,
+    id,
+    title,
+  });
+
+export const workRecordActivate = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordActiveResult>("work_record_activate", { workspace, id });
+
+export const workRecordDeactivate = (workspace: string) =>
+  invoke<import("../types").WorkRecordActiveResult>("work_record_deactivate", { workspace });
+
+export const workRecordArchive = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_archive", { workspace, id });
+
+export const workRecordRestore = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_restore", { workspace, id });
+
+export const workRecordAddMember = (
+  workspace: string,
+  id: string,
+  agent: "claude" | "codex",
+  conversationId: string,
+  runtimeId?: string | null,
+) =>
+  invoke<import("../types").WorkRecordMemberResult>("work_record_add_member", {
+    workspace,
+    id,
+    agent,
+    conversationId,
+    runtimeId: runtimeId ?? null,
+  });
+
+export const workRecordRemoveMember = (
+  workspace: string,
+  id: string,
+  agent: "claude" | "codex",
+  conversationId: string,
+) =>
+  invoke<import("../types").WorkRecordRemoveResult>("work_record_remove_member", {
+    workspace,
+    id,
+    agent,
+    conversationId,
+  });
+
+export const workRecordReorderCollections = (workspace: string, ids: string[]) =>
+  invoke<import("../types").WorkRecordCollectionsResult>("work_record_reorder_collections", {
+    workspace,
+    ids,
+  });
+
+export const workRecordReorderMembers = (
+  workspace: string,
+  id: string,
+  memberKeys: string[],
+) =>
+  invoke<import("../types").WorkRecordCollectionResult>("work_record_reorder_members", {
+    workspace,
+    id,
+    memberKeys,
+  });
+
+export const workRecordReorderUnfiled = (workspace: string, memberKeys: string[]) =>
+  invoke<import("../types").WorkRecordUnfiledResult>("work_record_reorder_unfiled", {
+    workspace,
+    memberKeys,
+  });
+
+export const workRecordMoveMember = (
+  workspace: string,
+  fromId: string,
+  memberKey: string,
+  toId?: string | null,
+  destinationOrder?: string[],
+) =>
+  invoke<import("../types").WorkRecordMoveResult>("work_record_move_member", {
+    workspace,
+    fromId,
+    memberKey,
+    toId: toId ?? null,
+    destinationOrder: destinationOrder ?? null,
+  });
+
+export const workRecordDelete = (workspace: string, id: string) =>
+  invoke<import("../types").WorkRecordDeleteResult>("work_record_delete", { workspace, id });
+
+export const workRecordReconcile = (workspace: string) =>
+  invoke<import("../types").WorkRecordReconcileResult>("work_record_reconcile", { workspace });
 // --- 批 2 聊天式 UI: read-only conversation stream (tail paging) ---
 
 export const conversationRead = (
@@ -333,8 +438,8 @@ export const ccSwitchFetchModels = (
 // --- 2.1.10 R4b: which machine the Workbench drives ---
 export const targetGet = () =>
   invoke<import("../types").TargetInfo>("target_get");
-export const targetSet = (name: string) =>
-  invoke<import("../types").TargetInfo>("target_set", { name });
+export const targetSet = (name: string, workspace?: string | null) =>
+  invoke<import("../types").TargetInfo>("target_set", { name, workspace: workspace ?? null });
 
 /** v2.1.13 remote CLI pairing: soft version probe (the
  * serve_protocol hard gate is unchanged). verdict:
@@ -348,8 +453,8 @@ export interface RemoteCliInfo {
 }
 export const remoteCliInfo = (machine: string) =>
   invoke<RemoteCliInfo>("remote_cli_info", { machine });
-export const targetClear = () =>
-  invoke<import("../types").TargetInfo>("target_clear");
+export const targetClear = (workspace?: string | null) =>
+  invoke<import("../types").TargetInfo>("target_clear", { workspace: workspace ?? null });
 
 // --- IDEA-2 (2d): subscription + usage data plane ---
 // The subscription URL / content ride the CLI child's stdin on the Rust side
@@ -410,8 +515,16 @@ export const saveHistory = (expectedRevision: number, patch: HistoryPatch) =>
 export const workspaceForgetPreview = (path: string) =>
   invoke<ForgetPreview>("workspace_forget_preview", { path });
 
-export const workspaceForget = (path: string, expectedHistoryRevision: number) =>
-  invoke<ForgetResult>("workspace_forget", { path, expectedHistoryRevision });
+export const workspaceForget = (
+  path: string,
+  machineName: string | null | undefined,
+  expectedHistoryRevision: number,
+) =>
+  invoke<ForgetResult>("workspace_forget", {
+    path,
+    machineName: machineName ?? null,
+    expectedHistoryRevision,
+  });
 
 /** 2.1.11 P1-3: zip the workspace's lifecycle files (agent memories/
  * configs/state, minus the toolchain cache) to a user-chosen path.
@@ -466,8 +579,16 @@ export const workspaceGitStatus = (workspace: string) =>
 export const workspaceGitDiff = (workspace: string, relativePath: string) =>
   invoke<WorkspaceGitDiff>("workspace_git_diff", { workspace, relativePath });
 
-export const workspaceHistoryRemove = (path: string, expectedHistoryRevision: number) =>
-  invoke<number>("workspace_history_remove", { path, expectedHistoryRevision });
+export const workspaceHistoryRemove = (
+  path: string,
+  machineName: string | null | undefined,
+  expectedHistoryRevision: number,
+) =>
+  invoke<number>("workspace_history_remove", {
+    path,
+    machineName: machineName ?? null,
+    expectedHistoryRevision,
+  });
 
 export const workspacePathExists = (path: string) =>
   invoke<boolean>("workspace_path_exists", { path });
@@ -479,13 +600,22 @@ export interface RemoteDirEntry {
   name: string;
   isDir: boolean;
 }
+export interface RemoteRoot {
+  name: string;
+  path: string;
+}
 export interface RemoteBrowseResult {
-  /** Absolute POSIX path this page describes (normalized). */
+  /** Absolute remote path this page describes (already normalized). */
   cwd: string;
-  /** The pin root (remote $HOME) — the dialog's up-limit. */
+  /** The navigation up-limit (`/` or one Windows drive root). */
   root: string;
+  /** Optional remote home; only a starting convenience, never a containment pin. */
+  home?: string | null;
+  /** All navigation roots reported by the remote CLI. */
+  roots?: RemoteRoot[];
   entries: RemoteDirEntry[];
 }
+
 export const remoteBrowse = (path?: string, includeHidden?: boolean) =>
   invoke<RemoteBrowseResult>(
     "remote_browse",
@@ -810,6 +940,9 @@ export interface UpdateInfo {
   setupUrl: string | null;
   sha256Url: string | null;
   releaseUrl: string | null;
+  cliCurrent?: string | null;
+  cliLatest?: string | null;
+  cliUpdateAvailable?: boolean;
   note: string;
 }
 

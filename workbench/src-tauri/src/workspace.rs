@@ -91,9 +91,7 @@ const LIST_PAGE: usize = 200;
 /// ignore set (the `ui.explorer_ignore` setting). The user set complements the
 /// built-ins: e.g. a workspace that keeps `vendor/` or a scratch dir hidden.
 fn is_ignored(name: &str, extra_ignore: &[String]) -> bool {
-    is_temp_file(name)
-        || DEFAULT_IGNORE.contains(&name)
-        || extra_ignore.iter().any(|n| n == name)
+    is_temp_file(name) || DEFAULT_IGNORE.contains(&name) || extra_ignore.iter().any(|n| n == name)
 }
 
 /// Detect atomic-write / editor temp files (`report.md.tmp.1234`, `foo.tmp`,
@@ -125,8 +123,8 @@ fn media_type_for(path: &Path) -> &'static str {
     match ext.as_str() {
         "md" | "markdown" | "txt" | "log" => "text/markdown",
         "json" => "application/json",
-        "py" | "rs" | "ts" | "js" | "toml" | "yaml" | "yml" | "sh" | "css" | "html"
-        | "vue" | "go" | "c" | "h" | "cpp" => "text/plain",
+        "py" | "rs" | "ts" | "js" | "toml" | "yaml" | "yml" | "sh" | "css" | "html" | "vue"
+        | "go" | "c" | "h" | "cpp" => "text/plain",
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "ico" => "image/*",
         "pdf" => "application/pdf",
         _ => "application/octet-stream",
@@ -146,9 +144,7 @@ pub fn list_workspace(
 ) -> Result<WorkspaceListResult, WorkbenchError> {
     let dir = resolve_contained(workspace, relative_dir)?;
     if !dir.is_dir() {
-        return Err(
-            WorkbenchError::workspace_invalid().with_detail("not a directory")
-        );
+        return Err(WorkbenchError::workspace_invalid().with_detail("not a directory"));
     }
     let entries = fs::read_dir(&dir)
         .map_err(|e| WorkbenchError::workspace_invalid().with_detail(format!("read_dir: {e}")))?;
@@ -204,9 +200,7 @@ pub fn list_workspace(
 fn resolve_existing(workspace: &Path, relative: &str) -> Result<PathBuf, WorkbenchError> {
     let target = resolve_contained(workspace, relative)?;
     if !target.exists() {
-        return Err(
-            WorkbenchError::workspace_invalid().with_detail("target does not exist")
-        );
+        return Err(WorkbenchError::workspace_invalid().with_detail("target does not exist"));
     }
     Ok(target)
 }
@@ -305,10 +299,7 @@ fn forget_gather(
             .and_then(|m| m.modified())
             .map(|mtime| {
                 // A future mtime (clock skew) reads as age 0 = fresh.
-                mtime
-                    .elapsed()
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0)
+                mtime.elapsed().map(|d| d.as_millis() as u64).unwrap_or(0)
             })
             .map(|age| age < FORGET_LEASE_FRESH_MS)
             .unwrap_or(true); // unreadable lease file: fail-closed
@@ -399,6 +390,7 @@ fn forget_execute(
     root: &Path,
     history_dir: &Path,
     path: &str,
+    machine_name: Option<&str>,
     expected_revision: u64,
 ) -> Result<(ForgetResult, bool), WorkbenchError> {
     let io_err = |e: std::io::Error| WorkbenchError::workspace_io().with_detail(e.to_string());
@@ -456,14 +448,13 @@ fn forget_execute(
         None
     };
 
-    match crate::history::remove_workspace(history_dir, expected_revision, path) {
+    match crate::history::remove_workspace(history_dir, expected_revision, path, machine_name) {
         Ok((_rev, history_removed)) => {
             if let Some(q) = &quarantine_target {
                 match fs::remove_dir_all(q) {
                     Ok(()) => data_removed = true,
                     Err(e) => {
-                        quarantine_left =
-                            Some(q.to_string_lossy().to_string());
+                        quarantine_left = Some(q.to_string_lossy().to_string());
                         warnings.push(format!("quarantine purge failed: {e}"));
                     }
                 }
@@ -491,8 +482,7 @@ fn forget_execute(
                 ),
                 _ => String::new(),
             };
-            Err(WorkbenchError::workspace_conflict()
-                .with_detail(format!("{e}{rollback_note}")))
+            Err(WorkbenchError::workspace_conflict().with_detail(format!("{e}{rollback_note}")))
         }
     }
 }
@@ -563,10 +553,7 @@ fn forget_stop_owned_containers(key: &str) -> Result<u32, String> {
 /// -wal held by the container) are skipped best-effort — the export must
 /// never fail the rescue path. Returns the number of files written.
 #[tauri::command]
-pub async fn workspace_export_lifecycle(
-    path: String,
-    dest: String,
-) -> Result<u32, WorkbenchError> {
+pub async fn workspace_export_lifecycle(path: String, dest: String) -> Result<u32, WorkbenchError> {
     let ws_path = Path::new(&path);
     let resolved = crate::data_root::resolve_data_root(ws_path)
         .map_err(|e| WorkbenchError::workspace_io().with_detail(e.message()))?;
@@ -585,14 +572,13 @@ fn export_lifecycle_core(
     ws_dir: &Path,
     dest: &Path,
 ) -> Result<u32, WorkbenchError> {
-    let file = fs::File::create(dest).map_err(|e| {
-        WorkbenchError::workspace_io().with_detail(format!("create zip: {e}"))
-    })?;
+    let file = fs::File::create(dest)
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("create zip: {e}")))?;
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
-    let root_name = crate::data_root::workspace_dir_name(
-        &crate::data_root::workspace_hash_v1(ws_path));
+    let root_name =
+        crate::data_root::workspace_dir_name(&crate::data_root::workspace_hash_v1(ws_path));
 
     let mut count = 0u32;
     let mut stack: Vec<(PathBuf, String)> = vec![(ws_dir.to_path_buf(), root_name.clone())];
@@ -600,14 +586,14 @@ fn export_lifecycle_core(
         let entries = match fs::read_dir(&dir) {
             Ok(it) => it,
             Err(e) => {
-                return Err(WorkbenchError::workspace_io()
-                    .with_detail(format!("read dir {}: {e}", prefix)))
+                return Err(
+                    WorkbenchError::workspace_io().with_detail(format!("read dir {}: {e}", prefix))
+                )
             }
         };
         for entry in entries.flatten() {
             let Ok(ft) = entry.file_type() else { continue };
-            let entry_name =
-                format!("{prefix}/{}", entry.file_name().to_string_lossy());
+            let entry_name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
             if ft.is_dir() {
                 // toolchain cache: node_modules-class bulk, regenerable —
                 // agent memories/configs are the point of the export.
@@ -617,7 +603,9 @@ fn export_lifecycle_core(
                 let _ = zip.add_directory(&entry_name, options);
                 stack.push((entry.path(), entry_name));
             } else {
-                let Ok(mut src) = fs::File::open(entry.path()) else { continue };
+                let Ok(mut src) = fs::File::open(entry.path()) else {
+                    continue;
+                };
                 if zip.start_file(&entry_name, options).is_err() {
                     continue;
                 }
@@ -650,9 +638,8 @@ fn export_lifecycle_core(
             let _ = std::io::copy(&mut bytes.as_slice(), &mut zip);
         }
     }
-    zip.finish().map_err(|e| {
-        WorkbenchError::workspace_io().with_detail(format!("finish zip: {e}"))
-    })?;
+    zip.finish()
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("finish zip: {e}")))?;
     Ok(count)
 }
 
@@ -704,8 +691,8 @@ fn import_lifecycle_core(
             target_path.display()
         )));
     }
-    let key = crate::data_root::workspace_dir_name(
-        &crate::data_root::workspace_hash_v1(target_path));
+    let key =
+        crate::data_root::workspace_dir_name(&crate::data_root::workspace_hash_v1(target_path));
     let ws_dir = match ws_dir_override {
         Some(dir) => dir,
         None => {
@@ -723,25 +710,22 @@ fn import_lifecycle_core(
         )));
     }
 
-    let file = fs::File::open(zip_path).map_err(|e| {
-        WorkbenchError::workspace_io().with_detail(format!("open zip: {e}"))
-    })?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-        WorkbenchError::usage(format!("not a readable zip: {e}"))
-    })?;
+    let file = fs::File::open(zip_path)
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(format!("open zip: {e}")))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| WorkbenchError::usage(format!("not a readable zip: {e}")))?;
 
-    let io_err = |e: std::io::Error| {
-        WorkbenchError::workspace_io().with_detail(format!("unzip: {e}"))
-    };
+    let io_err =
+        |e: std::io::Error| WorkbenchError::workspace_io().with_detail(format!("unzip: {e}"));
     let mut files = 0u32;
     let mut skipped = 0u32;
     let mut source_path: Option<String> = None;
     let mut exported_at: Option<i64> = None;
     let mut root: Option<String> = None;
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| {
-            WorkbenchError::usage(format!("corrupt zip entry: {e}"))
-        })?;
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| WorkbenchError::usage(format!("corrupt zip entry: {e}")))?;
         // zip-slip gate: a crafted `../` or absolute entry aborts the whole
         // import (workspace-zip-restore.md — reject, never sanitize silently).
         let Some(rel_path) = entry.enclosed_name() else {
@@ -759,11 +743,7 @@ fn import_lifecycle_core(
         match &root {
             None => root = Some(first_str),
             Some(r) if *r == first_str => {}
-            Some(_) => {
-                return Err(WorkbenchError::usage(
-                    "zip has multiple root directories",
-                ))
-            }
+            Some(_) => return Err(WorkbenchError::usage("zip has multiple root directories")),
         }
         let rel = comps
             .map(|c| c.as_os_str().to_string_lossy().to_string())
@@ -869,6 +849,7 @@ pub async fn workspace_forget_preview(
 pub async fn workspace_forget(
     app: AppHandle,
     path: String,
+    machine_name: Option<String>,
     expected_history_revision: u64,
 ) -> Result<ForgetResult, WorkbenchError> {
     let active = {
@@ -898,7 +879,14 @@ pub async fn workspace_forget(
     let outcome = {
         let mut attempts = 0;
         loop {
-            match forget_execute(&g.ws_dir, &g.root, &history_dir, &path, revision) {
+            match forget_execute(
+                &g.ws_dir,
+                &g.root,
+                &history_dir,
+                &path,
+                machine_name.as_deref(),
+                revision,
+            ) {
                 Ok(pair) => break Ok(pair),
                 Err(e) if e.code == "WB_ERR_WORKSPACE_CONFLICT" && attempts < 3 => {
                     attempts += 1;
@@ -964,20 +952,29 @@ pub async fn workspace_forget(
 pub async fn workspace_history_remove(
     app: AppHandle,
     path: String,
+    machine_name: Option<String>,
     expected_history_revision: u64,
 ) -> Result<u64, WorkbenchError> {
     let dir = crate::session::config_dir(&app)?;
-    let (rev, _removed) =
-        crate::history::remove_workspace(&dir, expected_history_revision, &path)
-            .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?;
+    let (rev, _removed) = crate::history::remove_workspace(
+        &dir,
+        expected_history_revision,
+        &path,
+        machine_name.as_deref(),
+    )
+    .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?;
     Ok(rev)
 }
 
-/// F2-B (fix2-design.md): one directory page of the remote workspace
-/// picker's browse dialog — served over the pooled serve connection's
-/// `fs.list` op, pinned at the remote `$HOME` (the v1.3 ready banner's
-/// `home`). Containment mirrors the R3 fs.* server side: `..` segments
-/// normalize away, anything resolving outside the pin root is rejected.
+/// b13: one page of the remote workspace picker's browse dialog. Navigation is
+/// SSH-native: roots and directory entries both come from the machine running
+/// `aisc serve`, never from the local Explorer/dialog APIs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RemoteRoot {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteDirEntry {
     pub name: String,
@@ -986,57 +983,134 @@ pub struct RemoteDirEntry {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteBrowseResult {
-    /// The absolute POSIX path this page describes (already normalized).
+    /// The normalized absolute path this page describes.
     pub cwd: String,
-    /// The pin root (remote `$HOME`) — the dialog's up-limit.
+    /// The navigation up-limit for this page (`/` or one Windows drive root).
     pub root: String,
+    /// The remote home, when the serve banner reports one. It is a convenient
+    /// initial directory — never a containment boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
+    /// All navigation roots reported by the remote CLI.
+    pub roots: Vec<RemoteRoot>,
     pub entries: Vec<RemoteDirEntry>,
 }
 
-/// Normalize a requested absolute POSIX path and keep it inside `root`:
-/// `.` and `..` fold away (F1 browse-pinning precedent — a plain prefix
-/// check would let `/root/a/../x` through), empty/`/` means the root.
-fn normalize_under_root(root: &str, requested: &str) -> Result<String, WorkbenchError> {
-    let root_abs = root.trim_end_matches('/');
-    if root_abs.is_empty() {
-        return Err(WorkbenchError::workspace_invalid().with_detail("browse root is empty"));
+/// Normalize a requested absolute POSIX or Windows drive-letter path. `.` and
+/// `..` fold away; `..` cannot escape the drive/POSIX root; relative input is
+/// rejected. The remote HOME is deliberately not involved in containment.
+pub(crate) fn is_remote_absolute_path(path: &str) -> bool {
+    let value = path.trim();
+    value.starts_with('/')
+        || (value.len() >= 3
+            && value.as_bytes()[1] == b':'
+            && value.as_bytes()[0].is_ascii_alphabetic())
+}
+
+pub(crate) fn normalize_remote_path(path: &str) -> Result<String, WorkbenchError> {
+    let value = path.trim().replace('\\', "/");
+    if value.is_empty() || !is_remote_absolute_path(&value) {
+        return Err(WorkbenchError::workspace_invalid().with_detail(
+            "browse path must be absolute (e.g. /home/user/proj or C:/Users/user/proj)",
+        ));
     }
-    let req = requested.trim();
-    let joined = if req.is_empty() || req == "/" {
-        root_abs.to_string()
-    } else if req.starts_with('/') {
-        req.to_string()
+    if value == "/" {
+        return Ok("/".to_string());
+    }
+
+    let bytes = value.as_bytes();
+    let drive = if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        Some(bytes[0].to_ascii_uppercase() as char)
     } else {
-        return Err(WorkbenchError::workspace_invalid()
-            .with_detail("browse path must be absolute (e.g. /home/user/proj)"));
+        None
     };
-    let mut segs: Vec<&str> = Vec::new();
-    for seg in joined.split('/') {
-        match seg {
+    let body_start = if drive.is_some() { 2 } else { 0 };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in value[body_start..].split('/') {
+        match segment {
             "" | "." => {}
             ".." => {
-                if segs.pop().is_none() {
+                if segments.pop().is_none() {
                     return Err(WorkbenchError::workspace_conflict()
-                        .with_detail("browse path escapes the remote home"));
+                        .with_detail("browse path escapes the remote root"));
                 }
             }
-            s => segs.push(s),
+            other => segments.push(other),
         }
     }
-    let mut abs = String::new();
-    for s in &segs {
-        abs.push('/');
-        abs.push_str(s);
+
+    let mut normalized = String::new();
+    if let Some(drive) = drive {
+        normalized.push(drive);
+        normalized.push(':');
     }
-    if abs.is_empty() {
-        abs.push('/');
+    normalized.push('/');
+    normalized.push_str(&segments.join("/"));
+    // A POSIX root normalizes to `/`; a drive root keeps its required `C:/`.
+    if normalized.len() > 1 {
+        normalized = normalized.trim_end_matches('/').to_string();
+        if drive.is_some() && segments.is_empty() {
+            normalized.push('/');
+        }
     }
-    if abs == root_abs || abs.starts_with(&format!("{}/", root_abs)) {
-        Ok(abs)
+    Ok(normalized)
+}
+
+/// The up-limit for one remote navigation branch. Windows paths stop at their
+/// drive root; POSIX paths stop at `/`. Switching roots is explicit in the UI.
+pub(crate) fn remote_navigation_root(path: &str) -> Result<String, WorkbenchError> {
+    let normalized = normalize_remote_path(path)?;
+    let bytes = normalized.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        Ok(format!("{}:/", bytes[0].to_ascii_uppercase() as char))
     } else {
-        Err(WorkbenchError::workspace_conflict()
-            .with_detail("browse path escapes the remote home"))
+        Ok("/".to_string())
     }
+}
+
+fn remote_roots_from_value(
+    data: Option<&serde_json::Value>,
+    home: Option<&str>,
+) -> Vec<RemoteRoot> {
+    let mut roots: Vec<RemoteRoot> = Vec::new();
+    if let Some(items) = data.and_then(|v| v.get("roots")).and_then(|v| v.as_array()) {
+        for item in items {
+            let raw_path = item
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let Ok(path) = remote_navigation_root(raw_path) else {
+                continue;
+            };
+            let name = item
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let name = if name.is_empty() {
+                path.trim_end_matches('/').to_string()
+            } else {
+                name.to_string()
+            };
+            if !roots.iter().any(|r| r.path == path) {
+                roots.push(RemoteRoot { name, path });
+            }
+        }
+    }
+    if !roots.is_empty() {
+        return roots;
+    }
+    let fallback_path = home
+        .and_then(|home| remote_navigation_root(home).ok())
+        .unwrap_or_else(|| "/".to_string());
+    let name = if fallback_path == "/" {
+        "File System".to_string()
+    } else {
+        fallback_path.trim_end_matches('/').to_string()
+    };
+    vec![RemoteRoot {
+        name,
+        path: fallback_path,
+    }]
 }
 
 #[tauri::command]
@@ -1068,34 +1142,57 @@ pub async fn remote_browse_core(
 ) -> Result<RemoteBrowseResult, WorkbenchError> {
     let pool = crate::serve::global_pool();
     let session = crate::serve::pooled_session(pool, t).await?;
-    let root = session
-        .banner()
-        .home
-        .clone()
-        .ok_or_else(|| WorkbenchError::cli_protocol()
-            .with_detail("remote serve lacks the v1.3 home anchor — upgrade the remote aisc CLI"))?
-        .trim_end_matches('/')
-        .to_string();
-    let cwd = normalize_under_root(&root, path.unwrap_or(""))?;
+    let home = session.banner().home.clone();
+
+    // Additive protocol op. Old 0.1.x remotes fall back to the home drive/root;
+    // they can still list an explicitly entered path on another drive.
+    let roots_data = crate::serve::fs_op(pool, t, "fs.roots", &serde_json::json!({}))
+        .await
+        .ok();
+    let roots = remote_roots_from_value(roots_data.as_ref(), home.as_deref());
+    let home_normalized = home
+        .as_deref()
+        .and_then(|value| normalize_remote_path(value).ok());
+    let fallback = home_normalized.clone().unwrap_or_else(|| {
+        roots
+            .first()
+            .map(|r| r.path.clone())
+            .unwrap_or_else(|| "/".to_string())
+    });
+
+    let requested = path.unwrap_or("").trim();
+    let cwd = if requested.is_empty() {
+        fallback
+    } else {
+        normalize_remote_path(requested)?
+    };
+    let root = remote_navigation_root(&cwd)?;
 
     // Page through fs.list until exhausted (cap guards a runaway listing).
     let mut entries: Vec<RemoteDirEntry> = Vec::new();
-    // Field #3 defense: cross-page re-lists must never duplicate a row (the
-    // picker renders by name key — a dup blanks a row via key collision).
+    // Cross-page re-lists must never duplicate a row (the picker renders by
+    // name key — a dup blanks a row via key collision).
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut offset = 0usize;
     loop {
-        let rel = cwd.strip_prefix(&root).unwrap_or("").trim_start_matches('/');
         let data = crate::serve::fs_op(
             pool,
             t,
             "fs.list",
-            &serde_json::json!({ "root": root, "path": rel, "offset": offset }),
+            &serde_json::json!({ "root": cwd, "path": "", "offset": offset }),
         )
         .await?;
-        let page = data.get("entries").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let page = data
+            .get("entries")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         for e in page {
-            let name = e.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = e
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let is_dir = e.get("kind").and_then(|v| v.as_str()) == Some("dir");
             if name.is_empty() || !is_dir {
                 continue;
@@ -1114,7 +1211,13 @@ pub async fn remote_browse_core(
         }
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(RemoteBrowseResult { cwd, root, entries })
+    Ok(RemoteBrowseResult {
+        cwd,
+        root,
+        home: home_normalized,
+        roots,
+        entries,
+    })
 }
 
 /// Cheap existence probe for the picker's click-guard (⑧).
@@ -1142,7 +1245,7 @@ pub async fn workspace_path_exists(
             fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
         }
         Some(t) => {
-            if !path.starts_with('/') {
+            if !is_remote_absolute_path(&path) {
                 return false; // a local-machine path under a remote target
             }
             let pool = crate::serve::global_pool();
@@ -1167,8 +1270,9 @@ pub fn workspace_reveal_data_file(path: String) -> Result<(), WorkbenchError> {
         .map_err(|e| WorkbenchError::workspace_io().with_detail(e.message()))?;
     let target = Path::new(&path);
     if !target.is_absolute() || !target.starts_with(&root) {
-        return Err(WorkbenchError::workspace_invalid()
-            .with_detail("path is outside the data root"));
+        return Err(
+            WorkbenchError::workspace_invalid().with_detail("path is outside the data root")
+        );
     }
     #[cfg(target_os = "windows")]
     {
@@ -1216,12 +1320,8 @@ pub fn open_path(workspace: &Path, relative: &str) -> Result<(), WorkbenchError>
     let status = std::process::Command::new("xdg-open").arg(&target).status();
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(_) => Err(
-            WorkbenchError::workspace_invalid().with_detail("system open failed")
-        ),
-        Err(e) => Err(
-            WorkbenchError::workspace_invalid().with_detail(format!("open: {e}"))
-        ),
+        Ok(_) => Err(WorkbenchError::workspace_invalid().with_detail("system open failed")),
+        Err(e) => Err(WorkbenchError::workspace_invalid().with_detail(format!("open: {e}"))),
     }
 }
 
@@ -1234,26 +1334,27 @@ pub fn reveal_path(workspace: &Path, relative: &str) -> Result<(), WorkbenchErro
         .arg(&target)
         .status();
     #[cfg(target_os = "macos")]
-    let status = std::process::Command::new("open").args(["-R", &target.to_string_lossy()]).status();
+    let status = std::process::Command::new("open")
+        .args(["-R", &target.to_string_lossy()])
+        .status();
     #[cfg(all(unix, not(target_os = "macos")))]
     let status = std::process::Command::new("xdg-open")
         .arg(target.parent().unwrap_or(&target))
         .status();
     match status {
         Ok(_) => Ok(()),
-        Err(e) => Err(
-            WorkbenchError::workspace_invalid().with_detail(format!("reveal: {e}"))
-        ),
+        Err(e) => Err(WorkbenchError::workspace_invalid().with_detail(format!("reveal: {e}"))),
     }
 }
 
 /// Read a file for preview, bounded by PREVIEW_BUDGET (R3-11).
-pub fn preview_path(workspace: &Path, relative: &str) -> Result<WorkspacePreviewResult, WorkbenchError> {
+pub fn preview_path(
+    workspace: &Path,
+    relative: &str,
+) -> Result<WorkspacePreviewResult, WorkbenchError> {
     let target = resolve_contained(workspace, relative)?;
     if !target.is_file() {
-        return Err(
-            WorkbenchError::workspace_invalid().with_detail("preview requires a file")
-        );
+        return Err(WorkbenchError::workspace_invalid().with_detail("preview requires a file"));
     }
     let metadata = fs::metadata(&target)
         .map_err(|e| WorkbenchError::workspace_invalid().with_detail(format!("stat: {e}")))?;
@@ -1279,7 +1380,10 @@ pub fn preview_path(workspace: &Path, relative: &str) -> Result<WorkspacePreview
         (Some(String::from_utf8_lossy(&buf).into_owned()), None)
     } else {
         use base64::Engine;
-        (None, Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
+        (
+            None,
+            Some(base64::engine::general_purpose::STANDARD.encode(&buf)),
+        )
     };
     Ok(WorkspacePreviewResult {
         relative_path: relative.to_string(),
@@ -1351,9 +1455,8 @@ fn is_windows_reserved_stem(stem: &str) -> bool {
 /// dots/spaces are rejected. Non-ASCII (e.g. Chinese) is accepted as-is; no
 /// unicode normalization is applied.
 fn validate_basename(name: &str) -> Result<String, WorkbenchError> {
-    let invalid = |detail: &str| {
-        Err(WorkbenchError::workspace_invalid().with_detail(detail.to_string()))
-    };
+    let invalid =
+        |detail: &str| Err(WorkbenchError::workspace_invalid().with_detail(detail.to_string()));
     if name.is_empty() || name.trim().is_empty() {
         return invalid("empty name");
     }
@@ -1391,9 +1494,7 @@ fn resolve_contained_dir(workspace: &Path, relative_dir: &str) -> Result<PathBuf
     }
     let dir = resolve_contained(workspace, relative_dir)?;
     if !dir.is_dir() {
-        return Err(
-            WorkbenchError::workspace_not_found().with_detail("parent is not a directory")
-        );
+        return Err(WorkbenchError::workspace_not_found().with_detail("parent is not a directory"));
     }
     Ok(dir)
 }
@@ -1435,9 +1536,7 @@ fn resolve_new_target(
     let canon = canonicalize_lenient(&target)?;
     let ws = canonicalize_lenient(workspace)?;
     if !is_inside(&ws, &canon) || path_eq(&canon, &ws) {
-        return Err(
-            WorkbenchError::workspace_invalid().with_detail("target escapes workspace")
-        );
+        return Err(WorkbenchError::workspace_invalid().with_detail("target escapes workspace"));
     }
     let relative = if relative_dir.is_empty() {
         clean.clone()
@@ -1507,9 +1606,7 @@ pub fn rename_entry(
     let canon = canonicalize_lenient(&target)?;
     let ws = canonicalize_lenient(workspace)?;
     if !is_inside(&ws, &canon) || path_eq(&canon, &ws) {
-        return Err(
-            WorkbenchError::workspace_invalid().with_detail("rename escapes workspace")
-        );
+        return Err(WorkbenchError::workspace_invalid().with_detail("rename escapes workspace"));
     }
     let is_dir = source.is_dir();
     // Same resolved path (case-insensitive on Windows) ⇒ case-only rename;
@@ -1546,10 +1643,7 @@ static COPY_TEMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::Atom
 /// projection even if a change event fires mid-copy (mirrors `is_temp_file`).
 fn copy_temp_name(name: &str) -> String {
     let n = COPY_TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    format!(
-        ".{name}.aisc-copy-{}-{n}.tmp",
-        std::process::id()
-    )
+    format!(".{name}.aisc-copy-{}-{n}.tmp", std::process::id())
 }
 
 /// Copy a file or a directory (recursively, bounded) inside the workspace.
@@ -1714,7 +1808,9 @@ pub async fn workspace_list(
     // fs is never consulted (or copied). Artifact badges stay a local-index
     // projection and therefore don't ride the remote path yet (remote
     // artifact registry is a follow-up).
-    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for(&app, &window).await? {
+    if let crate::cli::CliTarget::Remote(t) =
+        crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?
+    {
         return list_remote(&t, &workspace, &relative_dir, cursor.unwrap_or(0)).await;
     }
 
@@ -1743,7 +1839,11 @@ pub async fn workspace_list(
             .collect();
         for node in &mut result.nodes {
             if let Some(rec) = present.get(node.relative_path.as_str()) {
-                if !node.artifact_badges.iter().any(|b| b.as_str() == rec.kind.as_str()) {
+                if !node
+                    .artifact_badges
+                    .iter()
+                    .any(|b| b.as_str() == rec.kind.as_str())
+                {
                     node.artifact_badges.push(rec.kind.clone());
                 }
                 node.change_state = "artifact".to_string();
@@ -1781,8 +1881,16 @@ async fn list_remote(
         .ok_or_else(|| WorkbenchError::cli_protocol().with_detail("fs.list: no entries"))?;
     let mut nodes = Vec::with_capacity(entries.len());
     for e in entries {
-        let name = e.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let kind = e.get("kind").and_then(|v| v.as_str()).unwrap_or("file").to_string();
+        let name = e
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let kind = e
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("file")
+            .to_string();
         let rel = if relative_dir.is_empty() {
             name.clone()
         } else {
@@ -1820,7 +1928,9 @@ pub async fn workspace_open(
     // temporary copy, then the system opener. The copy is a view, never a
     // sync — edits there do NOT flow back (the honest semantics VS Code's
     // Download gesture has too).
-    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for(&app, &window).await? {
+    if let crate::cli::CliTarget::Remote(t) =
+        crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?
+    {
         let pool = crate::serve::global_pool();
         let data = crate::serve::fs_op(
             pool,
@@ -1833,24 +1943,31 @@ pub async fn workspace_open(
             }),
         )
         .await?;
-        if data.get("truncated").and_then(|v| v.as_bool()).unwrap_or(true) {
+        if data
+            .get("truncated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+        {
             return Err(WorkbenchError::input_too_large()
                 .with_detail("remote open supports files up to 100 MiB"));
         }
         use base64::Engine;
         let buf = base64::engine::general_purpose::STANDARD
-            .decode(data.get("base64").and_then(|v| v.as_str()).unwrap_or_default())
-            .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("fs.read decode: {e}")))?;
+            .decode(
+                data.get("base64")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|e| {
+                WorkbenchError::cli_protocol().with_detail(format!("fs.read decode: {e}"))
+            })?;
         let name = relative_path.rsplit('/').next().unwrap_or("file");
         let dir = std::env::temp_dir().join("aisc-remote-view");
         let _ = fs::create_dir_all(&dir);
-        let local = dir.join(format!(
-            "{}-{}",
-            std::process::id(),
-            name
-        ));
-        fs::write(&local, &buf)
-            .map_err(|e| WorkbenchError::workspace_invalid().with_detail(format!("temp write: {e}")))?;
+        let local = dir.join(format!("{}-{}", std::process::id(), name));
+        fs::write(&local, &buf).map_err(|e| {
+            WorkbenchError::workspace_invalid().with_detail(format!("temp write: {e}"))
+        })?;
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
@@ -1872,7 +1989,6 @@ pub async fn workspace_open(
     open_path(Path::new(&workspace), &relative_path)
 }
 
-
 #[tauri::command]
 pub async fn workspace_reveal(
     workspace: String,
@@ -1893,8 +2009,6 @@ pub async fn workspace_copy_path(
 // The frontend only ever passes workspace-relative paths + a single basename;
 // containment and basename validation happen again here regardless of what
 // the UI already checked (06 §2).
-
-
 
 // --- v2.1.13 (image-drag): OS image drop/paste → workspace upload ----------
 //
@@ -1936,8 +2050,9 @@ pub async fn workspace_upload_image(
         return Err(WorkbenchError::usage("upload is empty"));
     }
     if bytes.len() > UPLOAD_MAX_BYTES {
-        return Err(WorkbenchError::input_too_large()
-            .with_detail("uploads are capped at 20 MiB per file"));
+        return Err(
+            WorkbenchError::input_too_large().with_detail("uploads are capped at 20 MiB per file")
+        );
     }
 
     let stamp = std::time::SystemTime::now()
@@ -1950,7 +2065,7 @@ pub async fn workspace_upload_image(
     };
     let mut relative = format!(".aisc/uploads/{stamp}-{stem}{ext}");
 
-    let target = crate::target::resolve_target_for(&app, &window).await?;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
     if let crate::cli::CliTarget::Remote(t) = target {
         let pool = crate::serve::global_pool();
         // best-effort: an existing directory makes mkdir report an error we
@@ -2015,8 +2130,11 @@ pub async fn workspace_upload_image(
     })
 }
 
-async fn is_remote(app: &AppHandle) -> bool {
-    app.state::<crate::target::ActiveTarget>().current().is_some()
+async fn is_remote(app: &AppHandle, window: &tauri::WebviewWindow, workspace: &str) -> bool {
+    matches!(
+        crate::target::resolve_target_for_workspace(app, window, workspace).await,
+        Ok(crate::cli::CliTarget::Remote(_))
+    )
 }
 
 /// R3 (D-9): one helper for the remote leg of every Explorer mutation —
@@ -2033,7 +2151,7 @@ async fn remote_mutation(
     entry_relative: String,
     entry_kind: &str,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
-    let target = match crate::target::resolve_target_for(app, &window).await? {
+    let target = match crate::target::resolve_target_for_workspace(app, &window, workspace).await? {
         crate::cli::CliTarget::Remote(t) => t,
         crate::cli::CliTarget::Local(_) => unreachable!("remote_mutation on local target"),
     };
@@ -2055,12 +2173,21 @@ pub async fn workspace_create_file(
     relative_dir: String,
     name: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
-    let relative = if relative_dir.is_empty() { name.clone() } else { format!("{relative_dir}/{name}") };
-    if is_remote(&app).await {
+    let relative = if relative_dir.is_empty() {
+        name.clone()
+    } else {
+        format!("{relative_dir}/{name}")
+    };
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
-            &app, &window, &workspace, "fs.write",
+            &app,
+            &window,
+            &workspace,
+            "fs.write",
             &serde_json::json!({ "root": workspace, "path": relative, "base64": "" }),
-            "create_file", relative, "file",
+            "create_file",
+            relative,
+            "file",
         )
         .await;
     }
@@ -2075,12 +2202,21 @@ pub async fn workspace_create_dir(
     relative_dir: String,
     name: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
-    let relative = if relative_dir.is_empty() { name.clone() } else { format!("{relative_dir}/{name}") };
-    if is_remote(&app).await {
+    let relative = if relative_dir.is_empty() {
+        name.clone()
+    } else {
+        format!("{relative_dir}/{name}")
+    };
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
-            &app, &window, &workspace, "fs.mkdir",
+            &app,
+            &window,
+            &workspace,
+            "fs.mkdir",
             &serde_json::json!({ "root": workspace, "path": relative }),
-            "create_dir", relative, "dir",
+            "create_dir",
+            relative,
+            "dir",
         )
         .await;
     }
@@ -2095,35 +2231,57 @@ pub async fn workspace_copy_entry(
     source_relative_path: String,
     destination_relative_dir: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
-    let file_name = source_relative_path.rsplit('/').next().unwrap_or("copy").to_string();
+    let file_name = source_relative_path
+        .rsplit('/')
+        .next()
+        .unwrap_or("copy")
+        .to_string();
     let new_relative = if destination_relative_dir.is_empty() {
         file_name.clone()
     } else {
         format!("{}/{}", destination_relative_dir, file_name)
     };
-    if is_remote(&app).await {
+    if is_remote(&app, &window, &workspace).await {
         // Remote copy = fs.read + fs.write over the pooled session (files
         // only for now; a bounded remote dir copy rides a later fs.copy op).
-        let target = match crate::target::resolve_target_for(&app, &window).await? {
-            crate::cli::CliTarget::Remote(t) => t,
-            crate::cli::CliTarget::Local(_) => unreachable!(),
-        };
+        let target =
+            match crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
+                crate::cli::CliTarget::Remote(t) => t,
+                crate::cli::CliTarget::Local(_) => unreachable!(),
+            };
         let pool = crate::serve::global_pool();
         let data = crate::serve::fs_op(
-            pool, &target, "fs.read",
+            pool,
+            &target,
+            "fs.read",
             &serde_json::json!({ "root": workspace, "path": source_relative_path,
                                  "maxBytes": 64 * 1024 * 1024 }),
-        ).await?;
-        if data.get("truncated").and_then(|v| v.as_bool()).unwrap_or(true) {
+        )
+        .await?;
+        if data
+            .get("truncated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+        {
             return Err(WorkbenchError::input_too_large()
                 .with_detail("remote copy supports files up to 64 MiB"));
         }
-        let b64 = data.get("base64").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let b64 = data
+            .get("base64")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         return remote_mutation(
-            &app, &window, &workspace, "fs.write",
+            &app,
+            &window,
+            &workspace,
+            "fs.write",
             &serde_json::json!({ "root": workspace, "path": new_relative, "base64": b64 }),
-            "copy", new_relative, "file",
-        ).await;
+            "copy",
+            new_relative,
+            "file",
+        )
+        .await;
     }
     copy_entry(
         Path::new(&workspace),
@@ -2144,18 +2302,26 @@ pub async fn workspace_rename(
         Some((p, n)) => (p.to_string(), n.to_string()),
         None => (String::new(), relative_path.clone()),
     };
-    let new_relative = if parent.is_empty() { new_name.clone() } else { format!("{parent}/{new_name}") };
-    if is_remote(&app).await {
+    let new_relative = if parent.is_empty() {
+        new_name.clone()
+    } else {
+        format!("{parent}/{new_name}")
+    };
+    if is_remote(&app, &window, &workspace).await {
         return remote_mutation(
-            &app, &window, &workspace, "fs.rename",
+            &app,
+            &window,
+            &workspace,
+            "fs.rename",
             &serde_json::json!({ "root": workspace, "from": relative_path, "to": new_relative }),
-            "rename", new_relative, "file",
+            "rename",
+            new_relative,
+            "file",
         )
         .await;
     }
     rename_entry(Path::new(&workspace), &relative_path, &new_name)
 }
-
 
 // -- v2.1.13 (changes-page): read-only git integration ----------------------
 //
@@ -2215,11 +2381,17 @@ fn git_available(workspace: &Path) -> bool {
 pub async fn workspace_git_info(workspace: String) -> Result<WorkspaceGitInfo, WorkbenchError> {
     let ws = Path::new(&workspace);
     if !git_available(ws) {
-        return Ok(WorkspaceGitInfo { available: false, branch: String::new() });
+        return Ok(WorkspaceGitInfo {
+            available: false,
+            branch: String::new(),
+        });
     }
     let out = run_git(ws, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(WorkspaceGitInfo { available: true, branch })
+    Ok(WorkspaceGitInfo {
+        available: true,
+        branch,
+    })
 }
 
 /// porcelain v1 -z: `XY <path>\0[<origPath>\0]` entries. Paths are repo-
@@ -2244,7 +2416,9 @@ pub async fn workspace_git_status(
         )));
     }
     let prefix_out = run_git(ws, &["rev-parse", "--show-prefix"])?;
-    let prefix = String::from_utf8_lossy(&prefix_out.stdout).trim().to_string();
+    let prefix = String::from_utf8_lossy(&prefix_out.stdout)
+        .trim()
+        .to_string();
 
     let text = String::from_utf8_lossy(&out.stdout);
     let mut fields = text.split('\0');
@@ -2268,12 +2442,19 @@ pub async fn workspace_git_status(
         } else {
             None
         };
-        let Some(stripped) = path.strip_prefix(&prefix) else { continue };
+        let Some(stripped) = path.strip_prefix(&prefix) else {
+            continue;
+        };
         let stripped = stripped.trim_start_matches('/').to_string();
         if stripped.is_empty() {
             continue;
         }
-        entries.push(WorkspaceGitStatusEntry { path: stripped, x, y, rename_from });
+        entries.push(WorkspaceGitStatusEntry {
+            path: stripped,
+            x,
+            y,
+            rename_from,
+        });
     }
     Ok(entries)
 }
@@ -2287,7 +2468,9 @@ pub async fn workspace_git_diff(
 ) -> Result<WorkspaceGitDiff, WorkbenchError> {
     let ws = Path::new(&workspace);
     if !git_available(ws) {
-        return Err(WorkbenchError::usage("git view requires a local git repository"));
+        return Err(WorkbenchError::usage(
+            "git view requires a local git repository",
+        ));
     }
     // containment: reuse the explorer gate before anything touches git
     let _ = resolve_contained(ws, &relative_path)?;
@@ -2310,7 +2493,11 @@ pub async fn workspace_git_diff(
         }
         unified.push_str("\n… <truncated>");
     }
-    Ok(WorkspaceGitDiff { unified, binary, truncated })
+    Ok(WorkspaceGitDiff {
+        unified,
+        binary,
+        truncated,
+    })
 }
 #[cfg(test)]
 mod explorer_tests {
@@ -2363,7 +2550,14 @@ mod explorer_tests {
         let page1 = list_workspace(dir.path(), "", 0, false, &[]).unwrap();
         assert_eq!(page1.nodes.len(), 200);
         assert!(page1.next_cursor.is_some());
-        let page2 = list_workspace(dir.path(), "", page1.next_cursor.unwrap().parse().unwrap(), false, &[]).unwrap();
+        let page2 = list_workspace(
+            dir.path(),
+            "",
+            page1.next_cursor.unwrap().parse().unwrap(),
+            false,
+            &[],
+        )
+        .unwrap();
         assert_eq!(page2.nodes.len(), 50);
         assert!(page2.next_cursor.is_none());
     }
@@ -2411,7 +2605,11 @@ mod explorer_tests {
         assert!(p.base64.is_none());
         assert!(!p.truncated);
 
-        fs::write(dir.path().join("big.txt"), "x".repeat((PREVIEW_BUDGET + 10) as usize)).unwrap();
+        fs::write(
+            dir.path().join("big.txt"),
+            "x".repeat((PREVIEW_BUDGET + 10) as usize),
+        )
+        .unwrap();
         let big = preview_path(dir.path(), "big.txt").unwrap();
         assert!(big.truncated);
     }
@@ -2475,10 +2673,8 @@ fn canonicalize_lenient(p: &Path) -> Result<PathBuf, WorkbenchError> {
         }
         cur.pop();
     }
-    Err(WorkbenchError::workspace_invalid().with_detail(format!(
-        "cannot canonicalize: {}",
-        p.display()
-    )))
+    Err(WorkbenchError::workspace_invalid()
+        .with_detail(format!("cannot canonicalize: {}", p.display())))
 }
 
 /// True when `target` is strictly inside `base` (component-aware, so
@@ -2533,14 +2729,12 @@ fn validate_relative(raw: &str) -> Result<String, WorkbenchError> {
         return Err(WorkbenchError::workspace_invalid().with_detail("absolute path"));
     }
     #[cfg(windows)]
-    if raw.contains('\\') || raw.starts_with("\\\\") || raw
-        .as_bytes()
-        .get(1)
-        .is_some_and(|b| *b == b':')
+    if raw.contains('\\')
+        || raw.starts_with("\\\\")
+        || raw.as_bytes().get(1).is_some_and(|b| *b == b':')
     {
-        return Err(WorkbenchError::workspace_invalid().with_detail(
-            "backslash / drive / UNC not allowed in relative path",
-        ));
+        return Err(WorkbenchError::workspace_invalid()
+            .with_detail("backslash / drive / UNC not allowed in relative path"));
     }
     #[cfg(not(windows))]
     if raw.contains('\\') {
@@ -2578,10 +2772,8 @@ pub fn resolve_contained(workspace: &Path, relative: &str) -> Result<PathBuf, Wo
     let canon = canonicalize_lenient(&target)?;
 
     if !is_inside(&ws, &canon) {
-        return Err(WorkbenchError::workspace_invalid().with_detail(format!(
-            "path escapes workspace: {}",
-            relative
-        )));
+        return Err(WorkbenchError::workspace_invalid()
+            .with_detail(format!("path escapes workspace: {}", relative)));
     }
     if path_eq(&canon, &ws) {
         return Err(WorkbenchError::workspace_invalid().with_detail("target is the workspace root"));
@@ -2598,29 +2790,67 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
-    // -- F2-B: browse pinning (normalize_under_root) -------------------------
+    // -- b13: SSH-native remote path/root normalization ----------------------
 
     #[test]
-    fn browse_root_pins_and_normalizes() {
-        // empty / "/" → the root itself
-        assert_eq!(normalize_under_root("/home/tv", "").unwrap(), "/home/tv");
-        assert_eq!(normalize_under_root("/home/tv", "/").unwrap(), "/home/tv");
-        // inside stays; `.` and `..` fold away (F1 containment precedent)
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv/proj").unwrap(), "/home/tv/proj");
+    fn normalizes_remote_paths_without_home_pin() {
+        assert_eq!(normalize_remote_path("/").unwrap(), "/");
         assert_eq!(
-            normalize_under_root("/home/tv", "/home/tv/a/../b").unwrap(),
+            normalize_remote_path("/home/tv/a/../b/").unwrap(),
             "/home/tv/b"
         );
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv/./x/").unwrap(), "/home/tv/x");
-        // escapes (sibling / parent / dotdot below root / relative input)
-        assert!(normalize_under_root("/home/tv", "/home/tv2/x").is_err());
-        assert!(normalize_under_root("/home/tv", "/home/tv/../secret").is_err());
-        assert!(normalize_under_root("/home/tv", "/etc").is_err());
-        assert!(normalize_under_root("/home/tv", "relative/path").is_err());
-        // root itself is the up-limit
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv").unwrap(), "/home/tv");
-        // trailing slashes on the root argument fold away
-        assert_eq!(normalize_under_root("/home/tv/", "/home/tv/p").unwrap(), "/home/tv/p");
+        assert_eq!(
+            normalize_remote_path("c:\\Users\\admin\\proj").unwrap(),
+            "C:/Users/admin/proj"
+        );
+        assert_eq!(normalize_remote_path("C:/").unwrap(), "C:/");
+        assert!(normalize_remote_path("relative/path").is_err());
+        assert!(normalize_remote_path("/home/tv/../../../secret").is_err());
+        assert!(normalize_remote_path("C:/../secret").is_err());
+    }
+
+    #[test]
+    fn remote_navigation_root_reaches_any_drive_or_posix_root() {
+        assert_eq!(remote_navigation_root("C:\\Users\\admin").unwrap(), "C:/");
+        assert_eq!(remote_navigation_root("D:/Projects/AISC").unwrap(), "D:/");
+        assert_eq!(remote_navigation_root("/home/admin/project").unwrap(), "/");
+    }
+
+    #[test]
+    fn remote_roots_parse_and_fallback_to_home_drive() {
+        let data = serde_json::json!({"roots": [
+            {"name": "C:", "path": "C:\\"},
+            {"name": "D:", "path": "D:/"}
+        ]});
+        let roots = remote_roots_from_value(Some(&data), Some("C:\\Users\\admin"));
+        assert_eq!(roots[0].path, "C:/");
+        assert_eq!(roots[1].path, "D:/");
+
+        let fallback = remote_roots_from_value(None, Some("C:\\Users\\admin"));
+        assert_eq!(
+            fallback,
+            vec![RemoteRoot {
+                name: "C:".into(),
+                path: "C:/".into()
+            }]
+        );
+        let posix = remote_roots_from_value(None, None);
+        assert_eq!(
+            posix,
+            vec![RemoteRoot {
+                name: "File System".into(),
+                path: "/".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn recognizes_posix_and_windows_remote_absolute_paths() {
+        assert!(is_remote_absolute_path("/home/admin/project"));
+        assert!(is_remote_absolute_path("C:/Users/admin/project"));
+        assert!(is_remote_absolute_path("C:\\Users\\admin\\project"));
+        assert!(!is_remote_absolute_path("Users/admin/project"));
+        assert!(!is_remote_absolute_path("relative"));
     }
 
     #[test]
@@ -2637,7 +2867,10 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("sub")).unwrap();
         for bad in ["../escape", "a/../../b", "/etc/passwd", "sub/../../etc"] {
-            assert!(resolve_contained(dir.path(), bad).is_err(), "{bad} must fail");
+            assert!(
+                resolve_contained(dir.path(), bad).is_err(),
+                "{bad} must fail"
+            );
         }
     }
 
@@ -2646,7 +2879,10 @@ mod tests {
     fn rejects_backslash_drive_unc() {
         let dir = tempdir().unwrap();
         for bad in ["a\\b", "C:/x", "C:\\x", "\\\\server\\share"] {
-            assert!(resolve_contained(dir.path(), bad).is_err(), "{bad} must fail");
+            assert!(
+                resolve_contained(dir.path(), bad).is_err(),
+                "{bad} must fail"
+            );
         }
     }
 
@@ -2768,14 +3004,11 @@ mod mutation_tests {
     fn invalid_basename_is_rejected() {
         let dir = tempdir().unwrap();
         for bad in [
-            "", " ", ".", "..", "a/b", "a\\b", "a\u{0}b", "a\u{7}b", "CON", "con",
-            "CON.txt", "NUL.bin", "com1", "LPT9.log", "name.", "name ",
+            "", " ", ".", "..", "a/b", "a\\b", "a\u{0}b", "a\u{7}b", "CON", "con", "CON.txt",
+            "NUL.bin", "com1", "LPT9.log", "name.", "name ",
         ] {
             let r = create_entry(dir.path(), "", bad, false);
-            assert!(
-                r.is_err(),
-                "basename {bad:?} must be rejected"
-            );
+            assert!(r.is_err(), "basename {bad:?} must be rejected");
             assert_eq!(code_of(r), "WB_ERR_WORKSPACE_INVALID", "basename {bad:?}");
         }
         // No file was created by any rejected attempt.
@@ -2785,7 +3018,12 @@ mod mutation_tests {
     #[test]
     fn unicode_and_special_basenames_round_trip() {
         let dir = tempdir().unwrap();
-        for name in ["报告 (终稿).md", "文件 名 字.txt", "a(b)c.rs", "日本語メモ.md"] {
+        for name in [
+            "报告 (终稿).md",
+            "文件 名 字.txt",
+            "a(b)c.rs",
+            "日本語メモ.md",
+        ] {
             let r = create_entry(dir.path(), "", name, false)
                 .unwrap_or_else(|e| panic!("{name} must be creatable: {}", e.code));
             assert_eq!(r.relative_path, name);
@@ -2873,7 +3111,10 @@ mod mutation_tests {
         let r = copy_entry(dir.path(), "src/a.txt", "src/nested").unwrap();
         assert_eq!(r.operation, "copy");
         assert_eq!(r.relative_path, "src/nested/a.txt");
-        assert_eq!(fs::read(dir.path().join("src/nested/a.txt")).unwrap(), b"aaa");
+        assert_eq!(
+            fs::read(dir.path().join("src/nested/a.txt")).unwrap(),
+            b"aaa"
+        );
 
         // Directory copy: recursive, contents preserved, name preserved.
         let r2 = copy_entry(dir.path(), "src/nested", "").unwrap();
@@ -2989,8 +3230,16 @@ mod mutation_tests {
         fs::create_dir_all(dir.path().join("proj")).unwrap();
         fs::write(dir.path().join("proj/inside.txt"), "x").unwrap();
         fs::write(outside.path().join("secret.txt"), "top secret").unwrap();
-        symlink(outside.path().join("secret.txt"), dir.path().join("proj/escape.txt")).unwrap();
-        symlink(dir.path().join("proj/inside.txt"), dir.path().join("proj/alias.txt")).unwrap();
+        symlink(
+            outside.path().join("secret.txt"),
+            dir.path().join("proj/escape.txt"),
+        )
+        .unwrap();
+        symlink(
+            dir.path().join("proj/inside.txt"),
+            dir.path().join("proj/alias.txt"),
+        )
+        .unwrap();
 
         let r = copy_entry(dir.path(), "proj", "dup").unwrap();
         assert_eq!(r.relative_path, "dup/proj");
@@ -3069,7 +3318,8 @@ mod s2_forget_tests {
     fn forget_removes_state_and_history() {
         let tmp = tempfile::tempdir().unwrap();
         let (ws_dir, history_dir) = setup(tmp.path(), "/ws/a");
-        let (result, _) = forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/a", 0).unwrap();
+        let (result, _) =
+            forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/a", None, 0).unwrap();
         assert!(result.history_removed);
         assert!(result.data_removed);
         assert!(!ws_dir.exists(), "the AISC state subtree must be gone");
@@ -3083,8 +3333,9 @@ mod s2_forget_tests {
     fn forget_is_idempotent_when_nothing_remains() {
         let tmp = tempfile::tempdir().unwrap();
         let (ws_dir, history_dir) = setup(tmp.path(), "/ws/b");
-        forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/b", 0).unwrap();
-        let (result, _) = forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/b", 1).unwrap();
+        forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/b", None, 0).unwrap();
+        let (result, _) =
+            forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/b", None, 1).unwrap();
         assert!(!result.history_removed);
         assert!(!result.data_removed);
     }
@@ -3095,7 +3346,7 @@ mod s2_forget_tests {
         let (ws_dir, history_dir) = setup(tmp.path(), "/ws/c");
         // Wrong expected revision -> Conflict, and the quarantine rename must
         // roll back so the disk returns to the pre-transaction state (§A.4).
-        let err = forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/c", 7).unwrap_err();
+        let err = forget_execute(&ws_dir, tmp.path(), &history_dir, "/ws/c", None, 7).unwrap_err();
         assert_eq!(err.code, "WB_ERR_WORKSPACE_CONFLICT");
         assert!(ws_dir.join("claude").exists(), "state subtree must be back");
         assert!(quarantine_is_empty(tmp.path()));
@@ -3123,10 +3374,7 @@ mod s2_forget_tests {
             if f.set_modified(old).is_ok() {
                 let stale = forget_gather(&[], "/ws/d", Some((root, ws_dir))).unwrap();
                 assert!(stale.blocked_reason.is_none());
-                assert!(stale
-                    .warnings
-                    .iter()
-                    .any(|w| w.contains("stale-lease")));
+                assert!(stale.warnings.iter().any(|w| w.contains("stale-lease")));
                 return;
             }
         }
@@ -3188,8 +3436,7 @@ mod s2_forget_tests {
         );
         let target = tmp.path().join("new-ws");
         let ws_dir = tmp.path().join("state");
-        let out =
-            import_lifecycle_core(&zip, &target, Some(ws_dir.clone())).unwrap();
+        let out = import_lifecycle_core(&zip, &target, Some(ws_dir.clone())).unwrap();
         assert_eq!(out.files, 3); // two session files + the manifest
         assert_eq!(out.skipped, 3); // containers.json + lease + lock
         assert_eq!(out.source_path.as_deref(), Some("C:\\old\\ws"));
@@ -3202,9 +3449,7 @@ mod s2_forget_tests {
         // hash contract: the key names the TARGET path, not the zip root
         assert_eq!(
             out.workspace_key,
-            crate::data_root::workspace_dir_name(
-                &crate::data_root::workspace_hash_v1(&target)
-            )
+            crate::data_root::workspace_dir_name(&crate::data_root::workspace_hash_v1(&target))
         );
         // the user-visible workspace dir was created (runtime start needs it)
         assert!(target.is_dir());
@@ -3213,16 +3458,9 @@ mod s2_forget_tests {
     #[test]
     fn import_rejects_multi_root() {
         let tmp = tempfile::tempdir().unwrap();
-        let zip = write_test_zip(
-            tmp.path(),
-            &[("root-a/x.txt", "a"), ("root-b/y.txt", "b")],
-        );
-        let err = import_lifecycle_core(
-            &zip,
-            &tmp.path().join("t"),
-            Some(tmp.path().join("s")),
-        )
-        .unwrap_err();
+        let zip = write_test_zip(tmp.path(), &[("root-a/x.txt", "a"), ("root-b/y.txt", "b")]);
+        let err = import_lifecycle_core(&zip, &tmp.path().join("t"), Some(tmp.path().join("s")))
+            .unwrap_err();
         assert_eq!(err.code, "WB_ERR_USAGE");
     }
 
@@ -3233,21 +3471,23 @@ mod s2_forget_tests {
         let file = fs::File::create(&path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
         let options = zip::write::SimpleFileOptions::default();
-        if zip.start_file("sha256-v1-old/../../evil.txt", options).is_err() {
+        if zip
+            .start_file("sha256-v1-old/../../evil.txt", options)
+            .is_err()
+        {
             // this writer version refuses traversal names — the read-side
             // gate can't be exercised from here (mirrors stale-lease skip)
             return;
         }
         std::io::Write::write_all(&mut zip, b"nope").unwrap();
         zip.finish().unwrap();
-        let err = import_lifecycle_core(
-            &path,
-            &tmp.path().join("t"),
-            Some(tmp.path().join("s")),
-        )
-        .unwrap_err();
+        let err = import_lifecycle_core(&path, &tmp.path().join("t"), Some(tmp.path().join("s")))
+            .unwrap_err();
         assert_eq!(err.code, "WB_ERR_USAGE");
-        assert!(err.technical_detail.unwrap_or_default().contains("unsafe path"));
+        assert!(err
+            .technical_detail
+            .unwrap_or_default()
+            .contains("unsafe path"));
     }
 
     #[test]
@@ -3256,12 +3496,7 @@ mod s2_forget_tests {
         let zip = write_test_zip(tmp.path(), &[("sha256-v1-old/x.txt", "x")]);
         let ws_dir = tmp.path().join("s");
         fs::create_dir_all(&ws_dir).unwrap();
-        let err = import_lifecycle_core(
-            &zip,
-            &tmp.path().join("t"),
-            Some(ws_dir),
-        )
-        .unwrap_err();
+        let err = import_lifecycle_core(&zip, &tmp.path().join("t"), Some(ws_dir)).unwrap_err();
         assert_eq!(err.code, "WB_ERR_WORKSPACE_CONFLICT");
     }
 
@@ -3271,12 +3506,8 @@ mod s2_forget_tests {
         let zip = write_test_zip(tmp.path(), &[("sha256-v1-old/x.txt", "x")]);
         let file_target = tmp.path().join("a-file");
         fs::write(&file_target, "x").unwrap();
-        let err = import_lifecycle_core(
-            &zip,
-            &file_target,
-            Some(tmp.path().join("s")),
-        )
-        .unwrap_err();
+        let err =
+            import_lifecycle_core(&zip, &file_target, Some(tmp.path().join("s"))).unwrap_err();
         assert_eq!(err.code, "WB_ERR_USAGE");
     }
 
@@ -3290,12 +3521,8 @@ mod s2_forget_tests {
                 ("sha256-v1-old/claude/a.jsonl", "x"),
             ],
         );
-        let out = import_lifecycle_core(
-            &zip,
-            &tmp.path().join("t"),
-            Some(tmp.path().join("s")),
-        )
-        .unwrap();
+        let out =
+            import_lifecycle_core(&zip, &tmp.path().join("t"), Some(tmp.path().join("s"))).unwrap();
         assert_eq!(out.files, 1);
         assert!(out.source_path.is_none());
         assert!(out.exported_at.is_none());
@@ -3317,18 +3544,13 @@ mod s2_forget_tests {
 
         let new_target = tmp.path().join("restored");
         let new_state = tmp.path().join("restored-state");
-        let out =
-            import_lifecycle_core(&zip_path, &new_target, Some(new_state.clone()))
-                .unwrap();
+        let out = import_lifecycle_core(&zip_path, &new_target, Some(new_state.clone())).unwrap();
         assert!(new_state.join("claude/projects/s1.jsonl").is_file());
         assert!(!new_state.join("runtime/containers.json").exists());
         assert!(!new_state.join("runtime/workspace-locks/k.lock").exists());
         assert_eq!(
             out.source_path.as_deref(),
-            Some(
-                crate::data_root::canonical_workspace_path(&old_ws)
-                    .as_str()
-            )
+            Some(crate::data_root::canonical_workspace_path(&old_ws).as_str())
         );
         // export: 3 lifecycle files; import: those minus 2 skipped, plus manifest
         assert_eq!(out.files, 2);
@@ -3341,12 +3563,7 @@ mod s2_forget_tests {
         let (ws_dir, _hist) = setup(tmp.path(), "/ws/f");
         fs::create_dir_all(ws_dir.join("toolchain")).unwrap();
         fs::write(ws_dir.join("notes.txt"), "x").unwrap();
-        let g = forget_gather(
-            &[],
-            "/ws/f",
-            Some((tmp.path().to_path_buf(), ws_dir)),
-        )
-        .unwrap();
+        let g = forget_gather(&[], "/ws/f", Some((tmp.path().to_path_buf(), ws_dir))).unwrap();
         // Lease file freshly written -> blocked, but categories still gathered.
         assert!(g.categories.contains(&"claude".to_string()));
         assert!(g.categories.contains(&"toolchain".to_string()));

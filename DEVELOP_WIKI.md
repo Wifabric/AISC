@@ -31,7 +31,11 @@ git status --short
    - 本阶段成果发布为 **preview 版本**：CLI tag 用 `.devN` 后缀 → GitHub 自动标 prerelease 的 Release（三平台 + NSIS 随附）+ TestPyPI；pypi-publish 的 final-only 门使其不触碰正式 PyPI（补充：preview 形态具体化）；
    - `docs/todo.md` 当前版本条目全部标记完成；未完成项显式转期，不强制打勾（补充）；
    - `docs/devlog.md` 更新到位；
-   - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档。
+   - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档；
+   - **最终 release 发布并验证后，清理 GitHub Release 页的试验痕迹（2026-10-15 用户裁定）**：
+     删除仓库内全部标记为 pre-release 的 GitHub Release 记录及其上传资产，逐项复核
+     Releases 页只剩正式 final release。`v*` git tag 仍是不可变发布标识，默认保留；
+     如需连 tag 一并删除，必须另行获得用户明确裁定。
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
@@ -768,6 +772,8 @@ tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为
 3. 确认发布提交中的 `VERSION`、Release Notes 文件名和计划 tag 完全一致。
 4. 在要发布的已审核提交上创建 annotated `v<VERSION>` tag，并推送该 tag。
 5. 等待 build、aggregate、release 全部通过，核对三平台 archive、Windows setup、macOS PKG、所有 sidecar 和 `SHA256SUMS`。
+6. final Release 验证通过后，删除 GitHub 上全部 pre-release Release 记录与资产，并复核
+   Releases 页仅保留正式 release；git tag 默认按不可变标识保留。
 
 示例中的版本值必须从 `VERSION` 读取，避免手写漂移：
 

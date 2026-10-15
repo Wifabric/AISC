@@ -15,9 +15,11 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 import type { ForgetPreview } from "../../types";
+import type { RemoteBrowseResult } from "../../lib/ipc";
 import ForgetConfirmDialog from "./ForgetConfirmDialog.vue";
 import InvalidPathDialog from "./InvalidPathDialog.vue";
 import { buildSearchMatcher } from "../../lib/search";
+import { configuredMachineName } from "../../lib/workspaceMachines";
 
 const { t } = useI18n();
 const store = useRuntimeStore();
@@ -53,26 +55,41 @@ const hiddenCount = computed(
 // a POSIX path is a REMOTE workspace. Clicking it under the wrong target
 // auto-switches the drive target first (tunnels re-root), then probes.
 const invalidPath = ref<string | null>(null);
+const invalidMachine = ref<string | null>(null);
 function isRemotePath(path: string): boolean {
   return path.startsWith("/");
 }
-async function onRecentClick(path: string): Promise<void> {
-  const pathRemote = isRemotePath(path);
-  const nowRemote = target.value?.kind === "remote";
-  if (pathRemote !== nowRemote) {
-    // machine mismatch: switch so the probe runs on the right machine.
-    // A remote path needs A machine — prefer the current one, else the
-    // first configured profile (never a hardcoded name).
-    const name = target.value?.machine?.name
+function machineForRecent(record: {
+  path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
+}): string | null {
+  const configured = configuredMachineName(settings.doc?.remoteMachines ?? [], record);
+  if (configured) return configured;
+  if (record.machine_name) return record.machine_name;
+  // Legacy records could only encode POSIX as remote; Windows paths written
+  // before b13 remain local. New records carry an explicit machine identity.
+  if (isRemotePath(record.path)) {
+    return target.value?.machine?.name
       ?? settings.doc?.remoteMachines?.[0]?.name ?? null;
-    await switchTarget(pathRemote ? name : null);
   }
-  const exists = await wsStore.workspacePathExists(path);
+  return null;
+}
+async function onRecentClick(record: {
+  path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
+}): Promise<void> {
+  const machine = machineForRecent(record);
+  const current = target.value?.kind === "remote" ? target.value.machine?.name ?? null : null;
+  if (machine !== current) await switchTarget(machine);
+  const exists = await wsStore.workspacePathExists(record.path);
   if (!exists) {
-    invalidPath.value = path;
+    invalidPath.value = record.path;
+    invalidMachine.value = machine;
     return;
   }
-  store.selectRecentWorkspace(path);
+  store.selectRecentWorkspace(record.path, machine);
 }
 /* W3 手测 r11: dead-recent actions live in the workspaces store now
  * (shared with the app-level overlay); exportBusy stays local for the
@@ -123,8 +140,10 @@ async function onImport(): Promise<void> {
  * cleared invalidPath FIRST; the tests caught the regression). */
 function onInvalidClear(purgeData: boolean): void {
   const path = invalidPath.value;
+  const machine = invalidMachine.value;
   invalidPath.value = null;
-  if (path) void wsStore.clearInvalidRecent(path, purgeData);
+  invalidMachine.value = null;
+  if (path) void wsStore.clearInvalidRecent(path, purgeData, machine);
 }
 async function onInvalidExport(): Promise<void> {
   const path = invalidPath.value;
@@ -139,22 +158,26 @@ async function onInvalidExport(): Promise<void> {
 
 
 // --- F2-B: remote directory browser (fs.list over the pooled serve
-// channel, pinned at the remote $HOME; manual absolute input stays the
-// escape hatch for anything outside the pin). Explorer mental model
+// channel, starting at remote home and navigating every root returned by
+// fs.roots). Explorer mental model
 // (field feedback): click selects, DOUBLE-click descends, the button
 // confirms the selection. ---
-const browse = ref<{ cwd: string; root: string; entries: { name: string; isDir: boolean }[] } | null>(null);
+const browse = ref<RemoteBrowseResult | null>(null);
 const browseSelected = ref<string | null>(null);
 // Field #4/#5: hidden-dotdir toggle + fuzzy search over the current page
 // (the S5 matcher — substring > subsequence, /re/ explicit regex).
 const browseShowHidden = ref(false);
 const browseQuery = ref("");
 
+function isRemoteAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
 function onBrowse(): void {
   if (target.value?.kind === "remote") {
     // Start where the input points when it already names a remote path.
     const cur = store.workspace.trim();
-    void openBrowse(cur.startsWith("/") ? cur : undefined);
+    void openBrowse(isRemoteAbsolutePath(cur) ? cur : undefined);
   } else {
     store.pickWorkspace();
   }
@@ -162,7 +185,7 @@ function onBrowse(): void {
 async function openBrowse(start?: string): Promise<void> {
   const r = await wsStore.browseRemote(start, browseShowHidden.value);
   if (r) {
-    browse.value = { cwd: r.cwd, root: r.root, entries: r.entries };
+    browse.value = r;
     browseSelected.value = null;
     browseQuery.value = "";
   }
@@ -171,9 +194,7 @@ async function loadBrowse(path: string): Promise<void> {
   if (!browse.value) return;
   const r = await wsStore.browseRemote(path, browseShowHidden.value);
   if (r) {
-    browse.value.cwd = r.cwd;
-    browse.value.root = r.root;
-    browse.value.entries = r.entries;
+    browse.value = r;
     browseSelected.value = null;
     browseQuery.value = "";
   }
@@ -422,16 +443,19 @@ async function confirmForget(): Promise<void> {
     <div v-if="store.recentWorkspaces.length" class="recents ui-section">
       <div class="recents-label ui-section-title">{{ t("picker.recents") }}</div>
       <ul>
-        <li v-for="w in visibleRecents" :key="w.path">
+        <li v-for="w in visibleRecents" :key="[w.machine_name ?? 'local', w.path].join(':')">
           <div class="recent-wrap">
             <button
               class="recent ui-section-row interactive"
               :title="w.path"
-              @click="onRecentClick(w.path)"
+              @click="onRecentClick(w)"
               @contextmenu.prevent="openMenu(w.path, $event.clientX, $event.clientY)"
             >
               <span class="r-name">{{ basename(w.path) }}</span>
-              <span v-if="isRemotePath(w.path)" class="r-machine" :title="w.path">{{ t("picker.target.remoteTag") }}</span>
+              <span
+                class="r-machine"
+                :title="w.machine_host ?? w.path"
+              >{{ machineForRecent(w) ?? (isRemotePath(w.path) ? t("picker.target.remoteTag") : t("picker.target.local")) }}</span>
               <span class="r-path">{{ w.path }}</span>
             </button>
             <button
@@ -494,6 +518,17 @@ async function confirmForget(): Promise<void> {
     <div v-if="browse" class="browse-overlay" @mousedown="browse = null">
       <div class="browse" role="dialog" aria-modal="true" :aria-label="t('picker.browse')" @mousedown.stop>
         <div class="browse-head">
+          <select
+            v-if="(browse.roots?.length ?? 0) > 1"
+            class="browse-roots"
+            :aria-label="t('picker.browseDialog.roots')"
+            :value="browse.root"
+            @change="loadBrowse(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="root in browse.roots" :key="root.path" :value="root.path">
+              {{ root.name }}
+            </option>
+          </select>
           <span class="crumbs">
             <template v-for="c in browseCrumbs" :key="c.path">
               <button class="crumb" @click="loadBrowse(c.path)">{{ c.label }}</button>
@@ -511,6 +546,11 @@ async function confirmForget(): Promise<void> {
             @click="toggleBrowseHidden"
           >{{ browseShowHidden ? "●" : "◌" }}</button>
           <button class="ui-button quiet" :disabled="browse.cwd === browse.root" @click="browseUp">↑</button>
+          <button
+            class="ui-button quiet"
+            :title="t('picker.browseDialog.refresh')"
+            @click="loadBrowse(browse.cwd)"
+          >↻</button>
         </div>
         <div class="browse-list">
           <p v-if="wsStore.browseBusy" class="hint">{{ t("picker.browseDialog.loading") }}</p>
@@ -651,6 +691,13 @@ async function confirmForget(): Promise<void> {
   padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
 }
 .crumbs { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; min-width: 0; }
+.browse-roots {
+  flex: none; max-width: 84px; padding: 3px var(--space-1);
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+}
+.browse-roots:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-offset)); }
 .browse-search {
   flex: none; width: 140px; padding: 3px var(--space-2);
   background: var(--surface); color: var(--text);

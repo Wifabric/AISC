@@ -8,6 +8,7 @@ build cache). See docs/plans/2.1.13-dev-plans/docker-scan-fidelity.md.
 
 from __future__ import annotations
 
+import json
 import os
 import unittest
 
@@ -157,6 +158,47 @@ class CacheInspectTests(unittest.TestCase):
             buildx_du=BUILDX_DU,
             network=NETWORK,
         )
+
+    def test_docker_verbose_string_booleans_do_not_mark_unused_cache_in_use(self):
+        verbose = json.dumps({
+            "Images": [], "Containers": [], "Volumes": [],
+            "BuildCache": [
+                {"ID": "old", "CacheType": "regular", "InUse": "false",
+                 "Shared": "true", "Size": "251MB", "UsageCount": "1"},
+                {"ID": "live", "CacheType": "regular", "InUse": "true",
+                 "Shared": "false", "Size": "12MB", "UsageCount": "2"},
+            ],
+        })
+        ex = FakeExec(df_summary=DF_SUMMARY, df_verbose=verbose)
+        out = dl.cache_inspect(ex)
+        rows = out["categories"]["build_cache"]["rows"]
+        self.assertEqual([r["in_use"] for r in rows], [False, True])
+        self.assertEqual(
+            out["categories"]["build_cache"]["summary"]["reclaimable_bytes"],
+            251_000_000,
+        )
+        self.assertEqual([r["will_be_cleaned"] for r in rows], [True, False])
+
+    def test_image_repo_tags_with_same_id_are_grouped_once(self):
+        verbose = json.dumps({
+            "Images": [
+                {"Containers": "0", "ID": "same", "Repository": "node",
+                 "SharedSize": "0B", "Size": "227MB", "Tag": "22-slim",
+                 "UniqueSize": "227MB"},
+                {"Containers": "0", "ID": "same",
+                 "Repository": "docker.1ms.run/library/node", "SharedSize": "0B",
+                 "Size": "227MB", "Tag": "22-slim", "UniqueSize": "227MB"},
+            ],
+            "Containers": [], "Volumes": [], "BuildCache": [],
+        })
+        ex = FakeExec(df_summary=DF_SUMMARY, df_verbose=verbose)
+        out = dl.cache_inspect(ex)
+        cat = out["categories"]["images"]
+        self.assertEqual(cat["summary"]["count"], 1)
+        self.assertEqual(cat["summary"]["reclaimable_bytes"], 227_000_000)
+        self.assertEqual(len(cat["rows"]), 1)
+        self.assertIn("node:22-slim", cat["rows"][0]["name"])
+        self.assertIn("docker.1ms.run/library/node:22-slim", cat["rows"][0]["name"])
 
     def test_readonly_contract_and_envelope(self):
         out = dl.cache_inspect(self.ex)

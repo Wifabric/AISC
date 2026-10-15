@@ -17,13 +17,17 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 import { useRuntimeStore } from "../stores/runtime";
 import { useWorkspacesStore } from "../stores/workspaces";
 import { useSettingsStore } from "../stores/settings";
 import { useTeleportedZoom } from "../lib/useTeleportedZoom";
 import { useDoctorStore } from "../stores/doctor";
 import { useUpdateStore } from "../stores/update";
+import { useToastStore } from "../stores/toast";
 import { openWorkspaceWindow } from "../lib/workspaceWindow";
+import { configuredMachineName } from "../lib/workspaceMachines";
 
 const { t } = useI18n();
 const facade = useRuntimeStore();
@@ -31,6 +35,10 @@ const doctor = useDoctorStore();
 const ws = useWorkspacesStore();
 const settings = useSettingsStore();
 const { zoomStyle } = useTeleportedZoom();
+const toast = useToastStore();
+const aboutOpen = ref(false);
+const aboutAppVersion = ref("");
+const aboutPlatform = computed(() => navigator.userAgent);
 
 // P2-2 → W3: the global status label rides the menu bar's right end now
 // (the workspace strip is retired). Same quiet-text language.
@@ -97,20 +105,21 @@ async function openByPath(path: string, machine?: string | null): Promise<void> 
   closeMenu();
   // Same rule as the picker (R4): a POSIX path names a REMOTE workspace.
   const pathRemote = path.startsWith("/");
-  const targetMachine = pathRemote
-    ? (machine ?? settings.target?.machine?.name
-      ?? settings.doc?.remoteMachines?.[0]?.name ?? null)
-    : null;
+  const targetMachine = machine
+    ?? (pathRemote
+      ? (settings.target?.machine?.name
+        ?? settings.doc?.remoteMachines?.[0]?.name ?? null)
+      : null);
   // 手测 r4#1 → r10: existence is checked against the path's OWN machine —
   // remote paths probe in the SPAWNED window's boot; local paths probe
   // here. A miss now opens the SAME remediation the picker offers (forget/
   // clear + lifecycle export, P1-3) — a bare toast left the dead record
   // dangling with no path to clean it.
-  if (!pathRemote && !(await ws.workspacePathExists(path))) {
+  if (!targetMachine && !(await ws.workspacePathExists(path))) {
     // 手测 r11: FLOAT the remediation dialog — never openLauncher() here;
     // hijacking a window that hosts a live workspace orphaned it (the
     // strip is gone in W3 — no way back to it).
-    ws.surfaceInvalidPath(path);
+    ws.surfaceInvalidPath(path, targetMachine);
     return;
   }
   void openWorkspaceWindow({ workspace: path, machine: targetMachine });
@@ -140,11 +149,21 @@ function baseOf(p: string): string {
   return p.replace(/[\/]+$/, "").split(/[\/]/).pop() || p;
 }
 const recentsLocal = computed(() =>
-  ws.recentWorkspaces.filter((r) => !r.path.startsWith("/")).slice(0, 8)
-    .map((r) => ({ path: r.path, label: baseOf(r.path) })));
+  ws.recentWorkspaces
+    .filter((r) => !r.machine_name && !r.path.startsWith("/"))
+    .slice(0, 8)
+    .map((r) => ({ path: r.path, machine: null as string | null, label: baseOf(r.path) })));
 const recentsRemote = computed(() =>
-  ws.recentWorkspaces.filter((r) => r.path.startsWith("/")).slice(0, 8)
-    .map((r) => ({ path: r.path, label: baseOf(r.path) })));
+  ws.recentWorkspaces
+    .filter((r) => r.machine_name || r.path.startsWith("/"))
+    .slice(0, 8)
+    .map((r) => ({
+      path: r.path,
+      machine: configuredMachineName(settings.doc?.remoteMachines ?? [], r)
+        ?? r.machine_name
+        ?? null,
+      label: baseOf(r.path),
+    })));
 
 function menuPos(which: string): { left: string; top: string } {
   const btn = menuBtn.value[which];
@@ -181,22 +200,54 @@ function openPalette(): void {
   closeMenu();
   window.dispatchEvent(new CustomEvent("aisc:open-palette"));
 }
-function openAbout(): void {
+function openDiagnostics(): void {
   closeMenu();
   doctor.openDialog();
 }
+
+async function openAboutWorkbench(): Promise<void> {
+  closeMenu();
+  aboutOpen.value = true;
+  if (!aboutAppVersion.value) {
+    aboutAppVersion.value = await getVersion().catch(() => "");
+  }
+}
 async function openDocs(): Promise<void> {
   closeMenu();
-  window.open("https://github.com/wangyuncepu/AISC#readme", "_blank", "noopener");
+  try {
+    await openUrl("https://github.com/Wifabric/AISC#readme");
+  } catch {
+    toast.error(t("menubar.docs.openFailed"));
+  }
 }
+
 /** A7 (D-8 自研): menu-level quick check; the full flow lives in settings
- * (关于与更新). A found update routes the user there. */
+ * (关于与更新). Every branch is visible — a silent menu item is
+ * indistinguishable from a dead one in the field. */
 async function checkForUpdates(): Promise<void> {
   closeMenu();
   const update = useUpdateStore();
-  const info = await update.check();
-  if (info?.updateAvailable) {
-    ws.openSettingsTab();
+  const progress = toast.push(t("menubar.update.checking"), { kind: "progress" });
+  try {
+    const info = await update.check();
+    toast.dismiss(progress);
+    if (!info) {
+      toast.error(t("menubar.update.failed", {
+        reason: update.error || t("menubar.update.unknownError"),
+      }));
+      return;
+    }
+    if (info.updateAvailable) {
+      toast.success(t("menubar.update.available", { version: info.latest || "?" }));
+      ws.openSettingsTab();
+    } else {
+      toast.success(t("menubar.update.upToDate", { version: info.current }));
+    }
+  } catch (e) {
+    toast.dismiss(progress);
+    toast.error(t("menubar.update.failed", {
+      reason: (e as { message?: string })?.message ?? String(e),
+    }));
   }
 }
 </script>
@@ -272,13 +323,14 @@ async function checkForUpdates(): Promise<void> {
               </li>
               <li
                 v-for="r in recentsLocal"
-                :key="r.path"
+                :key="[r.machine ?? 'path', r.path].join(':')"
                 class="recent"
                 role="menuitem"
                 tabindex="0"
-                @click="openByPath(r.path)"
+                @click="openByPath(r.path, r.machine)"
               >
                 <span class="recent-name">{{ r.label }}</span>
+                <span v-if="r.machine" class="kind-badge">{{ r.machine }}</span>
                 <span class="recent-path">{{ r.path }}</span>
               </li>
               <li v-if="recentsRemote.length" class="sub-head remote" role="presentation">
@@ -286,13 +338,14 @@ async function checkForUpdates(): Promise<void> {
               </li>
               <li
                 v-for="r in recentsRemote"
-                :key="r.path"
+                :key="[r.machine ?? 'path', r.path].join(':')"
                 class="recent"
                 role="menuitem"
                 tabindex="0"
-                @click="openByPath(r.path)"
+                @click="openByPath(r.path, r.machine)"
               >
                 <span class="recent-name">{{ r.label }}</span>
+                <span v-if="r.machine" class="kind-badge">{{ r.machine }}</span>
                 <span class="recent-path">{{ r.path }}</span>
               </li>
               <li v-if="!recentsLocal.length && !recentsRemote.length" class="dim" role="presentation">
@@ -352,15 +405,35 @@ async function checkForUpdates(): Promise<void> {
           <li role="menuitem" tabindex="0" @click="checkForUpdates">
             {{ t("menubar.checkUpdate") }}
           </li>
-          <li role="menuitem" tabindex="0" @click="openAbout">
+          <li role="menuitem" tabindex="0" @click="openDiagnostics">
+            {{ t("menubar.diagnostics") }}
+          </li>
+          <li role="menuitem" tabindex="0" @click="openAboutWorkbench">
             {{ t("menubar.about") }}
           </li>
           <li role="menuitem" tabindex="0" @click="openDocs">
-            {{ t("menubar.docs") }}
+            {{ t("menubar.helpDocs") }}
           </li>
         </template>
       </ul>
     </Teleport>
+    <div v-if="aboutOpen" class="about-overlay" data-testid="about-overlay" @mousedown.self="aboutOpen = false">
+      <div class="about-dialog" role="dialog" aria-modal="true" :aria-label="t('menubar.about')" data-testid="about-dialog">
+        <header>
+          <h3>{{ t("menubar.about") }}</h3>
+          <button type="button" :aria-label="'close'" @click="aboutOpen = false">✕</button>
+        </header>
+        <dl>
+          <div><dt>Workbench</dt><dd>{{ aboutAppVersion || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>AISC CLI</dt><dd>{{ facade.capability?.version_info?.cli_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Bundle</dt><dd>{{ facade.capability?.version_info?.bundle_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Workbench Image</dt><dd>{{ facade.capability?.version_info?.image_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Claude Code</dt><dd>{{ facade.capability?.version_info?.claude_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Python</dt><dd>{{ facade.capability?.version_info?.python_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Platform</dt><dd>{{ aboutPlatform }}</dd></div>
+        </dl>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -488,4 +561,14 @@ async function checkForUpdates(): Promise<void> {
   font-size: var(--font-xs);
   color: var(--text-muted);
 }
+
+.about-overlay { position:fixed; inset:0; z-index:96; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }
+.about-dialog { width:min(480px,90vw); padding:var(--space-3); background:var(--surface); border:var(--border-w) solid var(--border-strong); border-radius:var(--radius-md); box-shadow:var(--shadow-menu); }
+.about-dialog header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.about-dialog h3 { margin:0; }
+.about-dialog header button { border:none; background:none; color:var(--text-muted); cursor:pointer; }
+.about-dialog dl { margin:var(--space-2) 0 0; display:grid; gap:var(--space-1); }
+.about-dialog dl > div { display:grid; grid-template-columns:130px minmax(0,1fr); gap:var(--space-2); }
+.about-dialog dt { color:var(--text-muted); }
+.about-dialog dd { margin:0; min-width:0; overflow-wrap:anywhere; }
 </style>

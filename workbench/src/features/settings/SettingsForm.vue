@@ -241,37 +241,6 @@ function formatBytes(n: number | null | undefined): string {
   }
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
 }
-/** v2.1.13 D-9b: category order is PINNED (the Rust side returns a HashMap
- *  whose iteration order reshuffled on every scan - hand-test #3). */
-const INSPECT_ORDER = ['images', 'containers', 'volumes', 'build_cache', 'networks'] as const;
-const INSPECT_PREVIEW = 30;
-const inspectShowAll = ref(new Set<string>());
-const orderedInspect = computed(() => {
-  const cats = store.inspectReport?.categories ?? {};
-  return INSPECT_ORDER.filter((k) => cats[k]).map((k) => [k, cats[k]] as const);
-});
-function sortedInspectRows(key: string, rows: import("../../lib/ipc").CacheInspectRow[]) {
-  const size = (r: import("../../lib/ipc").CacheInspectRow) =>
-    r.reclaimable_bytes ?? r.size_bytes ?? 0;
-  const sorted = [...rows].sort((a, b) => size(b) - size(a));
-  if (inspectShowAll.value.has(key)) return sorted;
-  return sorted.slice(0, INSPECT_PREVIEW);
-}
-function inspectDisplayName(row: import("../../lib/ipc").CacheInspectRow): string {
-  if (row.name && row.name !== row.id) return row.name;
-  const kind = row.kind ? row.kind + " \u00b7 " : "";
-  return kind + String(row.id).slice(0, 12);
-}
-const inspectTotals = computed(() => {
-  const cats = store.inspectReport?.categories ?? {};
-  let reclaimable = 0;
-  let items = 0;
-  for (const cat of Object.values(cats)) {
-    reclaimable += cat?.summary.reclaimable_bytes ?? 0;
-    items += cat?.summary.count ?? 0;
-  }
-  return { reclaimable, items };
-});
 
 /** PERF P8 (D-13): performance working copy (load/edit/save like hostTools;
  *  defaults mirror the Rust sanitizer). */
@@ -318,8 +287,8 @@ async function onWslconfig() {
 
 onMounted(async () => {
   if (!store.loaded) await store.load();
-  // O7 (D-11): fill the disk & cache card (read-only df summary).
-  void store.loadCacheUsage();
+  // b16: the disk page owns no second df model; Docker resources scan on
+  // demand and populate the unified ownership + inspect summary.
   // P8: show the machine's RAM band (advisory only).
   try {
     const { lowSpecStatus } = await import("../../lib/ipc");
@@ -343,16 +312,12 @@ async function onSave() {
 }
 
 /** O7 (D-11): destructive-ish op — confirm, then the until-filtered prune. */
-async function onCacheCleanup() {
-  const { confirm } = await import("@tauri-apps/plugin-dialog");
-  const ok = await confirm(t("settings.disk.cleanupConfirm"));
-  if (!ok) return;
-  await store.runCacheCleanup(24);
-}
-
 // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
-function dockerActionableCount(b: { owned: unknown[]; legacy_owned: unknown[] }): number {
-  return b.owned.length + b.legacy_owned.length;
+function dockerActionableCount(b: {
+  owned: Array<{ id: string }>;
+  legacy_owned: Array<{ id: string }>;
+}): number {
+  return new Set([...b.owned, ...b.legacy_owned].map((row) => row.id)).size;
 }
 
 /** Compact preview rows: one per actionable/unverified bucket, names capped. */
@@ -368,6 +333,34 @@ const dockerPreviewRows = computed(() => {
     { label: t("settings.docker.rowUnverifiedContainers"), value: names(r.containers.unverified) },
     { label: t("settings.docker.rowImages"), value: names([...r.images.owned, ...r.images.legacy_owned]) },
     { label: t("settings.docker.rowUnverifiedImages"), value: names(r.images.unverified) },
+  ];
+});
+
+const dockerResourceSummaryRows = computed(() => {
+  const report = store.dockerReport;
+  const inspect = store.inspectReport;
+  if (!report) return [];
+  const categoryCount = (key: string) => inspect?.categories?.[key]?.summary.count ?? 0;
+  const reclaimable = (key: string) => inspect?.categories?.[key]?.summary.reclaimable_bytes ?? 0;
+  return [
+    {
+      label: t("settings.docker.rowContainers"),
+      value: `${dockerActionableCount(report.containers)} / ${categoryCount("containers")}`,
+    },
+    {
+      label: t("settings.docker.rowImages"),
+      value: `${dockerActionableCount(report.images)} / ${categoryCount("images")}`,
+    },
+    {
+      label: t("settings.docker.rowDangling"),
+      value: `${report.danglingOwned.length}`,
+    },
+    {
+      label: t("settings.docker.rowBuildCache"),
+      value: `${categoryCount("build_cache")} · ${formatBytes(reclaimable("build_cache"))}`,
+    },
+    { label: t("settings.docker.rowVolumes"), value: `${categoryCount("volumes")}` },
+    { label: t("settings.docker.rowNetworks"), value: `${categoryCount("networks")}` },
   ];
 });
 
@@ -389,7 +382,13 @@ async function onDockerRebuild() {
 // Every action double-gates: a confirm dialog naming the resource, then the
 // CLI's in-lock ownership re-verification (unverified refuses server-side).
 const managementBusyLocal = ref(false);
-type ManageRow = { id: string; name: string; state?: string; ownership: string };
+type ManageRow = {
+  id: string;
+  name: string;
+  retagName?: string;
+  state?: string;
+  ownership: string;
+};
 
 const manageContainers = computed<ManageRow[]>(() => {
   const r = store.dockerReport;
@@ -406,12 +405,28 @@ const manageContainers = computed<ManageRow[]>(() => {
 const manageImages = computed<ManageRow[]>(() => {
   const r = store.dockerReport;
   if (!r || !r.dockerAvailable) return [];
-  return [...r.images.owned, ...r.images.legacy_owned].map((row) => ({
-    id: row.id,
-    name: row.name,
-    ownership: row.ownership,
-  }));
+  const byId = new Map<string, ManageRow>();
+  for (const row of [...r.images.owned, ...r.images.legacy_owned]) {
+    const existing = byId.get(row.id);
+    if (!existing) {
+      byId.set(row.id, {
+        id: row.id,
+        name: row.name,
+        retagName: row.name,
+        ownership: row.ownership,
+      });
+      continue;
+    }
+    // Docker lists each repo tag separately even when they point at the same
+    // image ID. One physical image gets one management row; both refs remain
+    // visible so the user can see where it came from.
+    const refs = existing.name.split(", ");
+    if (!refs.includes(row.name)) refs.push(row.name);
+    existing.name = refs.join(", ");
+  }
+  return [...byId.values()];
 });
+
 
 async function onContainerAction(name: string, action: "start" | "stop" | "rm"): Promise<void> {
   if (managementBusyLocal.value) return;
@@ -745,109 +760,45 @@ async function reopenOnboarding() {
              NOT a settings document field: live ops via the settings store. -->
         <template v-else-if="group === 'disk'">
           <p class="help">{{ t("settings.disk.hint") }}</p>
-          <p v-if="store.cacheError" class="err-text">{{ store.cacheError }}</p>
-          <template v-if="store.cacheUsage?.dockerAvailable">
-            <div v-for="row in store.cacheUsage.rows" :key="row.kind" class="field disk-row">
-              <span class="label">{{ row.kind }}</span>
-              <span class="val">{{ row.size }}</span>
-              <span class="effect">{{ t("settings.disk.reclaimable", { n: row.reclaimable, c: row.total_count }) }}</span>
-            </div>
-          </template>
-          <p v-else-if="!store.cacheError" class="note">{{ t("settings.disk.unavailable") }}</p>
+          <p v-if="store.dockerError" class="err-text">{{ store.dockerError }}</p>
           <div class="field">
-            <button :disabled="store.cacheBusy" :title="t('settings.disk.refreshTip')" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
-            <button class="primary" :disabled="store.cacheBusy" :title="t('settings.disk.cleanupTip')" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
-          </div>
-          <p v-for="(line, i) in store.cacheLog" :key="i" class="note">{{ line }}</p>
-
-          <!-- v2.1.13 (docker-scan-fidelity): read-only per-item inspection.
-               Detect finer + report accurately; NO cleanup here, NO auto
-               trigger — the user presses the button every single time (D-2).
-               will_be_cleaned mirrors what the CURRENT manual cleanup would
-               hit; the disclaimer carries the shared-layer caveat. -->
-          <p class="group">{{ t("settings.disk.inspect.group") }}</p>
-          <div class="field">
-            <button :disabled="store.inspectBusy" @click="store.loadDockerInspect()">
-              {{ store.inspectBusy ? t("settings.disk.inspect.busy") : t("settings.disk.inspect.open") }}
-            </button>
-            <span v-if="store.inspectReport" class="effect">
-              {{ t("settings.disk.inspect.totals", {
-                items: inspectTotals.items,
-                reclaimable: formatBytes(inspectTotals.reclaimable) }) }}
-            </span>
-          </div>
-          <p v-if="store.inspectError" class="err-text">{{ store.inspectError }}</p>
-          <div v-if="store.inspectReport" class="inspect-groups">
-            <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
-            <details
-              v-for="[key, cat] in orderedInspect"
-              :key="key"
-              class="inspect-cat"
+            <button
+              :disabled="store.dockerBusy"
+              :title="t('settings.docker.scanTip')"
+              @click="store.scanDockerResources()"
             >
-              <summary>
-                {{ t("settings.disk.inspect.cat." + key) }}
-                <span class="effect">
-                  {{ cat?.summary.count ?? 0 }} · {{ formatBytes(cat?.summary.reclaimable_bytes ?? null) }}
-                </span>
-              </summary>
-              <div class="inspect-thead">
-                <span>{{ t("settings.disk.inspect.colName") }}</span>
-                <span>{{ t("settings.disk.inspect.colSize") }}</span>
-                <span>{{ t("settings.disk.inspect.colStatus") }}</span>
-              </div>
-              <div
-                v-for="row in sortedInspectRows(key, cat?.rows ?? [])"
-                :key="String(row.id) + String(row.name)"
-                class="inspect-row"
-              >
-                <span class="ir-name" :title="String(row.id)">{{ inspectDisplayName(row) }}</span>
-                <span class="ir-size">{{ row.size ?? row.unique_size ?? formatBytes(row.size_bytes) }}</span>
-                <span class="ir-status" :title="row.will_be_cleaned ? t('settings.disk.inspect.willClean') : undefined">
-                  <template v-if="row.will_be_cleaned">{{ t("settings.disk.inspect.willClean") }}</template>
-                  <template v-else-if="row.dangling">{{ t("settings.disk.inspect.dangling") }}</template>
-                  <template v-else-if="row.in_use">{{ t("settings.disk.inspect.inUse") }}</template>
-                  <template v-else>—</template>
-                </span>
-              </div>
-              <button
-                v-if="(cat?.rows.length ?? 0) > 30 && !inspectShowAll.has(key)"
-                class="inspect-more"
-                @click="inspectShowAll.add(key)"
-              >
-                {{ t("settings.disk.inspect.showAll", { n: cat?.rows.length }) }}
-              </button>
-              <p v-if="!(cat?.rows ?? []).length" class="note">{{ t("settings.disk.inspect.empty") }}</p>
-            </details>
+              {{ store.dockerBusy ? t("settings.docker.scanning") : t("settings.docker.scan") }}
+            </button>
+            <button
+              class="danger"
+              :disabled="store.dockerBusy || !store.dockerReport"
+              :title="t('settings.docker.cleanupTip')"
+              @click="onDockerCleanup"
+            >{{ t("settings.docker.cleanup") }}</button>
+            <button
+              :disabled="store.dockerRebuilding || !store.dockerReport"
+              :title="t('settings.docker.rebuildTip')"
+              @click="onDockerRebuild"
+            >{{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}</button>
           </div>
 
-          <!-- B3 (2.1.12): docker resource admin — scan preview -> confirm ->
-               act. Rebuild is LOCAL-only (remote machines manage their own
-               bundle; A-chain update orchestration owns that later). -->
-          <p class="group">{{ t("settings.docker.group") }}</p>
-          <p class="help">{{ t("settings.docker.hint") }}</p>
-          <div class="field">
-            <button :disabled="store.dockerBusy" :title="t('settings.docker.scanTip')" @click="store.loadDockerScan()">{{ t("settings.docker.scan") }}</button>
-            <!-- Scan-first gate (user ruling 2026-09-16): cleanup/rebuild stay
-                 disabled until a scan has classified what's there — the
-                 preview IS the confirmation basis; acting blind is how the
-                 wrong mental model (cleanup deletes my files?) forms. -->
-            <button class="danger" :disabled="store.dockerBusy || !store.dockerReport" :title="t('settings.docker.cleanupTip')" @click="onDockerCleanup">{{ t("settings.docker.cleanup") }}</button>
-            <button :disabled="store.dockerRebuilding || !store.dockerReport" :title="t('settings.docker.rebuildTip')" @click="onDockerRebuild">
-              {{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}
-            </button>
-          </div>
           <template v-if="store.dockerReport">
-            <p v-if="!store.dockerReport.dockerAvailable" class="note">{{ t("settings.docker.unavailable") }}</p>
+            <p v-if="!store.dockerReport.dockerAvailable" class="note">
+              {{ t("settings.docker.unavailable") }}
+            </p>
             <template v-else>
-              <p class="note">{{ t("settings.docker.summary", { c: dockerActionableCount(store.dockerReport.containers), i: dockerActionableCount(store.dockerReport.images), d: store.dockerReport.danglingOwned.length }) }}</p>
+              <div class="docker-resource-summary" data-testid="docker-resource-summary">
+                <div v-for="row in dockerResourceSummaryRows" :key="row.label" class="field disk-row">
+                  <span class="label">{{ row.label }}</span>
+                  <span class="val">{{ row.value }}</span>
+                </div>
+              </div>
+              <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
               <div v-for="row in dockerPreviewRows" :key="row.label" class="field disk-row">
                 <span class="label">{{ row.label }}</span>
                 <span class="val">{{ row.value }}</span>
               </div>
 
-              <!-- v2.1.13 D-12: per-resource management (aisc-owned only;
-                   unverified rows stay view-only). Buttons follow the
-                   container state; confirms name the resource. -->
               <div v-if="manageContainers.length" class="manage-list">
                 <p class="manage-title">{{ t("settings.docker.manage.containers") }}</p>
                 <div class="manage-thead">
@@ -878,14 +829,12 @@ async function reopenOnboarding() {
                   <span class="mr-state">—</span>
                   <span class="mr-actions">
                     <button class="danger" :disabled="store.managementBusy !== null" @click="onImageRm(row.id, row.name)">{{ t("settings.docker.manage.rm") }}</button>
-                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.name)">{{ t("settings.docker.manage.retag") }}</button>
+                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.retagName ?? row.name)">{{ t("settings.docker.manage.retag") }}</button>
                   </span>
                 </div>
               </div>
-
             </template>
           </template>
-          <p v-if="store.dockerError" class="err-text">{{ store.dockerError }}</p>
           <p v-for="(line, i) in store.dockerLog" :key="i" class="note">{{ line }}</p>
           <p class="note">{{ t("settings.docker.rebuildNote") }}</p>
         </template>
@@ -894,15 +843,24 @@ async function reopenOnboarding() {
         <template v-else-if="group === 'about'">
           <p class="help">{{ t("settings.about.hint") }}</p>
           <div class="field disk-row">
-            <span class="label">{{ t("settings.about.current") }}</span>
+            <span class="label">{{ t("settings.about.workbenchCurrent") }}</span>
             <span class="val">{{ update.info?.current ?? t("settings.about.unknown") }}</span>
+          </div>
+          <div v-if="update.info?.cliCurrent" class="field disk-row">
+            <span class="label">{{ t("settings.about.cliCurrent") }}</span>
+            <span class="val">{{ update.info.cliCurrent }}</span>
           </div>
           <p v-if="update.error" class="err-text">{{ update.error }}</p>
           <template v-if="update.info">
             <div v-if="update.info.latest" class="field disk-row">
-              <span class="label">{{ t("settings.about.latest") }}</span>
+              <span class="label">{{ t("settings.about.workbenchLatest") }}</span>
               <span class="val">{{ update.info.latest }}</span>
             </div>
+            <div v-if="update.info.cliLatest" class="field disk-row">
+              <span class="label">{{ t("settings.about.cliLatest") }}</span>
+              <span class="val">{{ update.info.cliLatest }}</span>
+            </div>
+            <p class="note">{{ t("settings.about.updateTogether") }}</p>
             <p v-if="update.info.note" class="note">{{ update.info.note }}</p>
             <p v-if="update.status === 'none'" class="note">{{ t("settings.about.upToDate") }}</p>
             <template v-if="update.status === 'available' || update.status === 'downloading'">
@@ -928,9 +886,9 @@ async function reopenOnboarding() {
               </div>
             </template>
           </template>
-          <div v-else class="field">
+          <div class="field">
             <button class="primary" :disabled="update.status === 'checking'" @click="update.check()">
-              {{ update.status === "checking" ? t("settings.about.checking") : t("settings.about.check") }}
+              {{ update.status === "checking" ? t("settings.about.checking") : update.info ? t("settings.about.checkAgain") : t("settings.about.check") }}
             </button>
           </div>
           <p class="note">{{ t("settings.about.sidecarNote") }}</p>
@@ -1130,4 +1088,6 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .manage-row .mr-actions { display: flex; gap: 4px; }
 .manage-title { margin: 6px 0 2px; font-size: var(--font-xs); color: var(--text-2); }
 .manage-list + .manage-list { margin-top: 10px; }
+
+.docker-resource-summary { display:grid; gap:var(--space-1); padding:var(--space-2); border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
 </style>

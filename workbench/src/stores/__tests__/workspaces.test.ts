@@ -115,6 +115,15 @@ describe("launcher materialization (3c)", () => {
     expect(ws.launcher.status.value).toBe("picker");
   });
 
+  it("keeps the same path on two driving machines as two workspaces", async () => {
+    const ws = useWorkspacesStore();
+    ws.setDriveMachine(null);
+    await launchWorkspace(ws, "E:/same");
+    ws.setDriveMachine("win-test");
+    await launchWorkspace(ws, "E:/same");
+    expect(ws.runtimes).toHaveLength(2);
+  });
+
   it("refuses openLauncher at the cap (MAX_WORKSPACES) without moving focus", async () => {
     const ws = useWorkspacesStore();
     for (let i = 0; i < MAX_WORKSPACES; i++) {

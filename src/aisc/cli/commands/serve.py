@@ -46,11 +46,11 @@ from aisc.cli.output import build_envelope
 from aisc.domain.models import CliError
 
 #: Wire protocol version. Human labels v1.1 (PTY) / v1.2 (fs.*) were additive
-#: while the field stayed 1; v1.3 (D-10: generic `cli` op + ready `home`)
-#: BUMPS the field to 3 and drops cross-version compatibility by ruling —
+#: while the field stayed 1; v1.4 (PTY stream timeout/EINTR fix + session fork semantics)
+#: BUMPS the field to 4 and drops cross-version compatibility by ruling —
 #: both ends ship from one repo, a mismatch is a hard client-side error
 #: ("upgrade the remote aisc"), never a silent per-op-ssh fallback.
-SERVE_PROTOCOL = 3
+SERVE_PROTOCOL = 4
 
 #: Grace period for an in-flight op when the loop is asked to stop (s).
 SHUTDOWN_GRACE_SECONDS = 3.0
@@ -118,10 +118,27 @@ class ServeRuntime:
         self.fs_watches = WatchRegistry(self._emit)
 
     def _emit(self, frame: Dict[str, Any]) -> None:
-        line = _frame(frame) + "\n"
+        payload = (_frame(frame) + "\n").encode("ascii")
         with self._write_lock:
-            self._stdout.write(line)
-            self._stdout.flush()
+            # Windows OpenSSH + PyInstaller can expose a TextIO whose flush()
+            # does not drain its internal buffer to the SSH pipe (b12 field
+            # evidence: the ready banner appeared only when stdin EOF killed
+            # serve). Write frames through the real OS descriptor; StringIO
+            # test doubles fall back to the ordinary text path.
+            try:
+                fd = self._stdout.fileno()
+            except (AttributeError, OSError, ValueError):
+                fd = None
+            if fd is None:
+                self._stdout.write(payload.decode("ascii"))
+                self._stdout.flush()
+                return
+            view = memoryview(payload)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise OSError("serve stdout pipe made no progress")
+                view = view[written:]
 
     def _on_output(self, sid: str) -> Callable[[bytes], None]:
         def push(chunk: bytes) -> None:
@@ -340,6 +357,7 @@ def _op_session_open(args: argparse.Namespace, payload: Dict[str, Any],
     agent = str(payload.get("agent") or "")
     workspace = payload.get("workspace")
     resume = payload.get("resume_conversation_id")
+    fork_session = payload.get("fork_session") is True
 
     # Resolution/validation speaks the DockerExecutor interface (run_captured
     # etc. — RealDockerExecutor, docker CLI); the PTY stream is SDK-only
@@ -357,6 +375,7 @@ def _op_session_open(args: argparse.Namespace, payload: Dict[str, Any],
         executor=executor,
         registry_root=registry_root,
         resume_conversation_id=resume if isinstance(resume, str) else None,
+        fork_session=fork_session,
     )
 
     cols = int(payload.get("cols") or DEFAULT_COLS)
@@ -466,18 +485,27 @@ def cmd_serve(args: argparse.Namespace) -> int:
             error_code="AISC_ERR_USAGE",
             hint="Remote callers spawn: ssh <host> aisc serve --stdio",
         )
-    # 2.1.11 step2: the wire contract is UTF-8 JSON-lines in BOTH
-    # directions. stdout is ASCII-safe via _frame's escaping, but the CLIENT
-    # writes unescaped UTF-8 (serde_json does not ASCII-escape) — a CJK
-    # workspace path in argv would hit a GBK stdin decoder on zh-CN Windows.
-    # Reconfigure the real handles where the wrapper allows it (PyInstaller
-    # wrappers may not expose reconfigure; the try/except is deliberate).
-    for handle in (sys.stdin, sys.stdout):
-        try:
-            handle.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-        except (AttributeError, ValueError, OSError):
-            pass
+    # b12: neither frozen TextIO handle may be reconfigured: on Windows
+    # PyInstaller over SSH either reconfigure call can block until EOF.
+    # Input is decoded from its binary buffer; output uses ServeRuntime's
+    # low-level descriptor writer below.
     return _serve_loop(sys.stdin, sys.stdout)
+
+
+def _read_stdin_line(stdin: Any) -> str:
+    """Read one serve frame as UTF-8, bypassing a locale TextIO wrapper.
+
+    b12 fixed the blocking half of frozen Windows SSH stdio but accidentally
+    left ``readline()`` on the TextIO object. That decoder can be cp1252 with
+    surrogateescape, turning inbound CJK JSON into mojibake/surrogates before
+    ``json.loads`` ever runs. The binary buffer owns the byte stream; StringIO
+    test doubles keep the text path.
+    """
+    buffer = getattr(stdin, "buffer", None)
+    if buffer is None:
+        return stdin.readline()
+    raw = buffer.readline()
+    return raw.decode("utf-8")
 
 
 def _serve_loop(stdin: Any, stdout: Any) -> int:
@@ -506,7 +534,7 @@ def _serve_loop(stdin: Any, stdout: Any) -> int:
     })
 
     while not stop["flag"]:
-        line = stdin.readline()
+        line = _read_stdin_line(stdin)
         if not line:  # EOF — the ssh session went away
             break
         line = line.strip()

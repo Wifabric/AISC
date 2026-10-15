@@ -66,6 +66,11 @@ vi.mock("@xterm/xterm", () => ({
     cols = 80;
     rows = 24;
     options: Record<string, unknown> = {};
+    parser = {
+      registerCsiHandler(_id: unknown, _handler: (params: (number | number[])[]) => boolean) {
+        return { dispose() {} };
+      },
+    };
     loadAddon(addon: { activate?: (t: unknown) => void }) {
       addon?.activate?.(this);
     }

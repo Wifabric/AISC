@@ -109,6 +109,7 @@ async fn serve_pty_over_real_ssh_full_roundtrip() {
         "bash",
         "/tmp", // workspace is only registry-hint material on the remote side
         None,
+        false,
         80,
         24,
         tx,

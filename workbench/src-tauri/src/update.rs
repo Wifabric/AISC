@@ -26,6 +26,7 @@ use tauri::Emitter;
 use crate::error::WorkbenchError;
 
 const RELEASES_URL: &str = "https://api.github.com/repos/Wifabric/AISC/releases?per_page=30";
+const RELEASES_ATOM_URL: &str = "https://github.com/Wifabric/AISC/releases.atom";
 const UPDATE_ERROR_NETWORK: &str = "app.update/network";
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,6 +38,11 @@ pub struct UpdateInfo {
     pub setup_url: Option<String>,
     pub sha256_url: Option<String>,
     pub release_url: Option<String>,
+    /// b15: the Workbench GUI and bundled CLI have independent version lines.
+    /// One installer upgrades both, but each current/latest pair is reported.
+    pub cli_current: Option<String>,
+    pub cli_latest: Option<String>,
+    pub cli_update_available: bool,
     pub note: String,
 }
 
@@ -50,24 +56,66 @@ pub fn normalize_version(v: &str) -> String {
     }
 }
 
-fn client() -> Result<reqwest::Client, WorkbenchError> {
+fn client_builder(proxy: Option<&str>) -> Result<reqwest::Client, WorkbenchError> {
     let mut builder = reqwest::Client::builder()
         .user_agent("aisc-workbench-selfupdate")
-        // b12 (T1 user report): the old TOTAL timeout(30s) was fine for the
-        // subscription downloader's small files and the ~60MB payloads of
-        // 2.1.13-era installers — but the C-混合 bundles pushed the setup to
-        // 292MB and every in-app download now died ~30s in ("参数无效"/断流).
-        // Bound STALLS, not total size: connect 10s, read 60s idle.
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(60));
-    if let Some(proxy) = crate::subscription::system_http_proxy() {
-        if let Ok(p) = reqwest::Proxy::all(&proxy) {
-            builder = builder.proxy(p);
+    if let Some(proxy) = proxy {
+        if let Ok(proxy) = reqwest::Proxy::all(proxy) {
+            builder = builder.proxy(proxy);
         }
     }
     builder
         .build()
         .map_err(|e| WorkbenchError::usage(format!("http client: {e}")))
+}
+
+fn client() -> Result<reqwest::Client, WorkbenchError> {
+    client_builder(crate::subscription::system_http_proxy().as_deref())
+}
+
+/// Network strategies in priority order. A stale/clash proxy must not make
+/// GitHub permanently unreachable; a direct connection must not be skipped in
+/// environments where the proxy is required. Try both, with bounded retries.
+fn update_clients() -> Result<Vec<reqwest::Client>, WorkbenchError> {
+    match crate::subscription::system_http_proxy() {
+        Some(proxy) => Ok(vec![client_builder(Some(&proxy))?, client_builder(None)?]),
+        None => Ok(vec![client_builder(None)?]),
+    }
+}
+
+fn err_chain(error: &dyn std::error::Error) -> String {
+    let mut out = error.to_string();
+    let mut source = error.source();
+    while let Some(next) = source {
+        out.push_str(&format!(": {next}"));
+        source = next.source();
+    }
+    out
+}
+
+async fn get_with_fallback(
+    url: &str,
+    headers: reqwest::header::HeaderMap,
+) -> Result<reqwest::Response, WorkbenchError> {
+    let clients = update_clients()?;
+    let mut errors = Vec::new();
+    for attempt in 0..3 {
+        for client in &clients {
+            match client.get(url).headers(headers.clone()).send().await {
+                Ok(response) => return Ok(response),
+                Err(e) => errors.push(format!("attempt {}: {}", attempt + 1, err_chain(&e))),
+            }
+        }
+        if attempt < 2 {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    }
+    Err(WorkbenchError::usage(format!(
+        "{UPDATE_ERROR_NETWORK}: {url}: {}",
+        errors.join(" | ")
+    )))
 }
 
 fn gh_headers() -> reqwest::header::HeaderMap {
@@ -96,7 +144,14 @@ fn current_version(app: &AppHandle) -> String {
 pub fn parse_tag(tag: &str) -> Option<((u64, u64, u64), bool, u64)> {
     let body = tag.strip_prefix('v').unwrap_or(tag);
     let (base, preview) = match body.split_once("-preview") {
-        Some((b, n)) => (b, Some(if n.is_empty() { "1" } else { n.trim_start_matches('.') })),
+        Some((b, n)) => (
+            b,
+            Some(if n.is_empty() {
+                "1"
+            } else {
+                n.trim_start_matches('.')
+            }),
+        ),
         None => (body, None),
     };
     let mut it = base.split('.');
@@ -138,7 +193,11 @@ pub fn pick_latest(releases: &serde_json::Value) -> Option<(String, String, Stri
         .find(|r| r.get("tag_name").and_then(|t| t.as_str()) == Some(tag))?;
     let mut setup = None;
     let mut sha = None;
-    for asset in rel.get("assets").and_then(|a| a.as_array()).unwrap_or(&vec![]) {
+    for asset in rel
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .unwrap_or(&vec![])
+    {
         let name = asset.get("name").and_then(|n| n.as_str()).unwrap_or("");
         let url = asset
             .get("browser_download_url")
@@ -163,8 +222,144 @@ pub fn pick_latest(releases: &serde_json::Value) -> Option<(String, String, Stri
     Some((tag, setup?, sha?, release_url))
 }
 
+fn release_download_urls(tag: &str) -> (String, String, String) {
+    let tagged = if tag.starts_with('v') {
+        tag.to_string()
+    } else {
+        format!("v{tag}")
+    };
+    let version = tagged.strip_prefix('v').unwrap_or(&tagged);
+    let base = format!(
+        "https://github.com/Wifabric/AISC/releases/download/{tagged}/AISC-Workbench-{version}-setup"
+    );
+    (
+        format!("{base}.exe"),
+        format!("{base}.exe.sha256"),
+        format!("https://github.com/Wifabric/AISC/releases/tag/{tagged}"),
+    )
+}
+
+pub fn pick_latest_atom(xml: &str) -> Option<(String, String, String, String)> {
+    let mut best_tag: Option<&str> = None;
+    let mut best_key: Option<((u64, u64, u64), bool, u64)> = None;
+    for entry in xml.split("<entry>").skip(1) {
+        let entry = entry.split("</entry>").next().unwrap_or_default();
+        let Some(id) = entry
+            .split("<id>")
+            .nth(1)
+            .and_then(|rest| rest.split("</id>").next())
+        else {
+            continue;
+        };
+        let Some(tag) = id.rsplit('/').next() else {
+            continue;
+        };
+        let key = version_key(tag);
+        if key.0 == (0, 0, 0) {
+            continue;
+        }
+        if best_key.as_ref().is_none_or(|current| key > *current) {
+            best_key = Some(key);
+            best_tag = Some(tag);
+        }
+    }
+    let tag = best_tag?;
+    let latest = tag.strip_prefix('v').unwrap_or(tag).to_string();
+    let (setup, sha, page) = release_download_urls(tag);
+    Some((latest, setup, sha, page))
+}
+
 fn version_gt(a: &str, b: &str) -> bool {
     version_key(a) > version_key(b)
+}
+
+fn cli_version_gt(a: &str, b: &str) -> bool {
+    fn key(value: &str) -> ((u64, u64, u64), u8, u64) {
+        let value = value.trim().trim_start_matches('v');
+        let parts: Vec<&str> = value.split('.').collect();
+        let major = parts.first().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let minor = parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let patch = parts.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let suffix = if parts.len() > 3 {
+            Some(parts[3..].join("."))
+        } else {
+            None
+        };
+        let (kind, pre) = match suffix.as_deref() {
+            Some(suffix) if suffix.starts_with("dev") => (1u8, suffix[3..].parse().unwrap_or(0)),
+            _ => (0u8, 0),
+        };
+        ((major, minor, patch), kind, pre)
+    }
+    key(a) > key(b)
+}
+
+fn combined_update_available(
+    gui_update: bool,
+    cli_current: Option<&str>,
+    cli_latest: Option<&str>,
+) -> bool {
+    let cli_update = match (cli_current, cli_latest) {
+        (Some(current), Some(latest)) => cli_version_gt(latest, current),
+        _ => false,
+    };
+    gui_update || cli_update
+}
+
+fn cli_version_from_envelope(stdout: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    let version = value
+        .get("data")?
+        .get("cli_version")
+        .or_else(|| value.get("data")?.get("version"))?
+        .as_str()?
+        .trim()
+        .to_string();
+    Some(version).filter(|version| !version.is_empty())
+}
+
+fn local_cli_version(app: &AppHandle) -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let name = if cfg!(windows) { "aisc.exe" } else { "aisc" };
+    let sidecar = dir.join(name);
+    if !sidecar.is_file() {
+        return None;
+    }
+    let mut command = std::process::Command::new(&sidecar);
+    command.args(["version", "--format", "json"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    cli_version_from_envelope(&output.stdout)
+}
+
+async fn bundled_cli_version(latest_tag: &str) -> Result<String, WorkbenchError> {
+    let url =
+        format!("https://raw.githubusercontent.com/Wifabric/AISC/v{latest_tag}/src/aisc/VERSION");
+    let response = get_with_fallback(&url, gh_headers()).await?;
+    if !response.status().is_success() {
+        return Err(WorkbenchError::usage(format!(
+            "{UPDATE_ERROR_NETWORK}: bundled CLI HTTP {}",
+            response.status()
+        )));
+    }
+    let text = response.text().await.map_err(|e| {
+        WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: bundled CLI body: {e}"))
+    })?;
+    let version = text.trim().to_string();
+    if version.is_empty() {
+        return Err(WorkbenchError::usage(format!(
+            "{UPDATE_ERROR_NETWORK}: bundled CLI VERSION is empty"
+        )));
+    }
+    Ok(version)
 }
 
 /// Check for a newer FINAL release. Network failures degrade to a
@@ -173,61 +368,157 @@ fn version_gt(a: &str, b: &str) -> bool {
 #[tauri::command]
 pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchError> {
     let current = current_version(&app);
-    let fetch = async {
-        let resp = client()?
-            .get(RELEASES_URL)
-            .headers(gh_headers())
-            .send()
-            .await
-            .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(WorkbenchError::usage(format!(
-                "{UPDATE_ERROR_NETWORK}: HTTP {}",
-                resp.status()
-            )));
-        }
-        let text = resp
+    let cli_current = local_cli_version(&app);
+
+    // GitHub's unauthenticated API has a 60/hour limit and field users have
+    // already hit HTTP 403. The Atom feed is public, current, and not subject
+    // to that core quota; use it first and keep the API as fallback only.
+    let atom_candidate = match get_with_fallback(RELEASES_ATOM_URL, gh_headers()).await {
+        Ok(response) if response.status().is_success() => response
             .text()
             .await
-            .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: {e}")))?;
-        let body: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: body: {e}")))?;
-        Ok::<_, WorkbenchError>(body)
+            .ok()
+            .and_then(|xml| pick_latest_atom(&xml)),
+        _ => None,
     };
-    let info = match fetch.await {
-        Ok(body) => match pick_latest(&body) {
-            Some((latest, setup, sha, page)) => UpdateInfo {
-                update_available: version_gt(&latest, &current),
-                current,
-                latest: Some(latest),
-                setup_url: Some(setup),
-                sha256_url: Some(sha),
-                release_url: Some(page),
-                note: String::new(),
+
+    let releases = if atom_candidate.is_some() {
+        None
+    } else {
+        match get_with_fallback(RELEASES_URL, gh_headers()).await {
+            Ok(response) if response.status().is_success() => match response.text().await {
+                Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(body) => Some(body),
+                    Err(e) => {
+                        return Ok(UpdateInfo {
+                            current,
+                            latest: None,
+                            update_available: false,
+                            setup_url: None,
+                            sha256_url: None,
+                            release_url: None,
+                            cli_current,
+                            cli_latest: None,
+                            cli_update_available: false,
+                            note: format!("{UPDATE_ERROR_NETWORK}: releases body: {e}"),
+                        })
+                    }
+                },
+                Err(e) => {
+                    return Ok(UpdateInfo {
+                        current,
+                        latest: None,
+                        update_available: false,
+                        setup_url: None,
+                        sha256_url: None,
+                        release_url: None,
+                        cli_current,
+                        cli_latest: None,
+                        cli_update_available: false,
+                        note: format!("{UPDATE_ERROR_NETWORK}: releases body: {e}"),
+                    })
+                }
             },
-            None => UpdateInfo {
-                current,
-                latest: None,
-                update_available: false,
-                setup_url: None,
-                sha256_url: None,
-                release_url: None,
-                note: "no newer published version available".into(),
-            },
-        },
-        Err(e) => UpdateInfo {
+            Ok(response) => {
+                return Ok(UpdateInfo {
+                    current,
+                    latest: None,
+                    update_available: false,
+                    setup_url: None,
+                    sha256_url: None,
+                    release_url: None,
+                    cli_current,
+                    cli_latest: None,
+                    cli_update_available: false,
+                    note: format!(
+                        "{UPDATE_ERROR_NETWORK}: releases HTTP {}",
+                        response.status()
+                    ),
+                })
+            }
+            Err(e) => {
+                return Ok(UpdateInfo {
+                    current,
+                    latest: None,
+                    update_available: false,
+                    setup_url: None,
+                    sha256_url: None,
+                    release_url: None,
+                    cli_current,
+                    cli_latest: None,
+                    cli_update_available: false,
+                    note: format!(
+                        "check failed (network strategies exhausted): {}",
+                        e.technical_detail.unwrap_or_default()
+                    ),
+                })
+            }
+        }
+    };
+
+    let picked = if let Some(candidate) = atom_candidate {
+        Some(candidate)
+    } else {
+        let Some(body) = releases else {
+            unreachable!("releases is Some on the only fallthrough path");
+        };
+        pick_latest(&body)
+    };
+    let Some((latest, setup, sha, page)) = picked else {
+        return Ok(UpdateInfo {
             current,
             latest: None,
             update_available: false,
             setup_url: None,
             sha256_url: None,
             release_url: None,
-            note: format!("check failed (offline?): {}", e.technical_detail.unwrap_or_default()),
-        },
+            cli_current,
+            cli_latest: None,
+            cli_update_available: false,
+            note: "no published Workbench release with setup assets available".into(),
+        });
     };
-    Ok(info)
-}
 
+    let cli_latest = match bundled_cli_version(&latest).await {
+        Ok(version) => Some(version),
+        Err(e) => {
+            let version = e.technical_detail.unwrap_or_default();
+            return Ok(UpdateInfo {
+                current: current.clone(),
+                latest: Some(latest.clone()),
+                // The target installer is still available. CLI target version
+                // is unknown, but a GUI update can proceed safely.
+                update_available: version_gt(&latest, &current),
+                setup_url: Some(setup),
+                sha256_url: Some(sha),
+                release_url: Some(page),
+                cli_current,
+                cli_latest: None,
+                cli_update_available: false,
+                note: format!("bundled CLI check failed: {version}"),
+            });
+        }
+    };
+    let cli_update_available =
+        combined_update_available(false, cli_current.as_deref(), cli_latest.as_deref());
+    let update_available = combined_update_available(
+        version_gt(&latest, &current),
+        cli_current.as_deref(),
+        cli_latest.as_deref(),
+    );
+    Ok(UpdateInfo {
+        current,
+        latest: Some(latest),
+        update_available,
+        setup_url: Some(setup),
+        sha256_url: Some(sha),
+        release_url: Some(page),
+        cli_current,
+        cli_latest,
+        cli_update_available,
+        note: String::new(),
+    })
+}
 fn update_staging_dir() -> PathBuf {
     std::env::temp_dir().join("aisc-workbench-update")
 }
@@ -244,7 +535,11 @@ fn staging_path(app: &AppHandle, target: &str) -> PathBuf {
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
         .collect();
-    let name = if safe.is_empty() { current_version(app) } else { safe };
+    let name = if safe.is_empty() {
+        current_version(app)
+    } else {
+        safe
+    };
     dir.join(format!("workbench-setup-{name}.exe"))
 }
 
@@ -266,13 +561,7 @@ pub async fn app_download_update(
     sha256_url: String,
     target_version: String,
 ) -> Result<DownloadResult, WorkbenchError> {
-    let client = client()?;
-    let sidecar = client
-        .get(&sha256_url)
-        .headers(gh_headers())
-        .send()
-        .await
-        .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: sha256 sidecar: {e}")))?;
+    let sidecar = get_with_fallback(&sha256_url, gh_headers()).await?;
     if !sidecar.status().is_success() {
         return Err(WorkbenchError::usage(format!(
             "{UPDATE_ERROR_NETWORK}: sha256 sidecar HTTP {}",
@@ -292,12 +581,7 @@ pub async fn app_download_update(
         return Err(WorkbenchError::usage("sha256 sidecar malformed"));
     }
 
-    let mut resp = client
-        .get(&setup_url)
-        .headers(gh_headers())
-        .send()
-        .await
-        .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: setup download: {e}")))?;
+    let mut resp = get_with_fallback(&setup_url, gh_headers()).await?;
     if !resp.status().is_success() {
         return Err(WorkbenchError::usage(format!(
             "{UPDATE_ERROR_NETWORK}: setup download HTTP {}",
@@ -332,7 +616,9 @@ pub async fn app_download_update(
             serde_json::json!({ "downloaded": downloaded, "total": total }),
         );
     }
-    file.flush().await.map_err(|e| WorkbenchError::usage(format!("staging flush: {e}")))?;
+    file.flush()
+        .await
+        .map_err(|e| WorkbenchError::usage(format!("staging flush: {e}")))?;
     drop(file);
     let actual = hasher.hex();
     if actual != expected {
@@ -350,12 +636,19 @@ pub async fn app_download_update(
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with("workbench-setup-") && name.ends_with(".exe") && entry.path() != dest {
+            if name.starts_with("workbench-setup-")
+                && name.ends_with(".exe")
+                && entry.path() != dest
+            {
                 let _ = tokio::fs::remove_file(entry.path()).await;
             }
         }
     }
-    Ok(DownloadResult { path: dest.display().to_string(), sha256: actual, size: downloaded })
+    Ok(DownloadResult {
+        path: dest.display().to_string(),
+        sha256: actual,
+        size: downloaded,
+    })
 }
 
 /// Run the staged installer SILENT and exit. The UI has already collected
@@ -365,7 +658,9 @@ pub async fn app_download_update(
 pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<(), WorkbenchError> {
     let setup = PathBuf::from(&setup_path);
     if !setup.is_file() {
-        return Err(WorkbenchError::usage(format!("staged setup not found: {setup_path}")));
+        return Err(WorkbenchError::usage(format!(
+            "staged setup not found: {setup_path}"
+        )));
     }
     // Detached start: cmd /c start keeps the installer alive after we exit.
     #[cfg(windows)]
@@ -382,9 +677,7 @@ pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<()
             .spawn()
     };
     #[cfg(not(windows))]
-    let spawn = std::process::Command::new(&setup_path)
-        .arg("-S")
-        .spawn();
+    let spawn = std::process::Command::new(&setup_path).arg("-S").spawn();
     spawn.map_err(|e| WorkbenchError::usage(format!("installer spawn: {e}")))?;
     // Give the OS a beat to detach, then exit the app (files are in use).
     tokio::time::sleep(Duration::from_millis(600)).await;
@@ -452,6 +745,15 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn local_cli_version_reads_frozen_envelope_cli_version_field() {
+        let payload = br#"{"data":{"cli_version":"0.1.7.dev0","bundle_version":"0.1.7.dev0"}}"#;
+        assert_eq!(
+            cli_version_from_envelope(payload),
+            Some("0.1.7.dev0".to_string())
+        );
+    }
+
+    #[test]
     fn dash_version_normalizes_to_dot_dev() {
         assert_eq!(normalize_version("0.1.0-dev"), "0.1.0.dev0");
         assert_eq!(normalize_version("0.1.0"), "0.1.0");
@@ -466,6 +768,23 @@ mod tests {
         assert_eq!(parse_tag("v0.1.0.dev0"), None);
         assert_eq!(parse_tag("v0.1"), None);
         assert_eq!(parse_tag("0.1.0"), Some(((0, 1, 0), true, 0))); // v optional
+    }
+
+    #[test]
+    fn atom_feed_finds_newest_release_without_rate_limited_api() {
+        let atom = r#"
+        <feed><entry><id>tag:github.com,2008:Repository/1/v2.1.15-preview.6</id></entry>
+        <entry><id>tag:github.com,2008:Repository/1/v2.1.15-preview.7</id></entry>
+        <entry><id>tag:github.com,2008:Repository/1/v2.1.14</id></entry></feed>
+        "#;
+        let (latest, setup, sha, page) = pick_latest_atom(atom).unwrap();
+        assert_eq!(latest, "2.1.15-preview.7");
+        assert_eq!(setup, "https://github.com/Wifabric/AISC/releases/download/v2.1.15-preview.7/AISC-Workbench-2.1.15-preview.7-setup.exe");
+        assert_eq!(sha, "https://github.com/Wifabric/AISC/releases/download/v2.1.15-preview.7/AISC-Workbench-2.1.15-preview.7-setup.exe.sha256");
+        assert_eq!(
+            page,
+            "https://github.com/Wifabric/AISC/releases/tag/v2.1.15-preview.7"
+        );
     }
 
     #[test]
@@ -507,6 +826,25 @@ mod tests {
         ]);
         // No AISC-Workbench asset → setup URL is absent (asset? propagates).
         assert!(pick_latest(&releases).is_none());
+    }
+
+    #[test]
+    fn cli_behind_makes_combined_update_available_even_when_gui_is_current() {
+        assert!(combined_update_available(
+            false,
+            Some("0.1.7.dev0"),
+            Some("0.1.8.dev0"),
+        ));
+        assert!(!combined_update_available(
+            false,
+            Some("0.1.8.dev0"),
+            Some("0.1.8.dev0"),
+        ));
+        assert!(combined_update_available(
+            true,
+            Some("0.1.8.dev0"),
+            Some("0.1.8.dev0"),
+        ));
     }
 
     #[test]

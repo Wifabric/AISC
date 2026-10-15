@@ -594,6 +594,91 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _add_global_args(wl_rec, is_subparser=True)
     wl_rec.add_argument("--workspace", type=str, default=None)
+    # --- work-record (v2.1.15 b6: Work Record / Collection) ---
+    wrp = sub.add_parser("work-record",
+                         help="Provider conversation Work Record collections",
+                         allow_abbrev=False)
+    _add_global_args(wrp, is_subparser=True)
+    wrsub = wrp.add_subparsers(dest="work_record_command",
+                               title="work-record commands",
+                               parser_class=_AiscArgumentParser)
+    wr_list = wrsub.add_parser("list", help="List work records and unfiled sessions",
+                               allow_abbrev=False)
+    _add_global_args(wr_list, is_subparser=True)
+    wr_list.add_argument("--workspace", type=str, default=None)
+    wr_create = wrsub.add_parser("create", help="Create a work record", allow_abbrev=False)
+    _add_global_args(wr_create, is_subparser=True)
+    wr_create.add_argument("--workspace", type=str, default=None)
+    wr_create.add_argument("--title", required=True)
+    wr_rename = wrsub.add_parser("rename", help="Rename a work record", allow_abbrev=False)
+    _add_global_args(wr_rename, is_subparser=True)
+    wr_rename.add_argument("--workspace", type=str, default=None)
+    wr_rename.add_argument("--id", required=True)
+    wr_rename.add_argument("--title", required=True)
+    wr_act = wrsub.add_parser("activate", help="Set the active work record", allow_abbrev=False)
+    _add_global_args(wr_act, is_subparser=True)
+    wr_act.add_argument("--workspace", type=str, default=None)
+    wr_act.add_argument("--id", required=True)
+    wr_deact = wrsub.add_parser("deactivate", help="Clear the active work record",
+                                allow_abbrev=False)
+    _add_global_args(wr_deact, is_subparser=True)
+    wr_deact.add_argument("--workspace", type=str, default=None)
+    wr_arc = wrsub.add_parser("archive", help="Archive a work record", allow_abbrev=False)
+    _add_global_args(wr_arc, is_subparser=True)
+    wr_arc.add_argument("--workspace", type=str, default=None)
+    wr_arc.add_argument("--id", required=True)
+    wr_res = wrsub.add_parser("restore", help="Restore an archived work record",
+                              allow_abbrev=False)
+    _add_global_args(wr_res, is_subparser=True)
+    wr_res.add_argument("--workspace", type=str, default=None)
+    wr_res.add_argument("--id", required=True)
+    wr_add = wrsub.add_parser("add", help="Add a provider conversation", allow_abbrev=False)
+    _add_global_args(wr_add, is_subparser=True)
+    wr_add.add_argument("--workspace", type=str, default=None)
+    wr_add.add_argument("--id", required=True)
+    wr_add.add_argument("--agent", required=True, choices=["claude", "codex"])
+    wr_add.add_argument("--conversation-id", required=True)
+    wr_add.add_argument("--runtime-id", default=None)
+    wr_rem = wrsub.add_parser("remove", help="Remove a provider conversation",
+                              allow_abbrev=False)
+    _add_global_args(wr_rem, is_subparser=True)
+    wr_rem.add_argument("--workspace", type=str, default=None)
+    wr_rem.add_argument("--id", required=True)
+    wr_rem.add_argument("--agent", required=True, choices=["claude", "codex"])
+    wr_rem.add_argument("--conversation-id", required=True)
+    wr_reorder_collections = wrsub.add_parser(
+        "reorder-collections", help="Reorder work records", allow_abbrev=False)
+    _add_global_args(wr_reorder_collections, is_subparser=True)
+    wr_reorder_collections.add_argument("--workspace", type=str, default=None)
+    wr_reorder_collections.add_argument("--ids", required=True, nargs="+")
+    wr_reorder_members = wrsub.add_parser(
+        "reorder-members", help="Reorder members in a work record", allow_abbrev=False)
+    _add_global_args(wr_reorder_members, is_subparser=True)
+    wr_reorder_members.add_argument("--workspace", type=str, default=None)
+    wr_reorder_members.add_argument("--id", required=True)
+    wr_reorder_members.add_argument("--member-keys", required=True, nargs="+")
+    wr_reorder_unfiled = wrsub.add_parser(
+        "reorder-unfiled", help="Reorder unfiled provider conversations", allow_abbrev=False)
+    _add_global_args(wr_reorder_unfiled, is_subparser=True)
+    wr_reorder_unfiled.add_argument("--workspace", type=str, default=None)
+    wr_reorder_unfiled.add_argument("--member-keys", required=True, nargs="+")
+    wr_move = wrsub.add_parser(
+        "move", help="Move a member between work record and unfiled", allow_abbrev=False)
+    _add_global_args(wr_move, is_subparser=True)
+    wr_move.add_argument("--workspace", type=str, default=None)
+    wr_move.add_argument("--from-id", required=True)
+    wr_move.add_argument("--to-id", default=None)
+    wr_move.add_argument("--member-key", required=True)
+    wr_move.add_argument("--destination-order", default=None, nargs="+")
+    wr_del = wrsub.add_parser("delete", help="Delete a work record and member transcripts",
+                              allow_abbrev=False)
+    _add_global_args(wr_del, is_subparser=True)
+    wr_del.add_argument("--workspace", type=str, default=None)
+    wr_del.add_argument("--id", required=True)
+    wr_rec = wrsub.add_parser("reconcile", help="Auto-file new provider conversations",
+                              allow_abbrev=False)
+    _add_global_args(wr_rec, is_subparser=True)
+    wr_rec.add_argument("--workspace", type=str, default=None)
 
     # --- bundle (0.1.0 A3, guide 3.3.3) ---
     bp = sub.add_parser("bundle", help="Runtime bundle store (fetch from GitHub Releases)",
@@ -847,6 +932,8 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Workspace path (default: current directory)")
     sso.add_argument("--resume-id", type=str, default=None,
                      help="Provider conversation ID to resume (claude|codex only, v2.1.8 T4)")
+    sso.add_argument("--fork-session", action="store_true",
+                     help="Fork while resuming (Claude only, b8 R2)")
 
     # session list
     ssl = ssub.add_parser("list", help="List sessions in a runtime", allow_abbrev=False)
@@ -2116,6 +2203,87 @@ def _cmd_worklog(
                                  f"Unknown worklog subcommand: {sub}")]
 
 
+def _cmd_work_record(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Any, int, List[Dict[str, Any]]]:
+    """``aisc work-record`` — collection CRUD and provider cascade delete."""
+    from aisc.cli.commands.work_record import (
+        cmd_work_record_activate,
+        cmd_work_record_add,
+        cmd_work_record_archive,
+        cmd_work_record_create,
+        cmd_work_record_deactivate,
+        cmd_work_record_delete,
+        cmd_work_record_list,
+        cmd_work_record_move,
+        cmd_work_record_reconcile,
+        cmd_work_record_remove,
+        cmd_work_record_rename,
+        cmd_work_record_restore,
+        print_work_record_delete,
+        print_work_record_list,
+        cmd_work_record_reorder_collections,
+        cmd_work_record_reorder_members,
+        cmd_work_record_reorder_unfiled,
+    )
+
+    sub = args.work_record_command
+    workspace = args.workspace or os.getcwd()
+    if sub == "list":
+        data = cmd_work_record_list(workspace)
+        if effective_format != "json":
+            print_work_record_list(data)
+            return None, 0, []
+        return data, 0, []
+    if sub == "create":
+        return cmd_work_record_create(workspace, args.title), 0, []
+    if sub == "rename":
+        return cmd_work_record_rename(workspace, args.id, args.title), 0, []
+    if sub == "activate":
+        return cmd_work_record_activate(workspace, args.id), 0, []
+    if sub == "deactivate":
+        return cmd_work_record_deactivate(workspace), 0, []
+    if sub == "archive":
+        return cmd_work_record_archive(workspace, args.id), 0, []
+    if sub == "restore":
+        return cmd_work_record_restore(workspace, args.id), 0, []
+    if sub == "add":
+        return cmd_work_record_add(
+            workspace, args.id, args.agent, args.conversation_id,
+            runtime_id=args.runtime_id,
+        ), 0, []
+    if sub == "remove":
+        return cmd_work_record_remove(
+            workspace, args.id, args.agent, args.conversation_id
+        ), 0, []
+    if sub == "reorder-collections":
+        return cmd_work_record_reorder_collections(workspace, args.ids), 0, []
+    if sub == "reorder-members":
+        return cmd_work_record_reorder_members(workspace, args.id, args.member_keys), 0, []
+    if sub == "reorder-unfiled":
+        return cmd_work_record_reorder_unfiled(workspace, args.member_keys), 0, []
+    if sub == "move":
+        return cmd_work_record_move(
+            workspace,
+            args.from_id,
+            args.member_key,
+            to_collection_id=args.to_id,
+            destination_order=args.destination_order,
+        ), 0, []
+    if sub == "delete":
+        data = cmd_work_record_delete(workspace, args.id)
+        if effective_format != "json":
+            print_work_record_delete(data)
+            return None, 0, []
+        return data, 0, []
+    if sub == "reconcile":
+        return cmd_work_record_reconcile(workspace), 0, []
+    return None, 2, [build_error(
+        "AISC_ERR_USAGE", f"Unknown work-record subcommand: {sub}"
+    )]
+
+
 def _cmd_bundle(
     args: argparse.Namespace,
     effective_format: str,
@@ -2344,6 +2512,7 @@ def _cmd_session(
             agent=args.agent,
             workspace=args.workspace,
             resume_conversation_id=args.resume_id,
+            fork_session=args.fork_session,
         )
         errors: List[Dict[str, Any]] = []
         if exit_code != 0 and data.get("error"):
@@ -2920,6 +3089,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_conversation(args, effective_format)
         elif args.command == "worklog":
             data, exit_code, errors = _cmd_worklog(args, effective_format)
+        elif args.command == "work-record":
+            data, exit_code, errors = _cmd_work_record(args, effective_format)
         elif args.command == "artifact":
             data, exit_code, errors = _cmd_artifact(args, effective_format)
         elif args.command == "data-root":

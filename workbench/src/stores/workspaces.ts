@@ -50,6 +50,15 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
       .sort((a, b) => (b.last_used_at || "").localeCompare(a.last_used_at || ""));
   });
 
+  /** b13: the machine this WINDOW drives. Settings owns the source of truth;
+   * this non-circular mirror lets workspace instances capture identity at
+   * materialization without importing the settings store. */
+  const driveMachineName = ref<string | null>(null);
+  const runtimeMachines = new Map<string, string | null>();
+  function setDriveMachine(name: string | null): void {
+    driveMachineName.value = name;
+  }
+
   /** Workspace ids with unsaved changes (non-reactive bookkeeping). */
   const dirtyIds = new Set<string>();
   /** ONE debounce timer for ALL workspaces: the window opens on the first
@@ -135,7 +144,9 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
       // process already materialized the workspace — focus it, tell the
       // launcher to reset silently.
       focusExistingWorkspace: (path: string) => {
-        const dup = runtimes.value.find((r) => sameWorkspace(r.workspace.value, path));
+        const machine = driveMachineName.value;
+        const dup = runtimes.value.find((r) =>
+          sameWorkspace(r.workspace.value, path) && runtimeMachines.get(r.id) === machine);
         if (!dup) return false;
         activate(dup.id);
         return true;
@@ -219,12 +230,15 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
    * path — the just-started runtime is torn down, never the user's live one). */
   function materialize(): void {
     const from = launcher.value;
-    const dup = runtimes.value.find((r) => sameWorkspace(r.workspace.value, from.workspace.value));
+    const machine = driveMachineName.value;
+    const dup = runtimes.value.find((r) =>
+      sameWorkspace(r.workspace.value, from.workspace.value) && runtimeMachines.get(r.id) === machine);
     if (dup) {
       activate(dup.id);
       void discardFreshInstance(from);
       return;
     }
+    runtimeMachines.set(from.id, machine);
     runtimes.value = [...runtimes.value, from];
     activate(from.id);
     // Fresh launcher for the next workspace; it starts at the picker (not
@@ -279,7 +293,10 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
     // background. Take the chip away + hand focus to the neighbor now; the
     // staged session close + stop + verify + dispose run detached below.
     const idx = runtimes.value.indexOf(inst);
-    if (idx >= 0) runtimes.value = runtimes.value.filter((r) => r !== inst);
+    if (idx >= 0) {
+      runtimes.value = runtimes.value.filter((r) => r !== inst);
+      runtimeMachines.delete(inst.id);
+    }
     const list = runtimes.value;
     const neighbor = list.length > 0 ? list[Math.min(idx, list.length - 1)] : launcher.value;
     activate(neighbor.id);
@@ -460,14 +477,14 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
     return ipc.workspaceForgetPreview(path);
   }
 
-  async function forgetWorkspace(path: string): Promise<ForgetResult> {
+  async function forgetWorkspace(path: string, machineName?: string | null): Promise<ForgetResult> {
     // Drain any debounced merged-history save FIRST: an in-flight save bumps
     // the disk revision mid-transaction and CAS-kills the forget (2026-08-27
     // manual test on workspace "bb"). The backend still auto-retries once on
     // conflict, but not racing in the first place is the better half.
     await flushSave();
     try {
-      return await ipc.workspaceForget(path, historyRevision.value);
+      return await ipc.workspaceForget(path, machineName, historyRevision.value);
     } finally {
       // Refresh even on failure so a CAS-conflict retry uses the fresh
       // revision (the caller keeps its dialog open and can retry).
@@ -518,9 +535,9 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
   }
 
   /** ⑧ "clear the moved/deleted record": drops the history entry only. */
-  async function clearHistoryEntry(path: string): Promise<void> {
+  async function clearHistoryEntry(path: string, machineName?: string | null): Promise<void> {
     try {
-      await ipc.workspaceHistoryRemove(path, historyRevision.value);
+      await ipc.workspaceHistoryRemove(path, machineName, historyRevision.value);
     } finally {
       await loadHistory();
     }
@@ -544,22 +561,33 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
    * the same InvalidPathDialog its own click path uses (forget/clear +
    * lifecycle export — P1-3). Store-routed per F-A01. */
   const pendingInvalidPath = ref<string | null>(null);
-  function surfaceInvalidPath(path: string): void {
+  const pendingInvalidMachine = ref<string | null>(null);
+  function surfaceInvalidPath(path: string, machineName?: string | null): void {
     pendingInvalidPath.value = path;
+    pendingInvalidMachine.value = machineName ?? null;
   }
   function consumeInvalidPath(): string | null {
     const p = pendingInvalidPath.value;
     pendingInvalidPath.value = null;
     return p;
   }
+  function consumeInvalidMachine(): string | null {
+    const machine = pendingInvalidMachine.value;
+    pendingInvalidMachine.value = null;
+    return machine;
+  }
   /** 手测 r11: the dead-recent dialog's actions, shared by the picker and
    * the app-level overlay (mirrors the picker's original local handlers). */
-  async function clearInvalidRecent(path: string, purgeData: boolean): Promise<void> {
+  async function clearInvalidRecent(
+    path: string,
+    purgeData: boolean,
+    machineName?: string | null,
+  ): Promise<void> {
     try {
       if (purgeData) {
-        await forgetWorkspace(path);
+        await forgetWorkspace(path, machineName);
       } else {
-        await clearHistoryEntry(path);
+        await clearHistoryEntry(path, machineName);
       }
     } catch {
       /* record-only clear is best-effort; history reloads next open */
@@ -573,8 +601,8 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
   const browseBusy = ref(false);
   const browseError = ref<string | null>(null);
 
-  /** One directory page of the remote picker's browse dialog, pinned at the
-   *  remote $HOME. `path` optional/absolute POSIX; undefined = the root. */
+  /** One directory page of the remote picker's browse dialog. `path` is an
+   *  absolute remote POSIX/Windows path; undefined starts at remote home. */
   async function browseRemote(
     path?: string,
     includeHidden?: boolean,
@@ -594,6 +622,7 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
   return {
     // constants/state
     runtimes,
+    setDriveMachine,
     launcher,
     activeId,
     activeRuntime,
@@ -622,8 +651,10 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
     closeWindowScoped,
     hideWindowForExit,
     pendingInvalidPath,
+    pendingInvalidMachine,
     surfaceInvalidPath,
     consumeInvalidPath,
+    consumeInvalidMachine,
     clearInvalidRecent,
     exportInvalidRecent,
     browseBusy,

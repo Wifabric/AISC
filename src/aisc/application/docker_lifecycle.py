@@ -79,6 +79,13 @@ def _ps_rows(executor: Any) -> List[Dict[str, str]]:
     return rows
 
 
+def _docker_bool(value: Any) -> bool:
+    """Parse Docker machine-format booleans (JSON, raw JSON, or strings)."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
+
+
 def _image_universe(executor: Any) -> List[Dict[str, Any]]:
     """All images as {repository, tag, id, ref} rows (no labels)."""
     try:
@@ -178,6 +185,7 @@ def classify_images(
     owned_ids: Iterable[str] = (),
     dangling_ids: Iterable[str] = (),
     old_image_ids: Iterable[str] = (),
+    managed_base_ids: Iterable[str] = (),
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], List[Dict[str, Any]]]:
     """Three-tier image classification + evidence-backed dangling set.
 
@@ -192,6 +200,7 @@ def classify_images(
     owned = {i for i in owned_ids if i}
     dangling_set = {i for i in dangling_ids if i}
     old_ids = {i for i in old_image_ids if i}
+    base_ids = {i for i in managed_base_ids if i}
     for row in rows:
         entry = {
             "id": row["id"], "name": row["ref"] or row["id"],
@@ -210,6 +219,12 @@ def classify_images(
         elif row["id"] in owned:
             entry.update({"ownership": "owned", "state": "present", "reason": "label"})
             buckets["owned"].append(entry)
+        elif row["id"] in base_ids:
+            entry.update({
+                "ownership": "legacy_owned", "state": "present",
+                "reason": "layer-provenance",
+            })
+            buckets["legacy_owned"].append(entry)
         elif row["ref"] == DEFAULT_IMAGE_TAG and context != "first_install":
             entry.update({"ownership": "legacy_owned", "state": "present",
                           "reason": "default-tag"})
@@ -226,6 +241,50 @@ def classify_images(
 # ---------------------------------------------------------------------------
 # Scan
 # ---------------------------------------------------------------------------
+
+def _image_rootfs_layers(executor: Any, image_id: str) -> List[str]:
+    try:
+        result = executor.run_captured(
+            ["image", "inspect", image_id, "--format", "{{json .RootFS.Layers}}"],
+            timeout=30.0,
+        )
+    except Exception:
+        return []
+    if getattr(result, "exit_code", 1) != 0:
+        return []
+    try:
+        value = json.loads((result.stdout or "").strip())
+    except (TypeError, ValueError):
+        return []
+    return [str(layer) for layer in value] if isinstance(value, list) else []
+
+
+def _managed_base_image_ids(
+    executor: Any,
+    rows: List[Dict[str, Any]],
+    owned_ids: List[str],
+) -> set:
+    """Identify base images proven by layer-prefix containment in an AISC image."""
+    owned_layers = [
+        layers for layers in (
+            _image_rootfs_layers(executor, image_id)
+            for image_id in dict.fromkeys(owned_ids)
+        ) if layers
+    ]
+    if not owned_layers:
+        return set()
+    out: set = set()
+    seen_ids: set = set()
+    for row in rows:
+        image_id = str(row.get("id") or "")
+        if not image_id or image_id in seen_ids or image_id in owned_ids:
+            continue
+        seen_ids.add(image_id)
+        candidate = _image_rootfs_layers(executor, image_id)
+        if candidate and any(final[:len(candidate)] == candidate for final in owned_layers):
+            out.add(image_id)
+    return out
+
 
 def docker_scan(
     executor: Any,
@@ -250,12 +309,15 @@ def docker_scan(
         return payload
     registry = _registry_evidence(data_root)
     payload["containers"] = classify_containers(_ps_rows(executor), registry)
+    owned_ids = _filtered_image_ids(executor, "label=org.aisc.managed=true")
+    image_universe = _image_universe(executor)
     payload["images"], payload["dangling_owned"] = classify_images(
-        _image_universe(executor),
+        image_universe,
         context=context,
-        owned_ids=_filtered_image_ids(executor, "label=org.aisc.managed=true"),
+        owned_ids=owned_ids,
         dangling_ids=_filtered_image_ids(executor, "dangling=true"),
         old_image_ids=old_image_ids,
+        managed_base_ids=_managed_base_image_ids(executor, image_universe, owned_ids),
     )
     return payload
 
@@ -660,6 +722,29 @@ def _buildx_du(executor: Any) -> Optional[List[Dict[str, Any]]]:
     return rows or None
 
 
+def _group_image_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse repo tags sharing one image ID; aliases are not double disk."""
+    grouped: Dict[str, Dict[str, Any]] = {}
+    ordered: List[Dict[str, Any]] = []
+    for row in rows:
+        image_id = str(row.get("id") or "")
+        if not image_id:
+            ordered.append(row)
+            continue
+        existing = grouped.get(image_id)
+        if existing is None:
+            copy = dict(row)
+            grouped[image_id] = copy
+            ordered.append(copy)
+            continue
+        refs = str(existing.get("name") or "").split(", ")
+        name = str(row.get("name") or "")
+        if name and name not in refs:
+            refs.append(name)
+            existing["name"] = ", ".join(refs)
+    return ordered
+
+
 def _images_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Image rows. df -v Images is the ONLY real Unique/Shared source on
     Docker 29 (image ls --format json reports N/A placeholders there); the
@@ -687,7 +772,7 @@ def _images_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> List[Dict[str
             })
     dv = (df_v or {}).get("Images")
     if not isinstance(dv, list) or not dv:
-        return fallback
+        return _group_image_rows(fallback)
     for row in dv:
         if not isinstance(row, dict):
             continue
@@ -711,7 +796,7 @@ def _images_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> List[Dict[str
             "reclaimable_bytes": (0 if in_use else unique),
             "will_be_cleaned": dangling,
         })
-    return rows
+    return _group_image_rows(rows)
 
 
 def _container_rows(executor: Any) -> List[Dict[str, Any]]:
@@ -788,13 +873,13 @@ def _cache_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> Tuple[List[Dic
         for row in dv:
             if not isinstance(row, dict):
                 continue
-            in_use = bool(row.get("InUse"))
+            in_use = _docker_bool(row.get("InUse"))
             size_bytes = _size_bytes(row.get("Size"))
             rows.append({
                 "id": str(row.get("ID") or ""),
                 "kind": str(row.get("CacheType") or row.get("Type") or ""),
                 "in_use": in_use,
-                "shared": bool(row.get("Shared")),
+                "shared": _docker_bool(row.get("Shared")),
                 "size": row.get("Size"),
                 "size_bytes": size_bytes,
                 "reclaimable_bytes": (0 if in_use else (size_bytes or 0)),
@@ -806,13 +891,13 @@ def _cache_rows(executor: Any, df_v: Optional[Dict[str, Any]]) -> Tuple[List[Dic
     bx = _buildx_du(executor)
     if bx is not None:
         for row in bx:
-            reclaimable = bool(row.get("Reclaimable"))
+            reclaimable = _docker_bool(row.get("Reclaimable"))
             size_bytes = _size_bytes(row.get("Size"))
             rows.append({
                 "id": str(row.get("ID") or ""),
                 "kind": str(row.get("Type") or row.get("CacheType") or ""),
                 "in_use": not reclaimable,
-                "shared": bool(row.get("Shared")),
+                "shared": _docker_bool(row.get("Shared")),
                 "size": row.get("Size"),
                 "size_bytes": size_bytes,
                 "reclaimable_bytes": ((size_bytes or 0) if reclaimable else 0),
@@ -1246,4 +1331,4 @@ def image_management_tag(
         "ref": ref,
         "argv": argv,
         "warnings": [],
-    }
+    }

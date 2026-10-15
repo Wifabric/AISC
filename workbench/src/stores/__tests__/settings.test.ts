@@ -17,6 +17,7 @@ const mockIpc = vi.hoisted(() => ({
   resetGuiSettings: vi.fn(),
   resolveLocale: vi.fn().mockResolvedValue("zh-CN"),
   dockerScan: vi.fn(),
+  cacheCleanup: vi.fn().mockResolvedValue({ prunes: [], warnings: [], rows_after: [] }),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
   targetGet: vi.fn().mockResolvedValue(null),
@@ -200,6 +201,18 @@ describe("docker admin panel (2.1.12 B3)", () => {
     expect(s.dockerReport?.dockerAvailable).toBe(true);
     expect(s.dockerLog.some((l) => l.includes("w-scan"))).toBe(true);
     expect(s.dockerError).toBeNull();
+  });
+
+  it("keeps the serve protocol technical detail for remote upgrade guidance", async () => {
+    mockIpc.dockerScan.mockRejectedValue({
+      message: "AISC CLI 输出不符合协议",
+      technical_detail: "serve protocol mismatch: client 4, remote 3 — upgrade the aisc CLI on the target machine",
+    });
+    const s = useSettingsStore();
+    await s.loadDockerScan();
+    expect(s.dockerError).toContain("AISC CLI 输出不符合协议");
+    expect(s.dockerError).toContain("client 4, remote 3");
+    expect(s.dockerError).toContain("upgrade the aisc CLI");
   });
 
   it("loadDockerScan failure lands in dockerError, report untouched", async () => {

@@ -493,8 +493,9 @@ function canReopen(s: TabSessionState): boolean {
   gap: 2px;
   padding: 3px 6px;
   background: var(--surface);
-  /* FIX-3: bottom border removed — the resize divider (WorkspaceView's
-   * .tab-divider) is now the visual + interactive edge (no 7px double line) */
+  /* b4 F1: the top bar is not a resize boundary; this is the plain visual
+   * edge between tabs and terminal area. */
+  border-bottom: var(--border-w) solid var(--border-2);
   flex-shrink: 0;
   /* UX-02: many tabs at a narrow tier scroll instead of squishing */
   overflow-x: auto;

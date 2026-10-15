@@ -49,6 +49,7 @@ def cmd_session_open(
     workspace: Optional[str] = None,
     executor: Optional[DockerExecutor] = None,
     resume_conversation_id: Optional[str] = None,
+    fork_session: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Execute ``aisc session open`` per contract §6.1.
 
@@ -72,6 +73,7 @@ def cmd_session_open(
         executor=exec_,
         registry_root=reg_root,
         resume_conversation_id=resume_conversation_id,
+        fork_session=fork_session,
     )
 
     exit_code = proc.exit_code if proc.exit_code >= 0 else 1

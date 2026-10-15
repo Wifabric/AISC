@@ -654,6 +654,7 @@ pub async fn spawn_serve_pty_session(
     agent: &str,
     workspace: &str,
     resume_conversation_id: Option<&str>,
+    fork_session: bool,
     cols: u16,
     rows: u16,
     event_tx: mpsc::Sender<PtyEvent>,
@@ -690,6 +691,9 @@ pub async fn spawn_serve_pty_session(
     });
     if let Some(r) = resume_conversation_id {
         open_args["resume_conversation_id"] = serde_json::json!(r);
+        if fork_session {
+            open_args["fork_session"] = serde_json::json!(true);
+        }
     }
     let envelope = session
         .request(
