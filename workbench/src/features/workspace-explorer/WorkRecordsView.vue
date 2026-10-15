@@ -126,13 +126,16 @@ async function commitConversationRename(item: ConversationSummary) {
   await records.reload();
 }
 
-async function deleteConversation(item: ConversationSummary) {
+async function deleteConversation(item: ConversationSummary, collectionId?: string | null) {
   const ok = await confirm(
     t("explorer.conversations.deleteConfirm", { title: item.title }),
     { kind: "warning", title: t("explorer.conversations.deleteTitle") },
   );
   if (!ok) return;
   await explorer.deleteConversation(item);
+    if (collectionId) {
+      await records.removeMember(collectionId, item.agent, item.conversation_id);
+    }
   await records.reload();
 }
 
@@ -466,7 +469,7 @@ watch(() => props.workspace, async (workspace) => {
       <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
         <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
         <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
-        <button type="button" @click="deleteConversation(memberConversation(contextMenu.memberKey)!); closeMenu()">{{ t("workRecords.delete") }}</button>
+        <button type="button" @click="deleteConversation(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
         <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
         <template v-for="collection in records.activeCollections" :key="collection.id">
           <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ t("workRecords.moveTo", { title: collection.title }) }}</button>
@@ -477,20 +480,20 @@ watch(() => props.workspace, async (workspace) => {
 </template>
 
 <style scoped>
-.work-records-panel { gap: var(--space-2); overflow: auto; }
+.work-records-panel { gap: var(--space-2); overflow: auto; width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
 .work-record-switches { display:flex; align-items:center; gap:var(--space-1); flex-wrap:wrap; }
 .work-record-checkbox { display:inline-flex; gap:4px; align-items:center; font-size:var(--font-sm); }
 .work-record-create { display:flex; gap:var(--space-1); }
 .work-record-create input { min-width:0; flex:1; }
-.work-record { border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2); background:var(--surface); }
+.work-record { border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2); background:var(--surface); box-sizing:border-box; width:100%; max-width:100%; min-width:0; overflow:hidden; }
 .work-record.active { border-color:var(--accent); }
 .work-record-head { display:flex; align-items:center; gap:var(--space-1); min-height:28px; }
 .collection-title { margin:0; min-width:80px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .title-input { height:20px; min-width:40px; flex:1; padding:0 4px; background:var(--surface-3); color:var(--text); border:var(--border-w) solid var(--accent); border-radius:var(--radius-sm); font:inherit; outline:none; }
 .head-actions { display:flex; align-items:center; gap:2px; flex:0 0 auto; }
 .work-record-active, .work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; white-space:nowrap; }
-.work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; gap:4px; min-height:24px; }
-.work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; }
+.work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; grid-template-columns:minmax(0,1fr); gap:4px; min-height:24px; max-width:100%; }
+.work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
 .work-record-members li:hover, .unfiled-row:hover { background:var(--surface-hover); }
 .member-title { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .member-agent { color:var(--text-faint); font-size:var(--font-xs); }

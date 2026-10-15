@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -131,6 +132,62 @@ class ServeInProcessTests(unittest.TestCase):
         from aisc.cli.commands import serve as srv
 
         return srv.ServeRuntime(io.StringIO())
+
+    def test_emit_bypasses_a_noop_textio_flush_on_windows_ssh_pipes(self) -> None:
+        """Field evidence: PyInstaller over Windows SSH can buffer TextIO.
+
+        Keeping stdin open showed no ready banner; it appeared only when the
+        process exited. Serve must write frames to the underlying OS pipe.
+        """
+        from aisc.cli.commands import serve as srv
+
+        class BufferedPipeIO(io.TextIOBase):
+            def __init__(self, fd: int) -> None:
+                self.fd = fd
+                self.buffer = ""
+
+            def fileno(self) -> int:
+                return self.fd
+
+            def write(self, value: str) -> int:
+                self.buffer += value
+                return len(value)
+
+            def flush(self) -> None:
+                pass  # deliberately model the broken wrapper behavior
+
+        rfd, wfd = os.pipe()
+        os.set_blocking(rfd, False)
+        self.addCleanup(os.close, rfd)
+        self.addCleanup(os.close, wfd)
+        runtime = srv.ServeRuntime(BufferedPipeIO(wfd))
+        runtime._emit({"type": "ready", "serve_protocol": 4})
+        time.sleep(0.01)
+        try:
+            raw = os.read(rfd, 4096)
+        except BlockingIOError:
+            raw = b''
+        self.assertIn(b'"type":"ready"', raw)
+        self.assertIn(b'"serve_protocol":4', raw)
+    def test_serve_does_not_reconfigure_a_blocked_frozen_stdin(self) -> None:
+        """Windows PyInstaller field evidence: stdin.reconfigure can block
+        until the SSH pipe closes, delaying the ready banner forever."""
+        import argparse
+        from aisc.cli.commands import serve as srv
+
+        class FrozenStdin:
+            def readline(self):
+                return ""
+
+            def reconfigure(self, **_kwargs):
+                raise AssertionError("stdin reconfigure must not be called")
+
+        stdout = io.StringIO()
+        ns = argparse.Namespace(stdio=True)
+        with mock.patch.object(srv.sys, "stdin", FrozenStdin()), \
+                mock.patch.object(srv.sys, "stdout", stdout):
+            self.assertEqual(srv.cmd_serve(ns), 0)
+        self.assertIn('"type":"ready"', stdout.getvalue())
 
     def test_cli_error_maps_to_envelope_errors(self) -> None:
         from aisc.cli.commands import serve as srv

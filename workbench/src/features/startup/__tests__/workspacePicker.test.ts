@@ -329,6 +329,21 @@ describe("F2-B: remote browse dialog (explorer model: click selects, dblclick de
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
 
+  it("opens the remote browser for a Windows drive-letter workspace path", async () => {
+    mockIpc.remoteBrowse.mockResolvedValue({
+      cwd: "C:/Users/admin", root: "C:/Users/admin",
+      entries: [{ name: "test-ws", isDir: true }],
+    });
+    const w = await mountRemote();
+    const ws = useWorkspacesStore();
+    ws.activeRuntime.workspace.value = "C:\\Users\\admin";
+    const btn = w.findAll("button").find((b) => b.text() === "选择")!;
+    await btn.trigger("click");
+    await flushPromises();
+    expect(mockIpc.remoteBrowse).toHaveBeenLastCalledWith("C:\\Users\\admin", false);
+    expect(w.find(".browse-path").text()).toBe("C:/Users/admin");
+  });
+
   it("local target: browse keeps the native dialog path (no remote IPC)", async () => {
     const w = mountPicker();
     await flushPromises();

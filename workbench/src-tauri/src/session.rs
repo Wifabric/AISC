@@ -334,10 +334,10 @@ pub async fn canonical_workspace_for(
     match target {
         crate::cli::CliTarget::Local(_) => canonical_workspace(raw),
         crate::cli::CliTarget::Remote(t) => {
-            let root = raw.trim_end_matches('/').to_string();
-            if !root.starts_with('/') {
+            let root = raw.trim().replace('\\', "/").trim_end_matches('/').to_string();
+            if !crate::workspace::is_remote_absolute_path(&root) {
                 return Err(WorkbenchError::map_aisc("AISC_ERR_WORKSPACE_INVALID")
-                    .with_detail(format!("remote workspace must be an absolute path: {raw}")));
+                    .with_detail(format!("remote workspace must be an absolute POSIX or Windows path: {raw}")));
             }
             let pool = crate::serve::global_pool();
             crate::serve::fs_op(

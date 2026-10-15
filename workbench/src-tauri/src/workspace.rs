@@ -996,19 +996,29 @@ pub struct RemoteBrowseResult {
 /// Normalize a requested absolute POSIX path and keep it inside `root`:
 /// `.` and `..` fold away (F1 browse-pinning precedent — a plain prefix
 /// check would let `/root/a/../x` through), empty/`/` means the root.
+pub(crate) fn is_remote_absolute_path(path: &str) -> bool {
+    let value = path.trim();
+    value.starts_with('/')
+        || (value.len() >= 3
+            && value.as_bytes()[1] == b':'
+            && value.as_bytes()[0].is_ascii_alphabetic())
+}
+
 fn normalize_under_root(root: &str, requested: &str) -> Result<String, WorkbenchError> {
-    let root_abs = root.trim_end_matches('/');
+    let root_normalized = root.replace('\\', "/");
+    let root_abs = root_normalized.trim_end_matches('/');
     if root_abs.is_empty() {
         return Err(WorkbenchError::workspace_invalid().with_detail("browse root is empty"));
     }
-    let req = requested.trim();
+    let req_normalized = requested.trim().replace('\\', "/");
+    let req = req_normalized.as_str();
     let joined = if req.is_empty() || req == "/" {
         root_abs.to_string()
-    } else if req.starts_with('/') {
+    } else if req.starts_with('/') || (req.len() >= 3 && req.as_bytes()[1] == b':' && req.as_bytes()[0].is_ascii_alphabetic()) {
         req.to_string()
     } else {
         return Err(WorkbenchError::workspace_invalid()
-            .with_detail("browse path must be absolute (e.g. /home/user/proj)"));
+            .with_detail("browse path must be absolute (e.g. /home/user/proj or C:/Users/user/proj)"));
     };
     let mut segs: Vec<&str> = Vec::new();
     for seg in joined.split('/') {
@@ -1023,8 +1033,15 @@ fn normalize_under_root(root: &str, requested: &str) -> Result<String, Workbench
             s => segs.push(s),
         }
     }
+    let drive = segs.first().filter(|s| {
+        s.len() == 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic()
+    }).copied();
+    let body = if drive.is_some() { &segs[1..] } else { &segs[..] };
     let mut abs = String::new();
-    for s in &segs {
+    if let Some(drive) = drive {
+        abs.push_str(drive);
+    }
+    for s in body {
         abs.push('/');
         abs.push_str(s);
     }
@@ -1074,8 +1091,9 @@ pub async fn remote_browse_core(
         .clone()
         .ok_or_else(|| WorkbenchError::cli_protocol()
             .with_detail("remote serve lacks the v1.3 home anchor — upgrade the remote aisc CLI"))?
-        .trim_end_matches('/')
-        .to_string();
+        ;
+    let root = normalize_under_root(&root, "")?;
+
     let cwd = normalize_under_root(&root, path.unwrap_or(""))?;
 
     // Page through fs.list until exhausted (cap guards a runaway listing).
@@ -1142,7 +1160,7 @@ pub async fn workspace_path_exists(
             fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
         }
         Some(t) => {
-            if !path.starts_with('/') {
+            if !is_remote_absolute_path(&path) {
                 return false; // a local-machine path under a remote target
             }
             let pool = crate::serve::global_pool();
@@ -2624,6 +2642,30 @@ mod tests {
         assert_eq!(normalize_under_root("/home/tv", "/home/tv").unwrap(), "/home/tv");
         // trailing slashes on the root argument fold away
         assert_eq!(normalize_under_root("/home/tv/", "/home/tv/p").unwrap(), "/home/tv/p");
+    }
+
+    #[test]
+    fn browse_root_supports_windows_drive_letter_paths() {
+        assert_eq!(normalize_under_root("C:\\Users\\admin", "").unwrap(), "C:/Users/admin");
+        assert_eq!(
+            normalize_under_root("C:\\Users\\admin", "C:/Users/admin/proj").unwrap(),
+            "C:/Users/admin/proj"
+        );
+        assert_eq!(
+            normalize_under_root("C:/Users/admin", "C:\\Users\\admin\\a\\..\\b").unwrap(),
+            "C:/Users/admin/b"
+        );
+        assert!(normalize_under_root("C:/Users/admin", "D:/Users/admin/x").is_err());
+        assert!(normalize_under_root("C:/Users/admin", "C:/Windows").is_err());
+    }
+
+    #[test]
+    fn recognizes_posix_and_windows_remote_absolute_paths() {
+        assert!(is_remote_absolute_path("/home/admin/project"));
+        assert!(is_remote_absolute_path("C:/Users/admin/project"));
+        assert!(is_remote_absolute_path("C:\\Users\\admin\\project"));
+        assert!(!is_remote_absolute_path("Users/admin/project"));
+        assert!(!is_remote_absolute_path("relative"));
     }
 
     #[test]

@@ -118,10 +118,27 @@ class ServeRuntime:
         self.fs_watches = WatchRegistry(self._emit)
 
     def _emit(self, frame: Dict[str, Any]) -> None:
-        line = _frame(frame) + "\n"
+        payload = (_frame(frame) + "\n").encode("ascii")
         with self._write_lock:
-            self._stdout.write(line)
-            self._stdout.flush()
+            # Windows OpenSSH + PyInstaller can expose a TextIO whose flush()
+            # does not drain its internal buffer to the SSH pipe (b12 field
+            # evidence: the ready banner appeared only when stdin EOF killed
+            # serve). Write frames through the real OS descriptor; StringIO
+            # test doubles fall back to the ordinary text path.
+            try:
+                fd = self._stdout.fileno()
+            except (AttributeError, OSError, ValueError):
+                fd = None
+            if fd is None:
+                self._stdout.write(payload.decode("ascii"))
+                self._stdout.flush()
+                return
+            view = memoryview(payload)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise OSError("serve stdout pipe made no progress")
+                view = view[written:]
 
     def _on_output(self, sid: str) -> Callable[[bytes], None]:
         def push(chunk: bytes) -> None:
@@ -468,17 +485,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
             error_code="AISC_ERR_USAGE",
             hint="Remote callers spawn: ssh <host> aisc serve --stdio",
         )
-    # 2.1.11 step2: the wire contract is UTF-8 JSON-lines in BOTH
-    # directions. stdout is ASCII-safe via _frame's escaping, but the CLIENT
-    # writes unescaped UTF-8 (serde_json does not ASCII-escape) — a CJK
-    # workspace path in argv would hit a GBK stdin decoder on zh-CN Windows.
-    # Reconfigure the real handles where the wrapper allows it (PyInstaller
-    # wrappers may not expose reconfigure; the try/except is deliberate).
-    for handle in (sys.stdin, sys.stdout):
-        try:
-            handle.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-        except (AttributeError, ValueError, OSError):
-            pass
+    # b12: neither frozen TextIO handle may be reconfigured: on Windows
+    # PyInstaller over SSH either reconfigure call can block until EOF.
+    # Input is decoded from its binary buffer; output uses ServeRuntime's
+    # low-level descriptor writer below.
     return _serve_loop(sys.stdin, sys.stdout)
 
 

@@ -150,11 +150,15 @@ const browseSelected = ref<string | null>(null);
 const browseShowHidden = ref(false);
 const browseQuery = ref("");
 
+function isRemoteAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
 function onBrowse(): void {
   if (target.value?.kind === "remote") {
     // Start where the input points when it already names a remote path.
     const cur = store.workspace.trim();
-    void openBrowse(cur.startsWith("/") ? cur : undefined);
+    void openBrowse(isRemoteAbsolutePath(cur) ? cur : undefined);
   } else {
     store.pickWorkspace();
   }

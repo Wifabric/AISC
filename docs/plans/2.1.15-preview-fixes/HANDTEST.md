@@ -166,3 +166,35 @@
 - 拖拽后刷新回跳或成员丢失 → fail；
 - 重命名输入框常驻 → fail；
 - 顶部会话切换未激活所属 Collection → fail。
+
+## b12-T1：preview.3 字段反馈回归
+
+### 前置准备
+
+- 本机安装包含 b12 的 Workbench；Windows 远端安装包含 b12 的 CLI（`0.1.6.dev0` 或同源 sidecar）。
+- Work Records 中准备一个标题超过 120 字符的会话。
+- 远端机器可浏览 `C:/Users/admin` 且有可启动 workspace。
+
+### 操作
+
+1. 打开 Work Records，检查长标题行和左侧栏边界；
+2. 右键会话选择删除，确认后检查列表；
+3. 选择远端主机后点击“选择”，浏览远端目录并选择 workspace；
+4. 启动 runtime 并打开 bash；
+5. 设置 → 关于与更新 → 点击检查更新，等待结果后再点击一次。
+
+### 理想结果
+
+- 长标题 ellipsis，行/卡片不横向溢出左侧栏；
+- 删除确认后 ledger member 立即消失，不残留“引用缺失”；
+- 远端目录树从远端 home 开始，可进入/返回/选择，支持 `C:/...`；
+- 远端 bash 出现 `root@<container>:~/app$` prompt，输入可达；
+- 更新检查始终显示结果，并提供“再次检查”；网络失败显示 note 且可重试。
+
+### 异常判定
+
+- 行或卡片撑破左侧栏 → fail；
+- 删除后需手动“移除”才消失 → fail；
+- 远端浏览仍要求手输路径或不支持 drive letter → fail；
+- bash 无 prompt / 无输出 → fail；
+- 检查按钮消失或点击后无任何状态/结果 → fail。

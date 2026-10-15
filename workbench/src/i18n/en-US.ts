@@ -621,6 +621,7 @@ export const enUS: Record<string, string> = {
   "settings.about.latest": "Latest version",
   "settings.about.unknown": "unknown",
   "settings.about.check": "Check for updates",
+  "settings.about.checkAgain": "Check again",
   "settings.about.checking": "Checking…",
   "settings.about.upToDate": "Up to date.",
   "settings.about.download": "Download update",

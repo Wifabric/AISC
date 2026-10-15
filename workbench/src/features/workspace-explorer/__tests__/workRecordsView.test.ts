@@ -4,9 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
+import componentSource from "../WorkRecordsView.vue?raw";
 import { i18n } from "../../../i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import {
+  conversationDelete,
   conversationList,
   conversationPreflight,
   workRecordAddMember,
@@ -442,6 +444,40 @@ describe("WorkRecordsView", () => {
     expect(menu.exists()).toBe(true);
     expect(menu.text()).toContain("恢复");
     expect(menu.text()).toContain("移入 Feature");
+  });
+
+  it("removes the ledger member automatically after context-menu delete", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "/ws";
+    explorer.conversations = [provider];
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n], stubs: { Teleport: { template: '<div><slot /></div>' } } },
+    });
+    await flushPromises();
+    vi.mocked(conversationDelete).mockResolvedValue({ deleted: true, conversation_id: conversationId, agent: "codex" });
+    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("contextmenu", { clientX: 10, clientY: 10 });
+    await flushPromises();
+    const menu = wrapper.find("[data-testid=work-record-context-menu]");
+    expect(menu.exists()).toBe(true);
+    const del = menu.findAll("button").find((b) => b.text() === "删除")!;
+    await del.trigger("click");
+    await flushPromises();
+    expect(conversationDelete).toHaveBeenCalled();
+    expect(workRecordRemoveMember).toHaveBeenCalledWith("/ws", "active-1", "codex", conversationId);
+    expect(workRecordList).toHaveBeenCalledTimes(2); // initial load + joined refresh after member removal
+  });
+
+  it("keeps long member rows bounded by the work record card", async () => {
+    const source = componentSource;
+    expect(source).toContain(".work-record {");
+    expect(source).toContain("max-width:100%;");
+    expect(source).toContain(".work-record-members, .work-record-failures ul {");
+    expect(source).toContain("grid-template-columns:minmax(0,1fr);");
+    expect(source).toContain(".work-record-members li, .unfiled-row {");
+    expect(source).toContain("min-width:0;");
+    expect(source).toContain(".member-title {");
+    expect(source).toContain("overflow:hidden;");
   });
 
   it("disables resume for a missing transcript", async () => {

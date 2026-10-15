@@ -26,6 +26,9 @@ const mockIpc = vi.hoisted(() => ({
   dockerScan: vi.fn(),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
+  appCheckUpdate: vi.fn(),
+  appDownloadUpdate: vi.fn(),
+  appInstallUpdate: vi.fn(),
   lowSpecStatus: vi.fn().mockResolvedValue({ totalRam: 16 * 1024 ** 3, lowSpec: false }),
 }));
 
@@ -105,6 +108,23 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     expect(wrapper.findAll("h3.group").map((h) => h.text())).not.toContain(
       i18n.global.t("settings.group.ui"),
     );
+  });
+
+  it("keeps the update check button available after a completed check", async () => {
+    mockIpc.appCheckUpdate.mockResolvedValue({
+      current: "2.1.15-preview.3", latest: "2.1.15-preview.3", updateAvailable: false,
+      setupUrl: null, sha256Url: null, releaseUrl: null, note: "",
+    });
+    const store = useSettingsStore();
+    await store.load();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
+    await check.trigger("click");
+    await Promise.resolve();
+    expect(mockIpc.appCheckUpdate).toHaveBeenCalledTimes(1);
+    const checkAgain = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.checkAgain"));
+    expect(checkAgain?.exists()).toBe(true);
   });
 
   it("renders the low-spec memory/cpus inputs when lowSpec is on", async () => {

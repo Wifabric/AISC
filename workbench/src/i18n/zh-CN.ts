@@ -621,6 +621,7 @@ export const zhCN = {
   "settings.about.latest": "最新版本",
   "settings.about.unknown": "未知",
   "settings.about.check": "检查更新",
+  "settings.about.checkAgain": "再次检查",
   "settings.about.checking": "检查中…",
   "settings.about.upToDate": "已是最新。",
   "settings.about.download": "下载更新",

@@ -928,9 +928,9 @@ async function reopenOnboarding() {
               </div>
             </template>
           </template>
-          <div v-else class="field">
+          <div class="field">
             <button class="primary" :disabled="update.status === 'checking'" @click="update.check()">
-              {{ update.status === "checking" ? t("settings.about.checking") : t("settings.about.check") }}
+              {{ update.status === "checking" ? t("settings.about.checking") : update.info ? t("settings.about.checkAgain") : t("settings.about.check") }}
             </button>
           </div>
           <p class="note">{{ t("settings.about.sidecarNote") }}</p>
