@@ -96,3 +96,14 @@
 - 在 GitHub API 403 / rate limit 环境下仍可发现 preview 更新。
 - 设置 → 磁盘与缓存只呈现一套 Docker 资源口径；一键清理成功后数值刷新。
 - 本地门禁与 CI 全绿。
+
+## 执行状态（2026-10-15）
+
+- `d3fcdeb` 计划落盘；`a80a8d8` 新建 Work Record 默认折叠；
+  `4e56f39` Help 菜单语义拆分 / About 弹窗 / 移除 fit 探针弹层；
+  `9444409` 更新检查改用 releases.atom 主通道并保留 API fallback；
+  `df91326` 磁盘与缓存合并为统一 Docker 资源面板与组合清理。
+- 本地门禁：Python 1412 passed / 53 skipped；Rust lib 362 passed / 1 ignored；
+  Vitest 76 files / 599 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
+- 下一步：push → PR CI → ff-only merge develop → develop 全路径 CI →
+  Workbench `v2.1.15-preview.8` → 用户复测。

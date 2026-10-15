@@ -234,3 +234,4 @@
   - [x] preview.4 实测追加 b13：远程全盘导航、Recent 机器身份、远端数据面取证、Help 文档/更新反馈（preview.5 已发布，待实机）
   - [x] preview.5 实测追加 b14：协议错误 detail、远程 Explorer 首载、Recent 配置机器名迁移、同 ID image tag 聚合（preview.6 已发布，待实机）
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
+  - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（代码与本地门禁完成，待 preview.8 实机）

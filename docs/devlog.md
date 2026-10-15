@@ -3,6 +3,23 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.15 b16 preview.7 字段修复（2026-10-15，待 PR CI / preview.8）
+
+- **Work Records**：新建 Collection 默认折叠，标题行保留成员计数，手动展开后显示成员。
+- **Help 菜单**：原诊断入口改名「运行诊断」；文档入口改名「帮助文档」；新增
+  「关于 AISC Workbench」弹窗，展示 Workbench、CLI、bundle、镜像、Claude Code、
+  Python 与平台版本。
+- **终端**：移除「fit 诊断（网格 5s 内 ≥6 次变化）— 截图反馈」自动弹层与相关探针状态。
+- **更新**：GitHub API 403 取证为 unauthenticated core quota（60/h，Remaining 0）。
+  更新检查改用 `releases.atom` 主通道，API 仅作 fallback；release 资产 URL 按稳定
+  download 规则构造。
+- **磁盘与缓存**：移除 Docker 资源上方的旧 df 摘要与独立 inspect 区。一个扫描动作同时
+  获取 ownership scan 与 itemized inspect，统一展示容器 / 镜像 / 悬空镜像 /
+  Build Cache / Volumes / Networks；一键清理依次执行 AISC 资源清理与 24h cache cleanup
+  并重新扫描。
+- **门禁**：Python 1412 passed / 53 skipped；Rust lib 362 passed / 1 ignored；
+  Vitest 76 files / 599 tests；vue-tsc 通过。
+
 # v2.1.15-preview.7 / b15 preview.6 字段修复（2026-10-15）
 
 - **更新**：GitHub 请求按 system proxy → direct 双策略各重试 3 次；下载与 sha256
