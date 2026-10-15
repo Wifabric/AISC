@@ -11,4 +11,4 @@ Preview 验证窗内的阻断修复索引。按 DEVELOP_WIKI §1.1 preview 迭�
 | b11 | Work Records 拖拽、右键菜单与呈现一致性 | `2.1.15-b10-remote-routing-and-work-records-ux` | 已发布 preview.3，待实机 |
 | b12 | preview.3 四项字段反馈修复 | `2.1.15-b12-preview3-field-fixes` | 已发布 preview.4，b12-T1 已实测通过 |
 | b13 | 远程资源导航、机器身份、远端数据面与 Help 反馈 | `2.1.15-b13-remote-workspace-model` | 已发布 preview.5，待 b13 实机 |
-| b14 | preview.5 协议提示、远程首载、Recent 机器路由与镜像聚合 | `2.1.15-b14-preview5-field-fixes` | 进行中 |
+| b14 | preview.5 协议提示、远程首载、Recent 机器路由与镜像聚合 | `2.1.15-b14-preview5-field-fixes` | 代码与本地门禁完成，待 PR CI / 实机 |

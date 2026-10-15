@@ -232,3 +232,4 @@
   - [x] bash/codex/claude 会话退出后直接关闭标签，不保留 exited 横幅（b7 已闭环）
   - [x] Work Records UI 树状重构：动作符号化、右键菜单（重命名/fork）、子代理会话折叠、树状展示、历史并入全部会话（b8 已闭环）
   - [x] preview.4 实测追加 b13：远程全盘导航、Recent 机器身份、远端数据面取证、Help 文档/更新反馈（preview.5 已发布，待实机）
+  - [x] preview.5 实测追加 b14：协议错误 detail、远程 Explorer 首载、Recent 配置机器名迁移、同 ID image tag 聚合（代码与本地门禁完成，待 preview.6 实机）

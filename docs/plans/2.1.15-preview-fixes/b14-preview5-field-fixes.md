@@ -66,3 +66,17 @@
 - Recent 的远端记录显示并路由 `win-test`；第二次点击直接打开远端，不再落回本机。
 - 同一 image ID 的多个 repo tag 在 Settings 中只显示一行。
 - 本地门禁与 CI 全绿。
+
+## 执行状态（2026-10-15）
+
+- `d65de2b` 计划落盘；`0e16ed8` 保留 CLI protocol `technical_detail`；
+  `70ba253` 修复远程 Explorer 首载竞态；`f562f8a` 保留配置机器名并迁移
+  `admin@host` history alias；`409261c` 聚合同 ID Docker image tags。
+- 本地门禁：Python 1403 passed / 53 skipped；Rust lib 359 passed / 1 ignored；
+  Vitest 75 files / 590 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
+- 远端取证与处理：`wsl-base` 原 CLI `0.1.3` / serve protocol 3，确认为
+  协议错误来源；已从 TestPyPI 升级 CLI 到 `0.1.7.dev0`，ready banner 现为
+  protocol 4，`maintenance cache-usage` 可用。其旧 aisc-bundle 目录仍显示
+  `0.1.3`，不影响本批协议 / 磁盘命令，后续随远端安装器或 bundle 更新。
+- 下一步：push 分支 → PR CI → ff-only merge develop → develop 全路径 CI →
+  Workbench `v2.1.15-preview.6` → 用户复测。

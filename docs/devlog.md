@@ -3,6 +3,21 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.15 b14 preview.5 字段修复（2026-10-15，待 PR CI / preview.6）
+
+- **协议提示**：`wsl-base` 远端 CLI 原 `0.1.3` / serve protocol 3，preview.5
+  Workbench 要求 protocol 4；Settings 现在保留 `technical_detail`，直接显示
+  client/remote 协议号与升级指引。该远端已升级 TestPyPI CLI `0.1.7.dev0`，
+  ready banner 为 protocol 4。
+- **远程 Explorer**：修复 App watcher 预先设置 workspace 后组件 watcher 跳过
+  `refreshRoot()` 的首载竞态，首次打开即列出远端目录。
+- **Recent 机器身份**：workspace binding 不再把配置名 `win-test` 降级成
+  `admin@10.147.20.7`；旧 history alias 会迁移，并按配置机器路由。
+- **Docker 展示**：同一 image ID 的 `node` 与 `docker.1ms.run/library/node`
+  tag 聚合为一行，删除仍按 ID，retag 使用第一条 ref。
+- **门禁**：Python 1403 passed / 53 skipped；Rust lib 359 passed / 1 ignored；
+  Vitest 75 files / 590 tests；vue-tsc 通过。
+
 
 # v2.1.15-preview.5 / b13 远程工作区模型修复（2026-10-15）
 
