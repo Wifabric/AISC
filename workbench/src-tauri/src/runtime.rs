@@ -703,6 +703,14 @@ async fn cc_switch_call_value(
     input: Option<String>,
 ) -> Result<Value, WorkbenchError> {
     let target = crate::target::resolve_target_for(app, &window).await?;
+    // b13: provider/cc-switch state is workspace-runtime data. Make its drive
+    // target explicit in diagnostics instead of leaving users to infer it.
+    crate::logging::append_event(
+        "info", "app", "target_route", None, serde_json::json!({
+            "command": "cc-switch", "kind": target_kind(&target),
+            "machine": target_machine_name(&target), "window": window.label()
+        }),
+    );
     // 2.1.11 step2: provider ops ride the unified pooled serve via the
     // GENERIC input path (both Local and Remote arms) — the r7 step-1
     // special-case entry (run_serve_op_target) was folded away when the

@@ -382,8 +382,8 @@ class WatchRegistry:
 
 
 def op_fs_watch(_ns, payload: Dict[str, Any], runtime) -> Tuple[Any, int, list]:
-    root = str(payload.get("root") or "")
-    if not root.startswith("/"):
+    root = str(payload.get("root") or "").replace("\\", "/")
+    if not os.path.isabs(root):
         raise CliError(message="fs.watch requires an absolute root",
                        exit_code=2, error_code="AISC_ERR_FS_PATH")
     runtime.fs_watches.watch(root)

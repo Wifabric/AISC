@@ -189,6 +189,16 @@ class WatchRegistryTests(unittest.TestCase):
         # atomic-write residue never surfaces
         self.assertNotIn("w1.txt.aisc-tmp", paths)
 
+    @unittest.skipIf(os.name != "nt", "Windows drive-root contract")
+    def test_watch_op_accepts_windows_drive_root(self) -> None:
+        from types import SimpleNamespace
+
+        runtime = SimpleNamespace(fs_watches=SimpleNamespace(watch=lambda _root: None))
+        data, code, errs = serve_fs.op_fs_watch(
+            None, {"root": "C:/Users"}, runtime)
+        self.assertEqual(code, 0, errs)
+        self.assertEqual(data["root"], "C:/Users")
+
     def test_watch_op_requires_absolute_root(self) -> None:
         with self.assertRaises(CliError) as ctx:
             serve_fs.op_fs_watch(None, {"root": "relative/path"}, None)
