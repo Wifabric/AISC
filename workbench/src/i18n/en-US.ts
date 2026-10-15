@@ -53,6 +53,8 @@ export const enUS: Record<string, string> = {
   "picker.browseDialog.cancel": "Cancel",
   "picker.browseDialog.choose": "Choose this directory",
   "picker.browseDialog.searchPlaceholder": "Search dirs…",
+  "picker.browseDialog.roots": "Remote roots",
+  "picker.browseDialog.refresh": "Refresh",
   "picker.browseDialog.noMatches": "No matching directories",
   "picker.browseDialog.showHidden": "Show hidden (dot) directories",
   "picker.browseDialog.hideHidden": "Hide dot directories",

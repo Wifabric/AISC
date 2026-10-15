@@ -973,11 +973,15 @@ pub async fn workspace_history_remove(
     Ok(rev)
 }
 
-/// F2-B (fix2-design.md): one directory page of the remote workspace
-/// picker's browse dialog — served over the pooled serve connection's
-/// `fs.list` op, pinned at the remote `$HOME` (the v1.3 ready banner's
-/// `home`). Containment mirrors the R3 fs.* server side: `..` segments
-/// normalize away, anything resolving outside the pin root is rejected.
+/// b13: one page of the remote workspace picker's browse dialog. Navigation is
+/// SSH-native: roots and directory entries both come from the machine running
+/// `aisc serve`, never from the local Explorer/dialog APIs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RemoteRoot {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteDirEntry {
     pub name: String,
@@ -986,16 +990,22 @@ pub struct RemoteDirEntry {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteBrowseResult {
-    /// The absolute POSIX path this page describes (already normalized).
+    /// The normalized absolute path this page describes.
     pub cwd: String,
-    /// The pin root (remote `$HOME`) — the dialog's up-limit.
+    /// The navigation up-limit for this page (`/` or one Windows drive root).
     pub root: String,
+    /// The remote home, when the serve banner reports one. It is a convenient
+    /// initial directory — never a containment boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
+    /// All navigation roots reported by the remote CLI.
+    pub roots: Vec<RemoteRoot>,
     pub entries: Vec<RemoteDirEntry>,
 }
 
-/// Normalize a requested absolute POSIX path and keep it inside `root`:
-/// `.` and `..` fold away (F1 browse-pinning precedent — a plain prefix
-/// check would let `/root/a/../x` through), empty/`/` means the root.
+/// Normalize a requested absolute POSIX or Windows drive-letter path. `.` and
+/// `..` fold away; `..` cannot escape the drive/POSIX root; relative input is
+/// rejected. The remote HOME is deliberately not involved in containment.
 pub(crate) fn is_remote_absolute_path(path: &str) -> bool {
     let value = path.trim();
     value.starts_with('/')
@@ -1004,56 +1014,91 @@ pub(crate) fn is_remote_absolute_path(path: &str) -> bool {
             && value.as_bytes()[0].is_ascii_alphabetic())
 }
 
-fn normalize_under_root(root: &str, requested: &str) -> Result<String, WorkbenchError> {
-    let root_normalized = root.replace('\\', "/");
-    let root_abs = root_normalized.trim_end_matches('/');
-    if root_abs.is_empty() {
-        return Err(WorkbenchError::workspace_invalid().with_detail("browse root is empty"));
-    }
-    let req_normalized = requested.trim().replace('\\', "/");
-    let req = req_normalized.as_str();
-    let joined = if req.is_empty() || req == "/" {
-        root_abs.to_string()
-    } else if req.starts_with('/') || (req.len() >= 3 && req.as_bytes()[1] == b':' && req.as_bytes()[0].is_ascii_alphabetic()) {
-        req.to_string()
-    } else {
+pub(crate) fn normalize_remote_path(path: &str) -> Result<String, WorkbenchError> {
+    let value = path.trim().replace('\\', "/");
+    if value.is_empty() || !is_remote_absolute_path(&value) {
         return Err(WorkbenchError::workspace_invalid()
             .with_detail("browse path must be absolute (e.g. /home/user/proj or C:/Users/user/proj)"));
+    }
+    if value == "/" {
+        return Ok("/".to_string());
+    }
+
+    let bytes = value.as_bytes();
+    let drive = if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        Some(bytes[0].to_ascii_uppercase() as char)
+    } else {
+        None
     };
-    let mut segs: Vec<&str> = Vec::new();
-    for seg in joined.split('/') {
-        match seg {
+    let body_start = if drive.is_some() { 2 } else { 0 };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in value[body_start..].split('/') {
+        match segment {
             "" | "." => {}
             ".." => {
-                if segs.pop().is_none() {
+                if segments.pop().is_none() {
                     return Err(WorkbenchError::workspace_conflict()
-                        .with_detail("browse path escapes the remote home"));
+                        .with_detail("browse path escapes the remote root"));
                 }
             }
-            s => segs.push(s),
+            other => segments.push(other),
         }
     }
-    let drive = segs.first().filter(|s| {
-        s.len() == 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic()
-    }).copied();
-    let body = if drive.is_some() { &segs[1..] } else { &segs[..] };
-    let mut abs = String::new();
+
+    let mut normalized = String::new();
     if let Some(drive) = drive {
-        abs.push_str(drive);
+        normalized.push(drive);
+        normalized.push(':');
     }
-    for s in body {
-        abs.push('/');
-        abs.push_str(s);
+    normalized.push('/');
+    normalized.push_str(&segments.join("/"));
+    // A POSIX root normalizes to `/`; a drive root keeps its required `C:/`.
+    if normalized.len() > 1 {
+        normalized = normalized.trim_end_matches('/').to_string();
+        if drive.is_some() && segments.is_empty() {
+            normalized.push('/');
+        }
     }
-    if abs.is_empty() {
-        abs.push('/');
-    }
-    if abs == root_abs || abs.starts_with(&format!("{}/", root_abs)) {
-        Ok(abs)
+    Ok(normalized)
+}
+
+/// The up-limit for one remote navigation branch. Windows paths stop at their
+/// drive root; POSIX paths stop at `/`. Switching roots is explicit in the UI.
+pub(crate) fn remote_navigation_root(path: &str) -> Result<String, WorkbenchError> {
+    let normalized = normalize_remote_path(path)?;
+    let bytes = normalized.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        Ok(format!("{}:/", bytes[0].to_ascii_uppercase() as char))
     } else {
-        Err(WorkbenchError::workspace_conflict()
-            .with_detail("browse path escapes the remote home"))
+        Ok("/".to_string())
     }
+}
+
+fn remote_roots_from_value(data: Option<&serde_json::Value>, home: Option<&str>) -> Vec<RemoteRoot> {
+    let mut roots: Vec<RemoteRoot> = Vec::new();
+    if let Some(items) = data.and_then(|v| v.get("roots")).and_then(|v| v.as_array()) {
+        for item in items {
+            let raw_path = item.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+            let Ok(path) = remote_navigation_root(raw_path) else { continue };
+            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+            let name = if name.is_empty() {
+                path.trim_end_matches('/').to_string()
+            } else {
+                name.to_string()
+            };
+            if !roots.iter().any(|r| r.path == path) {
+                roots.push(RemoteRoot { name, path });
+            }
+        }
+    }
+    if !roots.is_empty() {
+        return roots;
+    }
+    let fallback_path = home
+        .and_then(|home| remote_navigation_root(home).ok())
+        .unwrap_or_else(|| "/".to_string());
+    let name = if fallback_path == "/" { "File System".to_string() } else { fallback_path.trim_end_matches('/').to_string() };
+    vec![RemoteRoot { name, path: fallback_path }]
 }
 
 #[tauri::command]
@@ -1085,30 +1130,41 @@ pub async fn remote_browse_core(
 ) -> Result<RemoteBrowseResult, WorkbenchError> {
     let pool = crate::serve::global_pool();
     let session = crate::serve::pooled_session(pool, t).await?;
-    let root = session
-        .banner()
-        .home
-        .clone()
-        .ok_or_else(|| WorkbenchError::cli_protocol()
-            .with_detail("remote serve lacks the v1.3 home anchor — upgrade the remote aisc CLI"))?
-        ;
-    let root = normalize_under_root(&root, "")?;
+    let home = session.banner().home.clone();
 
-    let cwd = normalize_under_root(&root, path.unwrap_or(""))?;
+    // Additive protocol op. Old 0.1.x remotes fall back to the home drive/root;
+    // they can still list an explicitly entered path on another drive.
+    let roots_data = crate::serve::fs_op(pool, t, "fs.roots", &serde_json::json!({}))
+        .await
+        .ok();
+    let roots = remote_roots_from_value(roots_data.as_ref(), home.as_deref());
+    let home_normalized = home
+        .as_deref()
+        .and_then(|value| normalize_remote_path(value).ok());
+    let fallback = home_normalized
+        .clone()
+        .unwrap_or_else(|| roots.first().map(|r| r.path.clone()).unwrap_or_else(|| "/".to_string()));
+
+    let requested = path.unwrap_or("").trim();
+    let cwd = if requested.is_empty() {
+        fallback
+    } else {
+        normalize_remote_path(requested)?
+    };
+    let root = remote_navigation_root(&cwd)?;
 
     // Page through fs.list until exhausted (cap guards a runaway listing).
     let mut entries: Vec<RemoteDirEntry> = Vec::new();
-    // Field #3 defense: cross-page re-lists must never duplicate a row (the
-    // picker renders by name key — a dup blanks a row via key collision).
+    // Cross-page re-lists must never duplicate a row (the picker renders by
+    // name key — a dup blanks a row via key collision).
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut offset = 0usize;
     loop {
-        let rel = cwd.strip_prefix(&root).unwrap_or("").trim_start_matches('/');
         let data = crate::serve::fs_op(
             pool,
             t,
             "fs.list",
-            &serde_json::json!({ "root": root, "path": rel, "offset": offset }),
+            &serde_json::json!({ "root": cwd, "path": "", "offset": offset }),
         )
         .await?;
         let page = data.get("entries").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -1132,7 +1188,7 @@ pub async fn remote_browse_core(
         }
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(RemoteBrowseResult { cwd, root, entries })
+    Ok(RemoteBrowseResult { cwd, root, home: home_normalized, roots, entries })
 }
 
 /// Cheap existence probe for the picker's click-guard (⑧).
@@ -2619,44 +2675,40 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
-    // -- F2-B: browse pinning (normalize_under_root) -------------------------
+    // -- b13: SSH-native remote path/root normalization ----------------------
 
     #[test]
-    fn browse_root_pins_and_normalizes() {
-        // empty / "/" → the root itself
-        assert_eq!(normalize_under_root("/home/tv", "").unwrap(), "/home/tv");
-        assert_eq!(normalize_under_root("/home/tv", "/").unwrap(), "/home/tv");
-        // inside stays; `.` and `..` fold away (F1 containment precedent)
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv/proj").unwrap(), "/home/tv/proj");
-        assert_eq!(
-            normalize_under_root("/home/tv", "/home/tv/a/../b").unwrap(),
-            "/home/tv/b"
-        );
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv/./x/").unwrap(), "/home/tv/x");
-        // escapes (sibling / parent / dotdot below root / relative input)
-        assert!(normalize_under_root("/home/tv", "/home/tv2/x").is_err());
-        assert!(normalize_under_root("/home/tv", "/home/tv/../secret").is_err());
-        assert!(normalize_under_root("/home/tv", "/etc").is_err());
-        assert!(normalize_under_root("/home/tv", "relative/path").is_err());
-        // root itself is the up-limit
-        assert_eq!(normalize_under_root("/home/tv", "/home/tv").unwrap(), "/home/tv");
-        // trailing slashes on the root argument fold away
-        assert_eq!(normalize_under_root("/home/tv/", "/home/tv/p").unwrap(), "/home/tv/p");
+    fn normalizes_remote_paths_without_home_pin() {
+        assert_eq!(normalize_remote_path("/").unwrap(), "/");
+        assert_eq!(normalize_remote_path("/home/tv/a/../b/").unwrap(), "/home/tv/b");
+        assert_eq!(normalize_remote_path("c:\\Users\\admin\\proj").unwrap(), "C:/Users/admin/proj");
+        assert_eq!(normalize_remote_path("C:/").unwrap(), "C:/");
+        assert!(normalize_remote_path("relative/path").is_err());
+        assert!(normalize_remote_path("/home/tv/../../../secret").is_err());
+        assert!(normalize_remote_path("C:/../secret").is_err());
     }
 
     #[test]
-    fn browse_root_supports_windows_drive_letter_paths() {
-        assert_eq!(normalize_under_root("C:\\Users\\admin", "").unwrap(), "C:/Users/admin");
-        assert_eq!(
-            normalize_under_root("C:\\Users\\admin", "C:/Users/admin/proj").unwrap(),
-            "C:/Users/admin/proj"
-        );
-        assert_eq!(
-            normalize_under_root("C:/Users/admin", "C:\\Users\\admin\\a\\..\\b").unwrap(),
-            "C:/Users/admin/b"
-        );
-        assert!(normalize_under_root("C:/Users/admin", "D:/Users/admin/x").is_err());
-        assert!(normalize_under_root("C:/Users/admin", "C:/Windows").is_err());
+    fn remote_navigation_root_reaches_any_drive_or_posix_root() {
+        assert_eq!(remote_navigation_root("C:\\Users\\admin").unwrap(), "C:/");
+        assert_eq!(remote_navigation_root("D:/Projects/AISC").unwrap(), "D:/");
+        assert_eq!(remote_navigation_root("/home/admin/project").unwrap(), "/");
+    }
+
+    #[test]
+    fn remote_roots_parse_and_fallback_to_home_drive() {
+        let data = serde_json::json!({"roots": [
+            {"name": "C:", "path": "C:\\"},
+            {"name": "D:", "path": "D:/"}
+        ]});
+        let roots = remote_roots_from_value(Some(&data), Some("C:\\Users\\admin"));
+        assert_eq!(roots[0].path, "C:/");
+        assert_eq!(roots[1].path, "D:/");
+
+        let fallback = remote_roots_from_value(None, Some("C:\\Users\\admin"));
+        assert_eq!(fallback, vec![RemoteRoot { name: "C:".into(), path: "C:/".into() }]);
+        let posix = remote_roots_from_value(None, None);
+        assert_eq!(posix, vec![RemoteRoot { name: "File System".into(), path: "/".into() }]);
     }
 
     #[test]

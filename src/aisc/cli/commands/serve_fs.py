@@ -81,6 +81,45 @@ def _rel(root: str, abs_path: str) -> str:
 # ops (uniform serve signature: (ns, payload, runtime) -> (data, exit, errs))
 
 
+def _windows_drive_roots(listdrives: Callable[[], List[str]]) -> List[Dict[str, str]]:
+    """Normalize Python 3.12 ``os.listdrives`` values to protocol slash roots."""
+    roots: List[Dict[str, str]] = []
+    seen = set()
+    for native in listdrives():
+        value = str(native).replace("\\", "/").rstrip("/")
+        if len(value) != 2 or value[1] != ":" or not value[0].isalpha():
+            continue
+        drive = value[0].upper()
+        if drive in seen:
+            continue
+        seen.add(drive)
+        roots.append({"name": f"{drive}:", "path": f"{drive}:/"})
+    return roots
+
+
+def _fallback_windows_drive_roots() -> List[Dict[str, str]]:
+    import string
+
+    def probe() -> List[str]:
+        found = []
+        for letter in string.ascii_uppercase:
+            if os.path.isdir(f"{letter}:/"):
+                found.append(f"{letter}:\\")
+        return found
+
+    return _windows_drive_roots(probe)
+
+
+def op_fs_roots(_ns, _payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list]:
+    """b13: navigation roots on the machine the serve process runs on."""
+    if os.name == "nt":
+        listdrives = getattr(os, "listdrives", None)
+        roots = _windows_drive_roots(listdrives) if callable(listdrives) else _fallback_windows_drive_roots()
+    else:
+        roots = [{"name": "File System", "path": "/"}]
+    return {"roots": roots}, 0, []
+
+
 def op_fs_list(_ns, payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list]:
     root = str(payload.get("root") or "/")
     target = _resolve(root, str(payload.get("path") or ""))
@@ -358,6 +397,7 @@ def op_fs_unwatch(_ns, payload: Dict[str, Any], runtime) -> Tuple[Any, int, list
 
 
 OPS: Dict[str, Callable[..., Tuple[Any, int, list]]] = {
+    "fs.roots": op_fs_roots,
     "fs.list": op_fs_list,
     "fs.read": op_fs_read,
     "fs.write": op_fs_write,

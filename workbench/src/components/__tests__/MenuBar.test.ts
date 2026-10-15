@@ -41,7 +41,8 @@ async function mountHelpMenu() {
   const wrapper = mount(MenuBar, {
     global: { plugins: [i18n], stubs: { teleport: true } },
   });
-  await wrapper.findAll(".menubar-btn").at(-1)!.trigger("click");
+  const buttons = wrapper.findAll(".menubar-btn");
+  await buttons[buttons.length - 1]!.trigger("click");
   return wrapper;
 }
 
@@ -56,7 +57,8 @@ beforeEach(() => {
 describe("MenuBar help actions", () => {
   it("opens the current AISC documentation through the OS/browser opener", async () => {
     const w = await mountHelpMenu();
-    await w.findAll("[role='menuitem']").at(2)!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    await items[2]!.trigger("click");
     expect(opener.openUrl).toHaveBeenCalledOnce();
     expect(opener.openUrl).toHaveBeenCalledWith("https://github.com/Wifabric/AISC#readme");
     w.unmount();
@@ -65,7 +67,8 @@ describe("MenuBar help actions", () => {
   it("shows progress while an update check is running", async () => {
     updateState.check.mockImplementation(() => new Promise(() => undefined));
     const w = await mountHelpMenu();
-    await w.findAll("[role='menuitem']").at(0)!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    await items[0]!.trigger("click");
     expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Checking for updates…"]);
     w.unmount();
   });
@@ -77,7 +80,8 @@ describe("MenuBar help actions", () => {
       updateAvailable: false,
     });
     const w = await mountHelpMenu();
-    await w.findAll("[role='menuitem']").at(0)!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    await items[0]!.trigger("click");
     expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Up to date (2.1.15-preview.4)."]);
     expect(workspacesState.openSettingsTab).not.toHaveBeenCalled();
     w.unmount();
@@ -90,7 +94,8 @@ describe("MenuBar help actions", () => {
       updateAvailable: true,
     });
     const w = await mountHelpMenu();
-    await w.findAll("[role='menuitem']").at(0)!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    await items[0]!.trigger("click");
     expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Update 2.1.15-preview.5 is available."]);
     expect(workspacesState.openSettingsTab).toHaveBeenCalledOnce();
     w.unmount();
@@ -99,7 +104,8 @@ describe("MenuBar help actions", () => {
   it("reports a failed update check", async () => {
     updateState.check.mockRejectedValue(new Error("network unavailable"));
     const w = await mountHelpMenu();
-    await w.findAll("[role='menuitem']").at(0)!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    await items[0]!.trigger("click");
     expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Update check failed: network unavailable"]);
     w.unmount();
   });

@@ -584,13 +584,22 @@ export interface RemoteDirEntry {
   name: string;
   isDir: boolean;
 }
+export interface RemoteRoot {
+  name: string;
+  path: string;
+}
 export interface RemoteBrowseResult {
-  /** Absolute POSIX path this page describes (normalized). */
+  /** Absolute remote path this page describes (already normalized). */
   cwd: string;
-  /** The pin root (remote $HOME) — the dialog's up-limit. */
+  /** The navigation up-limit (`/` or one Windows drive root). */
   root: string;
+  /** Optional remote home; only a starting convenience, never a containment pin. */
+  home?: string | null;
+  /** All navigation roots reported by the remote CLI. */
+  roots?: RemoteRoot[];
   entries: RemoteDirEntry[];
 }
+
 export const remoteBrowse = (path?: string, includeHidden?: boolean) =>
   invoke<RemoteBrowseResult>(
     "remote_browse",

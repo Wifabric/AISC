@@ -573,8 +573,8 @@ export const useWorkspacesStore = defineStore("workspaces", () => {
   const browseBusy = ref(false);
   const browseError = ref<string | null>(null);
 
-  /** One directory page of the remote picker's browse dialog, pinned at the
-   *  remote $HOME. `path` optional/absolute POSIX; undefined = the root. */
+  /** One directory page of the remote picker's browse dialog. `path` is an
+   *  absolute remote POSIX/Windows path; undefined starts at remote home. */
   async function browseRemote(
     path?: string,
     includeHidden?: boolean,

@@ -15,6 +15,7 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useSettingsStore } from "../../stores/settings";
 import type { ForgetPreview } from "../../types";
+import type { RemoteBrowseResult } from "../../lib/ipc";
 import ForgetConfirmDialog from "./ForgetConfirmDialog.vue";
 import InvalidPathDialog from "./InvalidPathDialog.vue";
 import { buildSearchMatcher } from "../../lib/search";
@@ -139,11 +140,11 @@ async function onInvalidExport(): Promise<void> {
 
 
 // --- F2-B: remote directory browser (fs.list over the pooled serve
-// channel, pinned at the remote $HOME; manual absolute input stays the
-// escape hatch for anything outside the pin). Explorer mental model
+// channel, starting at remote home and navigating every root returned by
+// fs.roots). Explorer mental model
 // (field feedback): click selects, DOUBLE-click descends, the button
 // confirms the selection. ---
-const browse = ref<{ cwd: string; root: string; entries: { name: string; isDir: boolean }[] } | null>(null);
+const browse = ref<RemoteBrowseResult | null>(null);
 const browseSelected = ref<string | null>(null);
 // Field #4/#5: hidden-dotdir toggle + fuzzy search over the current page
 // (the S5 matcher — substring > subsequence, /re/ explicit regex).
@@ -166,7 +167,7 @@ function onBrowse(): void {
 async function openBrowse(start?: string): Promise<void> {
   const r = await wsStore.browseRemote(start, browseShowHidden.value);
   if (r) {
-    browse.value = { cwd: r.cwd, root: r.root, entries: r.entries };
+    browse.value = r;
     browseSelected.value = null;
     browseQuery.value = "";
   }
@@ -175,9 +176,7 @@ async function loadBrowse(path: string): Promise<void> {
   if (!browse.value) return;
   const r = await wsStore.browseRemote(path, browseShowHidden.value);
   if (r) {
-    browse.value.cwd = r.cwd;
-    browse.value.root = r.root;
-    browse.value.entries = r.entries;
+    browse.value = r;
     browseSelected.value = null;
     browseQuery.value = "";
   }
@@ -498,6 +497,17 @@ async function confirmForget(): Promise<void> {
     <div v-if="browse" class="browse-overlay" @mousedown="browse = null">
       <div class="browse" role="dialog" aria-modal="true" :aria-label="t('picker.browse')" @mousedown.stop>
         <div class="browse-head">
+          <select
+            v-if="(browse.roots?.length ?? 0) > 1"
+            class="browse-roots"
+            :aria-label="t('picker.browseDialog.roots')"
+            :value="browse.root"
+            @change="loadBrowse(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="root in browse.roots" :key="root.path" :value="root.path">
+              {{ root.name }}
+            </option>
+          </select>
           <span class="crumbs">
             <template v-for="c in browseCrumbs" :key="c.path">
               <button class="crumb" @click="loadBrowse(c.path)">{{ c.label }}</button>
@@ -515,6 +525,11 @@ async function confirmForget(): Promise<void> {
             @click="toggleBrowseHidden"
           >{{ browseShowHidden ? "●" : "◌" }}</button>
           <button class="ui-button quiet" :disabled="browse.cwd === browse.root" @click="browseUp">↑</button>
+          <button
+            class="ui-button quiet"
+            :title="t('picker.browseDialog.refresh')"
+            @click="loadBrowse(browse.cwd)"
+          >↻</button>
         </div>
         <div class="browse-list">
           <p v-if="wsStore.browseBusy" class="hint">{{ t("picker.browseDialog.loading") }}</p>
@@ -655,6 +670,13 @@ async function confirmForget(): Promise<void> {
   padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
 }
 .crumbs { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; min-width: 0; }
+.browse-roots {
+  flex: none; max-width: 84px; padding: 3px var(--space-1);
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+}
+.browse-roots:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-offset)); }
 .browse-search {
   flex: none; width: 140px; padding: 3px var(--space-2);
   background: var(--surface); color: var(--text);

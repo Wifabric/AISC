@@ -329,6 +329,36 @@ describe("F2-B: remote browse dialog (explorer model: click selects, dblclick de
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
 
+  it("switches to another remote drive root", async () => {
+    mockIpc.remoteBrowse
+      .mockResolvedValueOnce({
+        cwd: "C:/Users/admin", root: "C:/", home: "C:/Users/admin",
+        roots: [
+          { name: "C:", path: "C:/" },
+          { name: "D:", path: "D:/" },
+        ],
+        entries: [{ name: "test-ws", isDir: true }],
+      })
+      .mockResolvedValueOnce({
+        cwd: "D:/", root: "D:/", home: "C:/Users/admin",
+        roots: [
+          { name: "C:", path: "C:/" },
+          { name: "D:", path: "D:/" },
+        ],
+        entries: [{ name: "Projects", isDir: true }],
+      });
+    const w = await mountRemote();
+    await w.findAll("button").find((b) => b.text() === "选择")!.trigger("click");
+    await flushPromises();
+    const roots = w.find(".browse-roots");
+    expect(roots.exists()).toBe(true);
+    await roots.setValue("D:/");
+    await flushPromises();
+    expect(mockIpc.remoteBrowse).toHaveBeenLastCalledWith("D:/", false);
+    expect(w.find(".browse-path").text()).toBe("D:/");
+    expect(w.find(".browse-item").text()).toContain("Projects");
+  });
+
   it("opens the remote browser for a Windows drive-letter workspace path", async () => {
     mockIpc.remoteBrowse.mockResolvedValue({
       cwd: "C:/Users/admin", root: "C:/Users/admin",

@@ -53,6 +53,8 @@ export const zhCN = {
   "picker.browseDialog.cancel": "取消",
   "picker.browseDialog.choose": "选定此目录",
   "picker.browseDialog.searchPlaceholder": "搜索目录…",
+  "picker.browseDialog.roots": "远程根目录",
+  "picker.browseDialog.refresh": "刷新",
   "picker.browseDialog.noMatches": "没有匹配的目录",
   "picker.browseDialog.showHidden": "显示隐藏目录（. 开头）",
   "picker.browseDialog.hideHidden": "隐藏点开头目录",
