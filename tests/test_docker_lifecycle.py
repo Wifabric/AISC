@@ -9,6 +9,7 @@ volume/network argv ever. All against a machine-format fake executor.
 
 from __future__ import annotations
 
+import json
 import unittest
 from typing import Any, Dict, List
 
@@ -30,11 +31,12 @@ def ps_row(name, image="super-claude:latest", status="Up 2 hours",
     }
 
 
-def image_row(repo, tag, img_id, labels=None):
+def image_row(repo, tag, img_id, labels=None, layers=None):
     return {
         "repository": repo, "tag": tag, "id": img_id,
         "ref": f"{repo}:{tag}" if tag != "<none>" else "",
         "_labels": labels or {},  # fake-side only: drives the label filter
+        "_layers": list(layers or []),
     }
 
 
@@ -115,6 +117,14 @@ class LifecycleFakeExecutor:
             self.images = kept
             self.images.append(image_row("super-claude", "latest", "sha256:newimg"))
             return ProcessResult(exit_code=0, stdout="Step 1/3 : FROM node\nOK\n")
+        if (cmd == "image" and len(argv) > 1 and argv[1] == "inspect"
+                and "RootFS.Layers" in " ".join(argv)):
+            target = argv[2]
+            for im in self.images:
+                if im.get("ref") == target or im["id"] == target:
+                    layers = im.get("_layers", [])
+                    return ProcessResult(exit_code=0, stdout=json.dumps(layers))
+            return ProcessResult(exit_code=1, stderr="Error: No such image")
         if cmd == "image":
             for im in self.images:
                 if im.get("ref") == argv[2] or im["id"] == argv[2]:
@@ -252,6 +262,27 @@ class ScanTests(unittest.TestCase):
             images=[image_row("super-claude", "latest", "sha256:aa")],
         )
 
+
+class ManagedBaseImageTests(unittest.TestCase):
+    def test_layer_provenance_manages_aisc_base_without_claiming_user_node(self):
+        ex = LifecycleFakeExecutor(images=[
+            image_row("super-claude", "latest", "sha256:final",
+                      {"org.aisc.managed": "true"}, ["layer-base", "layer-final"]),
+            image_row("node", "22-slim", "sha256:base", None, ["layer-base"]),
+            image_row("node", "22-slim", "sha256:user", None, ["user-layer"]),
+        ])
+        result = docker_scan(ex, context="uninstall")
+        images = result["images"]
+        self.assertEqual(
+            [row["id"] for row in images["owned"]],
+            ["sha256:final"],
+        )
+        base = [row for row in images["legacy_owned"] if row["id"] == "sha256:base"]
+        self.assertEqual(len(base), 1)
+        self.assertEqual(base[0]["reason"], "layer-provenance")
+        self.assertNotIn("sha256:user", {
+            row["id"] for bucket in images.values() for row in bucket
+        })
 
 class RebuildTests(unittest.TestCase):
     """Rebuild takes a BUNDLE root (container/Dockerfile + config/

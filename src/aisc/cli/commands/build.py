@@ -345,6 +345,28 @@ def _base_image_candidates(plan: "BuildPlan") -> list:
     return out
 
 
+def _remove_same_id_aliases(exec_, bare: str, candidates: list) -> None:
+    """Untag mirror aliases that point at the same content ID as ``bare``.
+
+    This never deletes image content: if another tag remains (always ``bare``
+    here), Docker removes only the alias. Aliases with a different ID are
+    left untouched.
+    """
+    from aisc.domain.models import ImageInspectStatus
+
+    bare_result = exec_.inspect_image(bare)
+    if bare_result.status != ImageInspectStatus.EXISTS or not bare_result.image_id:
+        return
+    bare_id = bare_result.image_id
+    for ref in candidates:
+        if ref == bare:
+            continue
+        result = exec_.inspect_image(ref)
+        if (result.status == ImageInspectStatus.EXISTS
+                and result.image_id == bare_id):
+            exec_.run_captured(["rmi", ref], timeout=30.0)
+
+
 def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
     """Pre-pull the base image through the mirror chain.
 
@@ -366,6 +388,7 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
 
     # Local store hit → buildkit needs no network at all.
     if exec_.inspect_image(bare).status == ImageInspectStatus.EXISTS:
+        _remove_same_id_aliases(exec_, bare, candidates)
         return bare
 
     for ref in candidates:
@@ -377,6 +400,7 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
             # Retag to the bare local name; if tagging fails, build directly
             # from the pulled (now local) reference instead of failing.
             if exec_.run_captured(["tag", ref, bare], timeout=30.0).exit_code == 0:
+                _remove_same_id_aliases(exec_, bare, [ref])
                 return bare
             return ref
 

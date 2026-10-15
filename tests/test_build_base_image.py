@@ -35,20 +35,22 @@ def _plan(mirrors=(), node_image="docker.1ms.run/library/node:20-slim"):
 class _RecordingExec:
     """Fake DockerExecutor: scripted inspect + pull/tag outcomes."""
 
-    def __init__(self, local_exists=False, pull_results=None, tag_ok=True):
+    def __init__(self, local_exists=False, pull_results=None, tag_ok=True,
+                 image_ids=None):
         self._local_exists = local_exists
         self._pull = dict(pull_results or {})
         self._tag_ok = tag_ok
+        self._image_ids = dict(image_ids or {})
         self.calls = []
 
     def inspect_image(self, name):
         self.calls.append(("inspect", name))
-        status = (
-            ImageInspectStatus.EXISTS
-            if (self._local_exists and name == "node:20-slim")
-            else ImageInspectStatus.MISSING
+        exists = (self._local_exists and name == "node:20-slim") or name in self._image_ids
+        status = ImageInspectStatus.EXISTS if exists else ImageInspectStatus.MISSING
+        return ImageInspectResult(
+            status=status, image=name, message="",
+            image_id=self._image_ids.get(name, ""),
         )
-        return ImageInspectResult(status=status, image=name, message="")
 
     def run_captured(self, argv, timeout=None):
         self.calls.append(("run", list(argv)))
@@ -89,6 +91,37 @@ class EnsureBaseImageTests(unittest.TestCase):
         self.assertEqual(got, "node:20-slim")
         self.assertEqual([c for c in ex.calls if c[0] == "run"], [])
 
+    def test_successful_mirror_pull_removes_mirror_alias_after_bare_tag(self):
+        ex = _RecordingExec(
+            pull_results={
+                "docker.1ms.run/library/node:20-slim":
+                    ProcessResult(stdout="", stderr="", exit_code=0),
+            },
+            image_ids={
+                "node:20-slim": "sha256:same",
+                "docker.1ms.run/library/node:20-slim": "sha256:same",
+            },
+        )
+        got = _ensure_base_image(ex, _plan(), emitter=None, streaming=False)
+        self.assertEqual(got, "node:20-slim")
+        runs = [c[1] for c in ex.calls if c[0] == "run"]
+        self.assertIn(["rmi", "docker.1ms.run/library/node:20-slim"], runs)
+
+    def test_existing_bare_image_removes_stale_same_id_mirror_alias(self):
+        ex = _RecordingExec(
+            local_exists=True,
+            image_ids={
+                "node:20-slim": "sha256:same",
+                "docker.1ms.run/library/node:20-slim": "sha256:same",
+                "docker.other/library/node:20-slim": "sha256:other",
+            },
+        )
+        got = _ensure_base_image(ex, _plan(), emitter=None, streaming=False)
+        self.assertEqual(got, "node:20-slim")
+        runs = [c[1] for c in ex.calls if c[0] == "run"]
+        self.assertIn(["rmi", "docker.1ms.run/library/node:20-slim"], runs)
+        self.assertNotIn(["rmi", "docker.other/library/node:20-slim"], runs)
+
     def test_chain_falls_through_to_second_mirror_and_tags(self):
         ex = _RecordingExec(
             pull_results={
@@ -105,7 +138,7 @@ class EnsureBaseImageTests(unittest.TestCase):
         self.assertEqual(got, "node:20-slim")
         runs = [c[1] for c in ex.calls if c[0] == "run"]
         self.assertIn(["tag", "docker.m.daocloud.io/library/node:20-slim", "node:20-slim"], runs)
-        # The third mirror was never attempted after the success.
+        # The third mirror was never attempted; unknown IDs cannot be safely untagged.
         self.assertEqual(len(runs), 3)  # pull(m1), pull(m2), tag
 
     def test_tag_failure_returns_pulled_ref(self):
