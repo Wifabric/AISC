@@ -4,7 +4,7 @@
 
 
 
-# v2.1.15 b13 远程工作区模型修复（2026-10-15，待 PR CI / preview.5）
+# v2.1.15-preview.5 / b13 远程工作区模型修复（2026-10-15）
 
 - **Help**：文档改用 Tauri opener 打开 `Wifabric/AISC` README；检查更新覆盖
   checking / 已最新 / 可更新 / 失败四态 toast，可更新时直达安装引导。
@@ -20,7 +20,11 @@
 - **实测取证**：远端 `C:/Users/admin` 非空可列；用户所选 `E:/test` 与
   `test-ws` 在远端均为空目录，UI 应显示空态而非误判数据面故障。
 - **门禁**：Python 1403 passed / 53 skipped；Rust lib 357 passed / 1 ignored；
-  Vitest 75 files / 585 tests；vue-tsc 通过。
+  Vitest 75 files / 585 tests；vue-tsc 通过；PR #17 三 job 全绿；develop
+  Workbench / CLI sidecar / Linux+macOS bundle / NSIS 全绿。
+- **发布**：`v2.1.15-preview.5` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 就位；`cli-v0.1.7.dev0` PyPI workflow success，TestPyPI
+  版本可安装。等待用户实机复测。
 # v2.1.15-preview.2 / b9 阻断修复（2026-10-14）
 
 - **用户 preview.1 实测反馈**：Windows 远端仍无 bash prompt、所有 bash open 触发

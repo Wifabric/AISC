@@ -89,5 +89,10 @@
   条目，空目录保留明确空态。
 - 本地门禁：Python 1403 passed / 53 skipped；Rust lib 357 passed / 1 ignored；
   Vitest 75 files / 585 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
-- 下一步：push 分支 → PR CI → ff-only merge develop → develop 全路径 CI →
-  Workbench `v2.1.15-preview.5` / TestPyPI `0.1.7.dev0` → 用户实机复测。
+- PR #17 frontend / cli / rust 全绿，已 ff-only 合入 develop `8ad9df5`。
+- develop Workbench / CLI sidecar / Linux+macOS bundle / NSIS 全绿。
+- 发布完成：`v2.1.15-preview.5` NSIS workflow success，GitHub prerelease
+  setup.exe + sha256 资产就位；`cli-v0.1.7.dev0` PyPI workflow success，
+  TestPyPI `0.1.7.dev0` 可安装。
+- 待办：用户按本计划实机复测远程全盘导航、机器身份、远端数据面、侧边栏
+  非空/空目录、Help 文档与更新反馈。
