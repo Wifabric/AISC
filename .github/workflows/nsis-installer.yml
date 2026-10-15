@@ -299,11 +299,12 @@ jobs:
           }
 
 
-  # D-8 (2026-09-19): a v* tag publishes a PREVIEW release from this branch
-  # carrying ONLY the Workbench NSIS (which bundles the current CLI). No CLI
-  # assets — pip is the CLI channel. Finals need an explicit user request.
-  release-preview:
-    name: Publish preview release (prerelease)
+  # D-8 (2026-09-19): a v* tag publishes the Workbench NSIS release from this
+  # branch (the installer bundles the current CLI). Pre-release suffixes remain
+  # GitHub pre-releases; plain vX.Y.Z tags are final releases. No separate CLI
+  # assets are published here — pip is the CLI channel.
+  release:
+    name: Publish Workbench release
     needs: nsis
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -324,7 +325,7 @@ jobs:
           cp "$SRC" "AISC-Workbench-${VER}-setup.exe"
           sha256sum "AISC-Workbench-${VER}-setup.exe" > "AISC-Workbench-${VER}-setup.exe.sha256"
 
-      - name: Create prerelease (self-update payload)
+      - name: Publish release metadata
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -332,8 +333,21 @@ jobs:
           SETUP="AISC-Workbench-${VER}-setup.exe"
           SHA="AISC-Workbench-${VER}-setup.exe.sha256"
           NOTES="docs/releases/${GITHUB_REF_NAME}.md"
-          if [ -f "$NOTES" ]; then
-            gh release create "$GITHUB_REF_NAME" --prerelease --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME (preview)" --notes-file "$NOTES" "$SETUP" "$SHA"
+
+          case "$GITHUB_REF_NAME" in
+            *-dev|*.dev*|*-preview.*) PRERELEASE=true ;;
+            *) PRERELEASE=false ;;
+          esac
+          if [ "$PRERELEASE" = true ]; then
+            TITLE="$GITHUB_REF_NAME (preview)"
+            RELEASE_FLAGS=(--prerelease)
           else
-            gh release create "$GITHUB_REF_NAME" --prerelease --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME (preview)" --generate-notes "$SETUP" "$SHA"
+            TITLE="AISC Workbench $GITHUB_REF_NAME"
+            RELEASE_FLAGS=(--latest)
+          fi
+
+          if [ -f "$NOTES" ]; then
+            gh release create "$GITHUB_REF_NAME" --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$NOTES" "${RELEASE_FLAGS[@]}" "$SETUP" "$SHA"
+          else
+            gh release create "$GITHUB_REF_NAME" --target "$GITHUB_SHA" --title "$TITLE" --generate-notes "${RELEASE_FLAGS[@]}" "$SETUP" "$SHA"
           fi
