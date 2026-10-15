@@ -57,3 +57,6 @@
 
 - PR #16 frontend / cli / rust 全绿；develop Workbench、CLI sidecar、Linux/macOS bundle、
   NSIS 全绿，已 ff-only 合入 `45df391`。
+
+- 发布：`v2.1.15-preview.4` NSIS workflow success，GitHub prerelease 资产
+  就位；`cli-v0.1.6.dev0` PyPI workflow success，TestPyPI 版本索引可见。
