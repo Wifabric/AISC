@@ -3,12 +3,15 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createI18n } from "vue-i18n";
 import { enUS } from "../../i18n/en-US";
+import { zhCN } from "../../i18n/zh-CN";
 import MenuBar from "../MenuBar.vue";
 import { useToastStore } from "../../stores/toast";
 import type { WorkspaceRecord } from "../../types";
 
 const opener = vi.hoisted(() => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
 const workspaceWindow = vi.hoisted(() => ({ openWorkspaceWindow: vi.fn() }));
+const appApi = vi.hoisted(() => ({ getVersion: vi.fn().mockResolvedValue("2.1.15-preview.7") }));
+const doctorState = vi.hoisted(() => ({ openDialog: vi.fn() }));
 const updateState = vi.hoisted(() => ({
   check: vi.fn(),
 }));
@@ -25,12 +28,25 @@ const workspacesState = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => opener);
+vi.mock("@tauri-apps/api/app", () => appApi);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("../../lib/workspaceWindow", () => workspaceWindow);
 vi.mock("../../stores/update", () => ({ useUpdateStore: () => updateState }));
 vi.mock("../../stores/workspaces", () => ({ useWorkspacesStore: () => workspacesState }));
 vi.mock("../../stores/runtime", () => ({
-  useRuntimeStore: () => ({ status: "idle", dockerStarting: false }),
+  useRuntimeStore: () => ({
+    status: "idle",
+    dockerStarting: false,
+    capability: {
+      version_info: {
+        cli_version: "0.1.8.dev0",
+        bundle_version: "0.1.8.dev0",
+        image_version: "2.1.15",
+        claude_version: "2.1.273",
+        python_version: "3.12.10",
+      },
+    },
+  }),
 }));
 vi.mock("../../stores/settings", () => ({
   useSettingsStore: () => ({
@@ -43,9 +59,9 @@ vi.mock("../../stores/settings", () => ({
     },
   }),
 }));
-vi.mock("../../stores/doctor", () => ({ useDoctorStore: () => ({ openDialog: vi.fn() }) }));
+vi.mock("../../stores/doctor", () => ({ useDoctorStore: () => doctorState }));
 
-const i18n = createI18n({ legacy: false, locale: "en-US", messages: { "en-US": enUS } });
+const i18n = createI18n({ legacy: false, locale: "en-US" as string, messages: { "en-US": enUS, "zh-CN": zhCN } });
 
 async function mountHelpMenu() {
   const wrapper = mount(MenuBar, {
@@ -58,6 +74,7 @@ async function mountHelpMenu() {
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  i18n.global.locale.value = "en-US";
   vi.clearAllMocks();
   workspacesState.recentWorkspaces = [];
   workspacesState.activeRuntime = null;
@@ -68,7 +85,7 @@ describe("MenuBar help actions", () => {
   it("opens the current AISC documentation through the OS/browser opener", async () => {
     const w = await mountHelpMenu();
     const items = w.findAll("[role='menuitem']");
-    await items[2]!.trigger("click");
+    await items[items.length - 1]!.trigger("click");
     expect(opener.openUrl).toHaveBeenCalledOnce();
     expect(opener.openUrl).toHaveBeenCalledWith("https://github.com/Wifabric/AISC#readme");
     w.unmount();
@@ -116,6 +133,36 @@ describe("MenuBar help actions", () => {
       workspace: "E:\\projects",
       machine: "win-test",
     });
+    w.unmount();
+  });
+
+  it("separates diagnostics, help docs, and the About dialog", async () => {
+    const oldLocale = i18n.global.locale.value;
+    i18n.global.locale.value = "zh-CN";
+    const w = mount(MenuBar, { global: { plugins: [i18n], stubs: { teleport: true } } });
+    await w.findAll(".menubar-btn")[2]!.trigger("click");
+    const items = w.findAll("[role='menuitem']");
+    expect(items.map((item) => item.text())).toContain("运行诊断");
+    expect(items.map((item) => item.text())).toContain("关于 AISC Workbench");
+    expect(items.map((item) => item.text())).toContain("帮助文档");
+
+    const diagnostics = items.find((item) => item.text() === "运行诊断")!;
+    await diagnostics.trigger("click");
+    expect(doctorState.openDialog).toHaveBeenCalledOnce();
+
+    const about = w.find("[data-testid='about-dialog']");
+    expect(about.exists()).toBe(false);
+    const aboutItem = items.find((item) => item.text() === "关于 AISC Workbench")!;
+    await aboutItem.trigger("click");
+    await Promise.resolve();
+    expect(appApi.getVersion).toHaveBeenCalledOnce();
+    expect(w.find("[data-testid='about-dialog']").exists()).toBe(true);
+    const text = w.find("[data-testid='about-dialog']").text();
+    i18n.global.locale.value = oldLocale;
+    expect(text).toContain("2.1.15-preview.7");
+    expect(text).toContain("0.1.8.dev0");
+    expect(text).toContain("2.1.273");
+    expect(text).toContain("3.12.10");
     w.unmount();
   });
 

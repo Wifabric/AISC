@@ -18,6 +18,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 import { useRuntimeStore } from "../stores/runtime";
 import { useWorkspacesStore } from "../stores/workspaces";
 import { useSettingsStore } from "../stores/settings";
@@ -35,6 +36,9 @@ const ws = useWorkspacesStore();
 const settings = useSettingsStore();
 const { zoomStyle } = useTeleportedZoom();
 const toast = useToastStore();
+const aboutOpen = ref(false);
+const aboutAppVersion = ref("");
+const aboutPlatform = computed(() => navigator.userAgent);
 
 // P2-2 → W3: the global status label rides the menu bar's right end now
 // (the workspace strip is retired). Same quiet-text language.
@@ -196,9 +200,17 @@ function openPalette(): void {
   closeMenu();
   window.dispatchEvent(new CustomEvent("aisc:open-palette"));
 }
-function openAbout(): void {
+function openDiagnostics(): void {
   closeMenu();
   doctor.openDialog();
+}
+
+async function openAboutWorkbench(): Promise<void> {
+  closeMenu();
+  aboutOpen.value = true;
+  if (!aboutAppVersion.value) {
+    aboutAppVersion.value = await getVersion().catch(() => "");
+  }
 }
 async function openDocs(): Promise<void> {
   closeMenu();
@@ -393,15 +405,35 @@ async function checkForUpdates(): Promise<void> {
           <li role="menuitem" tabindex="0" @click="checkForUpdates">
             {{ t("menubar.checkUpdate") }}
           </li>
-          <li role="menuitem" tabindex="0" @click="openAbout">
+          <li role="menuitem" tabindex="0" @click="openDiagnostics">
+            {{ t("menubar.diagnostics") }}
+          </li>
+          <li role="menuitem" tabindex="0" @click="openAboutWorkbench">
             {{ t("menubar.about") }}
           </li>
           <li role="menuitem" tabindex="0" @click="openDocs">
-            {{ t("menubar.docs") }}
+            {{ t("menubar.helpDocs") }}
           </li>
         </template>
       </ul>
     </Teleport>
+    <div v-if="aboutOpen" class="about-overlay" data-testid="about-overlay" @mousedown.self="aboutOpen = false">
+      <div class="about-dialog" role="dialog" aria-modal="true" :aria-label="t('menubar.about')" data-testid="about-dialog">
+        <header>
+          <h3>{{ t("menubar.about") }}</h3>
+          <button type="button" :aria-label="'close'" @click="aboutOpen = false">✕</button>
+        </header>
+        <dl>
+          <div><dt>Workbench</dt><dd>{{ aboutAppVersion || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>AISC CLI</dt><dd>{{ facade.capability?.version_info?.cli_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Bundle</dt><dd>{{ facade.capability?.version_info?.bundle_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Workbench Image</dt><dd>{{ facade.capability?.version_info?.image_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Claude Code</dt><dd>{{ facade.capability?.version_info?.claude_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Python</dt><dd>{{ facade.capability?.version_info?.python_version || t("menubar.about.unknown") }}</dd></div>
+          <div><dt>Platform</dt><dd>{{ aboutPlatform }}</dd></div>
+        </dl>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -529,4 +561,14 @@ async function checkForUpdates(): Promise<void> {
   font-size: var(--font-xs);
   color: var(--text-muted);
 }
+
+.about-overlay { position:fixed; inset:0; z-index:96; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }
+.about-dialog { width:min(480px,90vw); padding:var(--space-3); background:var(--surface); border:var(--border-w) solid var(--border-strong); border-radius:var(--radius-md); box-shadow:var(--shadow-menu); }
+.about-dialog header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.about-dialog h3 { margin:0; }
+.about-dialog header button { border:none; background:none; color:var(--text-muted); cursor:pointer; }
+.about-dialog dl { margin:var(--space-2) 0 0; display:grid; gap:var(--space-1); }
+.about-dialog dl > div { display:grid; grid-template-columns:130px minmax(0,1fr); gap:var(--space-2); }
+.about-dialog dt { color:var(--text-muted); }
+.about-dialog dd { margin:0; min-width:0; overflow-wrap:anywhere; }
 </style>

@@ -196,52 +196,6 @@ let stickyCellAt = 0;
 
 let healTimer: number | null = null;
 
-// --- 2.1.9 T4 r3 (#28): fit telemetry + oscillation self-diagnostic ---
-
-// Repro is RDP-only; guessing has missed twice. Every fitGrid call logs
-
-// its inputs/outputs; ≥6 grid changes within 5s auto-opens an overlay
-
-// with the last 80 entries — the user screenshots it, we read the truth.
-
-const fitLog: string[] = [];
-
-const fitDiag = ref<string[]>([]);
-
-const fitDiagOpen = ref(false);
-
-let gridChanges: number[] = [];
-
-function fitLogLine(s: string): void {
-
-  fitLog.push(s);
-
-  if (fitLog.length > 300) fitLog.splice(0, fitLog.length - 300);
-
-}
-
-function noteGridChange(cols: number, rows: number): void {
-
-  const now = performance.now();
-
-  gridChanges.push(now);
-
-  gridChanges = gridChanges.filter((t) => now - t < 5000);
-
-  if (gridChanges.length >= 6) {
-
-    fitDiag.value = fitLog.slice(-80);
-
-    fitDiagOpen.value = true;
-
-    gridChanges = [];
-
-  }
-
-  fitLogLine(`  -> grid ${cols}x${rows} (term now)`);
-
-}
-
 // B-05 手测 2 (narrow-TUI guard): full-screen TUIs (claude/codex/cc-switch)
 
 // render structural garbage below a minimum width; instead of showing the
@@ -826,7 +780,6 @@ function applyGrid(cols: number, rows: number): void {
 
     term.resize(grid, rows);
 
-    noteGridChange(grid, rows);
 
   }
 
@@ -878,21 +831,6 @@ function fitGrid(): void {
 
   }
 
-  fitLogLine(
-
-    `fit rect=${rect.width.toFixed(1)}x${rect.height.toFixed(1)} ` +
-
-      `real=${real ? real.w.toFixed(2) + "/" + real.h.toFixed(2) : "-"} ` +
-
-      `sticky=${stickyCell ? stickyCell.w.toFixed(2) + "/" + stickyCell.h.toFixed(2) : "-"} ` +
-
-      `dpr=${window.devicePixelRatio} zoom=${document.querySelector<HTMLElement>(".app")?.offsetWidth ? (document.querySelector<HTMLElement>(".app")!.getBoundingClientRect().width / document.querySelector<HTMLElement>(".app")!.offsetWidth).toFixed(2) : "?"} ` +
-
-      `renderer=${webgl ? "webgl" : "dom"} ` +
-
-      `cols=${term.cols} rows=${term.rows}`,
-
-  );
 
   const cellW = stickyCell?.w ?? 0;
 
@@ -904,7 +842,6 @@ function fitGrid(): void {
 
     const probe = measureCell();
 
-    fitLogLine(`  probe=${probe ? probe.w.toFixed(2) + "/" + probe.h.toFixed(2) : "-"}`);
 
     if (probe && probe.w > 0 && probe.h > 0) {
 
@@ -2721,89 +2658,18 @@ defineExpose({
 
       </button>
 
-    </div>
 
+    </div>
     </Transition>
 
-    <!-- 2.1.9 T4 r3 (#28): fit self-diagnostic. Auto-opens when the grid
 
-         changes ≥6 times within 5s (the RDP oscillation); screenshot this
 
-         and the rect/cell/sticky/dpr/zoom lines name the flip source. -->
-
-    <div v-if="fitDiagOpen" class="fit-diag">
-
-      <div class="fit-diag-head">
-
-        <span>fit 诊断（网格 5s 内 ≥6 次变化）— 截图反馈</span>
-
-        <button @click="fitDiagOpen = false">关闭</button>
-
-      </div>
-
-      <pre>{{ fitDiag.join("\n") }}</pre>
-
-    </div>
 
   </div>
 
 </template>
 
 <style scoped>
-
-/* 2.1.9 T4 r3 (#28): fit self-diagnostic overlay. */
-
-.fit-diag {
-
-  position: absolute;
-
-  inset: auto 8px 8px 8px;
-
-  max-height: 60%;
-
-  z-index: 60;
-
-  background: var(--bg);
-
-  color: var(--error);
-
-  border: 2px solid var(--error-border, var(--border));
-
-  border-radius: var(--radius-sm);
-
-  font-size: var(--font-xs);
-
-  display: flex;
-
-  flex-direction: column;
-
-}
-
-.fit-diag-head {
-
-  display: flex;
-
-  justify-content: space-between;
-
-  align-items: center;
-
-  padding: 4px 8px;
-
-  font-weight: 600;
-
-}
-
-.fit-diag pre {
-
-  margin: 0;
-
-  padding: 4px 8px 8px;
-
-  overflow: auto;
-
-  white-space: pre;
-
-}
 
 .terminal {
 
