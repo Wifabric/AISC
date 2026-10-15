@@ -17,12 +17,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRuntimeStore } from "../stores/runtime";
 import { useWorkspacesStore } from "../stores/workspaces";
 import { useSettingsStore } from "../stores/settings";
 import { useTeleportedZoom } from "../lib/useTeleportedZoom";
 import { useDoctorStore } from "../stores/doctor";
 import { useUpdateStore } from "../stores/update";
+import { useToastStore } from "../stores/toast";
 import { openWorkspaceWindow } from "../lib/workspaceWindow";
 
 const { t } = useI18n();
@@ -31,6 +33,7 @@ const doctor = useDoctorStore();
 const ws = useWorkspacesStore();
 const settings = useSettingsStore();
 const { zoomStyle } = useTeleportedZoom();
+const toast = useToastStore();
 
 // P2-2 → W3: the global status label rides the menu bar's right end now
 // (the workspace strip is retired). Same quiet-text language.
@@ -187,16 +190,40 @@ function openAbout(): void {
 }
 async function openDocs(): Promise<void> {
   closeMenu();
-  window.open("https://github.com/wangyuncepu/AISC#readme", "_blank", "noopener");
+  try {
+    await openUrl("https://github.com/Wifabric/AISC#readme");
+  } catch {
+    toast.error(t("menubar.docs.openFailed"));
+  }
 }
+
 /** A7 (D-8 自研): menu-level quick check; the full flow lives in settings
- * (关于与更新). A found update routes the user there. */
+ * (关于与更新). Every branch is visible — a silent menu item is
+ * indistinguishable from a dead one in the field. */
 async function checkForUpdates(): Promise<void> {
   closeMenu();
   const update = useUpdateStore();
-  const info = await update.check();
-  if (info?.updateAvailable) {
-    ws.openSettingsTab();
+  const progress = toast.push(t("menubar.update.checking"), { kind: "progress" });
+  try {
+    const info = await update.check();
+    toast.dismiss(progress);
+    if (!info) {
+      toast.error(t("menubar.update.failed", {
+        reason: update.error || t("menubar.update.unknownError"),
+      }));
+      return;
+    }
+    if (info.updateAvailable) {
+      toast.success(t("menubar.update.available", { version: info.latest || "?" }));
+      ws.openSettingsTab();
+    } else {
+      toast.success(t("menubar.update.upToDate", { version: info.current }));
+    }
+  } catch (e) {
+    toast.dismiss(progress);
+    toast.error(t("menubar.update.failed", {
+      reason: (e as { message?: string })?.message ?? String(e),
+    }));
   }
 }
 </script>
