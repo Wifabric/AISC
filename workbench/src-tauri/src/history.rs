@@ -201,6 +201,43 @@ pub struct TabRecord {
 /// case-insensitive, so `E:\proj` and `e:/proj` name the same directory and
 /// must share one history record. POSIX paths are case-sensitive -> verbatim.
 /// The DISPLAY path is never rewritten here; only matching uses this key.
+fn remote_machine_tokens(record: &WorkspaceRecord) -> [Option<&str>; 2] {
+    [
+        record.machine_name.as_deref(),
+        record.machine_host.as_deref(),
+    ]
+}
+
+fn equivalent_remote_machine(a: &WorkspaceRecord, b: &WorkspaceRecord) -> bool {
+    let [a_name, a_host] = remote_machine_tokens(a);
+    let [b_name, b_host] = remote_machine_tokens(b);
+    fn normalize(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|v| !v.is_empty())
+    }
+    let a_values: Vec<&str> = [normalize(a_name), normalize(a_host)]
+        .into_iter()
+        .flatten()
+        .collect();
+    let b_values: Vec<&str> = [normalize(b_name), normalize(b_host)]
+        .into_iter()
+        .flatten()
+        .collect();
+    if a_values.is_empty() || b_values.is_empty() {
+        return false;
+    }
+    a_values.iter().any(|a| {
+        b_values.iter().any(|b| {
+            a == b
+                || a.split_once('@').map(|(_, host)| host) == Some(*b)
+                || b.split_once('@').map(|(_, host)| host) == Some(*a)
+        })
+    })
+}
+
+fn workspace_records_equivalent(a: &WorkspaceRecord, b: &WorkspaceRecord) -> bool {
+    path_identity_key(&a.path) == path_identity_key(&b.path) && equivalent_remote_machine(a, b)
+}
+
 fn workspace_record_identity_key(record: &WorkspaceRecord) -> String {
     let machine = record.machine_name.as_deref().unwrap_or("").trim();
     format!("{machine}\u{0}{}", path_identity_key(&record.path))
@@ -503,11 +540,18 @@ fn save_locked(
     // record's path stays as the display form (F4: keep the user's case).
     for ws in &patch.workspaces {
         let key = workspace_record_identity_key(ws);
-        if let Some(slot) = current
+        let slot_index = current
             .workspaces
-            .iter_mut()
-            .find(|w| workspace_record_identity_key(w) == key)
-        {
+            .iter()
+            .position(|w| workspace_record_identity_key(w) == key)
+            .or_else(|| {
+                current
+                    .workspaces
+                    .iter()
+                    .position(|w| workspace_records_equivalent(w, ws))
+            });
+        if let Some(index) = slot_index {
+            let slot = &mut current.workspaces[index];
             let old = slot.clone();
             let display_path = old.path.clone();
             *slot = ws.clone();
@@ -651,6 +695,52 @@ mod tests {
         let h = load(dir.path()).unwrap().0;
         assert_eq!(h.workspaces.len(), 1);
         assert_eq!(h.workspaces[0].machine_name, None);
+    }
+
+    #[test]
+    fn upsert_replaces_ssh_host_machine_alias_with_configured_name() {
+        let dir = tempdir().unwrap();
+        let alias = WorkspaceRecord {
+            path: "E:\\projects".into(),
+            machine_name: Some("admin@10.147.20.7".into()),
+            machine_host: Some("admin@10.147.20.7".into()),
+            last_used_at: "t1".into(),
+            pinned: false,
+            last_agent: "bash".into(),
+            runtime: None,
+            layout: None,
+            extra: serde_json::Value::Null,
+        };
+        let rev = save(
+            dir.path(),
+            0,
+            &HistoryPatch {
+                workspaces: vec![alias.clone()],
+            },
+        )
+        .unwrap();
+        let canonical = WorkspaceRecord {
+            machine_name: Some("win-test".into()),
+            machine_host: Some("10.147.20.7".into()),
+            last_used_at: "t2".into(),
+            ..alias.clone()
+        };
+        save(
+            dir.path(),
+            rev,
+            &HistoryPatch {
+                workspaces: vec![canonical],
+            },
+        )
+        .unwrap();
+        let h = load(dir.path()).unwrap().0;
+        assert_eq!(
+            h.workspaces.len(),
+            1,
+            "SSH-host alias must migrate, not duplicate"
+        );
+        assert_eq!(h.workspaces[0].machine_name.as_deref(), Some("win-test"));
+        assert_eq!(h.workspaces[0].machine_host.as_deref(), Some("10.147.20.7"));
     }
 
     #[test]

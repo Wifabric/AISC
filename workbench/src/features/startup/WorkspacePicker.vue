@@ -19,6 +19,7 @@ import type { RemoteBrowseResult } from "../../lib/ipc";
 import ForgetConfirmDialog from "./ForgetConfirmDialog.vue";
 import InvalidPathDialog from "./InvalidPathDialog.vue";
 import { buildSearchMatcher } from "../../lib/search";
+import { configuredMachineName } from "../../lib/workspaceMachines";
 
 const { t } = useI18n();
 const store = useRuntimeStore();
@@ -58,7 +59,13 @@ const invalidMachine = ref<string | null>(null);
 function isRemotePath(path: string): boolean {
   return path.startsWith("/");
 }
-function machineForRecent(record: { path: string; machine_name?: string | null }): string | null {
+function machineForRecent(record: {
+  path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
+}): string | null {
+  const configured = configuredMachineName(settings.doc?.remoteMachines ?? [], record);
+  if (configured) return configured;
   if (record.machine_name) return record.machine_name;
   // Legacy records could only encode POSIX as remote; Windows paths written
   // before b13 remain local. New records carry an explicit machine identity.
@@ -68,7 +75,11 @@ function machineForRecent(record: { path: string; machine_name?: string | null }
   }
   return null;
 }
-async function onRecentClick(record: { path: string; machine_name?: string | null }): Promise<void> {
+async function onRecentClick(record: {
+  path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
+}): Promise<void> {
   const machine = machineForRecent(record);
   const current = target.value?.kind === "remote" ? target.value.machine?.name ?? null : null;
   if (machine !== current) await switchTarget(machine);
@@ -444,7 +455,7 @@ async function confirmForget(): Promise<void> {
               <span
                 class="r-machine"
                 :title="w.machine_host ?? w.path"
-              >{{ w.machine_name ?? (isRemotePath(w.path) ? t("picker.target.remoteTag") : t("picker.target.local")) }}</span>
+              >{{ machineForRecent(w) ?? (isRemotePath(w.path) ? t("picker.target.remoteTag") : t("picker.target.local")) }}</span>
               <span class="r-path">{{ w.path }}</span>
             </button>
             <button

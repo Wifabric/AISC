@@ -132,6 +132,38 @@ describe("recents cap + inline expand (⑦)", () => {
     expect(mockIpc.workspacePathExists).toHaveBeenCalledWith("E:\\test");
   });
 
+  it("routes a legacy SSH-host machine record to its configured profile", async () => {
+    const { useSettingsStore } = await import("../../../stores/settings");
+    const settings = useSettingsStore();
+    settings.doc = {
+      ...settings.doc,
+      remoteMachines: [{
+        name: "win-test", host: "10.147.20.7", user: "admin", port: 22, keyPath: null,
+      }],
+    } as never;
+    const ws = useWorkspacesStore();
+    ws.history = {
+      schema_version: 2,
+      revision: 1,
+      workspaces: [{
+        path: "E:\\projects",
+        machine_name: "admin@10.147.20.7",
+        machine_host: "admin@10.147.20.7",
+        last_used_at: "2026-10-15T00:00:00Z",
+        last_agent: "bash",
+        pinned: false,
+        runtime: null,
+        layout: null,
+      }],
+    };
+    ws.historyRevision = 1;
+    const w = mountPicker();
+    expect(w.find(".r-machine").text()).toBe("win-test");
+    await w.find(".recent").trigger("click");
+    await flushPromises();
+    expect(mockIpc.targetSet).toHaveBeenCalledWith("win-test", null);
+  });
+
   it("renders all rows without a toggle when history fits the cap", () => {
     const ws = useWorkspacesStore();
     ws.history = historyWith(5);

@@ -33,7 +33,15 @@ vi.mock("../../stores/runtime", () => ({
   useRuntimeStore: () => ({ status: "idle", dockerStarting: false }),
 }));
 vi.mock("../../stores/settings", () => ({
-  useSettingsStore: () => ({ target: null, doc: { remoteMachines: [], ui: { font_scale: 1 } } }),
+  useSettingsStore: () => ({
+    target: null,
+    doc: {
+      remoteMachines: [{
+        name: "win-test", host: "10.147.20.7", user: "admin", port: 22, keyPath: null,
+      }],
+      ui: { font_scale: 1 },
+    },
+  }),
 }));
 vi.mock("../../stores/doctor", () => ({ useDoctorStore: () => ({ openDialog: vi.fn() }) }));
 
@@ -87,6 +95,27 @@ describe("MenuBar help actions", () => {
       machine: "win-test",
     });
     expect(workspacesState.workspacePathExists).not.toHaveBeenCalled();
+    w.unmount();
+  });
+
+  it("routes a legacy SSH-host recent alias to its configured machine", async () => {
+    workspacesState.recentWorkspaces = [{
+      path: "E:\\projects",
+      machine_name: "admin@10.147.20.7",
+      machine_host: "admin@10.147.20.7",
+      last_used_at: "2026-10-15T00:00:00Z",
+      last_agent: "bash",
+      pinned: false,
+      runtime: null,
+      layout: null,
+    }];
+    const w = mount(MenuBar, { global: { plugins: [i18n], stubs: { teleport: true } } });
+    await w.findAll(".menubar-btn")[0]!.trigger("click");
+    await w.findAll(".recent")[0]!.trigger("click");
+    expect(workspaceWindow.openWorkspaceWindow).toHaveBeenCalledWith({
+      workspace: "E:\\projects",
+      machine: "win-test",
+    });
     w.unmount();
   });
 

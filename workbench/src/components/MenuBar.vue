@@ -26,6 +26,7 @@ import { useDoctorStore } from "../stores/doctor";
 import { useUpdateStore } from "../stores/update";
 import { useToastStore } from "../stores/toast";
 import { openWorkspaceWindow } from "../lib/workspaceWindow";
+import { configuredMachineName } from "../lib/workspaceMachines";
 
 const { t } = useI18n();
 const facade = useRuntimeStore();
@@ -154,7 +155,9 @@ const recentsRemote = computed(() =>
     .slice(0, 8)
     .map((r) => ({
       path: r.path,
-      machine: r.machine_name ?? null,
+      machine: configuredMachineName(settings.doc?.remoteMachines ?? [], r)
+        ?? r.machine_name
+        ?? null,
       label: baseOf(r.path),
     })));
 

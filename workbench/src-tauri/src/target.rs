@@ -103,6 +103,16 @@ pub(crate) fn workspace_target_key(workspace: &str) -> String {
     }
 }
 
+fn remote_machine_for_ssh(machines: &[RemoteMachine], target: &SshTarget) -> Option<RemoteMachine> {
+    machines
+        .iter()
+        .find(|machine| {
+            let configured = machine.to_ssh_target();
+            &configured == target || configured.host == target.host
+        })
+        .cloned()
+}
+
 fn target_binding(target: &CliTarget) -> TargetBinding {
     match target {
         CliTarget::Local(_) => TargetBinding::Local,
@@ -163,7 +173,22 @@ pub(crate) fn bind_workspace_target(
     workspace: &str,
     target: &CliTarget,
 ) -> Result<(), WorkbenchError> {
-    bind_workspace_machine(app, workspace, binding_machine(&target_binding(target)))
+    // CliTarget carries the SSH destination but deliberately not the profile
+    // display name. Recover the configured RemoteMachine before binding so
+    // history/recents can persist `win-test`, not `admin@10.147.20.7`.
+    let machine = match target {
+        CliTarget::Remote(remote) => {
+            let configured = crate::session::config_dir(app)
+                .ok()
+                .and_then(|dir| crate::settings::load_settings_document(&dir).ok())
+                .map(|doc| doc.remote_machines)
+                .unwrap_or_default();
+            remote_machine_for_ssh(&configured, remote)
+                .or_else(|| binding_machine(&target_binding(target)))
+        }
+        CliTarget::Local(_) => None,
+    };
+    bind_workspace_machine(app, workspace, machine)
 }
 
 fn workspace_binding(app: &tauri::AppHandle, workspace: &str) -> Option<TargetBinding> {
@@ -351,6 +376,22 @@ mod workspace_routing_tests {
             port: Some(22),
             key_path: None,
         }
+    }
+
+    #[test]
+    fn ssh_binding_preserves_configured_machine_profile() {
+        let machine = RemoteMachine {
+            name: "win-test".into(),
+            host: "10.147.20.7".into(),
+            user: Some("admin".into()),
+            port: Some(22),
+            key_path: None,
+        };
+        let target = machine.to_ssh_target();
+        assert_eq!(
+            remote_machine_for_ssh(&[machine.clone()], &target),
+            Some(machine)
+        );
     }
 
     #[test]
