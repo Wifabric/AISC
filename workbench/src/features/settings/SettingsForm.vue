@@ -779,6 +779,7 @@ async function reopenOnboarding() {
             </div>
           </template>
           <p v-else-if="!store.cacheError" class="note">{{ t("settings.disk.unavailable") }}</p>
+          <p class="note">{{ t("settings.disk.dfNote") }}</p>
           <div class="field">
             <button :disabled="store.cacheBusy" :title="t('settings.disk.refreshTip')" @click="store.loadCacheUsage()">{{ t("settings.disk.refresh") }}</button>
             <button class="primary" :disabled="store.cacheBusy" :title="t('settings.disk.cleanupTip')" @click="onCacheCleanup">{{ t("settings.disk.cleanup") }}</button>
@@ -919,15 +920,24 @@ async function reopenOnboarding() {
         <template v-else-if="group === 'about'">
           <p class="help">{{ t("settings.about.hint") }}</p>
           <div class="field disk-row">
-            <span class="label">{{ t("settings.about.current") }}</span>
+            <span class="label">{{ t("settings.about.workbenchCurrent") }}</span>
             <span class="val">{{ update.info?.current ?? t("settings.about.unknown") }}</span>
+          </div>
+          <div v-if="update.info?.cliCurrent" class="field disk-row">
+            <span class="label">{{ t("settings.about.cliCurrent") }}</span>
+            <span class="val">{{ update.info.cliCurrent }}</span>
           </div>
           <p v-if="update.error" class="err-text">{{ update.error }}</p>
           <template v-if="update.info">
             <div v-if="update.info.latest" class="field disk-row">
-              <span class="label">{{ t("settings.about.latest") }}</span>
+              <span class="label">{{ t("settings.about.workbenchLatest") }}</span>
               <span class="val">{{ update.info.latest }}</span>
             </div>
+            <div v-if="update.info.cliLatest" class="field disk-row">
+              <span class="label">{{ t("settings.about.cliLatest") }}</span>
+              <span class="val">{{ update.info.cliLatest }}</span>
+            </div>
+            <p class="note">{{ t("settings.about.updateTogether") }}</p>
             <p v-if="update.info.note" class="note">{{ update.info.note }}</p>
             <p v-if="update.status === 'none'" class="note">{{ t("settings.about.upToDate") }}</p>
             <template v-if="update.status === 'available' || update.status === 'downloading'">

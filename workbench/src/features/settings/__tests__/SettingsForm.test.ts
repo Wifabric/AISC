@@ -110,6 +110,29 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     );
   });
 
+  it("reports Workbench GUI and bundled CLI versions separately", async () => {
+    mockIpc.appCheckUpdate.mockResolvedValue({
+      current: "2.1.15-preview.6", latest: "2.1.15-preview.7", updateAvailable: true,
+      setupUrl: "s", sha256Url: "h", releaseUrl: "r",
+      cliCurrent: "0.1.7.dev0", cliLatest: "0.1.8.dev0", cliUpdateAvailable: true,
+      note: "",
+    });
+    const store = useSettingsStore();
+    await store.load();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
+    await check.trigger("click");
+    await Promise.resolve();
+    expect(wrapper.text()).toContain("Workbench GUI");
+    expect(wrapper.text()).toContain("2.1.15-preview.6");
+    expect(wrapper.text()).toContain("2.1.15-preview.7");
+    expect(wrapper.text()).toContain(i18n.global.t("settings.about.cliCurrent"));
+    expect(wrapper.text()).toContain("0.1.7.dev0");
+    expect(wrapper.text()).toContain("0.1.8.dev0");
+    wrapper.unmount();
+  });
+
   it("keeps the update check button available after a completed check", async () => {
     mockIpc.appCheckUpdate.mockResolvedValue({
       current: "2.1.15-preview.3", latest: "2.1.15-preview.3", updateAvailable: false,

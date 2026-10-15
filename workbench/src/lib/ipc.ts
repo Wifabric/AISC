@@ -940,6 +940,9 @@ export interface UpdateInfo {
   setupUrl: string | null;
   sha256Url: string | null;
   releaseUrl: string | null;
+  cliCurrent?: string | null;
+  cliLatest?: string | null;
+  cliUpdateAvailable?: boolean;
   note: string;
 }
 
