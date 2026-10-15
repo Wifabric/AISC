@@ -2,6 +2,25 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+
+
+# v2.1.15 b13 远程工作区模型修复（2026-10-15，待 PR CI / preview.5）
+
+- **Help**：文档改用 Tauri opener 打开 `Wifabric/AISC` README；检查更新覆盖
+  checking / 已最新 / 可更新 / 失败四态 toast，可更新时直达安装引导。
+- **远程导航**：serve 新增 `fs.roots`（Windows 全盘符、POSIX `/`），Workbench
+  remote browse 解除 `$HOME` pin，支持盘符切换、面包屑、上一级与刷新；旧远端
+  降级到 home 所在根。CLI bump `0.1.7.dev0`，serve protocol 维持 4。
+- **机器身份**：history schema additive 增加 `machine_name/machine_host`，
+  upsert/dedupe/remove/focus 均按 machine + path；Recent 显示具体机器，同路径
+  不同机器不再合并或误删。
+- **数据面**：provider / cc-switch / conversation / work-record / runtime 保持
+  remote workspace target；cc-switch 增加 target_route 取证。控制端 remoteMachines
+  与 UI 设置仍留本机。远端 Windows watcher 接受 `C:/...` 并归一事件分隔符。
+- **实测取证**：远端 `C:/Users/admin` 非空可列；用户所选 `E:/test` 与
+  `test-ws` 在远端均为空目录，UI 应显示空态而非误判数据面故障。
+- **门禁**：Python 1403 passed / 53 skipped；Rust lib 357 passed / 1 ignored；
+  Vitest 75 files / 585 tests；vue-tsc 通过。
 # v2.1.15-preview.2 / b9 阻断修复（2026-10-14）
 
 - **用户 preview.1 实测反馈**：Windows 远端仍无 bash prompt、所有 bash open 触发

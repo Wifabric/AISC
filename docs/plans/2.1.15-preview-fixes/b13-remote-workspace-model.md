@@ -77,3 +77,17 @@
 - 远端工作区文件树来自远端；workspace runtime / provider / cc-switch / conversation / work records 均路由远端；控制端设置仍留在本机。
 - 帮助文档可打开；检查更新四个状态均可见，可更新时进入 Settings 下载/安装。
 - 所有自动化与 CI 门禁通过。
+
+## 执行状态（2026-10-15）
+
+- `678fee8` 计划落盘；`b75ca4d` Help 文档 opener 与更新四态反馈；
+  `8904151` `fs.roots` / 全盘 SSH-native 导航 / CLI `0.1.7.dev0`；
+  `3ff0562` history 与 Recent 的 machine identity；`bcb410f` Windows 远端
+  watcher root/path 归一及 cc-switch target_route 取证。
+- 实机取证：远端 `fs.list C:/Users/admin` 返回目录；用户选择的
+  `E:/test` 与 `C:/Users/admin/test-ws` 在远端均为空目录。非空目录应显示
+  条目，空目录保留明确空态。
+- 本地门禁：Python 1403 passed / 53 skipped；Rust lib 357 passed / 1 ignored；
+  Vitest 75 files / 585 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
+- 下一步：push 分支 → PR CI → ff-only merge develop → develop 全路径 CI →
+  Workbench `v2.1.15-preview.5` / TestPyPI `0.1.7.dev0` → 用户实机复测。
