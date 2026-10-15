@@ -13,3 +13,4 @@ Preview 验证窗内的阻断修复索引。按 DEVELOP_WIKI §1.1 preview 迭�
 | b13 | 远程资源导航、机器身份、远端数据面与 Help 反馈 | `2.1.15-b13-remote-workspace-model` | 已发布 preview.5，待 b13 实机 |
 | b14 | preview.5 协议提示、远程首载、Recent 机器路由与镜像聚合 | `2.1.15-b14-preview5-field-fixes` | 已发布 preview.6，待 b14 实机 |
 | b15 | 更新链路、Work Records 中文/折叠/去 Activate、Claude 树与 Docker 资源 | `2.1.15-b15-preview6-field-fixes` | 已发布 preview.7，待 b15 实机 |
+| b16 | Work Record 默认折叠、Help/About、fit 弹层、更新 Atom fallback 与统一 Docker 资源面板 | `2.1.15-b16-preview7-field-fixes` | 进行中 |
