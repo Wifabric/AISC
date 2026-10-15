@@ -3,6 +3,24 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.15 b15 preview.6 字段修复（2026-10-15，待 PR CI / preview.7）
+
+- **更新**：GitHub 请求按 system proxy → direct 双策略各重试 3 次；下载与 sha256
+  sidecar 同样走 fallback；设置页分别显示 Workbench GUI 与内置 CLI current/latest，
+  GUI 或 CLI 任一落后即引导下载同一个 installer 一并升级。
+- **中文**：Windows frozen serve 改从 `stdin.buffer` 按 UTF-8 读帧，修复远端
+  Work Record / 会话中文重命名乱码或 surrogate 错误。
+- **Claude 树**：从 resumed/forked JSONL 的历史 `session_id` 提取 parent thread，
+  同名 Claude 会话与 Codex 一样按 parent-child 折叠。
+- **Work Records**：Collection 与未归档区均可折叠；移除 Activate 状态与自动收容，
+  新会话默认 unfiled；删除确认改为自绘 dialog，不触发系统提示音。
+- **Docker**：修复 Docker verbose JSON string-boolean 解析导致 build cache 全部
+  误判 in-use 的统计错误；inspect images 按 image ID 聚合 repo tags；mirror 拉取
+  打 bare tag 后移除同 ID mirror alias；用 RootFS layer 前缀证据安全管理 AISC
+  构建引入的基础镜像。
+- **门禁**：Python 1412 passed / 53 skipped；Rust lib 361 passed / 1 ignored；
+  Vitest 75 files / 594 tests；vue-tsc 通过。
+
 # v2.1.15-preview.6 / b14 preview.5 字段修复（2026-10-15）
 
 - **协议提示**：`wsl-base` 远端 CLI 原 `0.1.3` / serve protocol 3，preview.5

@@ -87,3 +87,14 @@
 - 磁盘 df summary 与 inspect 的 build cache / image 可回收口径一致。
 - 删除确认无系统音。
 - 本地门禁与 CI 全绿。
+
+## 执行状态（2026-10-15）
+
+- `4556ec5` 计划落盘；`d561861` serve UTF-8 / 中文标题与 Claude parent 扫描测试；
+  `543e5e2` Work Records 折叠、去 Active、静默删除；`8e96843` Docker alias、
+  string-bool、layer provenance 与统计修复；`3bf7ead` + `fc9093b` 更新链路、
+  GUI/CLI 双版本与 CLI envelope 解析修正。
+- 本地门禁：Python 1412 passed / 53 skipped；Rust lib 361 passed / 1 ignored；
+  Vitest 75 files / 594 tests；vue-tsc 通过，`LOCAL GATES: ALL GREEN`。
+- 下一步：push → PR CI → ff-only merge develop → develop 全路径 CI →
+  Workbench `v2.1.15-preview.7` + CLI `0.1.8.dev0` / TestPyPI → 用户复测。
