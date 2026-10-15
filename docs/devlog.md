@@ -3,6 +3,16 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.15 final 收口（2026-10-15）
+
+- 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
+  pre-release Release 记录与资产；git tag 保留为不可变发布标识。
+- b1–b16 与 preview.1–preview.8 反馈链全部收口；`2.1.15-dev-plans` 与
+  `2.1.15-preview-fixes` 均已归档。
+- CLI 升级为 `0.1.8` final，Workbench 发布 `v2.1.15` final。
+- 发布前门禁沿用 final release 清单；发布后执行 main 合并、tag CI、正式 PyPI、
+  Releases 清理与文档收口。
+
 # v2.1.15-preview.8 / b16 preview.7 字段修复（2026-10-15）
 
 - **Work Records**：新建 Collection 默认折叠，标题行保留成员计数，手动展开后显示成员。

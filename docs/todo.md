@@ -216,7 +216,7 @@
 
 # 待解决
 
-# v2.1.15-target（2026-10-12 开题；2026-10-14 b1–b8 开发闭环，v2.1.15-preview.1 已发布；计划已归档 docs/archive/2.1.15-dev-plans/）
+# v2.1.15-target（2026-10-12 开题；2026-10-15 b1–b16 收口，v2.1.15 final 发布；计划已归档）
 - P0 fix
   - [x] SSH 远程电脑后卡在 CLI bash 光标，或打开会话报错；先分析诊断包并复现，修复远端 shell/PTY/会话开启链路（反馈 F5；b1 已闭环）
 - fix
@@ -234,4 +234,4 @@
   - [x] preview.4 实测追加 b13：远程全盘导航、Recent 机器身份、远端数据面取证、Help 文档/更新反馈（preview.5 已发布，待实机）
   - [x] preview.5 实测追加 b14：协议错误 detail、远程 Explorer 首载、Recent 配置机器名迁移、同 ID image tag 聚合（preview.6 已发布，待实机）
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
-  - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（preview.8 已发布，待实机）
+  - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（v2.1.15 final 收口）
