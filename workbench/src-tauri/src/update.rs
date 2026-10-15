@@ -258,6 +258,18 @@ fn combined_update_available(
     gui_update || cli_update
 }
 
+fn cli_version_from_envelope(stdout: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    let version = value
+        .get("data")?
+        .get("cli_version")
+        .or_else(|| value.get("data")?.get("version"))?
+        .as_str()?
+        .trim()
+        .to_string();
+    Some(version).filter(|version| !version.is_empty())
+}
+
 fn local_cli_version(app: &AppHandle) -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
@@ -277,14 +289,7 @@ fn local_cli_version(app: &AppHandle) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    let version = value
-        .get("data")?
-        .get("version")?
-        .as_str()?
-        .trim()
-        .to_string();
-    Some(version).filter(|version| !version.is_empty())
+    cli_version_from_envelope(&output.stdout)
 }
 
 async fn bundled_cli_version(latest_tag: &str) -> Result<String, WorkbenchError> {
@@ -669,6 +674,15 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn local_cli_version_reads_frozen_envelope_cli_version_field() {
+        let payload = br#"{"data":{"cli_version":"0.1.7.dev0","bundle_version":"0.1.7.dev0"}}"#;
+        assert_eq!(
+            cli_version_from_envelope(payload),
+            Some("0.1.7.dev0".to_string())
+        );
+    }
 
     #[test]
     fn dash_version_normalizes_to_dot_dev() {

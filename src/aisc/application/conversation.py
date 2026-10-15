@@ -181,8 +181,9 @@ class _FileScan:
     _first_raw: Optional[str] = None
     _good_raw: Optional[str] = None
     # b8 R3: codex subagent rollouts carry their parent thread id in the
-    # first-line session_meta (source.subagent.thread_spawn); claude has
-    # none (sidechains live inside the same file).
+    # first-line session_meta. b15: Claude resumed/forked files carry the
+    # historical source id in `session_id` while the current id is the
+    # filename/`sessionId`.
     parent_thread_id: Optional[str] = None
 
 
@@ -207,6 +208,22 @@ def _codex_parent_thread_id(meta: Dict[str, Any]) -> Optional[str]:
         if isinstance(parent, str) and parent:
             return parent
     return None
+
+
+def _claude_parent_thread_id(obj: Dict[str, Any], conversation_id: str) -> Optional[str]:
+    """Return a Claude resumed/fork file's historical source session id.
+
+    Claude's current id is duplicated in ``sessionId`` and in the filename.
+    A row whose ``session_id`` is a different UUID is evidence that history
+    was copied from that parent conversation into this new file.
+    """
+    historical = obj.get("session_id")
+    if not isinstance(historical, str):
+        return None
+    historical = historical.strip()
+    if not is_conversation_uuid(historical):
+        return None
+    return historical if historical.lower() != conversation_id.lower() else None
 
 
 def _scan_file(path: Path, agent: str, head_only: bool) -> _FileScan:
@@ -239,6 +256,9 @@ def _scan_file(path: Path, agent: str, head_only: bool) -> _FileScan:
             if agent == "codex" and state.parent_thread_id is None \
                     and obj.get("type") == "session_meta":
                 state.parent_thread_id = _codex_parent_thread_id(obj)
+            if agent == "claude" and state.parent_thread_id is None:
+                state.parent_thread_id = _claude_parent_thread_id(
+                    obj, path.stem)
             ts = obj.get("timestamp")
             if isinstance(ts, str) and ts:
                 if state.first_ts is None:
