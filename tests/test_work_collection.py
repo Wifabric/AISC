@@ -137,6 +137,14 @@ class TestSchemaStorage:
 
 
 class TestCollectionCrud:
+    def test_unicode_titles_round_trip(self, ws_env, work_collection):
+        ws, runtime, _ws_dir = ws_env
+        created = work_collection.create(runtime, title="中文工作记录")
+        renamed = work_collection.rename(
+            runtime, created["id"], "中文重命名 ✅"
+        )
+        assert renamed["title"] == "中文重命名 ✅"
+
     def test_create_rename_activate_deactivate(self, ws_env, work_collection):
         ws, ws_dir, runtime = ws_env
         _claude(ws_dir)
@@ -244,21 +252,26 @@ class TestReconcile:
             _key("claude", CLAUDE_ID), _key("codex", CODEX_ID)
         ]
 
-    def test_active_collection_automatically_adopts_new_conversation(
+    def test_new_conversation_stays_unfiled_even_with_legacy_active_collection(
         self, ws_env, work_collection
     ):
         ws, ws_dir, runtime = ws_env
         _claude(ws_dir)
         created = work_collection.create(runtime, title="active")
+        work_collection.add_member(
+            runtime, created["id"], agent="claude", conversation_id=CLAUDE_ID
+        )
         work_collection.set_active(runtime, created["id"], workspace=str(ws))
         _codex(ws_dir)
         out = work_collection.reconcile(runtime, str(ws))
-        assert out["added"] == [_key("codex", CODEX_ID)]
+        assert out["added"] == []
         doc = work_collection.load(runtime)
-        member = doc["collections"][0]["members"][0]
-        assert member["member_key"] == _key("codex", CODEX_ID)
-        assert member["source"] == "active_auto"
-        assert doc["observed_provider_keys"][-1] == _key("codex", CODEX_ID)
+        assert [m["member_key"] for m in doc["collections"][0]["members"]] == [
+            _key("claude", CLAUDE_ID)
+        ]
+        assert _key("codex", CODEX_ID) in doc["observed_provider_keys"]
+        unfiled = work_collection.unfiled(runtime, str(ws))
+        assert [c["conversation_id"] for c in unfiled] == [CODEX_ID]
 
     def test_observed_and_already_collected_keys_are_not_duplicated(
         self, ws_env, work_collection

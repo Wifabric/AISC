@@ -21,6 +21,7 @@ from aisc.application.conversation import (
     delete_conversation,
     list_conversations,
     preflight_conversation,
+    rename_conversation,
     sanitize_title,
 )
 from aisc.application.data_root import DataRootResolver
@@ -186,6 +187,13 @@ class TestConversationList:
         )
         entry = _by_id(list_conversations(str(ws)), CLAUDE_ID)
         assert entry["title"].startswith("<INSTRUCTIONS>")
+
+    def test_rename_preserves_unicode_title(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_claude(ws_dir, "claude_normal.jsonl")
+        result = rename_conversation(str(ws), CLAUDE_ID, "claude", "中文会话 ✅")
+        assert result["title"] == "中文会话 ✅"
+        assert _by_id(list_conversations(str(ws)), CLAUDE_ID)["title"] == "中文会话 ✅"
 
     def test_delete_removes_file(self, ws_env):
         ws, ws_dir = ws_env
@@ -507,6 +515,29 @@ class TestParentThreadTree:
         by_id = {e["conversation_id"]: e for e in result["conversations"]}
         assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
         assert by_id[self.CHILD_ID]["resumable"] is False
+
+    def test_claude_resumed_file_carries_parent_thread_id(self, ws_env):
+        ws, ws_dir = ws_env
+        dest = ws_dir / "claude" / "projects" / "-"
+        dest.mkdir(parents=True)
+
+        def write(path, current_id, historical_id=None):
+            row = {
+                "type": "user",
+                "timestamp": "2026-10-15T07:00:00Z",
+                "sessionId": current_id,
+                "message": {"role": "user", "content": "same title"},
+            }
+            if historical_id is not None:
+                row["session_id"] = historical_id
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        write(dest / f"{self.PARENT_ID}.jsonl", self.PARENT_ID)
+        write(dest / f"{self.CHILD_ID}.jsonl", self.CHILD_ID, self.PARENT_ID)
+        result = list_conversations(str(ws))
+        by_id = {e["conversation_id"]: e for e in result["conversations"]}
+        assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
+        assert by_id[self.PARENT_ID]["parent_thread_id"] is None
 
     def test_claude_entries_have_no_parent(self, ws_env):
         ws, ws_dir = ws_env

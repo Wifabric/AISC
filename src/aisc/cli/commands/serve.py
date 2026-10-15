@@ -492,6 +492,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return _serve_loop(sys.stdin, sys.stdout)
 
 
+def _read_stdin_line(stdin: Any) -> str:
+    """Read one serve frame as UTF-8, bypassing a locale TextIO wrapper.
+
+    b12 fixed the blocking half of frozen Windows SSH stdio but accidentally
+    left ``readline()`` on the TextIO object. That decoder can be cp1252 with
+    surrogateescape, turning inbound CJK JSON into mojibake/surrogates before
+    ``json.loads`` ever runs. The binary buffer owns the byte stream; StringIO
+    test doubles keep the text path.
+    """
+    buffer = getattr(stdin, "buffer", None)
+    if buffer is None:
+        return stdin.readline()
+    raw = buffer.readline()
+    return raw.decode("utf-8")
+
+
 def _serve_loop(stdin: Any, stdout: Any) -> int:
     from aisc import __version__
 
@@ -518,7 +534,7 @@ def _serve_loop(stdin: Any, stdout: Any) -> int:
     })
 
     while not stop["flag"]:
-        line = stdin.readline()
+        line = _read_stdin_line(stdin)
         if not line:  # EOF — the ssh session went away
             break
         line = line.strip()

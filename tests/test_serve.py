@@ -228,6 +228,37 @@ class ServeInProcessTests(unittest.TestCase):
         self.assertEqual(lines[-1]["id"], "x")
         self.assertTrue(lines[-1]["ok"])
 
+    def test_serve_loop_reads_binary_stdin_as_utf8(self) -> None:
+        """Windows SSH frozen serve must not decode UTF-8 JSON via cp1252."""
+        from aisc.cli.commands import serve as srv
+
+        captured: dict = {}
+
+        def capture(_args, payload, _runtime):
+            captured.update(payload)
+            return {"title": payload["argv"][-1]}, 0, []
+
+        raw = json.dumps(
+            {"id": "u", "op": "unicode", "args": {"argv": ["work-record", "--title", "中文记录"]}},
+            ensure_ascii=False,
+        ).encode("utf-8") + b"\n"
+
+        class WindowsLikeStdin:
+            buffer = io.BytesIO(raw)
+
+            def readline(self):
+                # The b12 bug: text handle decoded UTF-8 bytes as cp1252 with
+                # surrogateescape before JSON parsing.
+                return self.buffer.readline().decode("cp1252", errors="surrogateescape")
+
+        stdout = io.StringIO()
+        with mock.patch.dict(srv.OPS, {"unicode": capture}):
+            rc = srv._serve_loop(WindowsLikeStdin(), stdout)
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["argv"][-1], "中文记录")
+        result = json.loads(stdout.getvalue().splitlines()[-1])
+        self.assertEqual(result["envelope"]["data"]["title"], "中文记录")
+
     def test_doctor_op_carries_report_exit_code(self) -> None:
         """doctor's exit code must ride the envelope (0 or 3), not a hard 0 —
         the one-shot CLI contract, preserved through serve."""
