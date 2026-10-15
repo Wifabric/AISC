@@ -26,6 +26,7 @@ use tauri::Emitter;
 use crate::error::WorkbenchError;
 
 const RELEASES_URL: &str = "https://api.github.com/repos/Wifabric/AISC/releases?per_page=30";
+const RELEASES_ATOM_URL: &str = "https://github.com/Wifabric/AISC/releases.atom";
 const UPDATE_ERROR_NETWORK: &str = "app.update/network";
 
 #[derive(Debug, Clone, Serialize)]
@@ -221,6 +222,53 @@ pub fn pick_latest(releases: &serde_json::Value) -> Option<(String, String, Stri
     Some((tag, setup?, sha?, release_url))
 }
 
+fn release_download_urls(tag: &str) -> (String, String, String) {
+    let tagged = if tag.starts_with('v') {
+        tag.to_string()
+    } else {
+        format!("v{tag}")
+    };
+    let version = tagged.strip_prefix('v').unwrap_or(&tagged);
+    let base = format!(
+        "https://github.com/Wifabric/AISC/releases/download/{tagged}/AISC-Workbench-{version}-setup"
+    );
+    (
+        format!("{base}.exe"),
+        format!("{base}.exe.sha256"),
+        format!("https://github.com/Wifabric/AISC/releases/tag/{tagged}"),
+    )
+}
+
+pub fn pick_latest_atom(xml: &str) -> Option<(String, String, String, String)> {
+    let mut best_tag: Option<&str> = None;
+    let mut best_key: Option<((u64, u64, u64), bool, u64)> = None;
+    for entry in xml.split("<entry>").skip(1) {
+        let entry = entry.split("</entry>").next().unwrap_or_default();
+        let Some(id) = entry
+            .split("<id>")
+            .nth(1)
+            .and_then(|rest| rest.split("</id>").next())
+        else {
+            continue;
+        };
+        let Some(tag) = id.rsplit('/').next() else {
+            continue;
+        };
+        let key = version_key(tag);
+        if key.0 == (0, 0, 0) {
+            continue;
+        }
+        if best_key.as_ref().is_none_or(|current| key > *current) {
+            best_key = Some(key);
+            best_tag = Some(tag);
+        }
+    }
+    let tag = best_tag?;
+    let latest = tag.strip_prefix('v').unwrap_or(tag).to_string();
+    let (setup, sha, page) = release_download_urls(tag);
+    Some((latest, setup, sha, page))
+}
+
 fn version_gt(a: &str, b: &str) -> bool {
     version_key(a) > version_key(b)
 }
@@ -322,10 +370,40 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
     let current = current_version(&app);
     let cli_current = local_cli_version(&app);
 
-    let releases = match get_with_fallback(RELEASES_URL, gh_headers()).await {
-        Ok(response) if response.status().is_success() => match response.text().await {
-            Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
-                Ok(body) => Some(body),
+    // GitHub's unauthenticated API has a 60/hour limit and field users have
+    // already hit HTTP 403. The Atom feed is public, current, and not subject
+    // to that core quota; use it first and keep the API as fallback only.
+    let atom_candidate = match get_with_fallback(RELEASES_ATOM_URL, gh_headers()).await {
+        Ok(response) if response.status().is_success() => response
+            .text()
+            .await
+            .ok()
+            .and_then(|xml| pick_latest_atom(&xml)),
+        _ => None,
+    };
+
+    let releases = if atom_candidate.is_some() {
+        None
+    } else {
+        match get_with_fallback(RELEASES_URL, gh_headers()).await {
+            Ok(response) if response.status().is_success() => match response.text().await {
+                Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(body) => Some(body),
+                    Err(e) => {
+                        return Ok(UpdateInfo {
+                            current,
+                            latest: None,
+                            update_available: false,
+                            setup_url: None,
+                            sha256_url: None,
+                            release_url: None,
+                            cli_current,
+                            cli_latest: None,
+                            cli_update_available: false,
+                            note: format!("{UPDATE_ERROR_NETWORK}: releases body: {e}"),
+                        })
+                    }
+                },
                 Err(e) => {
                     return Ok(UpdateInfo {
                         current,
@@ -341,6 +419,23 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
                     })
                 }
             },
+            Ok(response) => {
+                return Ok(UpdateInfo {
+                    current,
+                    latest: None,
+                    update_available: false,
+                    setup_url: None,
+                    sha256_url: None,
+                    release_url: None,
+                    cli_current,
+                    cli_latest: None,
+                    cli_update_available: false,
+                    note: format!(
+                        "{UPDATE_ERROR_NETWORK}: releases HTTP {}",
+                        response.status()
+                    ),
+                })
+            }
             Err(e) => {
                 return Ok(UpdateInfo {
                     current,
@@ -352,50 +447,24 @@ pub async fn app_check_update(app: AppHandle) -> Result<UpdateInfo, WorkbenchErr
                     cli_current,
                     cli_latest: None,
                     cli_update_available: false,
-                    note: format!("{UPDATE_ERROR_NETWORK}: releases body: {e}"),
+                    note: format!(
+                        "check failed (network strategies exhausted): {}",
+                        e.technical_detail.unwrap_or_default()
+                    ),
                 })
             }
-        },
-        Ok(response) => {
-            return Ok(UpdateInfo {
-                current,
-                latest: None,
-                update_available: false,
-                setup_url: None,
-                sha256_url: None,
-                release_url: None,
-                cli_current,
-                cli_latest: None,
-                cli_update_available: false,
-                note: format!(
-                    "{UPDATE_ERROR_NETWORK}: releases HTTP {}",
-                    response.status()
-                ),
-            })
-        }
-        Err(e) => {
-            return Ok(UpdateInfo {
-                current,
-                latest: None,
-                update_available: false,
-                setup_url: None,
-                sha256_url: None,
-                release_url: None,
-                cli_current,
-                cli_latest: None,
-                cli_update_available: false,
-                note: format!(
-                    "check failed (network strategies exhausted): {}",
-                    e.technical_detail.unwrap_or_default()
-                ),
-            })
         }
     };
 
-    let Some(body) = releases else {
-        unreachable!("releases is Some on the only fallthrough path");
+    let picked = if let Some(candidate) = atom_candidate {
+        Some(candidate)
+    } else {
+        let Some(body) = releases else {
+            unreachable!("releases is Some on the only fallthrough path");
+        };
+        pick_latest(&body)
     };
-    let Some((latest, setup, sha, page)) = pick_latest(&body) else {
+    let Some((latest, setup, sha, page)) = picked else {
         return Ok(UpdateInfo {
             current,
             latest: None,
@@ -699,6 +768,23 @@ mod tests {
         assert_eq!(parse_tag("v0.1.0.dev0"), None);
         assert_eq!(parse_tag("v0.1"), None);
         assert_eq!(parse_tag("0.1.0"), Some(((0, 1, 0), true, 0))); // v optional
+    }
+
+    #[test]
+    fn atom_feed_finds_newest_release_without_rate_limited_api() {
+        let atom = r#"
+        <feed><entry><id>tag:github.com,2008:Repository/1/v2.1.15-preview.6</id></entry>
+        <entry><id>tag:github.com,2008:Repository/1/v2.1.15-preview.7</id></entry>
+        <entry><id>tag:github.com,2008:Repository/1/v2.1.14</id></entry></feed>
+        "#;
+        let (latest, setup, sha, page) = pick_latest_atom(atom).unwrap();
+        assert_eq!(latest, "2.1.15-preview.7");
+        assert_eq!(setup, "https://github.com/Wifabric/AISC/releases/download/v2.1.15-preview.7/AISC-Workbench-2.1.15-preview.7-setup.exe");
+        assert_eq!(sha, "https://github.com/Wifabric/AISC/releases/download/v2.1.15-preview.7/AISC-Workbench-2.1.15-preview.7-setup.exe.sha256");
+        assert_eq!(
+            page,
+            "https://github.com/Wifabric/AISC/releases/tag/v2.1.15-preview.7"
+        );
     }
 
     #[test]
