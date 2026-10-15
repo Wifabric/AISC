@@ -5,7 +5,6 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { useWorkRecordsStore } from "../../stores/workRecords";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
@@ -25,6 +24,14 @@ const renamingConversationKey = ref<string | null>(null);
 const renameValue = ref("");
 const expandedMembers = ref(new Set<string>());
 const expandedUnfiled = ref(new Set<string>());
+const collapsedCollections = ref(new Set<string>());
+const unfiledExpanded = ref(true);
+const pendingDelete = ref<{
+  kind: "collection" | "conversation";
+  message: string;
+  collectionId?: string;
+  conversation?: ConversationSummary;
+} | null>(null);
 const contextMenu = ref<{
   x: number;
   y: number;
@@ -66,6 +73,12 @@ function beginCollectionRename(collection: WorkRecordCollection) {
   });
 }
 
+function toggleCollection(id: string) {
+  const next = new Set(collapsedCollections.value);
+  if (!next.delete(id)) next.add(id);
+  collapsedCollections.value = next;
+}
+
 async function commitCollectionRename(id: string) {
   const title = renameValue.value.trim();
   const current = records.byId(id);
@@ -75,13 +88,16 @@ async function commitCollectionRename(id: string) {
   await records.reload();
 }
 
-async function removeCollection(id: string, title: string) {
+function requestCollectionDelete(id: string, title: string) {
   const memberCount = records.byId(id)?.members.length ?? 0;
-  const ok = await confirm(
-    t("workRecords.deleteConfirm", { title, count: memberCount }),
-    { title: t("workRecords.deleteTitle"), kind: "warning" },
-  );
-  if (!ok) return;
+  pendingDelete.value = {
+    kind: "collection",
+    collectionId: id,
+    message: t("workRecords.deleteConfirm", { title, count: memberCount }),
+  };
+}
+
+async function performCollectionDelete(id: string) {
   await explorer.loadConversations(true);
   await runtime.resolvePendingConversationAssociations(explorer.conversations);
   await runtime.closeLiveConversationSessions(
@@ -90,6 +106,7 @@ async function removeCollection(id: string, title: string) {
   await records.delete(id);
   await explorer.loadConversations(true);
 }
+
 
 async function refreshWorkRecords() {
   await Promise.all([records.reload(), explorer.loadConversations(true)]);
@@ -126,18 +143,34 @@ async function commitConversationRename(item: ConversationSummary) {
   await records.reload();
 }
 
-async function deleteConversation(item: ConversationSummary, collectionId?: string | null) {
-  const ok = await confirm(
-    t("explorer.conversations.deleteConfirm", { title: item.title }),
-    { kind: "warning", title: t("explorer.conversations.deleteTitle") },
-  );
-  if (!ok) return;
+function requestConversationDelete(item: ConversationSummary, collectionId?: string | null) {
+  pendingDelete.value = {
+    kind: "conversation",
+    collectionId: collectionId ?? undefined,
+    conversation: item,
+    message: t("explorer.conversations.deleteConfirm", { title: item.title }),
+  };
+}
+
+async function performConversationDelete(item: ConversationSummary, collectionId?: string) {
   await explorer.deleteConversation(item);
-    if (collectionId) {
-      await records.removeMember(collectionId, item.agent, item.conversation_id);
-    }
+  if (collectionId) {
+    await records.removeMember(collectionId, item.agent, item.conversation_id);
+  }
   await records.reload();
 }
+
+async function confirmQuietDelete() {
+  const pending = pendingDelete.value;
+  pendingDelete.value = null;
+  if (!pending) return;
+  if (pending.kind === "collection" && pending.collectionId) {
+    await performCollectionDelete(pending.collectionId);
+  } else if (pending.conversation) {
+    await performConversationDelete(pending.conversation, pending.collectionId);
+  }
+}
+
 
 interface MemberTreeRow {
   member: WorkRecordMember;
@@ -294,21 +327,6 @@ async function moveFromMenu(targetId: string | null) {
   closeMenu();
 }
 
-const activeConversationId = computed(() => {
-  const tab = runtime.tabs.find((item) => item.tabId === runtime.activeTabId);
-  return tab?.resumeConversationId?.toLowerCase() ?? null;
-});
-watch(activeConversationId, (conversationId) => {
-  if (!conversationId) return;
-  const owner = records.collections.find((collection) =>
-    collection.members.some((member) => member.conversation_id.toLowerCase() === conversationId),
-  );
-  if (owner && owner.id !== records.activeCollectionId) void records.activate(owner.id);
-});
-watch(visibleCollections, (collections) => {
-  const first = collections.find((item) => item.status === "active");
-  if (!records.activeCollectionId && first) void records.activate(first.id);
-}, { immediate: true });
 watch(() => explorer.conversations, (_value, old) => {
   if (old.length === explorer.conversations.length) return;
   void records.reconcile();
@@ -367,13 +385,23 @@ watch(() => props.workspace, async (workspace) => {
         class="work-record"
         data-testid="collection"
         :data-id="collection.id"
-        :data-active="collection.id === records.activeCollectionId ? 'true' : 'false'"
         draggable="true"
         @dragstart="collectionDragStart($event, collection)"
         @dragover.prevent
         @drop="dropCollection($event, collection.id)"
       >
         <header class="work-record-head">
+          <button
+            class="conversation-twisty"
+            type="button"
+            :aria-expanded="!collapsedCollections.has(collection.id)"
+            :aria-label="t('workRecords.tree.toggleCollection')"
+            :data-testid="'collection-toggle-' + collection.id"
+            @click.stop="toggleCollection(collection.id)"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="!collapsedCollections.has(collection.id) ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" /></svg>
+            <span class="conversation-child-count">{{ collection.members.length }}</span>
+          </button>
           <input
             v-if="renamingCollectionId === collection.id"
             v-model="renameValue"
@@ -385,19 +413,16 @@ watch(() => props.workspace, async (workspace) => {
             @blur="commitCollectionRename(collection.id)"
           >
           <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ collection.title }}</h4>
-          <span v-if="collection.id === records.activeCollectionId" class="work-record-active">{{ t("workRecords.active") }}</span>
-          <span v-else-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
+          <span v-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
           <span class="head-actions">
             <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" :data-testid="'rename-' + collection.id" @click.stop="beginCollectionRename(collection)">✎</button>
-            <button v-if="collection.id !== records.activeCollectionId && collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.activate')" :aria-label="t('workRecords.activate')" @click.stop="records.activate(collection.id)">◎</button>
-            <button v-if="collection.id === records.activeCollectionId" class="ui-icon-button sm" type="button" :title="t('workRecords.deactivate')" :aria-label="t('workRecords.deactivate')" @click.stop="records.deactivate()">○</button>
             <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.archive')" :aria-label="t('workRecords.archive')" @click.stop="records.archive(collection.id)">🗄</button>
             <button v-else class="ui-icon-button sm" type="button" :title="t('workRecords.restore')" :aria-label="t('workRecords.restore')" @click.stop="records.restore(collection.id)">♻</button>
-            <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.delete')" :aria-label="t('workRecords.delete')" :data-testid="'delete-' + collection.id" @click.stop="removeCollection(collection.id, collection.title)">✕</button>
+            <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.delete')" :aria-label="t('workRecords.delete')" :data-testid="'delete-' + collection.id" @click.stop="requestCollectionDelete(collection.id, collection.title)">✕</button>
           </span>
         </header>
 
-        <ul class="work-record-members" @dragover.prevent @drop="dropMember($event, collection.id)">
+        <ul v-if="!collapsedCollections.has(collection.id)" class="work-record-members" @dragover.prevent @drop="dropMember($event, collection.id)">
           <template v-for="row in memberTree(collection)" :key="row.member.member_key">
             <li
               v-if="memberVisible(row)"
@@ -423,12 +448,18 @@ watch(() => props.workspace, async (workspace) => {
             </li>
           </template>
         </ul>
-        <p v-if="!collection.members.length" class="work-record-no-members">{{ t("workRecords.noMembers") }}</p>
+        <p v-if="!collapsedCollections.has(collection.id) && !collection.members.length" class="work-record-no-members">{{ t("workRecords.noMembers") }}</p>
       </article>
 
       <section v-if="records.unfiled.length" class="work-record work-record-unfiled" data-testid="unfiled-container" @dragover.prevent @drop="dropMember($event, null)">
-        <h4>{{ t("workRecords.unfiled") }}</h4>
-        <div class="work-record-members">
+        <h4>
+          <button class="conversation-twisty" type="button" :aria-expanded="unfiledExpanded" :aria-label="t('workRecords.tree.toggleCollection')" data-testid="unfiled-toggle" @click.stop="unfiledExpanded = !unfiledExpanded">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="unfiledExpanded ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" /></svg>
+            <span class="conversation-child-count">{{ records.unfiled.length }}</span>
+          </button>
+          {{ t("workRecords.unfiled") }}
+        </h4>
+        <div v-if="unfiledExpanded" class="work-record-members">
           <template v-for="row in unfiledTreeRows" :key="unfiledKey(row.conversation)">
             <div
               v-if="unfiledVisible(row)"
@@ -465,13 +496,22 @@ watch(() => props.workspace, async (workspace) => {
           </li>
         </ul>
       </section>
+    <div v-if="pendingDelete" class="quiet-delete-overlay" data-testid="quiet-delete-overlay" @mousedown.stop>
+      <div class="quiet-delete" role="dialog" aria-modal="true" :aria-label="t('workRecords.deleteTitle')" data-testid="quiet-delete-dialog">
+        <p>{{ pendingDelete.message }}</p>
+        <div class="quiet-delete-actions">
+          <button type="button" data-testid="quiet-delete-cancel" @click="pendingDelete = null">{{ t("workRecords.cancel") }}</button>
+          <button type="button" class="danger" data-testid="quiet-delete-confirm" @click="confirmQuietDelete">{{ t("workRecords.delete") }}</button>
+        </div>
+      </div>
+    </div>
     <Teleport to="body">
       <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
         <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
         <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
-        <button type="button" @click="deleteConversation(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
+        <button type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
         <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
-        <template v-for="collection in records.activeCollections" :key="collection.id">
+        <template v-for="collection in records.unarchivedCollections" :key="collection.id">
           <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ t("workRecords.moveTo", { title: collection.title }) }}</button>
         </template>
       </div>
@@ -486,12 +526,11 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-create { display:flex; gap:var(--space-1); }
 .work-record-create input { min-width:0; flex:1; }
 .work-record { border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2); background:var(--surface); box-sizing:border-box; width:100%; max-width:100%; min-width:0; overflow:hidden; }
-.work-record.active { border-color:var(--accent); }
 .work-record-head { display:flex; align-items:center; gap:var(--space-1); min-height:28px; }
 .collection-title { margin:0; min-width:80px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .title-input { height:20px; min-width:40px; flex:1; padding:0 4px; background:var(--surface-3); color:var(--text); border:var(--border-w) solid var(--accent); border-radius:var(--radius-sm); font:inherit; outline:none; }
 .head-actions { display:flex; align-items:center; gap:2px; flex:0 0 auto; }
-.work-record-active, .work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; white-space:nowrap; }
+.work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; white-space:nowrap; }
 .work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; grid-template-columns:minmax(0,1fr); gap:4px; min-height:24px; max-width:100%; }
 .work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
 .work-record-members li:hover, .unfiled-row:hover { background:var(--surface-hover); }
@@ -512,3 +551,8 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-menu button { justify-content:flex-start; padding:5px 8px; border:none; background:none; color:var(--text); text-align:left; border-radius:var(--radius-sm); cursor:pointer; }
 .work-record-menu button:hover { background:var(--surface-hover); }
 </style>
+
+.quiet-delete-overlay { position:fixed; inset:0; z-index:95; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }
+.quiet-delete { width:min(420px,90vw); padding:var(--space-3); background:var(--surface); border:var(--border-w) solid var(--border-strong); border-radius:var(--radius-md); box-shadow:var(--shadow-menu); }
+.quiet-delete p { margin:0 0 var(--space-3); color:var(--text); }
+.quiet-delete-actions { display:flex; justify-content:flex-end; gap:var(--space-2); }

@@ -23,17 +23,13 @@ function messageOf(error: unknown): string {
 export const useWorkRecordsStore = defineStore("workRecords", () => {
   const workspace = ref<string | null>(null);
   const schemaVersion = ref<string>("");
-  const activeCollectionId = ref<string | null>(null);
   const collections = ref<WorkRecordCollection[]>([]);
   const unfiled = ref<ConversationSummary[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const lastDeleteFailure = ref<WorkRecordDeleteResult | null>(null);
 
-  const activeCollection = computed(
-    () => collections.value.find((c) => c.id === activeCollectionId.value) ?? null,
-  );
-  const activeCollections = computed(() =>
+  const unarchivedCollections = computed(() =>
     collections.value.filter((c) => c.status === "active"),
   );
   const archivedCollections = computed(() =>
@@ -53,7 +49,6 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   function clear(): void {
     workspace.value = null;
     schemaVersion.value = "";
-    activeCollectionId.value = null;
     collections.value = [];
     unfiled.value = [];
     error.value = null;
@@ -73,7 +68,6 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     try {
       const result = await ipc.workRecordList(target);
       schemaVersion.value = result.schema_version;
-      activeCollectionId.value = result.active_collection_id;
       collections.value = result.collections;
       unfiled.value = result.unfiled;
     } catch (e) {
@@ -109,35 +103,12 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     }
   }
 
-  async function activate(id: string): Promise<void> {
-    if (!workspace.value) return;
-    error.value = null;
-    try {
-      const result = await ipc.workRecordActivate(workspace.value, id);
-      activeCollectionId.value = result.active_collection_id;
-    } catch (e) {
-      error.value = messageOf(e);
-    }
-  }
-
-  async function deactivate(): Promise<void> {
-    if (!workspace.value) return;
-    error.value = null;
-    try {
-      const result = await ipc.workRecordDeactivate(workspace.value);
-      activeCollectionId.value = result.active_collection_id;
-    } catch (e) {
-      error.value = messageOf(e);
-    }
-  }
-
   async function archive(id: string): Promise<WorkRecordCollection | null> {
     if (!workspace.value) return null;
     error.value = null;
     try {
       const result = await ipc.workRecordArchive(workspace.value, id);
       if (result.collection) replaceCollection(result.collection);
-      if (activeCollectionId.value === id) activeCollectionId.value = null;
       return result.collection;
     } catch (e) {
       error.value = messageOf(e);
@@ -296,7 +267,6 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
       const result = await ipc.workRecordDelete(workspace.value, id);
       lastDeleteFailure.value = result.failed_members.length ? result : null;
       collections.value = collections.value.filter((c) => c.id !== id);
-      if (activeCollectionId.value === id) activeCollectionId.value = null;
       return result;
     } catch (e) {
       error.value = messageOf(e);
@@ -321,9 +291,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   return {
     workspace,
     schemaVersion,
-    activeCollectionId,
-    activeCollection,
-    activeCollections,
+    unarchivedCollections,
     archivedCollections,
     collections,
     unfiled,
@@ -336,8 +304,6 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     reload,
     create,
     rename,
-    activate,
-    deactivate,
     archive,
     restore,
     addMember,

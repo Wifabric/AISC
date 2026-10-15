@@ -5,11 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useWorkRecordsStore } from "../workRecords";
 import {
-  workRecordActivate,
   workRecordAddMember,
   workRecordArchive,
   workRecordCreate,
-  workRecordDeactivate,
   workRecordDelete,
   workRecordList,
   workRecordMoveMember,
@@ -23,8 +21,6 @@ vi.mock("../../lib/ipc", () => ({
   workRecordList: vi.fn(),
   workRecordCreate: vi.fn(),
   workRecordRename: vi.fn(),
-  workRecordActivate: vi.fn(),
-  workRecordDeactivate: vi.fn(),
   workRecordArchive: vi.fn(),
   workRecordRestore: vi.fn(),
   workRecordAddMember: vi.fn(),
@@ -88,7 +84,6 @@ describe("workRecords store", () => {
     await s.load("/ws");
     expect(workRecordList).toHaveBeenCalledWith("/ws");
     expect(s.workspace).toBe("/ws");
-    expect(s.activeCollectionId).toBe("collection-1");
     expect(s.collections).toHaveLength(1);
     expect(s.unfiled).toEqual([provider]);
     expect(s.byId("collection-1")?.members).toEqual([member]);
@@ -118,14 +113,6 @@ describe("workRecords store", () => {
     vi.mocked(workRecordRestore).mockResolvedValue({ collection });
     await s.restore("collection-1");
     expect(s.byId("collection-1")?.status).toBe("active");
-
-    vi.mocked(workRecordActivate).mockResolvedValue({ active_collection_id: "collection-1" });
-    await s.activate("collection-1");
-    expect(s.activeCollectionId).toBe("collection-1");
-
-    vi.mocked(workRecordDeactivate).mockResolvedValue({ active_collection_id: null });
-    await s.deactivate();
-    expect(s.activeCollectionId).toBeNull();
   });
 
   it("adds and removes members and updates unfiled", async () => {
@@ -179,7 +166,6 @@ describe("workRecords store", () => {
     const result = await s.delete("collection-1");
     expect(result?.failed_members).toHaveLength(0);
     expect(s.collections).toHaveLength(0);
-    expect(s.activeCollectionId).toBeNull();
     expect(s.lastDeleteFailure).toBeNull();
 
     await s.load("/ws");
@@ -202,7 +188,6 @@ describe("workRecords store", () => {
     s.setWorkspace("/other");
     expect(s.collections).toEqual([]);
     expect(s.unfiled).toEqual([]);
-    expect(s.activeCollectionId).toBeNull();
     expect(s.lastDeleteFailure).toBeNull();
   });
 });

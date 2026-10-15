@@ -464,7 +464,12 @@ def _supported_conversations(workspace: str) -> List[Dict[str, Any]]:
 
 
 def reconcile(registry_root: Any, workspace: str) -> Dict[str, Any]:
-    """Adopt only new provider conversations into the active Collection."""
+    """Refresh the provider baseline without adopting conversations.
+
+    b15 removes the Active collection semantic: new sessions stay unfiled and
+    are filed explicitly. Legacy ledgers may still carry an active id; it is
+    cleared on the next reconcile so old UI snapshots cannot resurrect it.
+    """
     with _ledger_lock(registry_root):
         providers = _supported_conversations(workspace)
         provider_keys = [
@@ -473,47 +478,15 @@ def reconcile(registry_root: Any, workspace: str) -> Dict[str, Any]:
         ]
         provider_key_set = set(provider_keys)
         doc = load(registry_root)
-        member_keys = _existing_member_keys(doc)
-        active_id = doc["active_collection_id"]
-        active = None
-        if active_id:
-            try:
-                active = _find(doc, active_id)
-            except CliError:
-                active = None
-            if active is not None and active.get("status") != "active":
-                active = None
-
-        added: List[str] = []
-        if active is not None:
-            observed = set(doc["observed_provider_keys"])
-            timestamp = _now_iso()
-            for item in providers:
-                key = _member_key(item["agent"], item["conversation_id"])
-                if key in observed or key in member_keys:
-                    continue
-                member = {
-                    "member_key": key,
-                    "agent": item["agent"],
-                    "conversation_id": str(item["conversation_id"]).lower(),
-                    "runtime_id": None,
-                    "source": "active_auto",
-                    "added_at": timestamp,
-                }
-                active["members"].append(member)
-                member_keys.add(key)
-                added.append(key)
-                active["updated_at"] = timestamp
-        # The observed set is a scan baseline, not user-facing data.  It is
-        # refreshed to exactly this reconcile's supported provider scan.
+        doc["active_collection_id"] = None
         doc["observed_provider_keys"] = [
             key for key in provider_keys if key in provider_key_set
         ]
         _write(registry_root, doc)
         return {
             "schema_version": WORK_COLLECTION_SCHEMA,
-            "added": added,
-            "active_collection_id": doc["active_collection_id"],
+            "added": [],
+            "active_collection_id": None,
             "collections": copy.deepcopy(doc["collections"]),
             "observed_provider_keys": doc["observed_provider_keys"],
         }

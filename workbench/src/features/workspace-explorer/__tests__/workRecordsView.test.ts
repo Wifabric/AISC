@@ -46,8 +46,6 @@ vi.mock("../../../lib/ipc", () => ({
   workRecordList: vi.fn(),
   workRecordCreate: vi.fn(),
   workRecordRename: vi.fn(),
-  workRecordActivate: vi.fn(),
-  workRecordDeactivate: vi.fn(),
   workRecordArchive: vi.fn(),
   workRecordRestore: vi.fn(),
   workRecordAddMember: vi.fn(),
@@ -149,21 +147,51 @@ describe("WorkRecordsView", () => {
       .toEqual(["active-1", "archived-1"]);
   });
 
-  it("marks the active collection and shows unfiled rows", async () => {
+  it("shows unfiled rows without an active badge", async () => {
     const { wrapper } = await mountView();
-    expect(wrapper.find("[data-testid=collection][data-id=active-1]").attributes("data-active")).toBe("true");
+    expect(wrapper.find("[data-testid=collection][data-id=active-1]").attributes("data-active")).toBeUndefined();
     expect(wrapper.find("[data-testid^='unfiled-']").text()).toContain("Provider");
   });
 
-  it("uses one ordinary confirmation containing count and permanent-delete wording", async () => {
+  it("collapses and expands a whole collection", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(true);
+    await wrapper.find("[data-testid=collection-toggle-active-1]").trigger("click");
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(false);
+    await wrapper.find("[data-testid=collection-toggle-active-1]").trigger("click");
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(true);
+  });
+
+  it("does not show or auto-select an Activate collection", async () => {
+    const { wrapper } = await mountView();
+    expect(wrapper.find("[data-testid=collection][data-id=active-1]").attributes("data-active")).toBeUndefined();
+    expect(wrapper.text()).not.toContain("当前工作");
+    expect(wrapper.findAll("button").some((b) => b.text() === "激活")).toBe(false);
+  });
+
+  it("uses a silent in-app delete confirmation instead of the native dialog", async () => {
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
     await flushPromises();
-    expect(confirm).toHaveBeenCalledTimes(1);
-    const [message, options] = vi.mocked(confirm).mock.calls[0] as [string, { title: string; kind: string }];
-    expect(message).toContain("1");
-    expect(message).toContain("永久删除");
-    expect(options.kind).toBe("warning");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(workRecordDelete).not.toHaveBeenCalled();
+    const dialog = wrapper.find("[data-testid=quiet-delete-dialog]");
+    expect(dialog.exists()).toBe(true);
+    expect(dialog.text()).toContain("永久删除");
+    await dialog.find("[data-testid=quiet-delete-confirm]").trigger("click");
+    await flushPromises();
+    expect(workRecordDelete).toHaveBeenCalledWith("/ws", activeCollection.id);
+  });
+
+  it("shows member count and permanent-delete wording in the quiet dialog", async () => {
+    const { wrapper } = await mountView();
+    await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
+    const dialog = wrapper.find("[data-testid=quiet-delete-dialog]");
+    expect(dialog.text()).toContain("1");
+    expect(dialog.text()).toContain("永久删除");
+    await dialog.find("[data-testid=quiet-delete-confirm]").trigger("click");
+    await flushPromises();
     expect(workRecordDelete).toHaveBeenCalledWith("/ws", activeCollection.id);
   });
 
@@ -177,6 +205,8 @@ describe("WorkRecordsView", () => {
     });
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid=quiet-delete-confirm]").trigger("click");
     await flushPromises();
     const failures = wrapper.find("[data-testid=delete-failures]");
     expect(failures.exists()).toBe(true);
@@ -201,6 +231,8 @@ describe("WorkRecordsView", () => {
 
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid=quiet-delete-confirm]").trigger("click");
     await flushPromises();
 
     expect(order).toEqual(["close", "delete"]);
@@ -462,6 +494,8 @@ describe("WorkRecordsView", () => {
     expect(menu.exists()).toBe(true);
     const del = menu.findAll("button").find((b) => b.text() === "删除")!;
     await del.trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid=quiet-delete-confirm]").trigger("click");
     await flushPromises();
     expect(conversationDelete).toHaveBeenCalled();
     expect(workRecordRemoveMember).toHaveBeenCalledWith("/ws", "active-1", "codex", conversationId);
