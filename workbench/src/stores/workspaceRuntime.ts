@@ -1025,8 +1025,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * last confirmed config beats the built-in default), then preflight. This
    * makes preflight match the existing runtime (reuse/restart) instead of
    * spurious-conflicting with the default image. */
-  function selectRecentWorkspace(path: string) {
-    const rec = (deps.getHistory()?.workspaces ?? []).find((w) => w.path === path);
+  function selectRecentWorkspace(path: string, machineName?: string | null) {
+    const rec = (deps.getHistory()?.workspaces ?? []).find((w) =>
+      w.path === path && (w.machine_name ?? null) === (machineName ?? null));
     if (rec) {
       if (rec.runtime) {
         launch.value.image = rec.runtime.image;

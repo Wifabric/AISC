@@ -100,20 +100,21 @@ async function openByPath(path: string, machine?: string | null): Promise<void> 
   closeMenu();
   // Same rule as the picker (R4): a POSIX path names a REMOTE workspace.
   const pathRemote = path.startsWith("/");
-  const targetMachine = pathRemote
-    ? (machine ?? settings.target?.machine?.name
-      ?? settings.doc?.remoteMachines?.[0]?.name ?? null)
-    : null;
+  const targetMachine = machine
+    ?? (pathRemote
+      ? (settings.target?.machine?.name
+        ?? settings.doc?.remoteMachines?.[0]?.name ?? null)
+      : null);
   // 手测 r4#1 → r10: existence is checked against the path's OWN machine —
   // remote paths probe in the SPAWNED window's boot; local paths probe
   // here. A miss now opens the SAME remediation the picker offers (forget/
   // clear + lifecycle export, P1-3) — a bare toast left the dead record
   // dangling with no path to clean it.
-  if (!pathRemote && !(await ws.workspacePathExists(path))) {
+  if (!targetMachine && !(await ws.workspacePathExists(path))) {
     // 手测 r11: FLOAT the remediation dialog — never openLauncher() here;
     // hijacking a window that hosts a live workspace orphaned it (the
     // strip is gone in W3 — no way back to it).
-    ws.surfaceInvalidPath(path);
+    ws.surfaceInvalidPath(path, targetMachine);
     return;
   }
   void openWorkspaceWindow({ workspace: path, machine: targetMachine });
@@ -143,11 +144,19 @@ function baseOf(p: string): string {
   return p.replace(/[\/]+$/, "").split(/[\/]/).pop() || p;
 }
 const recentsLocal = computed(() =>
-  ws.recentWorkspaces.filter((r) => !r.path.startsWith("/")).slice(0, 8)
-    .map((r) => ({ path: r.path, label: baseOf(r.path) })));
+  ws.recentWorkspaces
+    .filter((r) => !r.machine_name && !r.path.startsWith("/"))
+    .slice(0, 8)
+    .map((r) => ({ path: r.path, machine: null as string | null, label: baseOf(r.path) })));
 const recentsRemote = computed(() =>
-  ws.recentWorkspaces.filter((r) => r.path.startsWith("/")).slice(0, 8)
-    .map((r) => ({ path: r.path, label: baseOf(r.path) })));
+  ws.recentWorkspaces
+    .filter((r) => r.machine_name || r.path.startsWith("/"))
+    .slice(0, 8)
+    .map((r) => ({
+      path: r.path,
+      machine: r.machine_name ?? null,
+      label: baseOf(r.path),
+    })));
 
 function menuPos(which: string): { left: string; top: string } {
   const btn = menuBtn.value[which];
@@ -299,13 +308,14 @@ async function checkForUpdates(): Promise<void> {
               </li>
               <li
                 v-for="r in recentsLocal"
-                :key="r.path"
+                :key="[r.machine ?? 'path', r.path].join(':')"
                 class="recent"
                 role="menuitem"
                 tabindex="0"
-                @click="openByPath(r.path)"
+                @click="openByPath(r.path, r.machine)"
               >
                 <span class="recent-name">{{ r.label }}</span>
+                <span v-if="r.machine" class="kind-badge">{{ r.machine }}</span>
                 <span class="recent-path">{{ r.path }}</span>
               </li>
               <li v-if="recentsRemote.length" class="sub-head remote" role="presentation">
@@ -313,13 +323,14 @@ async function checkForUpdates(): Promise<void> {
               </li>
               <li
                 v-for="r in recentsRemote"
-                :key="r.path"
+                :key="[r.machine ?? 'path', r.path].join(':')"
                 class="recent"
                 role="menuitem"
                 tabindex="0"
-                @click="openByPath(r.path)"
+                @click="openByPath(r.path, r.machine)"
               >
                 <span class="recent-name">{{ r.label }}</span>
+                <span v-if="r.machine" class="kind-badge">{{ r.machine }}</span>
                 <span class="recent-path">{{ r.path }}</span>
               </li>
               <li v-if="!recentsLocal.length && !recentsRemote.length" class="dim" role="presentation">

@@ -105,18 +105,24 @@ function toggleSettings(): void {
 // mount (never hijacks the launcher/active workspace; the boot-param path
 // in a fresh window lands the same overlay above its picker).
 const overlayInvalidPath = ref<string | null>(null);
+const overlayInvalidMachine = ref<string | null>(null);
 const overlayExportBusy = ref(false);
 watch(
   () => ws.pendingInvalidPath,
   (p) => {
-    if (p) overlayInvalidPath.value = ws.consumeInvalidPath();
+    if (p) {
+      overlayInvalidPath.value = ws.consumeInvalidPath();
+      overlayInvalidMachine.value = ws.consumeInvalidMachine();
+    }
   },
   { immediate: true },
 );
 async function onOverlayClear(purgeData: boolean): Promise<void> {
   const path = overlayInvalidPath.value;
+  const machine = overlayInvalidMachine.value;
   overlayInvalidPath.value = null;
-  if (path) await ws.clearInvalidRecent(path, purgeData);
+  overlayInvalidMachine.value = null;
+  if (path) await ws.clearInvalidRecent(path, purgeData, machine);
 }
 async function onOverlayExport(): Promise<void> {
   const path = overlayInvalidPath.value;
@@ -431,10 +437,10 @@ async function consumeBootParams(): Promise<void> {
   if (!(await ws.workspacePathExists(wsPath))) {
     // Same remediation as the picker's own dead-recent click (手测 r10) —
     // silently parking on the launcher left the dead record unexplained.
-    ws.surfaceInvalidPath(wsPath);
+    ws.surfaceInvalidPath(wsPath, machine);
     return;
   }
-  store.selectRecentWorkspace(wsPath);
+  store.selectRecentWorkspace(wsPath, machine);
 }
 
 onMounted(() => {

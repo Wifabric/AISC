@@ -92,7 +92,6 @@ pub struct TargetInfo {
     pub kind: &'static str,
 }
 
-
 pub(crate) fn workspace_target_key(workspace: &str) -> String {
     let normalized = workspace.replace('\\', "/");
     let trimmed = normalized.trim_matches('/');
@@ -135,7 +134,9 @@ fn resolve_workspace_binding(
     if let Some(machine) = window {
         return TargetBinding::Remote(machine.clone());
     }
-    global.map(|machine| TargetBinding::Remote(machine.clone())).unwrap_or(TargetBinding::Local)
+    global
+        .map(|machine| TargetBinding::Remote(machine.clone()))
+        .unwrap_or(TargetBinding::Local)
 }
 
 pub(crate) fn bind_workspace_machine(
@@ -150,7 +151,9 @@ pub(crate) fn bind_workspace_machine(
         .map_err(|_| WorkbenchError::cli_protocol().with_detail("workspace target lock"))?;
     guard.insert(
         workspace_target_key(workspace),
-        machine.map(TargetBinding::Remote).unwrap_or(TargetBinding::Local),
+        machine
+            .map(TargetBinding::Remote)
+            .unwrap_or(TargetBinding::Local),
     );
     Ok(())
 }
@@ -173,6 +176,22 @@ fn workspace_binding(app: &tauri::AppHandle, workspace: &str) -> Option<TargetBi
 
 /// W3 + b10: workspace affinity wins; a session call from another WebviewWindow
 /// cannot fall back to the wrong local/global target once a runtime exists.
+/// b13: the CONFIGURED machine identity for a workspace binding, without
+/// resolving/executing the local CLI. History uses this to distinguish the
+/// same path on different driving machines.
+pub(crate) fn workspace_machine(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+    workspace: &str,
+) -> Option<RemoteMachine> {
+    let binding = resolve_workspace_binding(
+        workspace_binding(app, workspace).as_ref(),
+        window_target(app, window).as_ref(),
+        app.state::<ActiveTarget>().current().as_ref(),
+    );
+    binding_machine(&binding)
+}
+
 pub async fn resolve_target_for_workspace(
     app: &tauri::AppHandle,
     window: &tauri::WebviewWindow,
@@ -189,7 +208,8 @@ pub async fn resolve_target_for_workspace(
         None => Ok(CliTarget::Local(crate::session::resolve_cli(app).await?)),
         Some(machine) => Ok(CliTarget::Remote(machine.to_ssh_target())),
     }
-}#[tauri::command]
+}
+#[tauri::command]
 pub async fn target_get(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -209,10 +229,7 @@ pub(crate) fn window_machine(
     window_target(app, window)
 }
 
-fn window_target(
-    app: &tauri::AppHandle,
-    window: &tauri::WebviewWindow,
-) -> Option<RemoteMachine> {
+fn window_target(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Option<RemoteMachine> {
     if let Ok(map) = app.state::<WindowTargets>().0.lock() {
         if let Some(entry) = map.get(window.label()) {
             return entry.clone();
@@ -247,7 +264,10 @@ pub async fn target_set(
         serde_json::json!({ "machine": machine.name, "host": machine.host,
                             "window": window.label() }),
     );
-    Ok(TargetInfo { machine: Some(machine), kind: "remote" })
+    Ok(TargetInfo {
+        machine: Some(machine),
+        kind: "remote",
+    })
 }
 
 #[tauri::command]
@@ -261,7 +281,10 @@ pub async fn target_clear(
     if let Some(workspace) = workspace.as_deref() {
         bind_workspace_machine(&app, workspace, None)?;
     }
-    Ok(TargetInfo { machine: None, kind: "local" })
+    Ok(TargetInfo {
+        machine: None,
+        kind: "local",
+    })
 }
 
 fn set_window_target(
@@ -278,7 +301,10 @@ fn set_window_target(
     Ok(())
 }
 
-pub(crate) fn machine_by_name(app: &tauri::AppHandle, name: &str) -> Result<RemoteMachine, WorkbenchError> {
+pub(crate) fn machine_by_name(
+    app: &tauri::AppHandle,
+    name: &str,
+) -> Result<RemoteMachine, WorkbenchError> {
     let dir = crate::session::config_dir(app)
         .map_err(|e| WorkbenchError::cli_protocol().with_detail(format!("settings dir: {e:?}")))?;
     let doc = crate::settings::load_settings_document(&dir)
@@ -335,7 +361,10 @@ mod workspace_routing_tests {
             Some(&machine("window-machine")),
             Some(&machine("global-machine")),
         );
-        assert_eq!(resolved, TargetBinding::Remote(machine("workspace-machine")));
+        assert_eq!(
+            resolved,
+            TargetBinding::Remote(machine("workspace-machine"))
+        );
     }
 
     #[test]

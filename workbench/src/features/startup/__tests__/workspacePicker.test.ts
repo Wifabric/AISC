@@ -107,6 +107,31 @@ describe("recents cap + inline expand (⑦)", () => {
     expect(w.findAll(".recent")).toHaveLength(8);
   });
 
+  it("labels and routes a Windows remote recent by its recorded machine", async () => {
+    const ws = useWorkspacesStore();
+    ws.history = {
+      schema_version: 2,
+      revision: 1,
+      workspaces: [{
+        path: "E:\\test",
+        machine_name: "win-test",
+        machine_host: "10.147.20.7",
+        last_used_at: "2026-10-15T00:00:00Z",
+        last_agent: "bash",
+        pinned: false,
+        runtime: null,
+        layout: null,
+      }],
+    };
+    ws.historyRevision = 1;
+    const w = mountPicker();
+    expect(w.find(".r-machine").text()).toBe("win-test");
+    await w.find(".recent").trigger("click");
+    await flushPromises();
+    expect(mockIpc.targetSet).toHaveBeenCalledWith("win-test", null);
+    expect(mockIpc.workspacePathExists).toHaveBeenCalledWith("E:\\test");
+  });
+
   it("renders all rows without a toggle when history fits the cap", () => {
     const ws = useWorkspacesStore();
     ws.history = historyWith(5);
@@ -134,7 +159,7 @@ describe("moved/deleted click guard (⑧)", () => {
 
     mockIpc.loadHistory.mockResolvedValue(historyWith(0));
     await w.findAll(".foot button")[2].trigger("click"); // 清除记录（foot: cancel/export/clear）
-    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", 1);
+    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", null, 1);
     expect(mockIpc.workspaceHistoryRemove).not.toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
@@ -152,7 +177,7 @@ describe("moved/deleted click guard (⑧)", () => {
 
     mockIpc.loadHistory.mockResolvedValue(historyWith(0));
     await w.findAll(".foot button")[2].trigger("click"); // 清除记录
-    expect(mockIpc.workspaceHistoryRemove).toHaveBeenCalledWith("C:\\ws\\project-1", 1);
+    expect(mockIpc.workspaceHistoryRemove).toHaveBeenCalledWith("C:\\ws\\project-1", null, 1);
     expect(mockIpc.workspaceForget).not.toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });
@@ -207,7 +232,7 @@ describe("forget flow (⑦)", () => {
 
     await w.findAll(".foot button")[2].trigger("click"); // 彻底忘记（foot: cancel/export/confirm）
     await flushPromises();
-    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", 3);
+    expect(mockIpc.workspaceForget).toHaveBeenCalledWith("C:\\ws\\project-1", undefined, 3);
     expect(mockIpc.loadHistory).toHaveBeenCalled();
     expect(w.find('[role="dialog"]').exists()).toBe(false);
   });

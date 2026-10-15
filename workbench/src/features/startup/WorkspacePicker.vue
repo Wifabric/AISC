@@ -54,26 +54,31 @@ const hiddenCount = computed(
 // a POSIX path is a REMOTE workspace. Clicking it under the wrong target
 // auto-switches the drive target first (tunnels re-root), then probes.
 const invalidPath = ref<string | null>(null);
+const invalidMachine = ref<string | null>(null);
 function isRemotePath(path: string): boolean {
   return path.startsWith("/");
 }
-async function onRecentClick(path: string): Promise<void> {
-  const pathRemote = isRemotePath(path);
-  const nowRemote = target.value?.kind === "remote";
-  if (pathRemote !== nowRemote) {
-    // machine mismatch: switch so the probe runs on the right machine.
-    // A remote path needs A machine — prefer the current one, else the
-    // first configured profile (never a hardcoded name).
-    const name = target.value?.machine?.name
+function machineForRecent(record: { path: string; machine_name?: string | null }): string | null {
+  if (record.machine_name) return record.machine_name;
+  // Legacy records could only encode POSIX as remote; Windows paths written
+  // before b13 remain local. New records carry an explicit machine identity.
+  if (isRemotePath(record.path)) {
+    return target.value?.machine?.name
       ?? settings.doc?.remoteMachines?.[0]?.name ?? null;
-    await switchTarget(pathRemote ? name : null);
   }
-  const exists = await wsStore.workspacePathExists(path);
+  return null;
+}
+async function onRecentClick(record: { path: string; machine_name?: string | null }): Promise<void> {
+  const machine = machineForRecent(record);
+  const current = target.value?.kind === "remote" ? target.value.machine?.name ?? null : null;
+  if (machine !== current) await switchTarget(machine);
+  const exists = await wsStore.workspacePathExists(record.path);
   if (!exists) {
-    invalidPath.value = path;
+    invalidPath.value = record.path;
+    invalidMachine.value = machine;
     return;
   }
-  store.selectRecentWorkspace(path);
+  store.selectRecentWorkspace(record.path, machine);
 }
 /* W3 手测 r11: dead-recent actions live in the workspaces store now
  * (shared with the app-level overlay); exportBusy stays local for the
@@ -124,8 +129,10 @@ async function onImport(): Promise<void> {
  * cleared invalidPath FIRST; the tests caught the regression). */
 function onInvalidClear(purgeData: boolean): void {
   const path = invalidPath.value;
+  const machine = invalidMachine.value;
   invalidPath.value = null;
-  if (path) void wsStore.clearInvalidRecent(path, purgeData);
+  invalidMachine.value = null;
+  if (path) void wsStore.clearInvalidRecent(path, purgeData, machine);
 }
 async function onInvalidExport(): Promise<void> {
   const path = invalidPath.value;
@@ -425,16 +432,19 @@ async function confirmForget(): Promise<void> {
     <div v-if="store.recentWorkspaces.length" class="recents ui-section">
       <div class="recents-label ui-section-title">{{ t("picker.recents") }}</div>
       <ul>
-        <li v-for="w in visibleRecents" :key="w.path">
+        <li v-for="w in visibleRecents" :key="[w.machine_name ?? 'local', w.path].join(':')">
           <div class="recent-wrap">
             <button
               class="recent ui-section-row interactive"
               :title="w.path"
-              @click="onRecentClick(w.path)"
+              @click="onRecentClick(w)"
               @contextmenu.prevent="openMenu(w.path, $event.clientX, $event.clientY)"
             >
               <span class="r-name">{{ basename(w.path) }}</span>
-              <span v-if="isRemotePath(w.path)" class="r-machine" :title="w.path">{{ t("picker.target.remoteTag") }}</span>
+              <span
+                class="r-machine"
+                :title="w.machine_host ?? w.path"
+              >{{ w.machine_name ?? (isRemotePath(w.path) ? t("picker.target.remoteTag") : t("picker.target.local")) }}</span>
               <span class="r-path">{{ w.path }}</span>
             </button>
             <button

@@ -5,13 +5,15 @@ import { createI18n } from "vue-i18n";
 import { enUS } from "../../i18n/en-US";
 import MenuBar from "../MenuBar.vue";
 import { useToastStore } from "../../stores/toast";
+import type { WorkspaceRecord } from "../../types";
 
 const opener = vi.hoisted(() => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+const workspaceWindow = vi.hoisted(() => ({ openWorkspaceWindow: vi.fn() }));
 const updateState = vi.hoisted(() => ({
   check: vi.fn(),
 }));
 const workspacesState = vi.hoisted(() => ({
-  recentWorkspaces: [],
+  recentWorkspaces: [] as WorkspaceRecord[],
   activeRuntime: null,
   launcher: {},
   openSettingsTab: vi.fn(),
@@ -24,7 +26,7 @@ const workspacesState = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/plugin-opener", () => opener);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
-vi.mock("../../lib/workspaceWindow", () => ({ openWorkspaceWindow: vi.fn() }));
+vi.mock("../../lib/workspaceWindow", () => workspaceWindow);
 vi.mock("../../stores/update", () => ({ useUpdateStore: () => updateState }));
 vi.mock("../../stores/workspaces", () => ({ useWorkspacesStore: () => workspacesState }));
 vi.mock("../../stores/runtime", () => ({
@@ -61,6 +63,30 @@ describe("MenuBar help actions", () => {
     await items[2]!.trigger("click");
     expect(opener.openUrl).toHaveBeenCalledOnce();
     expect(opener.openUrl).toHaveBeenCalledWith("https://github.com/Wifabric/AISC#readme");
+    w.unmount();
+  });
+
+  it("opens a machine-tagged remote recent on its recorded machine", async () => {
+    workspacesState.recentWorkspaces = [{
+      path: "E:\\test",
+      machine_name: "win-test",
+      machine_host: "10.147.20.7",
+      last_used_at: "2026-10-15T00:00:00Z",
+      last_agent: "bash",
+      pinned: false,
+      runtime: null,
+      layout: null,
+    }];
+    const w = mount(MenuBar, { global: { plugins: [i18n], stubs: { teleport: true } } });
+    await w.findAll(".menubar-btn")[0]!.trigger("click");
+    const remote = w.findAll(".recent").find((row) => row.text().includes("win-test"))!;
+    await remote.trigger("click");
+    expect(workspaceWindow.openWorkspaceWindow).toHaveBeenCalledOnce();
+    expect(workspaceWindow.openWorkspaceWindow).toHaveBeenCalledWith({
+      workspace: "E:\\test",
+      machine: "win-test",
+    });
+    expect(workspacesState.workspacePathExists).not.toHaveBeenCalled();
     w.unmount();
   });
 

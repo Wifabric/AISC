@@ -515,8 +515,16 @@ export const saveHistory = (expectedRevision: number, patch: HistoryPatch) =>
 export const workspaceForgetPreview = (path: string) =>
   invoke<ForgetPreview>("workspace_forget_preview", { path });
 
-export const workspaceForget = (path: string, expectedHistoryRevision: number) =>
-  invoke<ForgetResult>("workspace_forget", { path, expectedHistoryRevision });
+export const workspaceForget = (
+  path: string,
+  machineName: string | null | undefined,
+  expectedHistoryRevision: number,
+) =>
+  invoke<ForgetResult>("workspace_forget", {
+    path,
+    machineName: machineName ?? null,
+    expectedHistoryRevision,
+  });
 
 /** 2.1.11 P1-3: zip the workspace's lifecycle files (agent memories/
  * configs/state, minus the toolchain cache) to a user-chosen path.
@@ -571,8 +579,16 @@ export const workspaceGitStatus = (workspace: string) =>
 export const workspaceGitDiff = (workspace: string, relativePath: string) =>
   invoke<WorkspaceGitDiff>("workspace_git_diff", { workspace, relativePath });
 
-export const workspaceHistoryRemove = (path: string, expectedHistoryRevision: number) =>
-  invoke<number>("workspace_history_remove", { path, expectedHistoryRevision });
+export const workspaceHistoryRemove = (
+  path: string,
+  machineName: string | null | undefined,
+  expectedHistoryRevision: number,
+) =>
+  invoke<number>("workspace_history_remove", {
+    path,
+    machineName: machineName ?? null,
+    expectedHistoryRevision,
+  });
 
 export const workspacePathExists = (path: string) =>
   invoke<boolean>("workspace_path_exists", { path });

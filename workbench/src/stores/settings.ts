@@ -390,6 +390,7 @@ export const useSettingsStore = defineStore("settings", () => {
         targetRef.value = name
           ? await ipc.targetSet(name, activeWorkspace)
           : await ipc.targetClear(activeWorkspace);
+        useWorkspacesStore().setDriveMachine(targetRef.value?.machine?.name ?? null);
         targetError.value = null;
       } catch (e) {
         targetError.value = (e as { message?: string; technical_detail?: string })

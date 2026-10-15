@@ -783,6 +783,8 @@ export interface PaneRuntime {
 
 export interface WorkspaceRecord {
   path: string;
+  machine_name?: string | null;
+  machine_host?: string | null;
   last_used_at: string;
   pinned: boolean;
   last_agent: string;
