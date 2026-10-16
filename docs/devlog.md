@@ -3,15 +3,24 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
-# v2.1.15 final 收口（2026-10-15）
+# v2.1.15 final 收口完成（2026-10-16）
 
 - 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
   pre-release Release 记录与资产；git tag 保留为不可变发布标识。
 - b1–b16 与 preview.1–preview.8 反馈链全部收口；`2.1.15-dev-plans` 与
   `2.1.15-preview-fixes` 均已归档。
-- CLI 升级为 `0.1.8` final，Workbench 发布 `v2.1.15` final。
-- 发布前门禁沿用 final release 清单；发布后执行 main 合并、tag CI、正式 PyPI、
-  Releases 清理与文档收口。
+- **Workbench final**：`v2.1.15` NSIS workflow、安装冒烟与 Release 资产验证通过；
+  Release 为 `AISC Workbench v2.1.15`，非 draft / prerelease，并标记 latest。
+- **Release 元数据修复**：NSIS workflow 原先把所有 `v*` tag 标成 prerelease；
+  已改为仅 `-dev` / `.dev*` / `-preview.*` 使用 prerelease，普通 `vX.Y.Z` 使用
+  final/latest。PR #23 合入 develop、PR #24 合入 main，两个分支 NSIS CI 全绿。
+- **CLI final**：`cli-v0.1.8` PyPI workflow 在 `pypi` environment 人工审批后
+  success；正式 PyPI latest 为 `0.1.8`，wheel / sdist 就位，干净 venv 安装后
+  `aisc version --format json` 返回 `0.1.8`。
+- **Releases 清理**：删除 GitHub 全部 14 条 pre-release Release 记录及资产；
+  Releases 页仅剩正式 release。对应 git tags 全部保留为不可变标识。
+- **发布后推进**：CLI 开发版本 bump 至 `0.1.9.dev0`，补充 release notes 与版本
+  fixture，继续仅在 develop 上承接后续开发验证。
 
 # v2.1.15-preview.8 / b16 preview.7 字段修复（2026-10-15）
 
