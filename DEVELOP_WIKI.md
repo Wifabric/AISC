@@ -36,6 +36,14 @@ git status --short
      删除仓库内全部标记为 pre-release 的 GitHub Release 记录及其上传资产，逐项复核
      Releases 页只剩正式 final release。`v*` git tag 仍是不可变发布标识，默认保留；
      如需连 tag 一并删除，必须另行获得用户明确裁定。
+   - **最终 release 发布并验证后，反馈站条目补最终解决回复（2026-10-16 用户裁定）**：
+     对已纳入本阶段范围的反馈，在首轮 `replied` 基础上追加 final release 说明回复，
+     并把状态更新为 `resolved`；按反馈数据仓库 README 工作流提交推送，复核站点缓存
+     后显示 final 版本与 resolved 状态。未纳入本阶段的反馈不得伪装关闭，需转后续 intake。
+   - **最终 release 发布并验证后，清理本地和远端临时开发分支（2026-10-16 用户裁定）**：
+     删除本阶段产生且已并入长期线的本地/远端 feature、fix、preview、release-prep 分支；
+     仅保留 `main`、`develop` 及经用户明确裁定的同类长期分支。删除前必须确认分支已合并
+     或其历史已由 PR/merge commit/tag 保留；git tag 不随分支删除。
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
