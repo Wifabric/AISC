@@ -60,3 +60,7 @@ pump timeout/EINTR 修复已通过 transport、Workbench UI 数据面 >70s 长�
 
 回复正文和各条目标状态见 [feedback-intake.md](feedback-intake.md)。`索引.md` 由
 反馈站自动维护，未手动修改；站点列表和详情缓存按 README 承诺在 5 分钟内刷新。
+
+2026-10-16 12:30 已在 v2.1.15 final 发布验证后补最终解决回复：5 条反馈均说明
+修复版本与升级入口，status → `resolved`。反馈数据仓库提交为
+`6746fb2 feedback: resolve 2026-10-12 reports`，已推送到 `main`。

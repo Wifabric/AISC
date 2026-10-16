@@ -6,7 +6,8 @@
 # v2.1.15 final 收口完成（2026-10-16）
 
 - 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
-  pre-release Release 记录与资产；git tag 保留为不可变发布标识。
+  pre-release Release 记录与资产；反馈站补最终解决回复；本地与远端清理临时开发分支；
+  git tag 均保留为不可变发布标识。
 - b1–b16 与 preview.1–preview.8 反馈链全部收口；`2.1.15-dev-plans` 与
   `2.1.15-preview-fixes` 均已归档。
 - **Workbench final**：`v2.1.15` NSIS workflow、安装冒烟与 Release 资产验证通过；
@@ -19,6 +20,10 @@
   `aisc version --format json` 返回 `0.1.8`。
 - **Releases 清理**：删除 GitHub 全部 14 条 pre-release Release 记录及资产；
   Releases 页仅剩正式 release。对应 git tags 全部保留为不可变标识。
+- **反馈站结案**：2026-10-12 的 5 条反馈已追加 v2.1.15 final 解决回复，
+  status → `resolved`；反馈数据仓库提交 `6746fb2` 已推送。
+- **分支清理**：v2.1.15 开发/preview/release-prep 产生的本地与远端临时分支已删除，
+  仅保留 `main` / `develop`；PR、merge commit 与 git tag 保留审计和发布历史。
 - **发布后推进**：CLI 开发版本 bump 至 `0.1.9.dev0`，补充 release notes 与版本
   fixture，继续仅在 develop 上承接后续开发验证。
 
