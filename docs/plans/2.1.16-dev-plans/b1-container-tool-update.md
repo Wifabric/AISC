@@ -77,3 +77,30 @@ claude 走同一 npm 全局安装形态，存在同类风险。
    doctor）仍走 cc-switch 注入。
 3. claude 同样验证 `npm install -g @anthropic-ai/claude-code@latest` 覆盖安装。
 4. 临时模式（无 toolchain 挂载）重复 2，确认 `/tmp/aisc-toolchain` 落点可用。
+
+## 7. 执行状态（2026-10-17）
+
+已实施并验证，提交 `f1d2ee1`（PR #26 → develop）。
+
+- **TDD**：`tests/test_cc_switch_runtime.py::ContainerToolUpdateContractTests`
+  5 条契约测试先行（RED）后转绿。
+- **本地门禁**：全量 pytest `1409 passed / 57 skipped / 0 failed`；
+  `python -m unittest discover`（tests.yml 等价形态，Windows）OK 1367；
+  `compileall` / `bash -n`（entrypoint + 双 wrapper）通过。
+- **镜像构建验证**（本机 Docker 29.3.1，`docker build -f container/Dockerfile .`）：
+  本机构建无预置 linux 伴生 tgz，实际走**在线 npm 分支**——readlink 归一生效，
+  `codex-real → /tmp/aisc-toolchain/npm-global/lib/node_modules/...`，镜像内
+  `codex --version` = 0.154.0、`claude --version` = 2.1.273。
+- **EEXIST 回归验证**（镜像内模拟自更新）：本地构造带 `bin` 的假包
+  `npm install -g ./pkg` 成功（旧布局此处必报 EEXIST）；`which codex` 仍为
+  `/usr/local/bin/codex`（wrapper 未被替换），`codex` 解析到 toolchain 内新
+  二进制；claude 同链路验证通过；出厂 `*-real` 回退正常。
+- **远程 CI**：`container/` 不在任何 push workflow 的 paths 内，b1 无自动
+  workflow 可触发；手动 dispatch tests.yml（3 OS × 3 Python）在 b1 分支与
+  **develop HEAD 同样失败**，错误完全一致：5 个 2.1.15 时代测试模块
+  （test_artifact_record_env / test_conversation / test_docker_cache_cleanup /
+  test_work_collection / test_workflow_contract）模块级 `import pytest`，
+  tests.yml runner 无 pytest → loader error（develop 上次 tests.yml 绿跑停留在
+  2026-08-09，这些模块并入后未再跑过）。**属先于 b1 的既有漂移，非本批引入**
+  ——已立账 `docs/todo.md` v2.1.16-target 追加项，需单独小批修复（移植 unittest
+  或让 tests.yml 安装 pytest），未经用户裁定不在 b1 内顺带动。
