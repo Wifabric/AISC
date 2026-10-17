@@ -3,6 +3,14 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b1 补：vendor checksums 刷新 + develop CI 全绿（2026-10-18）
+
+- b1 并回后 NSIS / Bundle 报 4 项 checksum mismatch——b1 改了
+  ``container/{Dockerfile,claude-wrapper,codex-wrapper,entrypoint.sh}`` 但未按
+  wiki §6.4/§14 先跑 ``vendor-refresh.sh``（教训已记入 b1 计划文档）。
+  PR #28 仅刷新这 4 行 checksums（本地 ``vendor-verify`` 1519/0 通过）。
+- fix 提交 ``dd9f5da`` 上 develop 四条 workflow 全绿：NSIS installer、
+  Bundle Linux/macOS、CLI sidecar、Workbench CI（b2 提交上）。
 # v2.1.16 b2 Work Records 可用性五项（2026-10-17）
 
 - **反馈 #11** 五项全部落地（PR #27 squash 并回 develop，``6a5380a``）：

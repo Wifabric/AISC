@@ -104,3 +104,7 @@ claude 走同一 npm 全局安装形态，存在同类风险。
   2026-08-09，这些模块并入后未再跑过）。**属先于 b1 的既有漂移，非本批引入**
   ——已立账 `docs/todo.md` v2.1.16-target 追加项，需单独小批修复（移植 unittest
   或让 tests.yml 安装 pytest），未经用户裁定不在 b1 内顺带动。
+- **教训（2026-10-18 补）**：b1 首次并回时漏跑 ``vendor-refresh.sh``，
+  NSIS/Bundle 因 4 个 container 文件 checksum mismatch 失败；PR #28 补刷新后
+  develop 全绿。container/ 任何变更后必须刷新并核对 vendor/checksums.txt
+  只含预期行（wiki §6.4/§14 已有此要求）。
