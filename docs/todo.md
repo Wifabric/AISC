@@ -235,3 +235,12 @@
   - [x] preview.5 实测追加 b14：协议错误 detail、远程 Explorer 首载、Recent 配置机器名迁移、同 ID image tag 聚合（preview.6 已发布，待实机）
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
   - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（v2.1.15 final 收口）
+
+# v2.1.16-target（2026-10-17 开题；20261017 反馈 3 条 + 需求 1 条纳入）
+- fix
+  - [ ] 容器内 codex 自动更新报 npm EEXIST（/usr/local/bin/codex 已存在）更新失败；修复 codex/claude 自动更新覆盖安装链路（反馈 #10；b1）
+- UX
+  - [ ] Work Records 可用性五项：左键只读预览会话内容；拖动父节点时子节点跟随；「创建会话」「分支会话」入口并即时刷新；「引用缺失」占位不再闪现；删除会话级联同名未显示会话（反馈 #11；b2）
+  - [ ] Docker 资源面板：扫描结果信息层级重排、术语中文化（Build Cache 等）、补充资源信息；「重新构建镜像」右移，原位置新增「清理构建缓存」，清理前后数据正确刷新（反馈 #9；b3）
+- 调研
+  - [ ] 技能/插件/MCP 统一管理（基于内置 cc-switch）：初始化/安装/查看/卸载/更新/删除；先产出方案，经用户裁决后另排实施批次（需求 #2；b4）
