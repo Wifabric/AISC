@@ -3,6 +3,27 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 开题 + b1 容器内 codex/claude 自更新修复（2026-10-17）
+
+- **阶段开题**：读取反馈站 2026-10-17 新增 3 条反馈 + 1 条需求（Docker 资源
+  面板、codex 自更新、Work Records 可用性、技能/插件/MCP 统一管理），首轮
+  回复全部 `submitted` → `replied`（反馈仓 `4e39e00`）；建立
+  `docs/plans/2.1.16-dev-plans/`（README / feedback-intake / HANDTEST / b1）
+  与 `docs/todo.md` v2.1.16-target。
+- **b1（反馈 #10）**：容器内 codex 自更新 `npm install -g` 报 EEXIST——
+  Workbench docker exec 会话不继承 entrypoint 的 `NPM_CONFIG_PREFIX`，npm 回落
+  `/usr/local` 撞上注入 wrapper。修复：镜像层统一重定向 npm -g 前缀到
+  toolchain 布局（与 D-RUNTIME-09 契约一致）；出厂二进制 `readlink -f` 归一
+  （离线直装/在线 npm 双形态）；codex/claude wrapper 按会话 prefix → 持久 →
+  临时 toolchain 感知解析新装二进制并保持注入不旁路；entrypoint PATH 把
+  npm-global/cargo 移到系统路径之后。PR #26 squash 并回 develop。
+- **验证**：全量 pytest 1409 passed / 57 skipped；unittest discover（Windows）
+  OK 1367；本机 Docker 实构建镜像（在线分支）+ 容器内模拟自更新——npm -g
+  成功、wrapper 完整、解析到新二进制、`*-real` 回退正常。
+- **门禁发现（先于 b1 存在）**：tests.yml（dispatch-only）自 2026-08-09 后
+  未再运行；5 个 2.1.15 时代测试模块模块级 `import pytest`，runner 无
+  pytest → loader error（b1 分支与 develop HEAD 同败）。已立账 todo 追加项，
+  修复方式（runner 装 pytest 或移植 unittest）待裁定。
 # v2.1.15 final 收口完成（2026-10-16）
 
 - 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
