@@ -3,6 +3,19 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b2 Work Records 可用性五项（2026-10-17）
+
+- **反馈 #11** 五项全部落地（PR #27 squash 并回 develop，``6a5380a``）：
+  1. 成员/未归档行左键打开只读 ConversationViewer（富文本预览，非恢复）；
+  2. 拖动父节点整树跟随（drag payload 携带子树，同区批量 reorder / 跨区批量
+     move，保持 drop-on-row 槽位语义）；
+  3. 右键菜单新增「新建会话」（createTab，等价 /new）与「分支会话」
+     （resumeConversation(c, true)，等价 /fork），动作后立即刷新；
+  4. 会话列表加载期间显示「加载中…」，不再闪现「引用缺失」；
+  5. 删除级联同 agent + 同标题全部会话（含未显示），确认弹窗显示数量，
+     跨 agent 同名不误删。
+- 仅动 WorkRecordsView 展示/编排层与 i18n，未改 Rust 数据面 / IPC。
+- **门禁**：TDD 新增 6 用例；全量 Vitest 76 files / 605 tests；vue-tsc 通过。
 # v2.1.16 开题 + b1 容器内 codex/claude 自更新修复（2026-10-17）
 
 - **阶段开题**：读取反馈站 2026-10-17 新增 3 条反馈 + 1 条需求（Docker 资源
