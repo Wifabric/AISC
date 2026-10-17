@@ -244,3 +244,5 @@
   - [ ] Docker 资源面板：扫描结果信息层级重排、术语中文化（Build Cache 等）、补充资源信息；「重新构建镜像」右移，原位置新增「清理构建缓存」，清理前后数据正确刷新（反馈 #9；b3）
 - 调研
   - [ ] 技能/插件/MCP 统一管理（基于内置 cc-switch）：初始化/安装/查看/卸载/更新/删除；先产出方案，经用户裁决后另排实施批次（需求 #2；b4）
+- 追加（b1 门禁发现，2026-10-17）
+  - [ ] tests.yml（unittest）对 5 个模块级 `import pytest` 的测试模块（artifact_record_env / conversation / docker_cache_cleanup / work_collection / workflow_contract）loader 失败；runner 装 pytest 或移植 unittest，二选一需裁定（develop HEAD 与 b1 分支同样失败，先于 b1 存在）

@@ -157,6 +157,17 @@ RUN set -eux; \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+# b1 (2.1.16 反馈 #10): codex/claude CLI 内自更新执行 npm install -g。出厂把
+# /usr/local/bin/{codex,claude} 换成注入 wrapper，npm 默认 prefix(/usr/local)
+# 建 bin link 必然 EEXIST。镜像层统一重定向到 toolchain 布局（与 entrypoint
+# D-RUNTIME-09 契约一致）：docker exec 会话（Workbench 页签）继承本 ENV；
+# entrypoint 树按 scope 覆盖（project 持久 / temporary 同路径）。PATH 把
+# toolchain npm-global/cargo 追加在系统路径之后——/usr/local/bin wrapper 永远
+# 先被解析，settings.json 注入不因更新旁路；新装二进制由 wrapper 感知解析。
+ENV NPM_CONFIG_PREFIX="/tmp/aisc-toolchain/npm-global"
+ENV PATH="/tmp/aisc-toolchain/bin:${PATH}:/tmp/aisc-toolchain/npm-global/bin:/tmp/aisc-toolchain/cargo/bin"
+RUN mkdir -p /tmp/aisc-toolchain/npm-global /tmp/aisc-toolchain/bin /tmp/aisc-toolchain/cargo/bin
+
 # 替换 NPM 源（按 USE_CN_MIRROR）并全局安装 Claude Code 和 Codex CLI
 # 版本校验：防止镜像源返回损坏 tarball 导致装出的二进制 segfault
 # T8c (2.1.9 D-9): npmmirror 单源无兜底 → ① downloads/ 预置 tgz 离线安装
@@ -303,12 +314,17 @@ COPY container/mihomo-build-config.js /usr/local/bin/mihomo-build-config.js
 # Claude 包装器：每次启动前从 settings.json 注入 env，并默认追加
 # --dangerously-skip-permissions（跳过权限确认，容器内自动流）。
 # IS_SANDBOX=1 标记当前 root 进程运行在隔离容器内。
-RUN mv /usr/local/bin/claude /usr/local/bin/claude-real
+# b1: 出厂真实二进制统一 readlink 归一——离线直装(/opt/aisc/npm)与在线
+# npm -g(toolchain prefix)两种形态都收敛到 *-real 符号链接；wrapper 仍
+# COPY 占据 /usr/local/bin/claude。
+RUN ln -sf "$(readlink -f "$(command -v claude)")" /usr/local/bin/claude-real \
+    && rm -f /usr/local/bin/claude
 COPY container/claude-wrapper /usr/local/bin/claude
 RUN chmod +x /usr/local/bin/claude
 
 # Codex 包装器：类似 Claude，从配置注入环境变量
-RUN mv /usr/local/bin/codex /usr/local/bin/codex-real
+RUN ln -sf "$(readlink -f "$(command -v codex)")" /usr/local/bin/codex-real \
+    && rm -f /usr/local/bin/codex
 COPY container/codex-wrapper /usr/local/bin/codex
 RUN chmod +x /usr/local/bin/codex
 

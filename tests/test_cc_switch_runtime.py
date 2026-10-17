@@ -1077,3 +1077,63 @@ class CcSwitchRevealTests(unittest.TestCase):
 
         main_src = (ROOT / "src/aisc/cli/main.py").read_text(encoding="utf-8")
         self.assertIn('"--reveal-id"', main_src)
+
+class ContainerToolUpdateContractTests(unittest.TestCase):
+    """b1 (2.1.16 反馈 #10): 容器内 codex/claude 自更新 EEXIST 修复契约。
+
+    出厂 wrapper 占据 /usr/local/bin/{codex,claude}；CLI 内 npm install -g
+    自更新必须重定向到 toolchain prefix，且 wrapper 永远先于更新二进制被
+    PATH 解析（注入不旁路）。详见 docs/plans/2.1.16-dev-plans/b1-container-tool-update.md。
+    """
+
+    def test_codex_wrapper_resolves_toolchain_bins_before_factory_real(self):
+        wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
+
+        # 解析顺序：会话 prefix → 持久 toolchain → 临时 toolchain
+        self.assertIn('${NPM_CONFIG_PREFIX:-/nonexistent}/bin/codex', wrapper)
+        self.assertIn('/opt/aisc/toolchain/npm-global/bin/codex', wrapper)
+        self.assertIn('/tmp/aisc-toolchain/npm-global/bin/codex', wrapper)
+        # 命中即 exec，并保持默认全权限 flag 注入
+        self.assertIn('exec "$real_bin" "${full_access_flags[@]}" "$@"', wrapper)
+        # 全部未命中回退出厂二进制
+        self.assertIn('exec codex-real "${full_access_flags[@]}" "$@"', wrapper)
+
+    def test_claude_wrapper_resolves_toolchain_bins_before_factory_real(self):
+        wrapper = (ROOT / "container" / "claude-wrapper").read_text(encoding="utf-8")
+
+        self.assertIn('${NPM_CONFIG_PREFIX:-/nonexistent}/bin/claude', wrapper)
+        self.assertIn('/opt/aisc/toolchain/npm-global/bin/claude', wrapper)
+        self.assertIn('/tmp/aisc-toolchain/npm-global/bin/claude', wrapper)
+        self.assertIn('exec "$real_bin" "$skip_perm" "$@"', wrapper)
+        self.assertIn('exec claude-real "$@"', wrapper)
+
+    def test_dockerfile_redirects_global_npm_prefix_to_toolchain_layout(self):
+        dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn('ENV NPM_CONFIG_PREFIX="/tmp/aisc-toolchain/npm-global"', dockerfile)
+        # PATH：toolchain bin 最前；npm-global/cargo 追加在系统路径之后，
+        # 保证 /usr/local/bin wrapper 优先于自更新二进制被解析。
+        self.assertIn(
+            'ENV PATH="/tmp/aisc-toolchain/bin:${PATH}:'
+            '/tmp/aisc-toolchain/npm-global/bin:/tmp/aisc-toolchain/cargo/bin"',
+            dockerfile,
+        )
+        self.assertIn("mkdir -p /tmp/aisc-toolchain", dockerfile)
+
+    def test_dockerfile_normalizes_factory_real_bins_for_both_install_paths(self):
+        dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
+
+        # 离线直装与在线 npm -g 两种出厂形态统一 readlink 归一，不再依赖
+        # /usr/local/bin 上存在原名二进制的 mv。
+        self.assertIn('readlink -f "$(command -v claude)"', dockerfile)
+        self.assertIn('readlink -f "$(command -v codex)"', dockerfile)
+        self.assertNotIn("mv /usr/local/bin/claude /usr/local/bin/claude-real", dockerfile)
+        self.assertNotIn("mv /usr/local/bin/codex /usr/local/bin/codex-real", dockerfile)
+        self.assertIn("COPY container/claude-wrapper /usr/local/bin/claude", dockerfile)
+        self.assertIn("COPY container/codex-wrapper /usr/local/bin/codex", dockerfile)
+
+    def test_entrypoint_keeps_wrappers_ahead_of_toolchain_globals(self):
+        entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
+
+        self.assertIn('export PATH="$TC/bin:$PATH:$TC/npm-global/bin:$TC/cargo/bin"', entrypoint)
+        self.assertNotIn('export PATH="$TC/bin:$TC/npm-global/bin:$TC/cargo/bin:$PATH"', entrypoint)
