@@ -547,3 +547,150 @@ describe("WorkRecordsView", () => {
     expect(button.attributes("disabled")).toBeDefined();
   });
 });
+
+  // --- v2.1.16 b2 (feedback #11): Work Records usability five items ---
+
+  it("opens the read-only viewer on member row left click", async () => {
+    const { wrapper, explorer } = await mountView();
+    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("click");
+    expect(explorer.conversationViewer).toEqual({
+      agent: "codex",
+      conversationId: conversationId,
+      title: "Provider",
+    });
+  });
+
+  it("opens the read-only viewer on unfiled row left click", async () => {
+    const { wrapper, explorer } = await mountView();
+    await wrapper.find(`[data-testid="unfiled-codex:${conversationId}"]`).trigger("click");
+    expect(explorer.conversationViewer?.conversationId).toBe(conversationId);
+  });
+
+  it("carries the whole subtree when dragging a parent member", async () => {
+    const parent = { ...provider, conversation_id: "parent-1", title: "Parent", parent_thread_id: null };
+    const child = { ...provider, conversation_id: "child-1", title: "Child", parent_thread_id: "parent-1" };
+    const grandchild = { ...provider, conversation_id: "grandchild-1", title: "Grand", parent_thread_id: "child-1" };
+    const sibling = { ...provider, conversation_id: "sibling-1", title: "Sibling", parent_thread_id: null };
+    useWorkspaceExplorerStore().conversations = [parent, child, grandchild, sibling];
+    const collection = {
+      ...activeCollection,
+      members: [
+        { ...member, member_key: "codex:parent-1", conversation_id: "parent-1" },
+        { ...member, member_key: "codex:child-1", conversation_id: "child-1" },
+        { ...member, member_key: "codex:grandchild-1", conversation_id: "grandchild-1" },
+        { ...member, member_key: "codex:sibling-1", conversation_id: "sibling-1" },
+      ],
+    };
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      collections: [collection],
+      unfiled: [],
+    });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    await wrapper.find('[data-testid="member-toggle-codex:parent-1"]').trigger("click");
+    await flushPromises();
+    const row = wrapper.find('[data-testid="member-codex:parent-1"]');
+    expect(row.exists()).toBe(true);
+    await row.trigger("dragstart", { dataTransfer: { setData: vi.fn(), effectAllowed: null } });
+    // dragstart payload content is asserted via the component's exposed helper in
+    // the store-level test below; here we assert the drag payload builder output
+    // through the same JSON contract used by drop.
+    const vm = wrapper.vm as unknown as {
+      buildMemberDragSubtree?: (collectionId: string, memberKey: string) => string[];
+    };
+    expect(vm.buildMemberDragSubtree?.("active-1", "codex:parent-1")).toEqual([
+      "codex:parent-1",
+      "codex:child-1",
+      "codex:grandchild-1",
+    ]);
+  });
+
+  it("offers new and fork session actions from the context menu and refreshes", async () => {
+    const { wrapper } = await mountView();
+    const explorer = useWorkspaceExplorerStore();
+    const resumeSpy = vi.spyOn(explorer, "resumeConversation").mockResolvedValue(true);
+    runtimeMock.createTab.mockClear();
+    vi.mocked(workRecordList).mockClear();
+    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("contextmenu");
+    await flushPromises();
+    // The menu teleports to <body>; query the document instead of the wrapper.
+    const menuNode = document.querySelector<HTMLElement>("[data-testid=work-record-context-menu]");
+    expect(menuNode).not.toBeNull();
+    const menuButtons = Array.from(menuNode!.querySelectorAll("button"));
+    const forkButton = menuButtons.find((b) => b.textContent?.trim() === "分支会话");
+    const newButton = menuButtons.find((b) => b.textContent?.trim() === "新建会话");
+    expect(forkButton).toBeTruthy();
+    expect(newButton).toBeTruthy();
+    forkButton!.click();
+    await flushPromises();
+    expect(resumeSpy).toHaveBeenCalledWith(provider, true);
+    expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
+    resumeSpy.mockRestore();
+    runtimeMock.createTab.mockClear();
+    vi.mocked(workRecordList).mockClear();
+    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("contextmenu");
+    await flushPromises();
+    const menuNode2 = document.querySelector<HTMLElement>("[data-testid=work-record-context-menu]");
+    const newButton2 = Array.from(menuNode2!.querySelectorAll("button")).find((b) => b.textContent?.trim() === "新建会话");
+    newButton2!.click();
+    await flushPromises();
+    expect(runtimeMock.createTab).toHaveBeenCalledWith("codex");
+    expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows a loading placeholder instead of missing reference while conversations load", async () => {
+    useWorkspaceExplorerStore().conversations = [];
+    useWorkspaceExplorerStore().conversationsLoading = true;
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    const row = wrapper.find(`[data-testid="member-${member.member_key}"]`);
+    expect(row.exists()).toBe(true);
+    expect(row.text()).toContain("加载中");
+    expect(row.text()).not.toContain("引用缺失");
+    const explorer = useWorkspaceExplorerStore();
+    explorer.conversationsLoading = false;
+    explorer.conversations = [provider];
+    await flushPromises();
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).text()).toContain("Provider");
+  });
+
+  it("cascades delete to same-titled hidden conversations", async () => {
+    const twin = { ...provider, conversation_id: "hidden-twin-1" };
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "/ws";
+    explorer.conversations = [provider, twin];
+    vi.mocked(conversationList).mockResolvedValue({
+      schema_version: 1,
+      conversations: [provider, twin],
+    });
+    vi.mocked(workRecordList).mockResolvedValue({
+      ...listResult(),
+      unfiled: [provider, twin],
+    });
+    const wrapper = mount(WorkRecordsView, {
+      props: { workspace: "/ws" },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+    await wrapper.find(`[data-testid="unfiled-codex:${conversationId}"]`).trigger("contextmenu");
+    await flushPromises();
+    const menuNode = document.querySelector<HTMLElement>("[data-testid=work-record-context-menu]");
+    const deleteButton = Array.from(menuNode!.querySelectorAll("button")).find((b) => b.textContent?.trim() === "删除");
+    deleteButton!.click();
+    await flushPromises();
+    const dialog = wrapper.find("[data-testid=quiet-delete-dialog]");
+    expect(dialog.exists()).toBe(true);
+    expect(dialog.text()).toContain("2");
+    expect(dialog.text()).toContain("同名");
+    await dialog.find("[data-testid=quiet-delete-confirm]").trigger("click");
+    await flushPromises();
+    const deleted = vi.mocked(conversationDelete).mock.calls.map((call) => call[1]);
+    expect(deleted.sort()).toEqual([conversationId, "hidden-twin-1"].sort());
+  });

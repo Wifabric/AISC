@@ -31,6 +31,8 @@ const pendingDelete = ref<{
   message: string;
   collectionId?: string;
   conversation?: ConversationSummary;
+  /** b2 (反馈 #11): same-agent + same-title conversations to cascade-delete. */
+  conversations?: ConversationSummary[];
 } | null>(null);
 const contextMenu = ref<{
   x: number;
@@ -128,6 +130,22 @@ async function resumeMember(memberKey: string) {
   if (item?.resumable) await explorer.resumeConversation(item);
 }
 
+// b2 (反馈 #11) 左键预览: open the read-only transcript viewer. This is
+// viewing only — resume stays an explicit per-row action.
+function previewConversation(item: ConversationSummary | null): void {
+  if (item) explorer.openConversationViewer(item.agent, item.conversation_id, item.title);
+}
+function previewMember(memberKey: string): void {
+  previewConversation(memberConversation(memberKey));
+}
+// b2 (反馈 #11): while the provider conversation list is loading, a member row
+// must show a loading placeholder — never flash "missing reference" before the
+// lookup data has actually arrived.
+function memberTitle(memberKey: string): string {
+  if (explorer.conversationsLoading) return t("explorer.loading");
+  return memberConversation(memberKey)?.title || t("workRecords.missing");
+}
+
 function beginConversationRename(memberKey: string) {
   const item = memberConversation(memberKey);
   if (!item) return;
@@ -149,18 +167,36 @@ async function commitConversationRename(item: ConversationSummary) {
 }
 
 function requestConversationDelete(item: ConversationSummary, collectionId?: string | null) {
+  // b2 (反馈 #11): deleting a session deletes every same-titled session of the
+  // same agent — including rows currently folded away or filtered out. A
+  // cross-agent title collision must NOT be cascaded.
+  const title = (item.title || "").trim();
+  const matches = explorer.conversations.filter(
+    (candidate) => candidate.agent === item.agent && (candidate.title || "").trim() === title,
+  );
+  const conversations = matches.some((candidate) => candidate.conversation_id === item.conversation_id)
+    ? matches
+    : [...matches, item];
   pendingDelete.value = {
     kind: "conversation",
     collectionId: collectionId ?? undefined,
     conversation: item,
-    message: t("explorer.conversations.deleteConfirm", { title: item.title }),
+    conversations,
+    message: t("workRecords.deleteConversationConfirm", { title: item.title, count: conversations.length }),
   };
 }
 
-async function performConversationDelete(item: ConversationSummary, collectionId?: string) {
-  await explorer.deleteConversation(item);
-  if (collectionId) {
-    await records.removeMember(collectionId, item.agent, item.conversation_id);
+async function performConversationDelete(conversations: ConversationSummary[]) {
+  for (const item of conversations) {
+    await explorer.deleteConversation(item);
+  }
+  for (const item of conversations) {
+    const id = item.conversation_id.toLowerCase();
+    for (const collection of records.collections) {
+      if (collection.members.some((m) => m.agent === item.agent && m.conversation_id.toLowerCase() === id)) {
+        await records.removeMember(collection.id, item.agent, item.conversation_id);
+      }
+    }
   }
   await records.reload();
 }
@@ -172,7 +208,7 @@ async function confirmQuietDelete() {
   if (pending.kind === "collection" && pending.collectionId) {
     await performCollectionDelete(pending.collectionId);
   } else if (pending.conversation) {
-    await performConversationDelete(pending.conversation, pending.collectionId);
+    await performConversationDelete(pending.conversations ?? [pending.conversation]);
   }
 }
 
@@ -242,21 +278,60 @@ function toggleUnfiled(conversationId: string): void {
   expandedUnfiled.value = next;
 }
 
-interface DragMemberPayload {
-  collectionId: string | null;
+interface DragMemberEntry {
   memberKey: string;
   agent: "claude" | "codex";
   conversationId: string;
+}
+interface DragMemberPayload extends DragMemberEntry {
+  collectionId: string | null;
+  /** b2 (反馈 #11): dragged subtree in source order (the dragged row first). */
+  subtree: DragMemberEntry[];
 }
 function setMemberDrag(event: DragEvent, payload: DragMemberPayload) {
   event.dataTransfer?.setData("application/x-aisc-work-record-member", JSON.stringify(payload));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
+/** Contiguous rows strictly deeper than the dragged row form its subtree. */
+function subtreeKeysFrom<T extends { depth: number }>(rows: T[], keyOf: (row: T) => string, draggedKey: string): string[] {
+  const startIndex = rows.findIndex((row) => keyOf(row) === draggedKey);
+  if (startIndex < 0) return [draggedKey];
+  const startDepth = rows[startIndex].depth;
+  const keys = [draggedKey];
+  for (let index = startIndex + 1; index < rows.length; index++) {
+    if (rows[index].depth <= startDepth) break;
+    keys.push(keyOf(rows[index]));
+  }
+  return keys;
+}
+function buildMemberDragSubtree(collectionId: string, memberKey: string): string[] {
+  const collection = records.byId(collectionId);
+  return collection ? subtreeKeysFrom(memberTree(collection), (row) => row.member.member_key, memberKey) : [memberKey];
+}
+function collectionEntries(collection: WorkRecordCollection, keys: string[]): DragMemberEntry[] {
+  const byKey = new Map(collection.members.map((member) => [member.member_key, member] as const));
+  return keys.flatMap((key) => {
+    const member = byKey.get(key);
+    return member ? [{ memberKey: key, agent: member.agent, conversationId: member.conversation_id }] : [];
+  });
+}
 function memberDragStart(event: DragEvent, collectionId: string, member: WorkRecordMember) {
-  setMemberDrag(event, { collectionId, memberKey: member.member_key, agent: member.agent, conversationId: member.conversation_id });
+  const collection = records.byId(collectionId);
+  const keys = buildMemberDragSubtree(collectionId, member.member_key);
+  const subtree = collection
+    ? collectionEntries(collection, keys)
+    : [{ memberKey: member.member_key, agent: member.agent, conversationId: member.conversation_id }];
+  setMemberDrag(event, { collectionId, memberKey: member.member_key, agent: member.agent, conversationId: member.conversation_id, subtree });
 }
 function unfiledDragStart(event: DragEvent, item: ConversationSummary) {
-  setMemberDrag(event, { collectionId: null, memberKey: unfiledKey(item), agent: item.agent, conversationId: item.conversation_id });
+  const key = unfiledKey(item);
+  const keys = subtreeKeysFrom(unfiledTreeRows.value, (row) => unfiledKey(row.conversation), key);
+  const byKey = new Map(records.unfiled.map((entry) => [unfiledKey(entry), entry] as const));
+  const subtree: DragMemberEntry[] = keys.flatMap((entryKey) => {
+    const entry = byKey.get(entryKey);
+    return entry ? [{ memberKey: entryKey, agent: entry.agent, conversationId: entry.conversation_id }] : [];
+  });
+  setMemberDrag(event, { collectionId: null, memberKey: key, agent: item.agent, conversationId: item.conversation_id, subtree });
 }
 function draggedMember(event: DragEvent): DragMemberPayload | null {
   const raw = event.dataTransfer?.getData("application/x-aisc-work-record-member");
@@ -278,18 +353,35 @@ async function dropMember(event: DragEvent, targetCollectionId: string | null, t
   event.stopPropagation();
   const source = draggedMember(event);
   if (!source) return;
-  const next = orderWithKey(areaKeys(targetCollectionId), source.memberKey, targetMemberKey);
+  // b2 (反馈 #11): moving a parent moves its whole subtree, in source order.
+  const moving = source.subtree?.length
+    ? source.subtree
+    : [{ memberKey: source.memberKey, agent: source.agent, conversationId: source.conversationId }];
+  const movingKeys = moving.map((entry) => entry.memberKey);
+  // Dropping onto a member of the dragged subtree is a no-op (the anchor would
+  // disappear with the move itself).
+  if (targetMemberKey && targetMemberKey !== source.memberKey && movingKeys.includes(targetMemberKey)) return;
+  const original = areaKeys(targetCollectionId);
+  const area = original.filter((key) => !movingKeys.includes(key));
+  const anchor = targetMemberKey && targetMemberKey !== source.memberKey ? targetMemberKey : null;
+  // Drop-on-row keeps the historical orderWithKey semantics: the dragged
+  // subtree takes the target's ORIGINAL slot (the target shifts after it).
+  const anchorIndex = anchor ? original.indexOf(anchor) : original.length;
+  area.splice(Math.min(anchorIndex, area.length), 0, ...movingKeys);
   if (source.collectionId === targetCollectionId) {
-    if (targetCollectionId === null) await records.reorderUnfiled(next);
-    else await records.reorderMembers(targetCollectionId, next);
-  } else if (source.collectionId === null && targetCollectionId !== null) {
-    await records.addMember(targetCollectionId, source.agent, source.conversationId);
-    await records.reorderMembers(targetCollectionId, next);
-  } else if (source.collectionId !== null && targetCollectionId !== null) {
-    await records.moveMember(source.collectionId, targetCollectionId, source.agent, source.conversationId, next);
-  } else if (source.collectionId !== null) {
-    await records.moveMember(source.collectionId, null, source.agent, source.conversationId, next);
+    if (targetCollectionId === null) await records.reorderUnfiled(area);
+    else await records.reorderMembers(targetCollectionId, area);
+    return;
   }
+  for (const entry of moving) {
+    if (source.collectionId === null) {
+      await records.addMember(targetCollectionId!, entry.agent, entry.conversationId);
+    } else {
+      await records.moveMember(source.collectionId, targetCollectionId, entry.agent, entry.conversationId, area);
+    }
+  }
+  if (targetCollectionId === null) await records.reorderUnfiled(area);
+  else await records.reorderMembers(targetCollectionId, area);
 }
 function collectionDragStart(event: DragEvent, collection: WorkRecordCollection) {
   event.dataTransfer?.setData("application/x-aisc-work-record-collection", collection.id);
@@ -319,6 +411,27 @@ function openMemberMenu(event: MouseEvent, collectionId: string | null, member: 
   };
 }
 function closeMenu() { contextMenu.value = null; }
+function menuConversation(): ConversationSummary | null {
+  return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
+}
+// b2 (反馈 #11): /new equivalent — a fresh session tab for the same agent.
+async function newSessionFromMenu(): Promise<void> {
+  const menu = contextMenu.value;
+  closeMenu();
+  if (!menu) return;
+  runtime.createTab(menu.agent);
+  await refreshWorkRecords();
+}
+// b2 (反馈 #11): /fork equivalent — resume this conversation as a new forked
+// provider session (preflight + live-tab semantics handled by the store).
+async function forkSessionFromMenu(): Promise<void> {
+  const item = menuConversation();
+  closeMenu();
+  if (!item) return;
+  await explorer.resumeConversation(item, true);
+  await refreshWorkRecords();
+}
+defineExpose({ buildMemberDragSubtree });
 async function moveFromMenu(targetId: string | null) {
   const menu = contextMenu.value;
   if (!menu) return;
@@ -436,6 +549,7 @@ watch(() => props.workspace, async (workspace) => {
               @dragstart="memberDragStart($event, collection.id, row.member)"
               @dragover.prevent
               @drop.stop="dropMember($event, collection.id, row.member.member_key)"
+              @click="previewMember(row.member.member_key)"
               @contextmenu.prevent="openMemberMenu($event, collection.id, row.member, memberConversation(row.member.member_key)!)"
             >
               <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
@@ -444,8 +558,8 @@ watch(() => props.workspace, async (workspace) => {
                 <span class="conversation-child-count">{{ row.childCount }}</span>
               </button>
               <span v-else class="conversation-twisty spacer" aria-hidden="true" />
-              <input v-if="renamingConversationKey === row.member.member_key" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @keydown.enter.prevent="commitConversationRename(memberConversation(row.member.member_key)!)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(memberConversation(row.member.member_key)!)">
-              <span v-else class="member-title">{{ memberConversation(row.member.member_key)?.title || t("workRecords.missing") }}</span>
+              <input v-if="renamingConversationKey === row.member.member_key" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @click.stop @keydown.enter.prevent="commitConversationRename(memberConversation(row.member.member_key)!)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(memberConversation(row.member.member_key)!)">
+              <span v-else class="member-title">{{ memberTitle(row.member.member_key) }}</span>
               <span class="member-agent">{{ row.member.agent }}</span>
               <button class="ui-icon-button sm" type="button" :data-testid="'resume-' + row.member.member_key" :disabled="!memberConversation(row.member.member_key)?.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" @click.stop="resumeMember(row.member.member_key)">▶</button>
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(row.member.member_key)">✎</button>
@@ -474,6 +588,7 @@ watch(() => props.workspace, async (workspace) => {
               @dragstart="unfiledDragStart($event, row.conversation)"
               @dragover.prevent
               @drop.stop="dropMember($event, null, unfiledKey(row.conversation))"
+              @click="previewConversation(row.conversation)"
               @contextmenu.prevent="openMemberMenu($event, null, null, row.conversation)"
             >
               <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
@@ -482,7 +597,7 @@ watch(() => props.workspace, async (workspace) => {
                 <span class="conversation-child-count">{{ row.childCount }}</span>
               </button>
               <span v-else class="conversation-twisty spacer" aria-hidden="true" />
-              <input v-if="renamingConversationKey === unfiledKey(row.conversation)" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @keydown.enter.prevent="commitConversationRename(row.conversation)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(row.conversation)">
+              <input v-if="renamingConversationKey === unfiledKey(row.conversation)" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @click.stop @keydown.enter.prevent="commitConversationRename(row.conversation)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(row.conversation)">
               <span v-else class="member-title">{{ row.conversation.title }}</span>
               <span class="member-agent">{{ row.conversation.agent }}</span>
               <button class="ui-icon-button sm" type="button" :disabled="!row.conversation.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" :data-testid="'resume-' + unfiledKey(row.conversation)" @click.stop="explorer.resumeConversation(row.conversation)">▶</button>
@@ -513,6 +628,9 @@ watch(() => props.workspace, async (workspace) => {
     <Teleport to="body">
       <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
         <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
+        <button v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
+        <button type="button" @click="newSessionFromMenu()">{{ t("workRecords.newSession") }}</button>
+        <button v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
         <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
         <button type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
         <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
@@ -537,7 +655,7 @@ watch(() => props.workspace, async (workspace) => {
 .head-actions { display:flex; align-items:center; gap:2px; flex:0 0 auto; }
 .work-record-archived { font-size:var(--font-xs); color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 6px; white-space:nowrap; }
 .work-record-members, .work-record-failures ul { margin:var(--space-1) 0 0; padding-left:0; list-style:none; display:grid; grid-template-columns:minmax(0,1fr); gap:4px; min-height:24px; max-width:100%; }
-.work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
+.work-record-members li, .unfiled-row { display:flex; align-items:center; gap:var(--space-1); min-height:26px; padding:0 var(--space-1); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-2); white-space:nowrap; box-sizing:border-box; width:100%; max-width:100%; min-width:0; cursor:pointer; }
 .work-record-members li:hover, .unfiled-row:hover { background:var(--surface-hover); }
 .member-title { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .member-agent { color:var(--text-faint); font-size:var(--font-xs); }
