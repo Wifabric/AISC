@@ -40,6 +40,17 @@ class _RealPathTemporaryDirectory(tempfile.TemporaryDirectory):
 
 
 tempfile.TemporaryDirectory = _RealPathTemporaryDirectory
+
+
+# mkdtemp-based test roots need the same treatment (e.g. network subscription).
+_raw_mkdtemp = tempfile.mkdtemp
+
+
+def _realpath_mkdtemp(*args, **kwargs):
+    return os.path.realpath(_raw_mkdtemp(*args, **kwargs))
+
+
+tempfile.mkdtemp = _realpath_mkdtemp
 os.environ["AISC_DATA_ROOT"] = _ISOLATED_ROOT
 # The config/ subdir satisfies the resolver's layout expectations.
 os.makedirs(os.path.join(_ISOLATED_ROOT, "config"), exist_ok=True)

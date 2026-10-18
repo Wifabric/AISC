@@ -60,3 +60,6 @@
 - 第四轮后仅剩 ``test_cli_logs``：其 setUp 直接读 ``TemporaryDirectory.name``
   绕过 ``__enter__``。wrapper 改在 ``__init__`` 内 resolve ``self.name``，
   同时覆盖上下文与直读两种消费形态。
+- 第五轮后仅剩 ``test_network_subscription``（mkdtemp 形态）。conftest 同步包一层
+  ``tempfile.mkdtemp → realpath``，至此 TemporaryDirectory / mkdtemp / .name
+  三种消费形态全部覆盖。
