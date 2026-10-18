@@ -3,6 +3,18 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b3 Docker 资源面板卡片化与专用缓存清理（2026-10-18）
+
+- **反馈 #9** 四项落地（PR #30 squash 并回 develop，``8d4e5f7``）：
+  1. 摘要 label/val 行列表 → 卡片网格 + 「合计」卡（总条目/总可回收），
+     每类卡显示可回收字节，卷/网络带「仅报告」角标；
+  2. ``Build Cache`` → 「构建缓存（可清理）」；
+  3. 专用「清理构建缓存」按钮：``cacheCleanup(24)``（builder + dangling
+     prune，CLI 安全过滤既有测试钉死）→ 日志 → 统一刷新扫描，不动容器/镜像；
+  4. 按钮序：扫描 → 清理 AISC → 清理构建缓存 → 重建（最右）。
+- 顺带删除 b16 遗留死代码 ``runCacheCleanup(minAgeHours)``（vue-tsc 重复
+  定义暴露）。零 Rust/CLI 变更。
+- **门禁**：TDD 新增 3 用例；全量 Vitest 76 files / 608 tests；vue-tsc 通过。
 # v2.1.16 tests.yml 框架收敛为 pytest（2026-10-18，用户裁定方案 B）
 
 - **PR #29**：tests.yml 由 unittest discover 改为 `pip install -e ".[dev]"` +
