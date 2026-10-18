@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- |
 | b1 | 容器内 codex/claude 自动更新 EEXIST 修复 | P1 | `2.1.16-b1-container-tool-update` | 已完成（PR #26，待实机手测） |
 | b2 | Work Records UI 可用性五项 | P1 | `2.1.16-b2-work-records-usability` | 已完成（待实机手测） |
-| b3 | Docker 资源面板信息层级与「清理构建缓存」 | P2 | `2.1.16-b3-docker-resource-ui` | 计划中 |
+| b3 | Docker 资源面板信息层级与「清理构建缓存」 | P2 | `2.1.16-b3-docker-resource-ui` | 已完成（待实机手测） |
 | b4 | 技能/插件/MCP 统一管理调研与方案 | P2 | `2.1.16-b4-skill-plugin-mcp-research` | 计划中 |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
