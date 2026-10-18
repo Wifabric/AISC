@@ -24,8 +24,10 @@ import tempfile
 
 import pytest
 
-_ISOLATED_ROOT = os.environ.get("AISC_TEST_DATA_ROOT") or tempfile.mkdtemp(
-    prefix="aisc-conftest-data-")
+# Resolve: macOS TMPDIR sits behind the /var symlink and the CLI's data-root
+# reparse guard correctly rejects symlinked path components.
+_ISOLATED_ROOT = os.environ.get("AISC_TEST_DATA_ROOT") or os.path.realpath(
+    tempfile.mkdtemp(prefix="aisc-conftest-data-"))
 os.environ["AISC_DATA_ROOT"] = _ISOLATED_ROOT
 # The config/ subdir satisfies the resolver's layout expectations.
 os.makedirs(os.path.join(_ISOLATED_ROOT, "config"), exist_ok=True)

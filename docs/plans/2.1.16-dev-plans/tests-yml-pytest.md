@@ -50,3 +50,6 @@
      8.3 短名路径 containment 误判（real bug）→ relpath 前对入参 resolve，
      与已 resolve 的 workspace 同构。
 - 定向 + 全量本地复跑全绿。
+- 第二轮 dispatch 后残余定位：conftest 会话级隔离根（`aisc-conftest-data-`）
+  先于模块级 env 生效且未 resolve——补 `os.path.realpath`；
+  `test_serve.py` 在 Win/Py3.11 无 `os.set_blocking` → skip 守卫。
