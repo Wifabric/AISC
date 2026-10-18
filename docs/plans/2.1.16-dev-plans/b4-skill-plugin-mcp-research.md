@@ -71,3 +71,23 @@ Workbench 新增「扩展」入口（建议放设置页新分组，避免顶级�
   exit code + stderr 归因（与 provider adapter 同法）。
 - Codex 无 plugin 概念：Plugins Tab 明示「仅 Claude」，避免用户误解。
 - 容器内 marketplace 网络受限：更新检查失败要显式降级为「无法检查」，不阻塞查看。
+
+## 5. 用户裁定（2026-10-18）
+
+- **D-1 = 左侧导航**：扩展与 Provider（供应商）均放左侧 activity rail——Provider
+  不再与 bash/codex/claude 同列 TabBar，改为 rail 视图。
+- **D-2 = 本阶段加批实施**（本批 b5）。
+- **D-3 = Plugins P1 直接可装可卸**（桥接 `claude plugin install/uninstall`）。
+- **D-4 = MCP P1 即含新增**（`cc-switch deeplink` 非交互导入，实测打通：
+  `ccswitch://v1/import?resource=mcp&config=<base64({"mcpServers":{…}})>&apps=claude,codex`）。
+
+## 6. b5 实施设计（依据上述裁定）
+
+- 数据面：容器内 `aisc-extensions-adapter`（复刻 aisc-cc-provider 模式）——
+  列表走只读 SQLite / JSON 快照（skills / mcp_servers 表 + installed_plugins.json），
+  变更走 `cc-switch` / `claude plugin` 非交互命令；MCP server_config 中的 env
+  值按 provider adapter 同法 redaction。
+- Rust 命令：extensions_list / toggle / delete / install_skill / mcp_add /
+  plugin_install / plugin_uninstall / plugin_update。
+- 前端：rail 新增「供应商」「扩展」两项；Provider UI（CcSwitchUiTab）从
+  TabBar 虚拟页签迁到 dock 视图；新 ExtensionsView 三子页签。
