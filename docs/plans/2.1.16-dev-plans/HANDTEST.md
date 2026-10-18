@@ -115,3 +115,24 @@
 2. **操作**：观察按钮行顺序；未扫描时点各操作按钮；扫描后再点。
 3. **期望结果**：顺序为「扫描 Docker 资源」「清理 AISC 容器与镜像」「清理构建缓存」「重新构建镜像」（重建在最右）；未扫描时三个操作按钮均禁用，扫描后启用；扫描进行中按钮禁用并显示「扫描中…」。
 4. **异常判定口径**：顺序错乱、未扫描时可点、或清理进行中仍可重复点击。
+
+## T13 左侧导航与供应商迁移（b5 · D-1）
+
+1. **前置准备**：工作区 Ready；记录原 Provider 页签入口（侧栏 auth 按钮、guide 横幅）。
+2. **操作**：观察左侧 rail 图标列；点「供应商」与「扩展」图标；再点原 auth 入口的「打开 cc-switch」。
+3. **期望结果**：rail 出现 6 个视图图标（文件/工作记录/产物/服务/供应商/扩展）；供应商视图在左侧 dock 内渲染 Provider UI（与原页签内容一致）；auth 入口点击后 dock 自动展开并切到供应商视图；TabBar 中不再出现「⇄ 供应商」虚拟页签。
+4. **异常判定口径**：rail 图标缺失、Provider UI 空白、auth 入口无反应、或虚拟页签仍出现。
+
+## T14 扩展三页签查看与开关（b5 · D-1/D-2）
+
+1. **前置准备**：工作区运行中（runtime ready）。
+2. **操作**：rail →「扩展」→ 分别切 技能 / MCP / 插件 三页签；对任一技能点 C/X 开关。
+3. **期望结果**：技能列表显示出厂 4 项（caveman/document-skills/grill-me/superpowers）带 repo 与双引擎开关态；MCP 显示已注册 server（含 aisc-host，env 只显示键名不显示值）；插件显示 name@marketplace + 版本 + 更新时间；技能开关后列表刷新且容器内 `cc-switch skills list` 状态一致。
+4. **异常判定口径**：列表空/报错、开关不生效、或 MCP env 值明文出现。
+
+## T15 安装/新增/卸载（b5 · D-3/D-4）
+
+1. **前置准备**：网络可达；MCP 新增准备一段 `{"mcpServers":{"test":{"command":"echo"}}}` JSON。
+2. **操作**：技能页签输入 `owner/name:directory` 安装一个市场技能；MCP 页签粘贴 JSON 点「新增 MCP」；插件页签输入 `name@marketplace` 安装并随后卸载同一插件；对测试 MCP 执行删除。
+3. **期望结果**：技能安装后出现在列表并默认双引擎启用；MCP 新增后出现在列表（claude/codex 均 ✓），容器内 `docker exec <ct> bash -lc "grep -A2 mcp_servers /root/app/.codex/config.toml"` 可见；插件安装→列表出现→卸载→消失；MCP 删除后列表与 config.toml 同步消失。
+4. **异常判定口径**：任一操作报错且错误信息不可读、新增的 MCP 未落 live 配置、卸载后列表未刷新。

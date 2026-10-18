@@ -11,7 +11,8 @@
 | b1 | 容器内 codex/claude 自动更新 EEXIST 修复 | P1 | `2.1.16-b1-container-tool-update` | 已完成（PR #26，待实机手测） |
 | b2 | Work Records UI 可用性五项 | P1 | `2.1.16-b2-work-records-usability` | 已完成（待实机手测） |
 | b3 | Docker 资源面板信息层级与「清理构建缓存」 | P2 | `2.1.16-b3-docker-resource-ui` | 已完成（待实机手测） |
-| b4 | 技能/插件/MCP 统一管理调研与方案 | P2 | `2.1.16-b4-skill-plugin-mcp-research` | 调研完成，方案待裁决（D-1–D-4） |
+| b4 | 技能/插件/MCP 统一管理调研与方案 | P2 | `2.1.16-b4-skill-plugin-mcp-research` | 调研完成；2026-10-18 裁定 D-1–D-4 |
+| b5 | 扩展统一管理实施（rail 入口 + Provider 迁移 + 三资产生命周期） | P1 | `2.1.16-b5-extensions-management` | 已完成（待实机手测 T13–T15） |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。b4 为调研批次：先产出管理模型、

@@ -22,7 +22,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { leafCount } from "../../stores/paneTree";
-import { CC_SWITCH_UI_TAB_ID, useRuntimeStore } from "../../stores/runtime";
+import { useRuntimeStore } from "../../stores/runtime";
 import { useDoctorStore } from "../../stores/doctor";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useWorkspacesStore } from "../../stores/workspaces";
@@ -43,7 +43,6 @@ import LaunchSummary from "../startup/LaunchSummary.vue";
 import StartProgress from "../startup/StartProgress.vue";
 import BuildProgress from "../startup/BuildProgress.vue";
 import ConflictManager from "../startup/ConflictManager.vue";
-import CcSwitchUiTab from "../ccswitch/CcSwitchUiTab.vue";
 import WorkspaceExplorer from "../workspace-explorer/WorkspaceExplorer.vue";
 
 const props = defineProps<{
@@ -70,6 +69,9 @@ const RAIL_ITEMS = [
   { kind: "work-records", labelKey: "explorer.tab.workRecords", icon: "layers" },
   { kind: "artifacts", labelKey: "explorer.tab.artifacts", icon: "box" },
   { kind: "services", labelKey: "explorer.tab.services", icon: "globe" },
+  // b5 D-1 (2026-10-18 用户裁定): 供应商与扩展进左侧导航，不再与终端页签混排。
+  { kind: "providers", labelKey: "explorer.tab.providers", icon: "plug" },
+  { kind: "extensions", labelKey: "explorer.tab.extensions", icon: "puzzle" },
 ] as const;
 function onRailIcon(kind: string): void {
   const action = railIconAction(
@@ -147,12 +149,16 @@ function onDockHandleKey(e: KeyboardEvent): void {
   }
 }
 
-// Stage 8e: the cc-switch Provider UI virtual pane — kept alive while hidden
-// so unsaved state survives switches. (The Settings pane is workspace-layer
-// now — App renders it; see stores/workspaces 3d.)
-const ccSwitchPaneRef = ref<HTMLElement | null>(null);
-const ccSwitchPaneVisible = computed(
-  () => store.ccSwitchUiTabOpen && store.activeTabId === CC_SWITCH_UI_TAB_ID
+// b5 D-1: openCcSwitchUiTab() callers (sidebar auth action, guide banner)
+// are redirected into the LEFT RAIL dock view; the virtual tab is gone.
+watch(
+  () => store.ccSwitchUiTabOpen,
+  (open) => {
+    if (!open) return;
+    explorerStore.activateView("providers");
+    setExplorerCollapsed(false);
+    store.closeCcSwitchUiTab();
+  },
 );
 
 // S3.3: focus the terminal of a tab so typing works right after switching
@@ -160,10 +166,6 @@ const ccSwitchPaneVisible = computed(
 // (v-show) on the next render; focusing synchronously would hit a hidden
 // xterm.
 function focusTabTerminal(tabId: string): void {
-  if (tabId === CC_SWITCH_UI_TAB_ID) {
-    void nextTick(() => ccSwitchPaneRef.value?.focus({ preventScroll: true }));
-    return;
-  }
   // G-17: focus the tab's ACTIVE pane terminal (PaneTree exposes it).
   void nextTick(() => {
     paneTreeRefs.value.get(tabId)?.focusActivePane();
@@ -173,14 +175,12 @@ function focusTabTerminal(tabId: string): void {
 /** The rendered tab sequence = session tabs + open virtual chips (TabBar's
  * rendering order; drives Ctrl+Tab / Ctrl+1..9). */
 function renderedTabIds(): string[] {
-  const ids = store.tabs.map((tb) => tb.tabId);
-  if (store.ccSwitchUiTabOpen) ids.push(CC_SWITCH_UI_TAB_ID);
-  return ids;
+  // b5 D-1: the Provider UI virtual tab is gone; rail owns the view.
+  return store.tabs.map((tb) => tb.tabId);
 }
 
 function activateRenderedTab(id: string): void {
-  if (id === CC_SWITCH_UI_TAB_ID) store.openCcSwitchUiTab();
-  else store.activateTab(id);
+  store.activateTab(id);
   focusTabTerminal(id);
 }
 
@@ -448,6 +448,13 @@ function setPaneTreeRef(tabId: string) {
                 <path d="M2 5l6-3 6 3v6l-6 3-6-3z" />
                 <path d="M2 5l6 3 6-3M8 8v6" />
               </svg>
+              <svg v-else-if="item.icon === 'plug'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                <path d="M5.5 1.5v3M10.5 1.5v3M3.5 4.5h9v2a4.5 4.5 0 0 1-9 0z" />
+                <path d="M8 11v3.5" />
+              </svg>
+              <svg v-else-if="item.icon === 'puzzle'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                <path d="M2.5 6h2a1.5 1.5 0 1 1 3 0h2v2a1.5 1.5 0 1 0 0 3v2h-7z" />
+              </svg>
               <svg v-else width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" />
                 <path d="M2.5 6h11M2.5 10h11M8 2c-2 1.7-3 3.7-3 6s1 4.3 3 6c2-1.7 3-3.7 3-6s-1-4.3-3-6z" />
@@ -506,7 +513,7 @@ function setPaneTreeRef(tabId: string) {
       <div class="main">
         <TabBar />
         <main ref="terminalAreaRef" class="terminal-area">
-          <div v-if="store.tabs.length === 0 && !ccSwitchPaneVisible" class="empty-tabs">
+          <div v-if="store.tabs.length === 0" class="empty-tabs">
             <p>{{ t("tabs.empty") }}</p>
             <button class="ui-button primary" @click="store.createTab('bash')">{{ t("tabs.newTab") }}</button>
           </div>
@@ -520,18 +527,7 @@ function setPaneTreeRef(tabId: string) {
           >
             <PaneTree :ref="setPaneTreeRef(tb.tabId)" :tab-id="tb.tabId" :tree="tb.tree" />
           </div>
-          <div
-            v-if="store.ccSwitchUiTabOpen"
-            v-show="ccSwitchPaneVisible"
-            ref="ccSwitchPaneRef"
-            class="settings-pane"
-            tabindex="-1"
-          >
-            <!-- KI-7②: `visible` lets the pane refetch when the user returns
-                 from a bash tab — the pane is kept alive (v-show), so mounts
-                 never re-run and external cc-switch edits stayed invisible. -->
-            <CcSwitchUiTab :visible="ccSwitchPaneVisible" />
-          </div>
+
         </main>
       </div>
       <!-- 弱化开关：右缘幽灵 ⓘ（抽屉打开时被抽屉覆盖，经抽屉内 ✕ 关闭） -->

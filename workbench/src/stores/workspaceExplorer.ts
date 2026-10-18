@@ -67,7 +67,7 @@ interface ExplorerCache {
   stale: boolean;
 }
 
-export type ExplorerKind = "explorer" | "work-records" | "conversations" | "artifacts" | "services";
+export type ExplorerKind = "explorer" | "work-records" | "conversations" | "artifacts" | "services" | "providers" | "extensions";
 
 /** Stage 11 (D11-02/D11-03): the in-app file clipboard. Short-lived store
  *  state — copy never touches the OS text clipboard. Single source entry
