@@ -33,8 +33,10 @@ _ISOLATED_ROOT = os.environ.get("AISC_TEST_DATA_ROOT") or os.path.realpath(
 # Same macOS rule applies to EVERY temp dir a test hands to the CLI as a data
 # root or workspace: yield the real path so the reparse guard never sees /var.
 class _RealPathTemporaryDirectory(tempfile.TemporaryDirectory):
-    def __enter__(self):
-        return os.path.realpath(super().__enter__())
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Also covers direct ``.name`` consumers that never enter the context.
+        self.name = os.path.realpath(self.name)
 
 
 tempfile.TemporaryDirectory = _RealPathTemporaryDirectory

@@ -57,3 +57,6 @@
   cli_data_root / cli_fixtures 直接以原始 TemporaryDirectory 作 data root）。
   最终收敛：conftest 将会话级 ``tempfile.TemporaryDirectory`` 替换为返回
   ``os.path.realpath`` 的子类，一次性覆盖全部同型调用点。
+- 第四轮后仅剩 ``test_cli_logs``：其 setUp 直接读 ``TemporaryDirectory.name``
+  绕过 ``__enter__``。wrapper 改在 ``__init__`` 内 resolve ``self.name``，
+  同时覆盖上下文与直读两种消费形态。
