@@ -3,6 +3,19 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b4 扩展统一管理调研完成（2026-10-18，方案待裁决）
+
+- 对 cc-switch v5.10.5 vendored 二进制做 strings 探针 + 既有调用面核对：
+  **原生支持 skills（repo 注册表 + 双引擎开关 + sync）与 MCP（统一配置 v2、
+  add/edit/delete/import、per-app enable）**；**不支持 plugins**（Claude 独有
+  marketplace 体系，Codex 无此概念）。
+- 方案：三 Tab「扩展管理」（Skills / MCP / Plugins）——Skills 与 MCP 全生命
+  周期走 cc-switch 桥（复用 provider adapter 的「只读快照 + 官方 CLI 变更」
+  模式）；Plugins 首期只读 + 更新提示（version/gitCommitSha vs marketplace），
+  安装卸载 P2 桥接 `claude plugin`。
+- 分期 P1（查看+开关+删除）/ P2（安装/新增/插件操作）/ P3（更新检查/浏览器）。
+- 裁决点 D-1–D-4（入口位置、P1 排期、Plugins 深度、MCP 表单归属）见
+  `docs/plans/2.1.16-dev-plans/b4-skill-plugin-mcp-research.md`，待用户裁定。
 # v2.1.16 b3 Docker 资源面板卡片化与专用缓存清理（2026-10-18）
 
 - **反馈 #9** 四项落地（PR #30 squash 并回 develop，``8d4e5f7``）：
