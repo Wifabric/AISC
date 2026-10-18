@@ -94,7 +94,12 @@ class FormDetection(unittest.TestCase):
             (Path(td) / "aisc-bundle").mkdir()
             form = detect_install_form(frozen=True, executable=str(exe))
             self.assertEqual(form["form"], "frozen")
-            self.assertEqual(form["adjacent_bundle"], str(Path(td) / "aisc-bundle"))
+            # GH Windows runners may hand tempfile dirs in 8.3 short-name form
+            # on one side only; compare canonical forms.
+            self.assertEqual(
+                Path(form["adjacent_bundle"]).resolve(),
+                (Path(td) / "aisc-bundle").resolve(),
+            )
 
     def test_frozen_without_bundle(self):
         with tempfile.TemporaryDirectory() as td:

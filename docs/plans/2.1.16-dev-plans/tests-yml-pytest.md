@@ -33,3 +33,20 @@
 
 - 不移植 5 个模块回 unittest（方案 C 否决）。
 - 不退役 tests.yml（保留矩阵覆盖；方案 D 否决）。
+
+## 执行状态（2026-10-18）
+
+- 本地同构验证：`pip install -e ".[dev]"` + `python -m pytest tests -q`
+  → 1417 passed / 69 skipped（pytest 9.1.1，无 PYTHONPATH）。
+- 首次分支 dispatch（run 39092763847）：ubuntu 3/3 绿（5 个 import pytest
+  模块 loader 漂移已消除）；win/mac 暴露三处此前从未在该矩阵运行过的
+  平台问题，随批修复：
+  1. `tests/features/test_runtime_compat.py` / `test_runtime_json_contract.py`
+     模块级 `AISC_DATA_ROOT=mkdtemp()` 在 macOS 经 `/var` 符号链接触发
+     data-root reparse 守卫 → `Path(...).resolve()` 后再设 env。
+  2. `tests/test_update.py::test_frozen_with_adjacent_bundle` 在 GH Windows
+     runner 两侧 8.3 短名/长名不一致 → 比较前双侧 resolve。
+  3. `src/aisc/cli/commands/artifact.py::_normalize_record_path` 产品侧
+     8.3 短名路径 containment 误判（real bug）→ relpath 前对入参 resolve，
+     与已 resolve 的 workspace 同构。
+- 定向 + 全量本地复跑全绿。

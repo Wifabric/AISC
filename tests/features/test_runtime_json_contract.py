@@ -9,7 +9,13 @@ docs/rfc/aisc-cli-v1.md and docs/gui-planning/05-cli-gui-contract.md.
 # real %LOCALAPPDATA% AISC data.
 import os as _os
 import tempfile as _tempfile
-_os.environ.setdefault("AISC_DATA_ROOT", _tempfile.mkdtemp(prefix="aisc-test-data-"))
+from pathlib import Path as _Path
+# macOS runners expose TMPDIR through the /var symlink; the CLI's data-root
+# reparse guard correctly rejects symlinked components, so resolve first.
+_os.environ.setdefault(
+    "AISC_DATA_ROOT",
+    str(_Path(_tempfile.mkdtemp(prefix="aisc-test-data-")).resolve()),
+)
 import json
 import subprocess
 import sys
