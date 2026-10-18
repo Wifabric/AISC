@@ -28,6 +28,16 @@ import pytest
 # reparse guard correctly rejects symlinked path components.
 _ISOLATED_ROOT = os.environ.get("AISC_TEST_DATA_ROOT") or os.path.realpath(
     tempfile.mkdtemp(prefix="aisc-conftest-data-"))
+
+
+# Same macOS rule applies to EVERY temp dir a test hands to the CLI as a data
+# root or workspace: yield the real path so the reparse guard never sees /var.
+class _RealPathTemporaryDirectory(tempfile.TemporaryDirectory):
+    def __enter__(self):
+        return os.path.realpath(super().__enter__())
+
+
+tempfile.TemporaryDirectory = _RealPathTemporaryDirectory
 os.environ["AISC_DATA_ROOT"] = _ISOLATED_ROOT
 # The config/ subdir satisfies the resolver's layout expectations.
 os.makedirs(os.path.join(_ISOLATED_ROOT, "config"), exist_ok=True)
