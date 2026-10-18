@@ -336,32 +336,69 @@ const dockerPreviewRows = computed(() => {
   ];
 });
 
-const dockerResourceSummaryRows = computed(() => {
+interface DockerSummaryCard {
+  key: string;
+  label: string;
+  value: string;
+  reclaimable: number | null;
+  reportOnly: boolean;
+}
+/** b3 (2.1.16 反馈 #9): card-grid summary — per-category count + reclaimable
+ * plus a leading totals card, replacing the bare label/value row list. */
+const dockerResourceSummary = computed(() => {
   const report = store.dockerReport;
   const inspect = store.inspectReport;
-  if (!report) return [];
+  if (!report) return null;
   const categoryCount = (key: string) => inspect?.categories?.[key]?.summary.count ?? 0;
   const reclaimable = (key: string) => inspect?.categories?.[key]?.summary.reclaimable_bytes ?? 0;
-  return [
+  const cards: DockerSummaryCard[] = [
     {
+      key: "containers",
       label: t("settings.docker.rowContainers"),
       value: `${dockerActionableCount(report.containers)} / ${categoryCount("containers")}`,
+      reclaimable: reclaimable("containers"),
+      reportOnly: false,
     },
     {
+      key: "images",
       label: t("settings.docker.rowImages"),
       value: `${dockerActionableCount(report.images)} / ${categoryCount("images")}`,
+      reclaimable: reclaimable("images"),
+      reportOnly: false,
     },
     {
+      key: "dangling",
       label: t("settings.docker.rowDangling"),
       value: `${report.danglingOwned.length}`,
+      reclaimable: null,
+      reportOnly: false,
     },
     {
+      key: "build_cache",
       label: t("settings.docker.rowBuildCache"),
-      value: `${categoryCount("build_cache")} · ${formatBytes(reclaimable("build_cache"))}`,
+      value: `${categoryCount("build_cache")}`,
+      reclaimable: reclaimable("build_cache"),
+      reportOnly: false,
     },
-    { label: t("settings.docker.rowVolumes"), value: `${categoryCount("volumes")}` },
-    { label: t("settings.docker.rowNetworks"), value: `${categoryCount("networks")}` },
+    {
+      key: "volumes",
+      label: t("settings.docker.rowVolumes"),
+      value: `${categoryCount("volumes")}`,
+      reclaimable: null,
+      reportOnly: true,
+    },
+    {
+      key: "networks",
+      label: t("settings.docker.rowNetworks"),
+      value: `${categoryCount("networks")}`,
+      reclaimable: null,
+      reportOnly: true,
+    },
   ];
+  const known = Object.values(inspect?.categories ?? {});
+  const totalCount = known.reduce((sum, c) => sum + (c?.summary.count ?? 0), 0);
+  const totalReclaimable = known.reduce((sum, c) => sum + (c?.summary.reclaimable_bytes ?? 0), 0);
+  return { cards, totalCount, totalReclaimable };
 });
 
 async function onDockerCleanup() {
@@ -376,6 +413,14 @@ async function onDockerRebuild() {
   const ok = await confirm(t("settings.docker.rebuildConfirm"));
   if (!ok) return;
   await store.runDockerRebuild();
+}
+
+/** b3 (反馈 #9): dedicated build-cache cleanup — never touches containers. */
+async function onCacheCleanup() {
+  const { confirm } = await import("@tauri-apps/plugin-dialog");
+  const ok = await confirm(t("settings.docker.cacheCleanupConfirm"));
+  if (!ok) return;
+  await store.runCacheCleanup();
 }
 
 // --- v2.1.13 D-12: owned-resource management actions ------------------------
@@ -775,6 +820,13 @@ async function reopenOnboarding() {
               :title="t('settings.docker.cleanupTip')"
               @click="onDockerCleanup"
             >{{ t("settings.docker.cleanup") }}</button>
+            <!-- b3 (反馈 #9): 原重建位置改为专用构建缓存清理；重建右移 -->
+            <button
+              :disabled="store.dockerBusy || !store.dockerReport"
+              :title="t('settings.docker.cacheCleanupTip')"
+              data-testid="cache-cleanup-button"
+              @click="onCacheCleanup"
+            >{{ t("settings.docker.cacheCleanup") }}</button>
             <button
               :disabled="store.dockerRebuilding || !store.dockerReport"
               :title="t('settings.docker.rebuildTip')"
@@ -787,10 +839,24 @@ async function reopenOnboarding() {
               {{ t("settings.docker.unavailable") }}
             </p>
             <template v-else>
-              <div class="docker-resource-summary" data-testid="docker-resource-summary">
-                <div v-for="row in dockerResourceSummaryRows" :key="row.label" class="field disk-row">
-                  <span class="label">{{ row.label }}</span>
-                  <span class="val">{{ row.value }}</span>
+              <div v-if="dockerResourceSummary" class="docker-resource-summary" data-testid="docker-resource-summary">
+                <div class="docker-summary-card docker-summary-total" data-testid="docker-summary-card">
+                  <span class="ds-label">{{ t("settings.docker.totalCard") }}</span>
+                  <span class="ds-value">{{ dockerResourceSummary.totalCount }}</span>
+                  <span class="ds-sub">{{ t("settings.disk.reclaimable", { c: "", n: formatBytes(dockerResourceSummary.totalReclaimable) }) }}</span>
+                </div>
+                <div
+                  v-for="card in dockerResourceSummary.cards"
+                  :key="card.key"
+                  class="docker-summary-card"
+                  data-testid="docker-summary-card"
+                >
+                  <span class="ds-label">
+                    {{ card.label }}
+                    <em v-if="card.reportOnly">{{ t("settings.docker.reportOnly") }}</em>
+                  </span>
+                  <span class="ds-value">{{ card.value }}</span>
+                  <span v-if="card.reclaimable !== null" class="ds-sub">{{ formatBytes(card.reclaimable) }}</span>
                 </div>
               </div>
               <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
@@ -1089,5 +1155,11 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .manage-title { margin: 6px 0 2px; font-size: var(--font-xs); color: var(--text-2); }
 .manage-list + .manage-list { margin-top: 10px; }
 
-.docker-resource-summary { display:grid; gap:var(--space-1); padding:var(--space-2); border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
+.docker-resource-summary { display:grid; grid-template-columns:repeat(auto-fill, minmax(148px, 1fr)); gap:var(--space-1); padding:var(--space-2); border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
+.docker-summary-card { display:grid; gap:2px; padding:var(--space-2); border:var(--border-w) solid var(--border-2); border-radius:var(--radius-sm); background:var(--surface); min-width:0; }
+.docker-summary-card .ds-label { font-size:var(--font-xs); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-card .ds-label em { font-style:normal; margin-left:4px; color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 4px; }
+.docker-summary-card .ds-value { font-size:var(--font-lg); font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-card .ds-sub { font-size:var(--font-xs); color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-total { border-color:var(--accent); background:var(--surface-3); }
 </style>

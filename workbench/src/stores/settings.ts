@@ -216,25 +216,6 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  async function runCacheCleanup(minAgeHours: number): Promise<void> {
-    cacheBusy.value = true;
-    cacheError.value = null;
-    try {
-      const result = await ipc.cacheCleanup(minAgeHours);
-      for (const p of result.prunes) {
-        cacheLog.value.push(
-          `${p.kind}: ${p.reclaimed || (p.error ? "失败 " + p.error : "无回收")}`
-        );
-      }
-      for (const w of result.warnings) cacheLog.value.push(`⚠ ${w}`);
-      if (cacheLog.value.length > 20) cacheLog.value.splice(0, cacheLog.value.length - 20);
-      cacheUsage.value = { dockerAvailable: true, rows: result.rows_after };
-    } catch (e) {
-      cacheError.value = errorText(e);
-    } finally {
-      cacheBusy.value = false;
-    }
-  }
 
   // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
   const dockerReport = ref<import("../lib/ipc").DockerScanReport | null>(null);
@@ -316,6 +297,28 @@ export const useSettingsStore = defineStore("settings", () => {
       for (const warning of [...r.warnings, ...cache.warnings]) {
         dockerLogLine(`⚠ ${warning}`);
       }
+      await refreshDockerResources();
+    } catch (e) {
+      dockerError.value = errorText(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** b3 (2.1.16 反馈 #9): dedicated build-cache cleanup — builder + dangling
+   * prune only (CLI owns the 24h safety filter); containers/images untouched.
+   * Refreshes the unified scan so pre/post numbers are always current. */
+  async function runCacheCleanup(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    try {
+      const cache = await ipc.cacheCleanup(24);
+      for (const prune of cache.prunes) {
+        dockerLogLine(
+          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
+        );
+      }
+      for (const warning of cache.warnings) dockerLogLine(`⚠ ${warning}`);
       await refreshDockerResources();
     } catch (e) {
       dockerError.value = errorText(e);

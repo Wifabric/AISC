@@ -309,4 +309,63 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     expect((rebuild.element as HTMLButtonElement).disabled).toBe(false);
     wrapper.unmount();
   });
+
+  // --- v2.1.16 b3 (feedback #9): resource cards + dedicated cache cleanup ---
+
+  it("renders the Docker summary as cards with Chinese build cache label and totals", async () => {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    const summary = wrapper.find("[data-testid='docker-resource-summary']");
+    expect(summary.exists()).toBe(true);
+    const cards = summary.findAll("[data-testid='docker-summary-card']");
+    expect(cards.length).toBeGreaterThanOrEqual(6);
+    expect(summary.text()).toContain("构建缓存（可清理）");
+    expect(summary.text()).not.toContain("Build Cache");
+    // 合计卡：总条目（2+2+3+387+5）与总可回收（2GB + 9GB ≈ 11 GB）
+    expect(summary.text()).toContain("合计");
+    expect(summary.text()).toContain("11.0 GB");
+    wrapper.unmount();
+  });
+
+  it("orders action buttons with dedicated cache cleanup before the rightmost rebuild", async () => {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    const texts = wrapper.findAll("button").map((b) => b.text());
+    const scanIdx = texts.indexOf(i18n.global.t("settings.docker.scan"));
+    const cleanupIdx = texts.indexOf(i18n.global.t("settings.docker.cleanup"));
+    const cacheIdx = texts.indexOf(i18n.global.t("settings.docker.cacheCleanup"));
+    const rebuildIdx = texts.indexOf(i18n.global.t("settings.docker.rebuild"));
+    expect(cacheIdx).toBeGreaterThan(-1);
+    expect(scanIdx).toBeLessThan(cleanupIdx);
+    expect(cleanupIdx).toBeLessThan(cacheIdx);
+    expect(cacheIdx).toBeLessThan(rebuildIdx);
+    wrapper.unmount();
+  });
+
+  it("dedicated cache cleanup prunes cache only and refreshes scan data", async () => {
+    mockUnifiedScan();
+    const order: string[] = [];
+    mockIpc.cacheCleanup.mockImplementation(async () => { order.push("cache"); return { prunes: [{ kind: "builder", reclaimed: "1.5GB", error: null }], warnings: [], rows_after: [] }; });
+    mockIpc.dockerScan.mockImplementation(async () => { order.push("scan"); return scanReport; });
+    mockIpc.cacheInspect.mockClear();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    order.length = 0;
+    mockIpc.cacheCleanup.mockClear();
+    mockIpc.dockerCleanup.mockClear();
+    mockIpc.dockerScan.mockClear();
+    mockIpc.cacheInspect.mockClear();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.cacheCleanup"))!.trigger("click");
+    await flushPromises();
+    expect(mockIpc.cacheCleanup).toHaveBeenCalledWith(24);
+    expect(mockIpc.dockerCleanup).not.toHaveBeenCalled();
+    expect(order).toEqual(["cache", "scan"]);
+    expect(mockIpc.cacheInspect).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
 });
