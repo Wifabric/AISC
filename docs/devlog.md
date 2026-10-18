@@ -3,6 +3,20 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 tests.yml 框架收敛为 pytest（2026-10-18，用户裁定方案 B）
+
+- **PR #29**：tests.yml 由 unittest discover 改为 `pip install -e ".[dev]"` +
+  `python -m pytest tests -q`（与 workbench-ci Python tests step 同构）；
+  wiki §9.1/§9.2/§9.3/§14 文档先行同步（运行器统一 pytest，unittest 保留为
+  源文件级调试形态）。
+- 矩阵首次全量运行暴露的平台问题随批修复：conftest 会话隔离根 +
+  `TemporaryDirectory`/`mkdtemp` 统一 resolve（macOS `/var` 符号链接触发
+  data-root reparse 守卫）；`test_update` 相邻 bundle 断言双侧 resolve
+  （GH Windows 8.3 短名）；`artifact.py::_normalize_record_path` 对入参
+  resolve 后再 relpath（产品侧 containment 误判，real bug）；`test_serve`
+  在 Win/Py3.11 无 `os.set_blocking` 时 skip。
+- **验证**：本地 `pip install -e ".[dev]"` 后全量 1417 passed / 69 skipped；
+  分支 dispatch tests.yml 3 OS × 3 Python 九组矩阵全绿（run 39097066673）。
 # v2.1.16 b1 补：vendor checksums 刷新 + develop CI 全绿（2026-10-18）
 
 - b1 并回后 NSIS / Bundle 报 4 项 checksum mismatch——b1 改了

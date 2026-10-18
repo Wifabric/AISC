@@ -245,4 +245,4 @@
 - 调研
   - [ ] 技能/插件/MCP 统一管理（基于内置 cc-switch）：初始化/安装/查看/卸载/更新/删除；先产出方案，经用户裁决后另排实施批次（需求 #2；b4）
 - 追加（b1 门禁发现，2026-10-17）
-  - [ ] tests.yml（unittest）对 5 个模块级 `import pytest` 的测试模块（artifact_record_env / conversation / docker_cache_cleanup / work_collection / workflow_contract）loader 失败；runner 装 pytest 或移植 unittest，二选一需裁定（develop HEAD 与 b1 分支同样失败，先于 b1 存在）
+  - [x] tests.yml（unittest）对 5 个模块级 `import pytest` 的测试模块 loader 失败——2026-10-18 用户裁定方案 B：tests.yml 改跑 pytest（与 workbench-ci 同构），并随批修复 macOS /var 符号链接临时目录、Windows 8.3 短路径与 artifact containment 产品 bug；九组矩阵全绿（PR #29）
