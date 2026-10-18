@@ -153,12 +153,9 @@ const roving = ref(-1); // -1 = no manual roving; follow the active tab
  * tabs, in this fixed order — the roving/focus model appends them as indexes
  * `store.tabs.length + n`. */
 const virtualTabs = computed(() => {
-  // IDEA-3 (3d): the Settings tab moved to the WORKSPACE strip; the only
-  // session-layer virtual tab left is the cc-switch Provider UI.
-  const out: { id: string; labelKey: string; icon: string }[] = [];
-  if (store.ccSwitchUiTabOpen)
-    out.push({ id: CC_SWITCH_UI_TAB_ID, labelKey: "tabbar.ccSwitchUi", icon: "⇄" });
-  return out;
+  // b5 D-1 (2026-10-18): the cc-switch Provider UI moved to the LEFT RAIL
+  // dock view — no session-layer virtual tabs remain here.
+  return [] as { id: string; labelKey: string; icon: string }[];
 });
 const virtualBtnRefs = new Map<string, HTMLButtonElement>();
 function setVirtualRef(id: string) {
