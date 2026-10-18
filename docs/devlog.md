@@ -3,6 +3,16 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b5 扩展统一管理实施（2026-10-18，D-1–D-4 裁定，PR #31）
+
+- **数据面（b5a）**：容器适配器 ``aisc-extensions-adapter``（skills/mcp/plugins
+  快照 + 全生命周期；MCP env 值不出容器）；MCP 非交互新增走 deeplink（实测）；
+  插件桥接 ``claude plugin`` CLI；宿主 ``aisc extensions`` 八子命令。
+- **UI（b5b）**：左侧 rail 新增「供应商」「扩展」视图；Provider UI 迁出
+  TabBar（原入口重定向 rail）；ExtensionsView 三页签查看/开关/删除/安装/
+  更新；Rust 单命令 ``extensions_call``。
+- **门禁**：pytest 1432 / Vitest 608 / vue-tsc 0 / cargo 362；镜像实构建 +
+  容器冒烟 + vendor verify 1519/0。手测 T13–T15 待实机。
 # v2.1.16 b4 扩展统一管理调研完成（2026-10-18，方案待裁决）
 
 - 对 cc-switch v5.10.5 vendored 二进制做 strings 探针 + 既有调用面核对：
