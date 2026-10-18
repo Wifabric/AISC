@@ -47,7 +47,10 @@ def _normalize_record_path(raw: str, workspace: Path) -> str:
     if not path.is_absolute():
         return raw
     try:
-        rel = os.path.relpath(raw, workspace)
+        # Resolve both sides: on Windows the caller may pass an 8.3 short-name
+        # form of a path that lexically differs from the resolved workspace
+        # (GH runner temp dirs); unresolved relpath would misjudge containment.
+        rel = os.path.relpath(str(path.resolve()), str(workspace))
     except ValueError:
         return raw
     if rel == "." or rel.startswith("..") or Path(rel).is_absolute():

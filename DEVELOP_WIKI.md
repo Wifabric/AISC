@@ -653,16 +653,28 @@ PROXY_ENABLED=0|1
 
 ### 9.1 实际框架和主命令
 
-仓库测试以 Python stdlib `unittest` 风格编写——不依赖 pytest fixture（dev extra 里的 pytest 只作运行器，不引入 fixture 依赖）。两种跑法等价，都在实际使用：
+测试运行器统一为 **pytest**（tests.yml、workbench-ci.yml 与本地门禁一致）。
+测试代码两种风格并存：历史主体是 stdlib `unittest` 风格（TestCase + assert*，
+pytest 直接收集）；v2.1.15 起新增模块允许 pytest 原生写法（fixture /
+parametrize / raises）。
 
 ```bash
-# unittest（tests.yml CI 与源码级调试）
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
-# pytest（workbench-ci.yml 与 local-gates 门禁；忽略 integration）
-python -m pytest tests/ -q --ignore=tests/integration
+# 全量（两个 CI workflow 与本地门禁同构）
+python -m pytest tests -q
+
+# 源文件级单测调试（仅对 unittest 风格模块可用；pytest 原生模块必须用 pytest 跑）
+PYTHONPATH=src python3 -m unittest tests.test_cc_switch_runtime -v
 ```
 
-新增测试保持 unittest 风格。真 SSH 集成测试在 `AISC_TEST_SSH` 门控下运行（无该环境变量即跳过）。
+新增测试：两种风格都可接受，但同一文件内保持一致；pytest fixture 不得引入
+执行顺序或跨测试全局状态依赖。
+
+**2026-10-18 用户裁定（方案 B）**：tests.yml 由 `unittest discover` 改跑
+pytest——修复 5 个模块级 `import pytest` 模块在无 pytest runner 下的 loader
+漂移；同时否决「只装 pytest 继续跑 unittest」形态（非 TestCase 类与函数式
+测试会被 unittest 静默跳过，形成假绿）。
+
+真 SSH 集成测试在 `AISC_TEST_SSH` 门控下运行（无该环境变量即跳过）。
 
 ### 9.2 测试范围
 
@@ -675,14 +687,14 @@ python -m pytest tests/ -q --ignore=tests/integration
 | `tests/packaging/test_windows_installer.py` | Windows installer 定义 | `PYTHONPATH=src python3 -m unittest tests.packaging.test_windows_installer -v` |
 | `tests/packaging/test_macos_installer.py` | macOS PKG 脚本结构 | `PYTHONPATH=src python3 -m unittest tests.packaging.test_macos_installer -v` |
 
-`__pycache__` 中可能残留已删除测试模块的 bytecode，不代表这些源测试仍存在。判断测试范围以实际 `test_*.py` 源文件和 unittest discovery 为准。
+`__pycache__` 中可能残留已删除测试模块的 bytecode，不代表这些源测试仍存在。判断测试范围以实际 `test_*.py` 源文件和 pytest 收集为准。
 
 ### 9.3 测试边界
 
 - `FakeDockerExecutor` 用于不连接 daemon 的计划和命令测试。
 - artifact 测试使用临时目录，不应在仓库中留下 staging/dist。
 - 静态 entrypoint 测试不能替代真实 Docker 启动；修改镜像、权限、TUN、文件系统锁或 Windows bind mount 后需要对应平台 smoke。
-- CI 分工：`tests.yml` 跑完整 unittest discover；`workbench-ci.yml` 在改动涉及 CLI 时跑 pytest 全量。`develop` 合入前仍应本地跑 `scripts/local-gates.ps1|.sh` 全门禁。
+- CI 分工：`tests.yml`（dispatch）与 `workbench-ci.yml` 均以 pytest 跑完整套件，tests.yml 额外覆盖 3 OS × 3 Python 矩阵。`develop` 合入前仍应本地跑 `scripts/local-gates.ps1|.sh` 全门禁。
 
 ## 10. 打包与产物
 
@@ -869,9 +881,9 @@ dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-
 通用检查：
 
 ```bash
-# Python 语法和完整 unittest
+# Python 语法和完整测试（pytest；2026-10-18 方案 B 起 tests.yml 同构）
 python3 -m compileall -q src packaging
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+python -m pytest tests -q
 
 # 当前真实 Bash 文件语法
 bash -n container/entrypoint.sh

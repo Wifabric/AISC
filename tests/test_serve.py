@@ -156,6 +156,8 @@ class ServeInProcessTests(unittest.TestCase):
             def flush(self) -> None:
                 pass  # deliberately model the broken wrapper behavior
 
+        if not hasattr(os, "set_blocking"):
+            self.skipTest("os.set_blocking unavailable on this platform (Win py3.11)")
         rfd, wfd = os.pipe()
         os.set_blocking(rfd, False)
         self.addCleanup(os.close, rfd)
