@@ -3,6 +3,15 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b6 用户手测第一轮修复（2026-10-19，PR #34）
+
+- **#1 TabBar 残留**：▾ 菜单删除「Provider 管理」入口与分隔线；AGENTS 收敛
+  claude/codex/bash；openCcSwitch 改走 rail 重定向。
+- **#2/#4 services 泄漏**：services 面板裸 v-else 兜底吃掉 providers/extensions
+  视图（「暂无已注册服务」+ 布局破坏）→ v-else-if 精确匹配。
+- **#3 关工作区后重进阻断**：leaseRelease fire-and-forget 竞态 → teardown 内
+  await；reconcile 对 active_same_instance 无可聚焦实例时 release+重跑自愈。
+- 门禁：Vitest 76 files / 610 tests；vue-tsc 0。
 # v2.1.16 预手测（2026-10-19，computer use + 后端全链，PR #33）
 
 - computer use（node_repl + @oai/sky）打通 Tauri WebView：带截图观察→立即
