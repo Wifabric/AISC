@@ -1139,7 +1139,7 @@ function onTreeKeydown(e: KeyboardEvent) {
         </div>
 
     <!-- svc-4+: Web services panel (gateway state + registered services) -->
-    <div v-else key="services" class="explorer-body services-panel">
+    <div v-else-if="artifactFilter === 'services'" key="services" class="explorer-body services-panel">
       <p v-if="!servicesSupported" class="explorer-empty">{{ t("sidebar.webServicesUnsupported") }}</p>
       <template v-else-if="runtime.webServices">
         <p v-if="runtime.webServices.gateway.state !== 'ready'" class="explorer-empty">
