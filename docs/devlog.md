@@ -3,6 +3,19 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 预手测（2026-10-19，computer use + 后端全链，PR #33）
+
+- computer use（node_repl + @oai/sky）打通 Tauri WebView：带截图观察→立即
+  点击；rail 图标坐标映射（供应商 y≈204 / 扩展 y≈240）。
+- 修复 Extensions store 错误渲染 ``[object Object]`` → ``errorText()``
+  （PR #33）。
+- 后端全链 PASS：T13 rail/视图渲染；T14 skills/mcp/plugins 快照 + 开关往返；
+  T15 MCP 新增（CLI→deeplink→SSOT→Codex config.toml 落盘）；T1/T3 自更新
+  前缀/wrapper 完整/无 EEXIST（假包实测后还原）；T4 toolchain 挂载。
+- 环境坑修正：dev sidecar 旧冻结二进制需 ``scripts\build-cli.ps1`` 重建；
+  本机 runtime 镜像需含 b5 适配器的新代镜像。
+- 留统一手测：T2 claude 更新、T5–T12 UI 交互、T15 UI 表单/插件装卸；
+  观察项：cc-switch MCP sync 的 Claude ``.mcp.json`` 落点。
 # v2.1.16 b5 扩展统一管理实施（2026-10-18，D-1–D-4 裁定，PR #31）
 
 - **数据面（b5a）**：容器适配器 ``aisc-extensions-adapter``（skills/mcp/plugins
