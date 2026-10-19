@@ -1,4 +1,4 @@
-﻿import { computed, ref } from "vue";
+import { computed, ref } from "vue";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -536,22 +536,34 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
           // generic 「启动已被阻断」 block page with the reason behind 诊断.
           void ipc.logUiEvent?.("reconcile_docker_unavailable", "error", payload.error_code ?? undefined);
         } else {
-          if (
-            payload.classification === "active_same_instance" &&
-            deps.focusExistingWorkspace?.(workspace.value.trim())
-          ) {
-            // Same process already materialized this workspace: it got focused
-            // — this launcher resets silently (01 §1.3).
-            resetWorkspace();
-            status.value = "picker";
+          if (payload.classification === "active_same_instance") {
+            if (deps.focusExistingWorkspace?.(workspace.value.trim())) {
+              // Same process already materialized this workspace: it got focused
+              // — this launcher resets silently (01 §1.3).
+              resetWorkspace();
+              status.value = "picker";
+              return;
+            }
+            // b6 手测 #3（兜底）：同一实例自持租约但无可聚焦工作区 = 刚关闭
+            // 工作区的 release 尚未落地。主动 release 后重跑一次 reconcile，
+            // 而不是把用户丢进阻断页。
+            await ipc.leaseRelease(workspace.value.trim()).catch(() => null);
+            const retry = await ipc.runtimeReconcile(workspace.value.trim());
+            reconcile.value = retry;
+            if (!retry.can_proceed && retry.classification !== "docker_unavailable") {
+              status.value = "conflict";
+              void loadConflicts();
+              void ipc.logUiEvent?.("reconcile_block", "error", retry.error_code ?? undefined);
+              return;
+            }
+          } else {
+            // active_other_instance / unknown_owner: the (Stage 4) block page;
+            // the conflict status renders it until then.
+            status.value = "conflict";
+            void loadConflicts();
+            void ipc.logUiEvent?.("reconcile_block", "error", payload.error_code ?? undefined);
             return;
           }
-          // active_other_instance / unknown_owner: the (Stage 4) block page;
-          // the conflict status renders it until then.
-          status.value = "conflict";
-          void loadConflicts();
-          void ipc.logUiEvent?.("reconcile_block", "error", payload.error_code ?? undefined);
-          return;
         }
       }
     } catch {
@@ -1517,9 +1529,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   /** G-12 (Step 8): activate an existing cc-switch tab or create one -
    * shared by the sidebar auth action and the guide banner. */
   function openCcSwitch() {
-    const existing = tabs.value.find((t) => t.agent === "cc-switch");
-    if (existing) activateTab(existing.tabId);
-    else createTab("cc-switch");
+    // b6 手测 #1（2026-10-19 用户裁定）：顶部页签只保留 bash/codex/claude。
+    // 该入口与 Provider UI 同路——经 ccSwitchUiTabOpen 由 WorkspaceView
+    // 的 watcher 重定向到左侧 rail 的供应商视图。
+    openCcSwitchUiTab();
   }
 
   /** G-08: remove a tab entirely (× button). Live sessions are closed
@@ -1898,7 +1911,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     // remove is idempotent (not_found -> success); force covers a racing
     // start between the stop above and here.
     await ipc.removeRuntime(wsPath, rid, true);
-    void ipc.leaseRelease(wsPath).catch(() => null);
+    // b6 手测 #3：leaseRelease 必须 await——fire-and-forget 会让「关闭工作区
+    // 后立刻重进」撞上自己的未过期租约（active_same_instance 且 launcher 无
+    // 可聚焦实例 → 误入阻断页；重启 Workbench 才恢复）。release 是快速本地
+    // 操作，放在后台清理链路内等待不破坏「视觉即时关闭」。
+    await ipc.leaseRelease(wsPath).catch(() => null);
   }
 
   async function keepCancelledRuntime() {

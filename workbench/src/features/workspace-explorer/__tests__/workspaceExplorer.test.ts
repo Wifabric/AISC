@@ -690,3 +690,34 @@ describe("conversations store (v2.1.8 T4)", () => {
     expect(explorer.conversations.map((c) => c.conversation_id)).toEqual(["a", "b"]);
   });
 });
+
+// --- b6 handtest #2/#4: providers/extensions views must not leak the
+// services panel's empty state (bare v-else used to catch unknown kinds) ---
+
+describe("WorkspaceExplorer rail views (b6 handtest)", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    i18n.global.locale.value = "zh-CN";
+  });
+
+  it("providers view does not render the services empty hint", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "E:/ws";
+    explorer.activeKind = "providers";
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await flushPromises();
+    expect(wrapper.find("[data-testid=providers-view]").exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("暂无已注册服务");
+    wrapper.unmount();
+  });
+
+  it("extensions view does not render the services empty hint", async () => {
+    const explorer = useWorkspaceExplorerStore();
+    explorer.workspace = "E:/ws";
+    explorer.activeKind = "extensions";
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("暂无已注册服务");
+    wrapper.unmount();
+  });
+});

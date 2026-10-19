@@ -69,7 +69,7 @@ export const AGENT_TITLE: Record<LaunchAgent, string> = {
 };
 
 /** All creatable session types (G-08 + menu order). */
-export const AGENTS: LaunchAgent[] = ["claude", "codex", "bash", "cc-switch"];
+export const AGENTS: LaunchAgent[] = ["claude", "codex", "bash"];
 
 function newTabId(): string {
   return crypto.randomUUID();

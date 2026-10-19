@@ -112,8 +112,7 @@ function onMenuKeydown(e: KeyboardEvent) {
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     if (idx >= 0) {
-      if (items[idx].dataset.agent === "cc-switch-ui") chooseCcSwitchUi();
-      else choose(items[idx].dataset.agent as LaunchAgent);
+      choose(items[idx].dataset.agent as LaunchAgent);
     }
   }
 }
@@ -123,10 +122,6 @@ function choose(agent: LaunchAgent) {
   store.createTab(agent);
 }
 
-function chooseCcSwitchUi() {
-  menuOpen.value = false;
-  store.openCcSwitchUiTab();
-}
 
 function onDocMousedown(e: MouseEvent) {
   // The menu is teleported to <body>, so the containment check covers BOTH
@@ -460,20 +455,15 @@ function canReopen(s: TabSessionState): boolean {
           @keydown="onMenuKeydown"
         >
           <li
-            v-for="a in AGENTS.filter((x) => x !== 'cc-switch')"
+            v-for="a in AGENTS"
             :key="a"
             role="menuitem"
             tabindex="0"
             :data-agent="a"
             @click="choose(a)"
           >{{ t(`tabbar.menu.${a}`) }}</li>
-          <li class="sep" role="separator" />
-          <li
-            role="menuitem"
-            tabindex="0"
-            data-agent="cc-switch-ui"
-            @click="chooseCcSwitchUi"
-          >{{ t("tabbar.ccSwitchUi") }}</li>
+
+
         </ul>
         </Transition>
       </Teleport>
