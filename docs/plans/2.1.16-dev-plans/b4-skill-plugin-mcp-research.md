@@ -91,3 +91,27 @@ Workbench 新增「扩展」入口（建议放设置页新分组，避免顶级�
   plugin_install / plugin_uninstall / plugin_update。
 - 前端：rail 新增「供应商」「扩展」两项；Provider UI（CcSwitchUiTab）从
   TabBar 虚拟页签迁到 dock 视图；新 ExtensionsView 三子页签。
+
+## 7. 预手测记录（2026-10-19，computer use + 后端全链）
+
+- **环境坑（非产品 bug）**：dev 实例 sidecar `target\debug\aisc.exe` 是 0.1.8
+  旧冻结二进制（无 extensions 命令）→ UI 报错。跑 `scripts\build-cli.ps1`
+  重建为 0.1.9.dev0 后全链恢复。此前容器镜像也是旧代——`docker tag
+  aisc-b5-verify super-claude:latest` + 重开工作区后拿到含适配器的容器。
+- **产品修复**：Extensions store 的 `String(e)` 渲染成 `[object Object]` →
+  补 `errorText()`（message + technical_detail）。
+- **T13**：rail 六图标渲染 ✓；供应商/扩展视图可进入（坐标点击）；TabBar
+  无 Provider 虚拟页签残留 ✓。
+- **T14 后端**：skills 4 项（repo/双引擎态）✓；mcp 快照 ✓（空表）；
+  plugins 4 项（版本/scope/marketplace 时间）✓；grill-me codex 开关
+  off→on 往返 ✓。
+- **T15 后端**：`cuse-test` MCP 经 CLI 新增 → 列表 stdio 双引擎 ✓；
+  Codex `config.toml [mcp_servers.cuse-test]` 落盘 ✓。**观察项**：Claude
+  侧 `.mcp.json` 未见同步（cc-switch sync 的 claude 落点待查，留给统一
+  手测确认是否影响 claude 会话）。
+- **T1/T3 后端**：exec 会话 `NPM_PREFIX=/tmp/aisc-toolchain/npm-global` ✓；
+  `which codex=/usr/local/bin/codex`（wrapper 完整）✓；假包覆盖安装
+  INSTALL_OK 无 EEXIST、wrapper 未被替换、解析到新二进制 ✓；已还原 0.154.0。
+- **T4**：project 模式 `/opt/aisc/toolchain` 挂载存在 ✓。
+- **未自动覆盖（留统一手测）**：T5–T12 的 UI 交互（预览点击/拖拽/删除
+  确认/设置页扫描卡片）、T2 claude 更新、T15 的 UI 表单与插件装卸。

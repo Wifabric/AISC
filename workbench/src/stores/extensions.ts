@@ -9,6 +9,16 @@ import type { ExtensionsItem } from "../lib/ipc";
 
 export type ExtensionsKind = "skills" | "mcp" | "plugins";
 
+
+/** WorkbenchError serializes { code, message, technical_detail }; raw
+ * String(e) would render "[object Object]" (b5 pre-handtest finding). */
+function errorText(e: unknown): string {
+  const err = e as { message?: string; technical_detail?: string };
+  const message = err?.message ?? String(e);
+  const detail = err?.technical_detail;
+  if (!detail || detail === message) return message;
+  return `${message}：${detail}`;
+}
 export const useExtensionsStore = defineStore("extensions", () => {
   const kind = ref<ExtensionsKind>("skills");
   const items = ref<ExtensionsItem[]>([]);
@@ -42,7 +52,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       const out = await call<{ items?: ExtensionsItem[] }>("list", { kind: kind.value });
       items.value = out.items ?? [];
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       loading.value = false;
     }
@@ -55,7 +65,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await call("toggle", { kind: kind.value, id: item.id, agent, on });
       await load();
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       busy.value = false;
     }
@@ -71,7 +81,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       });
       await load();
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       busy.value = false;
     }
@@ -84,7 +94,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await call("skill-install", { spec });
       await load("skills");
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       busy.value = false;
     }
@@ -97,7 +107,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await call("mcp-add", { apps, config: configJson });
       await load("mcp");
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       busy.value = false;
     }
@@ -110,7 +120,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await call(op, { id });
       await load("plugins");
     } catch (e) {
-      error.value = String(e);
+      error.value = errorText(e);
     } finally {
       busy.value = false;
     }
