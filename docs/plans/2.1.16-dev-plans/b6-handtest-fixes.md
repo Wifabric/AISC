@@ -17,3 +17,14 @@
 - 新增 WorkspaceExplorer 回归 ×2：providers/extensions 视图不渲染 services 空文案。
 - #3 的 store 级自愈逻辑经 vue-tsc + 现有 runtime 套件回归；真实「关→立进」时序待用户复测。
 - 门禁：Vitest 76 files / 610 tests；vue-tsc 0。
+
+## 预复测（2026-10-20，computer use 实机）
+
+- **R1–R4 全 PASS**（R3 关→+3.4s 重进→直达摘要）。
+- **新发现并修复（用户 #4 深层根因）**：扩展视图切页签后整体消失——
+  i18n 文案 `{mcpServers:{…}}`（占位符语法）与 `name@marketplace`
+  （链接语法）被 vue-i18n 当消息语法解析 → 编译错误 → 渲染抛错 →
+  组件卸载。修复：去掉 `{}`、`@` 字面量转义为 `{'@'}`；新增页签切换
+  回归测试（skills→mcp→plugins 全程渲染）。
+- 期间定位两个环境坑（非产品）：Win32 外部 resize 可令 WebView 停在
+  333x253（正常用户不会触发）；HMR 更新 i18n 会整页刷新回 picker。
