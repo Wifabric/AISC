@@ -389,6 +389,35 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extup)
     extup.add_argument("--id", required=True)
 
+    extss = extsub.add_parser("skill-search",
+                              help="Search the public skills.sh marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extss)
+    extss.add_argument("--query", required=True)
+
+    extdl = extsub.add_parser("deeplink",
+                              help="Import a resource from a ccswitch:// link",
+                              allow_abbrev=False)
+    _extensions_common(extdl)
+    extdl.add_argument("--url", required=True)
+
+    extsr = extsub.add_parser("skill-repo-add",
+                              help="Add a skill repository (URL or owner/name[@branch])",
+                              allow_abbrev=False)
+    _extensions_common(extsr)
+    extsr.add_argument("--id", required=True)
+
+    extml = extsub.add_parser("plugin-market-list",
+                              help="List configured Claude plugin marketplaces",
+                              allow_abbrev=False)
+    _extensions_common(extml)
+
+    extma = extsub.add_parser("plugin-market-add",
+                              help="Add a Claude plugin marketplace (URL/GitHub repo)",
+                              allow_abbrev=False)
+    _extensions_common(extma)
+    extma.add_argument("--id", required=True)
+
     # --- cc-switch (Stage 8d: provider data plane, aisc.cc-switch-provider/v1) ---
     csp = sub.add_parser(
         "cc-switch", help="Manage cc-switch providers (list/add/edit/delete)",
@@ -1972,6 +2001,16 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_plugin_uninstall(args)
     elif sub == "plugin-update":
         data = ext_cmd.cmd_extensions_plugin_update(args)
+    elif sub == "skill-search":
+        data = ext_cmd.cmd_extensions_skill_search(args)
+    elif sub == "deeplink":
+        data = ext_cmd.cmd_extensions_deeplink(args)
+    elif sub == "skill-repo-add":
+        data = ext_cmd.cmd_extensions_skill_repo_add(args)
+    elif sub == "plugin-market-list":
+        data = ext_cmd.cmd_extensions_plugin_market_list(args)
+    elif sub == "plugin-market-add":
+        data = ext_cmd.cmd_extensions_plugin_market_add(args)
     else:
         raise CliError(message="unknown extensions subcommand",
                        exit_code=2, error_code="AISC_ERR_USAGE")

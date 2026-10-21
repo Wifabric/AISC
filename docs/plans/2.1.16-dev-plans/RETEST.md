@@ -77,3 +77,24 @@
 - R1–R4 + T1–T15 全 PASS → 可宣布收尾（§1.1.3，由你宣布）。
 - 个别 FAIL → 反馈 Claude，修复后只需复测对应项。
 - T15 破坏性项如暂不方便可标注「延后」，不阻塞收尾裁决。
+
+## 第四部分：b7 复测（R5–R8，2026-10-21 第二轮反馈）
+
+> 前置：重建镜像（含 b7 Dockerfile）+ `scripts\build-cli.ps1` 重建 sidecar + 重开工作区。
+
+### R5 MCP 卸载（修复 TTY 报错）
+1. 扩展 → MCP → 对 `cuse-test` 点 ✕。
+2. **期望**：确认后删除成功（无 "Prompt failed: not a TTY"）；列表与容器内 config.toml 同步消失。
+
+### R6 更新跨重启持久
+1. codex/claude 完成一次更新 → 记录版本 → 关闭工作区 → 重新打开。
+2. **期望**：版本保持更新后（project 模式）；`docker exec <ct> npm config get prefix` = `/opt/aisc/toolchain/npm-global`。
+
+### R7 技能商城
+1. 扩展 → 技能 → 商城搜索框输入 `pdf` 回车。
+2. **期望**：出现 skills.sh 结果（名称/仓库/安装数）；点「安装」→ 技能列表出现。
+3. 链接框支持 GitHub URL / owner:name / ccswitch://。
+
+### R8 MCP 链接 + 插件市场
+1. MCP 页签链接框粘贴 `ccswitch://…` → 导入。
+2. 插件页签：市场列表自动加载；输入市场 URL/GitHub → 「添加市场」→ 列表更新。

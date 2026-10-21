@@ -27,6 +27,11 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const error = ref<string | null>(null);
 
   const context = ref<{ workspace: string; runtimeId: string } | null>(null);
+  /** b7 商城：技能搜索结果（market-skill 条目）。 */
+  const marketSkills = ref<ExtensionsItem[]>([]);
+  const marketBusy = ref(false);
+  /** b7 商城：插件市场列表。 */
+  const pluginMarkets = ref<ExtensionsItem[]>([]);
   const canLoad = computed(() => context.value !== null);
 
   async function call<T = Record<string, unknown>>(
@@ -126,12 +131,79 @@ export const useExtensionsStore = defineStore("extensions", () => {
     }
   }
 
+  async function searchSkills(query: string): Promise<void> {
+    marketBusy.value = true;
+    error.value = null;
+    try {
+      const out = await call<{ items?: ExtensionsItem[] }>("skill-search", { query });
+      marketSkills.value = out.items ?? [];
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      marketBusy.value = false;
+    }
+  }
+
+  async function importDeeplink(url: string): Promise<void> {
+    busy.value = true;
+    error.value = null;
+    try {
+      await call("deeplink", { url });
+      await load();
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  async function addSkillRepo(source: string): Promise<void> {
+    busy.value = true;
+    error.value = null;
+    try {
+      await call("skill-repo-add", { id: source });
+      await load("skills");
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  async function loadPluginMarkets(): Promise<void> {
+    marketBusy.value = true;
+    error.value = null;
+    try {
+      const out = await call<{ items?: ExtensionsItem[] }>("plugin-market-list");
+      pluginMarkets.value = out.items ?? [];
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      marketBusy.value = false;
+    }
+  }
+
+  async function addPluginMarket(source: string): Promise<void> {
+    busy.value = true;
+    error.value = null;
+    try {
+      await call("plugin-market-add", { id: source });
+      await loadPluginMarkets();
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      busy.value = false;
+    }
+  }
+
   function setContext(workspace: string, runtimeId: string): void {
     context.value = workspace && runtimeId ? { workspace, runtimeId } : null;
   }
 
   return {
     kind, items, loading, busy, error, canLoad,
+    marketSkills, marketBusy, pluginMarkets,
+    searchSkills, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
     load, toggle, remove, installSkill, addMcp, pluginAction, setContext,
   };
 });

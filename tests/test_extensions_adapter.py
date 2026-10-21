@@ -134,7 +134,8 @@ class MutationTests(TempEnv):
             A.delete("mcp", "aisc-host")
             A.delete("plugins", "hud@market")
         self.assertEqual(calls[0][:4], ["cc-switch", "skills", "uninstall", "superpowers"])
-        self.assertEqual(calls[1][:4], ["cc-switch", "mcp", "delete", "aisc-host"])
+        self.assertEqual(calls[1][:2], ["script", "-qec"])
+        self.assertIn("cc-switch mcp delete aisc-host", calls[1][2])
         self.assertEqual(calls[2][:4], ["claude-real", "plugin", "uninstall", "hud"])
 
     def test_mcp_add_builds_deeplink_and_imports(self):
@@ -185,3 +186,78 @@ class EnvelopeTests(TempEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+class MarketTests(TempEnv):
+    def _fake(self, stdout="", rc=0):
+        calls = []
+        def run(argv, **kw):
+            calls.append({"argv": list(argv), "input": kw.get("input", "")})
+            return subprocess.CompletedProcess(argv, rc, stdout, "" if rc == 0 else "boom")
+        return calls, run
+
+    def test_mcp_delete_uses_script_pty_with_y(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.delete("mcp", "cuse-test")
+        argv = calls[0]["argv"]
+        self.assertEqual(argv[:2], ["script", "-qec"])
+        self.assertIn("mcp delete", argv[2])
+        self.assertIn("cuse-test", argv[2])
+        self.assertEqual(calls[0]["input"], "y\n")
+
+    def test_mcp_delete_failure_maps_to_cli_error(self):
+        calls, run = self._fake(rc=1)
+        with mock.patch.object(A.subprocess, "run", run):
+            with self.assertRaises(A.AdapterError):
+                A.delete("mcp", "x")
+
+    def test_parse_market_table(self):
+        V, S = chr(0x2502), chr(0x2506)  # │ ┆
+        row = V + " anthropics/skills:pdf " + S + " pdf " + S + " pdf " + S + " 214047 " + S + " anthropics/skills " + V
+        raw = "\n".join([
+            V + " Key " + S + " Directory " + V,
+            row,
+            "divider without proper cells",
+        ])
+        items = A._parse_market_table(raw)
+        self.assertEqual(items[0]["id"], "anthropics/skills:pdf")
+        self.assertEqual(items[0]["installs"], "214047")
+    def test_skill_search_builds_market_argv(self):
+        calls, run = self._fake(stdout="no table")
+        with mock.patch.object(A.subprocess, "run", run):
+            items = A.skill_search("pdf")
+        self.assertEqual(calls[0]["argv"][:5], ["cc-switch", "skills", "market", "pdf", "--limit"])
+        self.assertEqual(items, [])
+
+    def test_deeplink_rejects_non_ccswitch(self):
+        with self.assertRaises(A.AdapterError):
+            A.deeplink_import("https://x")
+
+    def test_deeplink_argv(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.deeplink_import("ccswitch://v1/import?resource=mcp")
+        self.assertEqual(calls[0]["argv"], ["cc-switch", "deeplink", "ccswitch://v1/import?resource=mcp"])
+
+    def test_skill_repo_add(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_repo_add("https://github.com/anthropics/skills")
+        self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "repos", "add", "https://github.com/anthropics/skills"])
+
+    def test_parse_plugin_marketplaces(self):
+        raw = "\n".join([
+            "Configured marketplaces:",
+            "  ❯ claude-plugins-official",
+            "    Source: GitHub (anthropics/claude-plugins-official)",
+        ])
+        items = A._parse_plugin_marketplaces(raw)
+        self.assertEqual(items[0]["id"], "claude-plugins-official")
+        self.assertEqual(items[0]["source"], "GitHub (anthropics/claude-plugins-official)")
+
+    def test_plugin_market_list(self):
+        calls, run = self._fake(stdout="Configured marketplaces:\n")
+        with mock.patch.object(A.subprocess, "run", run):
+            items = A.plugin_market_list()
+        self.assertEqual(calls[0]["argv"][:4], ["claude-real", "plugin", "marketplace", "list"])
+        self.assertEqual(items, [])

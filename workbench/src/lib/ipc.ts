@@ -695,6 +695,8 @@ export interface ExtensionsItem {
   env_keys?: string[];
   marketplace?: string;
   version?: string;
+  installs?: string;
+  source?: string;
   scope?: string;
   last_updated?: string;
   enabled_claude?: boolean;
@@ -712,6 +714,8 @@ export interface ExtensionsCallParams {
   spec?: string;
   apps?: string;
   config?: string;
+  query?: string;
+  url?: string;
 }
 
 export const extensionsCall = (p: ExtensionsCallParams) =>
@@ -726,6 +730,8 @@ export const extensionsCall = (p: ExtensionsCallParams) =>
     spec: p.spec ?? null,
     apps: p.apps ?? null,
     config: p.config ?? null,
+    query: p.query ?? null,
+    url: p.url ?? null,
   });
 // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
 export interface CacheInspectRow {
