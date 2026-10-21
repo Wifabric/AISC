@@ -31,8 +31,12 @@ const skillSpec = ref("");
 const mcpJson = ref("");
 const pluginId = ref("");
 
+const mcpLink = ref("");
+const skillQuery = ref("");
+
 async function onTab(target: ExtensionsKind): Promise<void> {
   await store.load(target);
+  if (target === "plugins") void store.loadPluginMarkets();
 }
 </script>
 
@@ -98,6 +102,38 @@ async function onTab(target: ExtensionsKind): Promise<void> {
     </template>
 
     <!-- 安装/新增区（D-3/D-4 裁定：P1 直接可装卸 + MCP 可新增） -->
+    <!-- b7 商城（2026-10-21 用户裁定）：技能检索 / ccswitch 链接 / 插件市场 -->
+    <div v-if="store.kind === 'skills'" class="extensions-market">
+      <div class="market-row">
+        <input v-model="skillQuery" type="text" :placeholder="t('extensions.marketSearch')" :aria-label="t('extensions.marketSearch')" data-testid="ext-skill-search" @keydown.enter.prevent="store.searchSkills(skillQuery.trim())" />
+        <button type="button" class="ui-button" :disabled="!skillQuery.trim() || store.marketBusy" data-testid="ext-skill-search-btn" @click="store.searchSkills(skillQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
+      </div>
+      <div v-for="m in store.marketSkills" :key="m.id" class="market-hit">
+        <span class="mh-name" :title="m.id">{{ m.name }}</span>
+        <span class="mh-meta">{{ m.repo }} · ⬇ {{ m.installs }}</span>
+        <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click="store.installSkill(m.id)">{{ t("extensions.install") }}</button>
+      </div>
+      <div class="market-row">
+        <input v-model="skillSpec" type="text" :placeholder="t('extensions.skillLink')" :aria-label="t('extensions.skillLink')" data-testid="ext-skill-repo" @keydown.enter.prevent="void store.addSkillRepo(skillSpec.trim()).then(() => (skillSpec = ''))" />
+      </div>
+    </div>
+    <div v-else-if="store.kind === 'mcp'" class="extensions-market">
+      <div class="market-row">
+        <input v-model="mcpLink" type="text" :placeholder="t('extensions.mcpLink')" :aria-label="t('extensions.mcpLink')" data-testid="ext-mcp-link" @keydown.enter.prevent="void store.importDeeplink(mcpLink.trim()).then(() => (mcpLink = ''))" />
+        <button type="button" class="ui-button" :disabled="!mcpLink.trim() || store.busy" data-testid="ext-mcp-link-btn" @click="store.importDeeplink(mcpLink.trim()).then(() => (mcpLink = ''))">{{ t("extensions.mcpLinkBtn") }}</button>
+      </div>
+    </div>
+    <div v-else class="extensions-market">
+      <div class="market-row">
+        <input v-model="pluginId" type="text" :placeholder="t('extensions.pluginMarketLink')" :aria-label="t('extensions.pluginMarketLink')" data-testid="ext-market-add" @keydown.enter.prevent="void store.addPluginMarket(pluginId.trim()).then(() => (pluginId = ''))" />
+        <button type="button" class="ui-button" :disabled="!pluginId.trim() || store.busy" data-testid="ext-market-add-btn" @click="store.addPluginMarket(pluginId.trim()).then(() => (pluginId = ''))">{{ t("extensions.pluginMarketAdd") }}</button>
+      </div>
+      <div v-for="m in store.pluginMarkets" :key="m.id" class="market-hit">
+        <span class="mh-name" :title="m.id">{{ m.name }}</span>
+        <span class="mh-meta">{{ m.source }}</span>
+      </div>
+    </div>
+
     <div class="extensions-add">
       <template v-if="store.kind === 'skills'">
         <input v-model="skillSpec" type="text" :placeholder="t('extensions.skillSpec')" :aria-label="t('extensions.skillSpec')" data-testid="ext-skill-spec" @keydown.enter.prevent="void store.installSkill(skillSpec.trim()).then(() => (skillSpec = ''))" />
@@ -127,4 +163,10 @@ async function onTab(target: ExtensionsKind): Promise<void> {
 .ext-actions .on { color: var(--accent); border-color: var(--accent); }
 .extensions-add { display: grid; gap: var(--space-1); padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
 .extensions-add input, .extensions-add textarea { width: 100%; box-sizing: border-box; }
+.extensions-market { display: grid; gap: var(--space-1); padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
+.market-row { display: flex; gap: var(--space-1); }
+.market-row input { flex: 1; min-width: 0; }
+.market-hit { display: flex; align-items: center; gap: var(--space-1); padding: 4px var(--space-1); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); }
+.mh-name { font-size: var(--font-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

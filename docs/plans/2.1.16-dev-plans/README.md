@@ -14,6 +14,7 @@
 | b4 | 技能/插件/MCP 统一管理调研与方案 | P2 | `2.1.16-b4-skill-plugin-mcp-research` | 调研完成；2026-10-18 裁定 D-1–D-4 |
 | b5 | 扩展统一管理实施（rail 入口 + Provider 迁移 + 三资产生命周期） | P1 | `2.1.16-b5-extensions-management` | 已完成（待实机手测 T13–T15） |
 | b6 | 用户手测四项修复（TabBar 残留 / services 泄漏 / 租约阻断） | P0 | `2.1.16-b6-handtest-fixes` | 已完成 |
+| b7 | MCP 卸载 PTY 修复 + 更新跨重启持久 + 扩展商城 | P0 | 2.1.16-b7-mcp-delete-and-market | 已完成（待复测 R5–R8） |
 
 批次数量、实现顺序和范围调整以后续用户裁决为准；实施分支必须从最新 `develop`
 创建，本地门禁与远端 CI 全绿后并回 `develop`。b4 为调研批次：先产出管理模型、

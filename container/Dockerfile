@@ -164,9 +164,9 @@ ENV LANG=C.UTF-8 \
 # entrypoint 树按 scope 覆盖（project 持久 / temporary 同路径）。PATH 把
 # toolchain npm-global/cargo 追加在系统路径之后——/usr/local/bin wrapper 永远
 # 先被解析，settings.json 注入不因更新旁路；新装二进制由 wrapper 感知解析。
-ENV NPM_CONFIG_PREFIX="/tmp/aisc-toolchain/npm-global"
-ENV PATH="/tmp/aisc-toolchain/bin:${PATH}:/tmp/aisc-toolchain/npm-global/bin:/tmp/aisc-toolchain/cargo/bin"
-RUN mkdir -p /tmp/aisc-toolchain/npm-global /tmp/aisc-toolchain/bin /tmp/aisc-toolchain/cargo/bin
+ENV NPM_CONFIG_PREFIX="/opt/aisc/toolchain/npm-global"
+ENV PATH="/opt/aisc/toolchain/bin:${PATH}:/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"
+RUN mkdir -p /opt/aisc/toolchain/npm-global /opt/aisc/toolchain/bin /opt/aisc/toolchain/cargo/bin
 
 # 替换 NPM 源（按 USE_CN_MIRROR）并全局安装 Claude Code 和 Codex CLI
 # 版本校验：防止镜像源返回损坏 tarball 导致装出的二进制 segfault

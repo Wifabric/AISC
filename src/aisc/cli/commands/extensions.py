@@ -105,3 +105,41 @@ def print_extensions_text(data: Dict[str, Any]) -> None:
             print(f"{item.get('id', '')}\t{item.get('name', '')}\t{item.get('transport', '')}\t{flags}\t{target}")
         else:
             print(f"{item.get('id', '')}\t{item.get('version', '')}\t{item.get('scope', '')}\t{item.get('last_updated', '')}")
+
+def cmd_extensions_skill_search(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-search", workspace, None,
+                               query=args.query)
+
+
+def cmd_extensions_deeplink(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "deeplink", workspace, None,
+                               url=args.url)
+
+
+def cmd_extensions_skill_repo_add(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-repo-add", workspace, None,
+                               item_id=args.id)
+
+
+def cmd_extensions_plugin_market_list(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "plugin-market-list", workspace, None)
+
+
+def cmd_extensions_plugin_market_add(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "plugin-market-add", workspace, None,
+                               item_id=args.id)

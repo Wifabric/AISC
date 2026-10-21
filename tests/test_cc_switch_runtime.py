@@ -1110,15 +1110,15 @@ class ContainerToolUpdateContractTests(unittest.TestCase):
     def test_dockerfile_redirects_global_npm_prefix_to_toolchain_layout(self):
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
 
-        self.assertIn('ENV NPM_CONFIG_PREFIX="/tmp/aisc-toolchain/npm-global"', dockerfile)
+        self.assertIn('ENV NPM_CONFIG_PREFIX="/opt/aisc/toolchain/npm-global"', dockerfile)
         # PATH：toolchain bin 最前；npm-global/cargo 追加在系统路径之后，
         # 保证 /usr/local/bin wrapper 优先于自更新二进制被解析。
         self.assertIn(
-            'ENV PATH="/tmp/aisc-toolchain/bin:${PATH}:'
-            '/tmp/aisc-toolchain/npm-global/bin:/tmp/aisc-toolchain/cargo/bin"',
+            'ENV PATH="/opt/aisc/toolchain/bin:${PATH}:'
+            '/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"',
             dockerfile,
         )
-        self.assertIn("mkdir -p /tmp/aisc-toolchain", dockerfile)
+        self.assertIn("mkdir -p /opt/aisc/toolchain", dockerfile)
 
     def test_dockerfile_normalizes_factory_real_bins_for_both_install_paths(self):
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")

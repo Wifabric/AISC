@@ -793,6 +793,8 @@ pub async fn extensions_call(
     spec: Option<String>,
     apps: Option<String>,
     config: Option<String>,
+    query: Option<String>,
+    url: Option<String>,
 ) -> Result<Value, WorkbenchError> {
     const OPS: [&str; 8] = [
         "list", "toggle", "delete", "skill-install", "mcp-add",
@@ -832,6 +834,14 @@ pub async fn extensions_call(
     }
     if let Some(v) = &apps {
         argv.push("--apps".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &query {
+        argv.push("--query".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &url {
+        argv.push("--url".into());
         argv.push(v.clone());
     }
     match config {

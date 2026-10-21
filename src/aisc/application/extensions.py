@@ -25,6 +25,8 @@ ADAPTER_PATH = "/usr/local/bin/aisc-extensions-adapter"
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
+    "skill-search", "deeplink", "skill-repo-add",
+    "plugin-market-list", "plugin-market-add",
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
@@ -63,6 +65,8 @@ def _exec_adapter(
     on: Optional[bool] = None,
     spec: Optional[str] = None,
     apps: Optional[str] = None,
+    query: Optional[str] = None,
+    url: Optional[str] = None,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
@@ -89,6 +93,10 @@ def _exec_adapter(
         argv.extend(["--spec", spec])
     if apps:
         argv.extend(["--apps", apps])
+    if query:
+        argv.extend(["--query", query])
+    if url:
+        argv.extend(["--url", url])
 
     result = executor.run_captured(argv, timeout=200.0, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
@@ -206,3 +214,16 @@ def extensions_plugin_update(runtime_id: str, plugin_id: str,
         item_id=plugin_id,
     )
     return {"kind": "plugins", "id": plugin_id}
+
+def extensions_call_raw(runtime_id: str, op: str, workspace: Optional[str],
+                        executor: Any, *, kind: Optional[str] = None,
+                        item_id: Optional[str] = None, query: Optional[str] = None,
+                        url: Optional[str] = None) -> Dict[str, Any]:
+    """b7 商城通用透传（skill-search / deeplink / repos / marketplaces）。"""
+    _validate(op, kind, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, op,
+        kind=kind, item_id=item_id, query=query, url=url,
+    )
+    return {"op": op, "items": envelope.get("items") or [],
+            "operation_id": envelope.get("operation_id")}
