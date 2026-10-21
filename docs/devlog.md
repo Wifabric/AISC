@@ -3,6 +3,16 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b7 MCP 卸载/更新持久/扩展商城（2026-10-21，PR #36）
+
+- **MCP 卸载 TTY 修复**：``cc-switch mcp delete`` 的确认是 dialoguer（管道 y
+  无效）→ 适配器 ``script -qec`` 伪 PTY 喂 ``y``，镜像实机验证。
+- **更新跨重启持久**：镜像层 npm 前缀从 /tmp 改指 /opt/aisc/toolchain
+  （project 持久挂载；temporary entrypoint 覆盖 /tmp）。
+- **商城**：技能=skills.sh 检索+一键安装+GitHub/owner:name/ccswitch:// 链接；
+  MCP=ccswitch:// 导入；插件=市场列表+添加。宿主 CLI/Rust/UI 三层贯通。
+- **门禁**：pytest 1441 / Vitest 611 / vue-tsc 0 / cargo 362；镜像实机四项
+  全过；vendor verify 1520/0。RETEST.md 新增 R5–R8。
 # v2.1.16 b6 预复测 + i18n 渲染双杀修复（2026-10-20，PR #35 + e5236ff）
 
 - computer use 实机预复测 R1–R4 全 PASS（R3：关工作区→+3.4s 重进→直达摘要）。
