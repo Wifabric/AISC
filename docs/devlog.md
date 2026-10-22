@@ -3,6 +3,17 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b8 复测第三轮四项修复（2026-10-22，develop eb1f578）
+
+- **#1/#2 磁盘页**：空预览行（—）过滤；零回收压缩为一行「24 小时安全窗内
+  无可回收」；构建缓存卡片去掉「可清理」过度承诺（24h 窗语义已在 disclaimer）。
+- **#3 插件市场 unknown op**：b7 Rust OPS 数组行级编辑未生效（签名/argv 在、
+  数组仍 8 op）→ 补齐 13 op。
+- **#4 claude/codex not found（关键）**：b7 把工厂 npm -g 装进
+  /opt/aisc/toolchain——project 模式被宿主挂载遮蔽、symlink 目标消失 →
+  工厂安装改 /opt/aisc/factory-npm（非挂载路径）；运行时前缀仍指 toolchain。
+  空挂载模拟实测 claude 2.1.273 / codex 0.154.0 正常。
+- 门禁：pytest（契约更新）/ Vitest 611 / vue-tsc 0 / cargo 362 / vendor 1520/0。
 # v2.1.16 b7 MCP 卸载/更新持久/扩展商城（2026-10-21，PR #36）
 
 - **MCP 卸载 TTY 修复**：``cc-switch mcp delete`` 的确认是 dialoguer（管道 y
