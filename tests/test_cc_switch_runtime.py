@@ -1115,7 +1115,7 @@ class ContainerToolUpdateContractTests(unittest.TestCase):
         # 保证 /usr/local/bin wrapper 优先于自更新二进制被解析。
         self.assertIn(
             'ENV PATH="/opt/aisc/toolchain/bin:${PATH}:'
-            '/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"',
+            '/opt/aisc/factory-npm/bin:/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"',
             dockerfile,
         )
         self.assertIn("mkdir -p /opt/aisc/toolchain", dockerfile)

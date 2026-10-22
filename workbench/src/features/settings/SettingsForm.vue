@@ -332,8 +332,9 @@ const dockerPreviewRows = computed(() => {
     { label: t("settings.docker.rowContainers"), value: names([...r.containers.owned, ...r.containers.legacy_owned]) },
     { label: t("settings.docker.rowUnverifiedContainers"), value: names(r.containers.unverified) },
     { label: t("settings.docker.rowImages"), value: names([...r.images.owned, ...r.images.legacy_owned]) },
+  // b8 手测 #1: 空桶（—）不再渲染——清理后只剩噪音。
     { label: t("settings.docker.rowUnverifiedImages"), value: names(r.images.unverified) },
-  ];
+  ].filter((row) => row.value !== "—");
 });
 
 interface DockerSummaryCard {

@@ -244,7 +244,8 @@
   - [x] Docker 资源面板：扫描结果信息层级重排、术语中文化（Build Cache 等）、补充资源信息；「重新构建镜像」右移，原位置新增「清理构建缓存」，清理前后数据正确刷新（反馈 #9；b3 已实现，待实机手测 T10–T12）
 - 调研
   - [x] 扩展统一管理实施（b5，2026-10-18 裁定 D-1–D-4）：rail 新增供应商/扩展视图、Provider UI 迁出 TabBar、ExtensionsView 三页签（技能/MCP/插件查看+开关+删除+安装，MCP 非交互新增，插件装卸更新）；数据面+UI 全部落地，待实机手测 T13–T15
-- 追加（用户复测第二轮，2026-10-21；b7 已实现）
+- 追加（用户复测第三轮，2026-10-22；b8 已修）
+  - [x] 磁盘页空预览行/重复零回收日志；缓存卡片「可清理」过度承诺；Rust 商城 op 数组遗漏；b7 工厂 npm 被 toolchain 挂载遮蔽致 claude/codex not found（工厂改 /opt/aisc/factory-npm）- 追加（用户复测第二轮，2026-10-21；b7 已实现）
   - [x] MCP 卸载 TTY 报错（script 伪 PTY）；codex/claude 更新跨 runtime 重启持久（镜像层指 /opt toolchain）；三资产商城（skills.sh 检索 / ccswitch:// 链接 / 插件市场添加与列表）- 追加（用户手测第一轮，2026-10-19；b6 已修）
   - [x] TabBar Provider 残留 + services 面板 v-else 泄漏进 providers/extensions 视图 + 关工作区后租约未释放致重进阻断（release 改 await + reconcile 自愈）- 追加（b1 门禁发现，2026-10-17）
   - [x] tests.yml（unittest）对 5 个模块级 `import pytest` 的测试模块 loader 失败——2026-10-18 用户裁定方案 B：tests.yml 改跑 pytest（与 workbench-ci 同构），并随批修复 macOS /var 符号链接临时目录、Windows 8.3 短路径与 artifact containment 产品 bug；九组矩阵全绿（PR #29）

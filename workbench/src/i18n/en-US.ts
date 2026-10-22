@@ -619,7 +619,7 @@ export const enUS: Record<string, string> = {
   "settings.docker.rowImages": "Images (cleanable)",
   "settings.docker.rowUnverifiedImages": "Images (unverified, report-only)",
   "settings.docker.rowDangling": "Dangling owned images",
-  "settings.docker.rowBuildCache": "Build cache (reclaimable)",
+  "settings.docker.rowBuildCache": "Build cache",
   "settings.docker.rowVolumes": "Volumes",
   "settings.docker.rowNetworks": "Networks",
   "settings.docker.reportOnly": "report-only",

@@ -245,6 +245,22 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   /** b16: one Docker data plane — ownership scan plus itemized inspect. */
+  /** b8 手测 #1/#2: 零回收时压缩为一行 24h 安全窗说明，不再刷屏。 */
+  function logCachePrunes(cache: { prunes: { kind: string; reclaimed?: string; error?: string | null }[]; warnings: string[] }): void {
+    const lines: string[] = [];
+    let reclaimedAny = false;
+    for (const prune of cache.prunes) {
+      const ok = Boolean(prune.reclaimed) && prune.reclaimed !== "0B" && prune.reclaimed !== "Total reclaimed space: 0B";
+      if (ok) reclaimedAny = true;
+      lines.push(`${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`);
+    }
+    if (reclaimedAny) {
+      for (const line of lines) dockerLogLine(line);
+    } else {
+      dockerLogLine("构建缓存/悬空镜像：24 小时安全窗内无可回收（0B）");
+    }
+    for (const warning of cache.warnings) dockerLogLine(`⚠ ${warning}`);
+  }
   async function refreshDockerResources(): Promise<void> {
     const [scan, inspect] = await Promise.all([
       ipc.dockerScan("upgrade"),
@@ -289,11 +305,7 @@ export const useSettingsStore = defineStore("settings", () => {
         dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
 
       const cache = await ipc.cacheCleanup(24);
-      for (const prune of cache.prunes) {
-        dockerLogLine(
-          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
-        );
-      }
+      logCachePrunes(cache);
       for (const warning of [...r.warnings, ...cache.warnings]) {
         dockerLogLine(`⚠ ${warning}`);
       }
@@ -313,12 +325,7 @@ export const useSettingsStore = defineStore("settings", () => {
     dockerError.value = null;
     try {
       const cache = await ipc.cacheCleanup(24);
-      for (const prune of cache.prunes) {
-        dockerLogLine(
-          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
-        );
-      }
-      for (const warning of cache.warnings) dockerLogLine(`⚠ ${warning}`);
+      logCachePrunes(cache);
       await refreshDockerResources();
     } catch (e) {
       dockerError.value = errorText(e);

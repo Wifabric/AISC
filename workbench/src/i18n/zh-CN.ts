@@ -619,7 +619,7 @@ export const zhCN = {
   "settings.docker.rowImages": "镜像（可清理）",
   "settings.docker.rowUnverifiedImages": "镜像（未验证，只报告）",
   "settings.docker.rowDangling": "悬空归属镜像",
-  "settings.docker.rowBuildCache": "构建缓存（可清理）",
+  "settings.docker.rowBuildCache": "构建缓存",
   "settings.docker.rowVolumes": "卷",
   "settings.docker.rowNetworks": "网络",
   "settings.docker.reportOnly": "仅报告",

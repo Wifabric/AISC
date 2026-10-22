@@ -157,6 +157,10 @@ RUN set -eux; \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+# b8（2026-10-22 手测 #4）: 工厂 npm 装到 /opt/aisc/factory-npm（绝不在
+# /opt/aisc/toolchain 下——project 模式该路径被宿主挂载遮蔽，b7 把工厂装
+# 挪进 toolchain 后 claude-real/codex-real 运行时 not found）。运行时
+# NPM_CONFIG_PREFIX 仍指 toolchain，更新跨容器持久不受影响。
 # b1 (2.1.16 反馈 #10): codex/claude CLI 内自更新执行 npm install -g。出厂把
 # /usr/local/bin/{codex,claude} 换成注入 wrapper，npm 默认 prefix(/usr/local)
 # 建 bin link 必然 EEXIST。镜像层统一重定向到 toolchain 布局（与 entrypoint
@@ -165,7 +169,7 @@ ENV LANG=C.UTF-8 \
 # toolchain npm-global/cargo 追加在系统路径之后——/usr/local/bin wrapper 永远
 # 先被解析，settings.json 注入不因更新旁路；新装二进制由 wrapper 感知解析。
 ENV NPM_CONFIG_PREFIX="/opt/aisc/toolchain/npm-global"
-ENV PATH="/opt/aisc/toolchain/bin:${PATH}:/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"
+ENV PATH="/opt/aisc/toolchain/bin:${PATH}:/opt/aisc/factory-npm/bin:/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"
 RUN mkdir -p /opt/aisc/toolchain/npm-global /opt/aisc/toolchain/bin /opt/aisc/toolchain/cargo/bin
 
 # 替换 NPM 源（按 USE_CN_MIRROR）并全局安装 Claude Code 和 Codex CLI
@@ -199,7 +203,7 @@ RUN set -eux; \
     else \
         npm_ok=0; \
         for npm_try in 1 2; do \
-            if npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
+            if NPM_CONFIG_PREFIX=/opt/aisc/factory-npm npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
                     @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
                     @openai/codex@${CODEX_VERSION}; then \
                 npm_ok=1; break; \

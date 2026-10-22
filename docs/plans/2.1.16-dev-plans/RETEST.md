@@ -98,3 +98,22 @@
 ### R8 MCP 链接 + 插件市场
 1. MCP 页签链接框粘贴 `ccswitch://…` → 导入。
 2. 插件页签：市场列表自动加载；输入市场 URL/GitHub → 「添加市场」→ 列表更新。
+
+## 第五部分：b8 复测（R9–R12，2026-10-22 第三轮反馈）
+
+> 前置：重建镜像 + `scripts\build-cli.ps1`（本轮 Dockerfile/Rust 均有变更）+ 重开工作区。
+
+### R9 磁盘页清爽度
+1. 清理 AISC 资源 + 清理构建缓存各一次。
+2. **期望**：无「容器（可清理）—」空行；零回收时只出现一行「构建缓存/悬空镜像：24 小时安全窗内无可回收（0B）」。
+
+### R10 构建缓存卡片语义
+1. 扫描 → 卡片标题「构建缓存」（无「可清理」字样）。
+2. 清理后数字不降属预期（24h 窗）；日志给出窗解释。
+
+### R11 插件市场
+1. 扩展 → 插件 → 市场列表自动加载，不再报 unknown op。
+
+### R12 claude/codex 可用性（project 挂载下）
+1. 重开工作区 → bash 页签 `claude --version` / `codex --version` 正常输出（不再 not found）。
+2. `readlink -f /usr/local/bin/codex-real` → `/opt/aisc/factory-npm/...`。
