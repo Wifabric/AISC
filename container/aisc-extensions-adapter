@@ -283,6 +283,15 @@ def delete(kind: str, item_id: str) -> None:
 
 
 def skill_install(spec: str) -> None:
+    # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
+    # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
+    # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
+    repo = spec.split(":", 1)[0]
+    if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
+        try:
+            _run_cli(["cc-switch", "skills", "repos", "add", repo], timeout=120.0)
+        except AdapterError:
+            pass
     _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
 
 

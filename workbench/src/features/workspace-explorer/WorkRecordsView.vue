@@ -410,7 +410,8 @@ function openMemberMenu(event: MouseEvent, collectionId: string | null, member: 
     conversationId: item.conversation_id,
   };
 }
-function closeMenu() { contextMenu.value = null; }
+const moveSubOpen = ref(false);
+function closeMenu() { contextMenu.value = null; moveSubOpen.value = false; }
 function menuConversation(): ConversationSummary | null {
   return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
 }
@@ -634,9 +635,15 @@ watch(() => props.workspace, async (workspace) => {
         <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
         <button type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
         <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
-        <template v-for="collection in records.unarchivedCollections" :key="collection.id">
-          <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ t("workRecords.moveTo", { title: collection.title }) }}</button>
-        </template>
+        <!-- b9 手测 #4: 扁平「移入 测试 / 移入 Test …」收敛为单个子菜单入口 -->
+        <div v-if="records.unarchivedCollections.some((c) => c.id !== (contextMenu?.collectionId ?? ''))" class="menu-sub" @mouseenter="moveSubOpen = true" @mouseleave="moveSubOpen = false">
+          <button type="button" class="submenu-trigger">{{ t("workRecords.moveToMenu") }} <span class="arrow">▸</span></button>
+          <div v-show="moveSubOpen" class="submenu">
+            <template v-for="collection in records.unarchivedCollections" :key="collection.id">
+              <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ collection.title }}</button>
+            </template>
+          </div>
+        </div>
       </div>
     </Teleport>
   </div>
@@ -673,6 +680,10 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-menu { position:fixed; z-index:1000; display:grid; min-width:160px; padding:4px; border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface); box-shadow:var(--shadow-menu); }
 .work-record-menu button { justify-content:flex-start; padding:5px 8px; border:none; background:none; color:var(--text); text-align:left; border-radius:var(--radius-sm); cursor:pointer; }
 .work-record-menu button:hover { background:var(--surface-hover); }
+.menu-sub { position: relative; }
+.submenu-trigger { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+.submenu { position: absolute; left: 100%; top: 0; min-width: 140px; background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-menu); padding: 4px; }
+
 </style>
 
 .quiet-delete-overlay { position:fixed; inset:0; z-index:95; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }

@@ -261,3 +261,16 @@ class MarketTests(TempEnv):
             items = A.plugin_market_list()
         self.assertEqual(calls[0]["argv"][:4], ["claude-real", "plugin", "marketplace", "list"])
         self.assertEqual(items, [])
+
+    def test_skill_install_adds_repo_first(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_install("mattpocock/skills:grilling")
+        self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "repos", "add", "mattpocock/skills"])
+        self.assertEqual(calls[1]["argv"], ["cc-switch", "skills", "install", "mattpocock/skills:grilling"])
+
+    def test_skill_install_plain_dir_skips_repo_add(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_install("caveman")
+        self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "install", "caveman"])
