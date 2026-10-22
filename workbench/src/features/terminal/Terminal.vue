@@ -271,6 +271,10 @@ function terminalOptions(): ITerminalOptions {
     letterSpacing: s?.letter_spacing,
 
     scrollback: s?.scrollback,
+    // b9 手测 #3: 右键先选词——TUI（codex 等）接管鼠标后拖选不产生选区，
+    // 用户「选中文本右键复制」时按钮恒灰。rightClickSelectsWord 让右键
+    // 本身建立选区，随后的自定义菜单「复制」可用并写入系统剪贴板。
+    rightClickSelectsWord: true,
 
     // Stage 6 (UX-03): reduced motion zeroes the terminal smooth scroll too.
 

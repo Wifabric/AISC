@@ -695,6 +695,7 @@ export interface ExtensionsItem {
   env_keys?: string[];
   marketplace?: string;
   version?: string;
+  directory?: string;
   installs?: string;
   source?: string;
   scope?: string;

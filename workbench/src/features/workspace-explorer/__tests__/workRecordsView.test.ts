@@ -493,7 +493,8 @@ describe("WorkRecordsView", () => {
     const menu = wrapper.find("[data-testid=work-record-context-menu]");
     expect(menu.exists()).toBe(true);
     expect(menu.text()).toContain("恢复");
-    expect(menu.text()).toContain("移入 Feature");
+    expect(menu.text()).toContain("移入工作记录");
+    expect(menu.text()).toContain("Feature");
   });
 
   it("removes the ledger member automatically after context-menu delete", async () => {

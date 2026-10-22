@@ -46,10 +46,11 @@ def test_argv_invariants_never_global_prune_never_all_flag():
         assert argv[0] != "system"  # never a global prune
         assert "-a" not in argv and "--all" not in argv  # never non-dangling images
         assert "--force" in argv
-        assert any(a.startswith("until=") for a in argv)
     assert builder[0] == "builder" and builder[1] == "prune"
     assert dangling[0] == "image" and dangling[1] == "prune"
-    assert "until=24h" in builder and "until=48h" in dangling
+    # 2026-10-23 用户裁定：构建缓存全量清（无 until 过滤）；悬空镜像保 24h 窗。
+    assert builder == ["builder", "prune", "--force"]
+    assert "until=48h" in dangling
 
 
 def test_argv_rejects_unknown_kind():
