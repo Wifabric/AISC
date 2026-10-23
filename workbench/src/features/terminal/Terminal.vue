@@ -1288,9 +1288,10 @@ function searchPrev() {
 // --- G-11/A-G11-1 context menu ---
 
 function onSelectionChange() {
-
   hasSelection.value = term?.hasSelection() ?? false;
-
+  // b11: auto-copy selection to system clipboard (all terminals)
+  const sel = term?.getSelection();
+  if (sel) void writeText(sel).catch(() => null);
 }
 
 function onContextMenu(e: MouseEvent) {
