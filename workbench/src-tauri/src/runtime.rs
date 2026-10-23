@@ -796,11 +796,11 @@ pub async fn extensions_call(
     query: Option<String>,
     url: Option<String>,
 ) -> Result<Value, WorkbenchError> {
-    const OPS: [&str; 15] = [
+    const OPS: [&str; 16] = [
         "list", "toggle", "delete", "skill-install", "mcp-add",
         "plugin-install", "plugin-uninstall", "plugin-update",
         "skill-search", "deeplink", "skill-repo-add",
-        "plugin-market-list", "plugin-market-add",
+        "plugin-market-list", "plugin-market-add", "plugin-search",
         "mcp-search", "mcp-market-install",
     ];
     if !OPS.contains(&op.as_str()) {

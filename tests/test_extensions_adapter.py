@@ -274,3 +274,33 @@ class MarketTests(TempEnv):
         with mock.patch.object(A.subprocess, "run", run):
             A.skill_install("caveman")
         self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "install", "caveman"])
+
+    def test_parse_plugin_available_filters_and_shapes_items(self):
+        raw = json.dumps({
+            "installed": [],
+            "available": [
+                {"pluginId": "chart@official", "name": "chart", "description": "Draw charts",
+                 "marketplaceName": "official", "installCount": 12,
+                 "source": {"url": "https://example/chart.git"}},
+                {"pluginId": "pdf@official", "name": "pdf", "description": "PDF tools",
+                 "marketplaceName": "official", "installCount": 20,
+                 "source": "./plugins/pdf"},
+            ],
+        })
+        calls, run = self._fake(stdout=raw)
+        with mock.patch.object(A.subprocess, "run", run):
+            items = A.plugin_search("chart")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["kind"], "market-plugin")
+        self.assertEqual(items[0]["id"], "chart@official")
+        self.assertEqual(items[0]["repo"], "https://example/chart.git")
+        self.assertEqual(items[0]["installs"], "12")
+
+    def test_plugin_search_builds_available_argv(self):
+        calls, run = self._fake(stdout='{"installed":[],"available":[]}')
+        with mock.patch.object(A.subprocess, "run", run):
+            items = A.plugin_search("skill")
+        self.assertEqual(calls[0]["argv"], [
+            "claude-real", "plugin", "list", "--available", "--json",
+        ])
+        self.assertEqual(items, [])

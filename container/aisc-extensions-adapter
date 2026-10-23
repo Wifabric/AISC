@@ -413,6 +413,43 @@ def plugin_market_list() -> list[dict[str, Any]]:
     return _parse_plugin_marketplaces(raw)
 
 
+def _parse_plugin_available(raw: str, query: str) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AdapterError(ERR_CLI, f"invalid plugin marketplace JSON: {exc}")
+    available = data.get("available", []) if isinstance(data, dict) else []
+    terms = query.lower().split()
+    out: list[dict[str, Any]] = []
+    for item in available:
+        if not isinstance(item, dict) or not item.get("pluginId"):
+            continue
+        haystack = " ".join(str(item.get(key, "")) for key in
+                            ("pluginId", "name", "description", "marketplaceName")).lower()
+        if terms and not all(term in haystack for term in terms):
+            continue
+        source = item.get("source")
+        source_url = source.get("url", "") if isinstance(source, dict) else ""
+        out.append({
+            "kind": "market-plugin",
+            "id": str(item["pluginId"]),
+            "name": str(item.get("name") or item["pluginId"]),
+            "description": str(item.get("description") or "")[:200],
+            "marketplace": str(item.get("marketplaceName") or item["pluginId"].partition("@")[2]),
+            "repo": str(source_url),
+            "installs": str(item.get("installCount", "")),
+        })
+    return out[:20]
+
+
+def plugin_search(query: str) -> list[dict[str, Any]]:
+    if not query.strip():
+        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+    raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
+                   timeout=120.0)
+    return _parse_plugin_available(raw, query.strip())
+
+
 def plugin_market_add(source: str) -> None:
     if not source.strip():
         raise AdapterError(ERR_BAD_REQUEST, "marketplace source is required")
@@ -478,8 +515,9 @@ def main(argv: list[str] | None = None) -> int:
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
                                        "skill-repo-add", "plugin-market-list",
-                                       "plugin-market-add"])
-    parser.add_argument("--query", help="skill-search: marketplace query")
+                                       "plugin-market-add", "plugin-search",
+                                       "mcp-search", "mcp-market-install"])
+    parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
     parser.add_argument("--url", help="deeplink: ccswitch://… URL")
     parser.add_argument("--kind", choices=list(KINDS))
     parser.add_argument("--id")
@@ -566,6 +604,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--id required")
             plugin_market_add(args.id)
             print(json.dumps(_envelope("plugin-market-add", True)))
+            return 0
+        if args.op == "plugin-search":
+            if not args.query:
+                raise AdapterError(ERR_BAD_REQUEST, "--query required")
+            print(json.dumps(_envelope(
+                "plugin-search", True, items=plugin_search(args.query))))
             return 0
         if args.op == "mcp-search":
             if not args.query:

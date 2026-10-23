@@ -143,6 +143,16 @@ def cmd_extensions_plugin_market_add(args: argparse.Namespace) -> Dict[str, Any]
     runtime_id, workspace = _runtime(args)
     return extensions_call_raw(runtime_id, "plugin-market-add", workspace, None,
                                item_id=args.id)
+
+
+def cmd_extensions_plugin_search(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "plugin-search", workspace, None,
+                               query=args.query)
+
+
 def cmd_extensions_mcp_search(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw
 

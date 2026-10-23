@@ -3,6 +3,28 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b12 Docker 冷启动/插件商城/Codex 选区（2026-10-24）
+
+- **#1 基础镜像冷启动**：预拉默认 900s/源改为 120s/源，输出“最长/失败原因/
+  自动切换”；保留 ``AISC_PULL_TIMEOUT_S`` 慢链路显式覆盖。清空 Docker 后实测
+  首源超时自动轮转，后续源拉取成功并完成 ``super-claude:latest`` 构建，无需
+  手工 ``docker tag``。
+- **#2 插件商城**：b10 清空出厂安装时误把唯一 marketplace 也清空。现出厂
+  ``installed_plugins={}`` 但内置 ``claude-plugins-official``；新增
+  ``plugin-search``（``claude plugin list --available --json`` → 过滤/20 条
+  UI 结果）并贯通 adapter→host CLI→Rust→Pinia→Vue；同时补齐 b10 遗漏的
+  MCP search/install host dispatch 与 adapter choices。镜像实测 available=243、
+  installed=0、搜索/安装 ``skill-creator`` 成功。
+- **#3 Codex 普通拖选**：Codex 开启 xterm mouse tracking 后普通拖动被转发给
+  TUI、xterm 选区服务禁用（Shift+drag 才是强制选区）。新增 Codex-only 捕获层：
+  普通 drag 合成 forced-selection mousedown，未移动单击回放给 Codex；mouseup
+  必须继续冒泡，让 xterm document 监听完成 selection change 并触发系统剪贴板。
+- **#4 右键复制**：右键选词后的菜单复制按钮使用当前/最近选区兜底；预复测
+  Codex 普通拖选 → 宿主剪贴板得到 ``Update available · 0.163.0 → 0.164.0``，
+  右键“复制”可点；Bash 回归仍自动复制。
+- **门禁/实机**：Python 1445+、Vitest 617+、vue-tsc、cargo 362、vendor 1520；
+  Workbench UI 实测官方市场、搜索结果展开、Codex/Bash 剪贴板。
+
 # v2.1.16 b10 MCP 市场/进度动画/终端复制/工厂清空（2026-10-23，PR #38）
 
 - **#1 MCP 市场**：Smithery API 搜索 + 一键安装（构造 mcpServers → deeplink）。

@@ -33,6 +33,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketBusy = ref(false);
   /** b7 商城：插件市场列表。 */
   const pluginMarkets = ref<ExtensionsItem[]>([]);
+  /** b12 插件商城搜索结果（claude plugin list --available --json）。 */
+  const marketPlugins = ref<ExtensionsItem[]>([]);
   const marketMcp = ref<ExtensionsItem[]>([]);
   const canLoad = computed(() => context.value !== null);
 
@@ -122,6 +124,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   async function pluginAction(op: "plugin-install" | "plugin-update", id: string): Promise<void> {
     busy.value = true;
+    opBusyId.value = id;
     error.value = null;
     try {
       await call(op, { id });
@@ -130,6 +133,20 @@ export const useExtensionsStore = defineStore("extensions", () => {
       error.value = errorText(e);
     } finally {
       busy.value = false;
+      opBusyId.value = null;
+    }
+  }
+
+  async function searchPlugins(query: string): Promise<void> {
+    marketBusy.value = true;
+    error.value = null;
+    try {
+      const out = await call<{ items?: ExtensionsItem[] }>("plugin-search", { query });
+      marketPlugins.value = out.items ?? [];
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      marketBusy.value = false;
     }
   }
 
@@ -230,8 +247,8 @@ async function loadPluginMarkets(): Promise<void> {
 
   return {
     kind, items, loading, busy, error, canLoad,
-    marketSkills, marketBusy, pluginMarkets, opBusyId, marketMcp,
-    searchSkills, searchMcp, installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
+    marketSkills, marketBusy, pluginMarkets, marketPlugins, opBusyId, marketMcp,
+    searchSkills, searchPlugins, searchMcp, installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
     load, toggle, remove, installSkill, addMcp, pluginAction, setContext,
   };
 });

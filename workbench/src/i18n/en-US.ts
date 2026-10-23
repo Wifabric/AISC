@@ -711,6 +711,7 @@ export const enUS: Record<string, string> = {
   "extensions.mcpLink": "MCP link (ccswitch://…)",
   "extensions.mcpMarketSearch": "Search MCP marketplace (Smithery)",
   "extensions.mcpLinkBtn": "Import link",
+  "extensions.pluginMarketSearch": "Search plugin marketplace",
   "extensions.pluginMarketLink": "Plugin marketplace (URL / GitHub repo)",
   "extensions.pluginMarketAdd": "Add marketplace",
   "extensions.pluginUpdate": "Update plugin",

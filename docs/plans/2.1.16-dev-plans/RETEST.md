@@ -117,3 +117,28 @@
 ### R12 claude/codex 可用性（project 挂载下）
 1. 重开工作区 → bash 页签 `claude --version` / `codex --version` 正常输出（不再 not found）。
 2. `readlink -f /usr/local/bin/codex-real` → `/opt/aisc/factory-npm/...`。
+
+## 第七部分：b12 复测（R21–R24，2026-10-24 第六轮反馈）
+
+### R21 Docker 冷启动基础镜像
+1. 关闭 AISC 工作区/容器后执行：`docker rmi -f node:22-slim super-claude:latest`、
+   `docker builder prune -a -f`。
+2. 运行 `aisc build --no-cache`。
+3. **期望**：每个镜像源最多停留 120 秒；输出“失败自动切换下一源”；成功后自动
+   生成 `node:22-slim` 与 `super-claude:latest`，全程无需手工 `docker tag`。
+
+### R22 插件商城
+1. 扩展 → 插件。
+2. **期望**：已安装列表为空；市场列表出现 `claude-plugins-official`。
+3. 搜索 `skill creator` → 出现 `skill-creator`；左键行展开描述；＋为安装按钮。
+4. 安装后列表出现该插件（可选破坏性项；安装后可卸载还原）。
+
+### R23 Codex 普通拖选自动复制
+1. 新建 Codex 页签，等待出现含可见文本的界面（例如更新提示）。
+2. 不按 Shift，直接左键拖选一行文本。
+3. 在宿主任意输入框按 Ctrl+V。
+4. **期望**：粘贴内容就是刚才选中文本；右键菜单“复制”可点击且不报错。
+
+### R24 Bash/Claude 回归
+1. Bash 中拖选提示符文本；Claude 中拖选任意可见文本。
+2. **期望**：均自动进入宿主剪贴板；Codex 捕获层不影响两者普通拖选。

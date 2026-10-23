@@ -259,7 +259,19 @@ COPY container/global-claude.md /opt/aisc/factory/.claude/CLAUDE.md
 #    由 stage-skills.sh 预暂存到 _bundle/plugins（含 cache + marketplaces + 注册表）
 # b10 手测 #6: 工厂 plugins 清空——用户经商城自装（2026-10-23 用户裁定）
 
-# 2b. entrypoint 会把插件 bundle 中的构建期绝对路径改为当前运行作用域。
+# 2b. b12: factory installs stay EMPTY, but the official plugin marketplace is
+# available offline for search/install. entrypoint rewrites installLocation to
+# the active CLAUDE_CONFIG_DIR.
+COPY container/_bundle/plugins/marketplaces/claude-plugins-official/ /opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official/
+RUN mkdir -p /opt/aisc/factory/.claude/plugins \
+    && printf '%s\n' \
+       '{' \
+       '  "claude-plugins-official": {' \
+       '    "source": {"source": "github", "repo": "anthropics/claude-plugins-official"},' \
+       '    "installLocation": "/opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official",' \
+       '    "lastUpdated": "2026-10-23T00:00:00.000Z"' \
+       '  }' \
+       '}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
 
 # 3. 注入扁平技能（来源 _bundle/skills）：gstack（仅文档，6 子技能）
 COPY container/_bundle/skills/ /opt/aisc/factory/.claude/skills/
@@ -579,7 +591,7 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
 
 # cc-switch 离线 skills：元技能说明 + 已暂存插件中的实际 skill 内容。
 # b10 手测 #6: 工厂 skills 清空（用户裁定）
-RUN mkdir -p /opt/aisc/skills /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins && echo -n '' > /opt/aisc/skills/.aisc-bundle.sha256 && echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json && echo '{}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
+RUN mkdir -p /opt/aisc/skills /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins && echo -n '' > /opt/aisc/skills/.aisc-bundle.sha256 && echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

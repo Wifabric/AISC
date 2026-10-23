@@ -325,9 +325,10 @@ class BuildResult:
 # NODE_IMAGE_MIRRORS entries), `docker tag` the first success to the bare
 # local name so buildkit hits the local store, and only fail (with guidance)
 # when every mirror failed.
-# b6 (F4): slow links get more headroom (node:22-slim is ~80MB; 30KB/s
-# needs ~45min). AISC_PULL_TIMEOUT_S overrides for pathological links.
-_PULL_TIMEOUT_S = float(__import__("os").environ.get("AISC_PULL_TIMEOUT_S", "900"))
+# b12: a dead registry must not look like a build hang. The default rotates
+# after 120s; AISC_PULL_TIMEOUT_S remains the explicit pathological-link escape
+# hatch (for example a known 30KB/s link).
+_PULL_TIMEOUT_S = float(__import__("os").environ.get("AISC_PULL_TIMEOUT_S", "120"))
 
 
 def _base_image_candidates(plan: "BuildPlan") -> list:
@@ -392,7 +393,7 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
         return bare
 
     for ref in candidates:
-        _say(f"⬇️  基础镜像 try: {ref}\n")
+        _say(f"⬇️  基础镜像 try: {ref}（最长 {_PULL_TIMEOUT_S:.0f}s，失败自动切换下一源）\n")
         proc = exec_.run_captured(["pull", ref], timeout=_PULL_TIMEOUT_S)
         if proc.exit_code == 0:
             if ref == bare:
@@ -404,11 +405,14 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
                 return bare
             return ref
 
+        reason = "timeout" if proc.timed_out else f"exit {proc.exit_code}"
+        _say(f"⚠️  基础镜像源失败（{reason}）: {ref}；继续尝试下一源\n")
+
     raise CliError(
         message=(
             "基础镜像预拉失败（所有镜像源均不可达）：" + ", ".join(candidates) +
             "。可依次尝试：① Docker Desktop 设置里配置 registry-mirrors 后重试；"
-            "② 手动 docker pull <任一镜像源>/node:20-slim 成功后重新构建；"
+            "② 手动 docker pull <任一镜像源>/node:22-slim 成功后重新构建；"
             "③ 切换到可直连 Docker Hub 的网络。"
         ),
         exit_code=4, error_code="AISC_ERR_BUILD_FAILED",

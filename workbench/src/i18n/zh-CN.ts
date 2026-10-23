@@ -711,6 +711,7 @@ export const zhCN = {
   "extensions.mcpLink": "MCP 链接（ccswitch://…）",
   "extensions.mcpMarketSearch": "搜索 MCP 市场（Smithery）",
   "extensions.mcpLinkBtn": "导入链接",
+  "extensions.pluginMarketSearch": "搜索插件商城",
   "extensions.pluginMarketLink": "插件市场（URL / GitHub 仓库）",
   "extensions.pluginMarketAdd": "添加市场",
   "extensions.pluginUpdate": "更新插件",

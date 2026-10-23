@@ -426,6 +426,12 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extml)
 
+    extps = extsub.add_parser("plugin-search",
+                              help="Search configured Claude plugin marketplaces",
+                              allow_abbrev=False)
+    _extensions_common(extps)
+    extps.add_argument("--query", required=True)
+
     extma = extsub.add_parser("plugin-market-add",
                               help="Add a Claude plugin marketplace (URL/GitHub repo)",
                               allow_abbrev=False)
@@ -2025,6 +2031,12 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_plugin_market_list(args)
     elif sub == "plugin-market-add":
         data = ext_cmd.cmd_extensions_plugin_market_add(args)
+    elif sub == "plugin-search":
+        data = ext_cmd.cmd_extensions_plugin_search(args)
+    elif sub == "mcp-search":
+        data = ext_cmd.cmd_extensions_mcp_search(args)
+    elif sub == "mcp-market-install":
+        data = ext_cmd.cmd_extensions_mcp_market_install(args)
     else:
         raise CliError(message="unknown extensions subcommand",
                        exit_code=2, error_code="AISC_ERR_USAGE")

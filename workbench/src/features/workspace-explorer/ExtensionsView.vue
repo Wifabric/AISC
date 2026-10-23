@@ -26,6 +26,7 @@ const mcpJson = ref("");
 const mcpLink = ref("");
 const mcpQuery = ref("");
 const pluginId = ref("");
+const pluginQuery = ref("");
 const marketSrc = ref("");
 
 onMounted(syncContext);
@@ -130,6 +131,21 @@ async function onTab(target: ExtensionsKind): Promise<void> {
     </div>
 
     <div v-else class="extensions-market">
+      <div class="market-row">
+        <input v-model="pluginQuery" type="text" :placeholder="t('extensions.pluginMarketSearch')" :aria-label="t('extensions.pluginMarketSearch')" data-testid="ext-plugin-search" @keydown.enter.prevent="store.searchPlugins(pluginQuery.trim())" />
+        <button type="button" class="ui-button" :disabled="!pluginQuery.trim() || store.marketBusy" data-testid="ext-plugin-search-btn" @click="store.searchPlugins(pluginQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
+      </div>
+      <div v-for="m in store.marketPlugins" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
+        <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
+        <span class="mh-name" :title="m.id">{{ m.name }}</span>
+        <span class="mh-meta">{{ m.marketplace }} · ⬇ {{ m.installs }}</span>
+        <span class="ext-spacer" />
+        <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.pluginAction('plugin-install', m.id)">
+          <span v-if="store.opBusyId === m.id" class="spinner" />
+          <span v-else>＋</span>
+        </button>
+        <p v-if="expandedId === m.id" class="mh-detail">{{ m.description }}{{ m.repo ? ` · ${m.repo}` : "" }}</p>
+      </div>
       <div class="market-row">
         <input v-model="pluginId" type="text" :placeholder="t('extensions.pluginSpec')" :aria-label="t('extensions.pluginSpec')" data-testid="ext-plugin-id" @keydown.enter.prevent="void store.pluginAction('plugin-install', pluginId.trim()).then(() => (pluginId = ''))" />
         <button type="button" class="ui-icon-button sm" :disabled="!pluginId.trim() || store.busy" :title="t('extensions.install')" @click="store.pluginAction('plugin-install', pluginId.trim()).then(() => (pluginId = ''))">
