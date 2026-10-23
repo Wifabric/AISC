@@ -118,6 +118,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         # reconcile 会显式 enable。
         self.assertIn("--reconcile", entrypoint)
 
+    @unittest.skip("b10: factory skills cleared (user ruling 2026-10-23)")
     def test_entrypoint_registers_factory_skills_for_claude_and_codex(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
@@ -128,7 +129,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
         self.assertIn("cc-switch 内置 skills 已是最新，跳过同步", entrypoint)
         self.assertIn("宿主 Skills 已存在", entrypoint)
-        self.assertIn("INSERT OR IGNORE INTO skills", helper)
+        # b10: BUNDLED_SKILLS is empty — sync is a no-op by design
         self.assertIn('f"aisc:{name}"', helper)
         self.assertIn('["skills", "sync-method", "copy"]', helper)
         self.assertIn('["skills", "sync"]', helper)
@@ -697,6 +698,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         db.close()
         return config_dir, skills_home, bundle_dir
 
+    @unittest.skip("b10: factory skills cleared")
     def test_auto_mode_skips_when_revision_registration_and_targets_are_current(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir))
@@ -711,6 +713,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         self.assertFalse(required)
         self.assertEqual(reason, "current")
 
+    @unittest.skip("b10: factory skills cleared")
     def test_disabled_skills_do_not_require_targets_or_get_reenabled(self):
         states = {
             name: (False, False) for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS
@@ -740,6 +743,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         self.assertTrue(persisted_states)
         self.assertEqual(set(persisted_states), {(0, 0)})
 
+    @unittest.skip("b10: factory skills cleared")
     def test_missing_enabled_target_requires_sync(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir, skills_home, bundle_dir = self._create_layout(

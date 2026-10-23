@@ -698,6 +698,8 @@ export interface ExtensionsItem {
   directory?: string;
   installs?: string;
   source?: string;
+  sources?: string[];
+  conflict?: boolean;
   scope?: string;
   last_updated?: string;
   enabled_claude?: boolean;

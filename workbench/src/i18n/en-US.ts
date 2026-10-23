@@ -709,6 +709,7 @@ export const enUS: Record<string, string> = {
   "extensions.marketSearchBtn": "Search",
   "extensions.skillLink": "Skill repo link (GitHub URL / owner:name / ccswitch://)",
   "extensions.mcpLink": "MCP link (ccswitch://…)",
+  "extensions.mcpMarketSearch": "Search MCP marketplace (Smithery)",
   "extensions.mcpLinkBtn": "Import link",
   "extensions.pluginMarketLink": "Plugin marketplace (URL / GitHub repo)",
   "extensions.pluginMarketAdd": "Add marketplace",
@@ -1036,4 +1037,6 @@ export const enUS: Record<string, string> = {
   "usage.ws.cache": "cached",
   "usage.ws.none": "no data",
   "usage.note": "How it is counted: the cc-switch usage system (proxy request logs + session-log scanning). Third-party providers are attributed precisely; official direct traffic attribution is limited. Costs are estimates — your provider's bill is authoritative. Stopped workspaces show the last cached snapshot.",
+  "extensions.sourceConflict": "Skill exists both standalone and as a plugin",
 };
+

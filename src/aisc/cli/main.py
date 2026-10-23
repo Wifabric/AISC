@@ -376,18 +376,21 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extpi)
     extpi.add_argument("--id", required=True)
+    extpi.add_argument("--kind", choices=["skills", "mcp", "plugins"])
 
     extpu = extsub.add_parser("plugin-uninstall",
                               help="Uninstall a Claude plugin",
                               allow_abbrev=False)
     _extensions_common(extpu)
     extpu.add_argument("--id", required=True)
+    extpu.add_argument("--kind", choices=["skills", "mcp", "plugins"])
 
     extup = extsub.add_parser("plugin-update",
                               help="Update a Claude plugin",
                               allow_abbrev=False)
     _extensions_common(extup)
     extup.add_argument("--id", required=True)
+    extup.add_argument("--kind", choices=["skills", "mcp", "plugins"])
 
     extss = extsub.add_parser("skill-search",
                               help="Search the public skills.sh marketplace",
@@ -407,6 +410,17 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extsr)
     extsr.add_argument("--id", required=True)
 
+    extms = extsub.add_parser("mcp-search",
+                              help="Search the Smithery MCP marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extms)
+    extms.add_argument("--query", required=True)
+
+    extmi = extsub.add_parser("mcp-market-install",
+                              help="Install an MCP server from Smithery",
+                              allow_abbrev=False)
+    _extensions_common(extmi)
+    extmi.add_argument("--id", required=True)
     extml = extsub.add_parser("plugin-market-list",
                               help="List configured Claude plugin marketplaces",
                               allow_abbrev=False)

@@ -15,22 +15,10 @@ from pathlib import Path
 from typing import TextIO
 
 
-BUNDLED_SKILLS = (
-    ("caveman", "Ultra-compressed agent communication", "JuliusBrussee", "caveman"),
-    (
-        "document-skills",
-        "Bundled document creation and editing skills",
-        "anthropics",
-        "skills",
-    ),
-    ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
-    (
-        "superpowers",
-        "Structured software engineering workflows",
-        "obra",
-        "superpowers",
-    ),
-)
+# b10 手测 #6（2026-10-23 用户裁定）：初始 skill 全部清空——用户通过扩展
+# 商城自行安装。保留同步机制（cc-switch skills sync），但 BUNDLED_SKILLS
+# 为空集合。
+BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = ()
 REVISION_FILE = ".aisc-bundle.sha256"
 MARKER_FILE = ".aisc-bundled-skills.sha256"
 LOCK_FILE = ".aisc-bundled-skills.lock"

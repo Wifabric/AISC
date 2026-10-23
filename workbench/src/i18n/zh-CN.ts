@@ -709,6 +709,7 @@ export const zhCN = {
   "extensions.marketSearchBtn": "搜索",
   "extensions.skillLink": "技能仓库链接（GitHub URL / owner:name / ccswitch://）",
   "extensions.mcpLink": "MCP 链接（ccswitch://…）",
+  "extensions.mcpMarketSearch": "搜索 MCP 市场（Smithery）",
   "extensions.mcpLinkBtn": "导入链接",
   "extensions.pluginMarketLink": "插件市场（URL / GitHub 仓库）",
   "extensions.pluginMarketAdd": "添加市场",
@@ -1037,6 +1038,8 @@ export const zhCN = {
   "usage.ws.cache": "缓存",
   "usage.ws.none": "无数据",
   "usage.note": "统计口径：cc-switch 用量体系（代理请求日志 + 会话日志扫描）。第三方供应商精确归属；官方直连流量的归属有限。费用为估算值，以供应商账单为准。已停止的工作区显示上次缓存。",
+  "extensions.sourceConflict": "此技能同时以独立安装和插件形式存在",
 } as const;
 
 export type ZhKey = keyof typeof zhCN;
+
