@@ -121,8 +121,22 @@ def _skill_items() -> list[dict[str, Any]]:
         ).fetchall()
     finally:
         conn.close()
-    return [
-        {
+    # b10 手测 #5: cross-reference installed_plugins.json for skill sources
+    plugin_skill_names: set[str] = set()
+    try:
+        ip = Path(os.environ.get("CLAUDE_CONFIG_DIR", "/root/app/.claude")) / "plugins" / "installed_plugins.json"
+        if ip.is_file():
+            doc = json.loads(ip.read_text(encoding="utf-8"))
+            for full_id in (doc.get("plugins", {}) or {}):
+                plugin_skill_names.add(full_id.split("@")[0])
+    except Exception:
+        pass
+    out_list: list[dict[str, Any]] = []
+    for (name, description, owner, repo, branch, ec, ex, installed, updated) in rows:
+        sources = ["standalone"]
+        if name in plugin_skill_names:
+            sources.append("plugin")
+        out_list.append({
             "kind": "skills",
             "id": name,
             "name": name,
@@ -133,10 +147,11 @@ def _skill_items() -> list[dict[str, Any]]:
             "enabled_codex": _bool_col(ex),
             "installed_at": installed or "",
             "updated_at": updated or "",
-        }
-        for (name, description, owner, repo, branch, ec, ex, installed, updated)
-        in rows
-    ]
+            "sources": sources,
+            "source": "+".join(sources),
+            "conflict": len(sources) > 1,
+        })
+    return out_list
 
 
 def _mcp_summary(server_config: str) -> dict[str, Any]:
@@ -245,10 +260,16 @@ def list_items(kind: str) -> list[dict[str, Any]]:
 
 def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
              input_text: str = "") -> str:
+    # b10 手测 #3/#4: claude plugin 命令依赖 CLAUDE_CONFIG_DIR 找已装列表；
+    # scope wrapper 恢复了 CC_SWITCH_CONFIG_DIR 但 adapter 经 subprocess 丢失
+    # 其他 scope env —— 用 /root/app/.claude 兜底（项目模式标准路径）。
+    env = os.environ.copy()
+    if not env.get("CLAUDE_CONFIG_DIR"):
+        env["CLAUDE_CONFIG_DIR"] = "/root/app/.claude"
     try:
         proc = subprocess.run(
             argv, capture_output=True, text=True, timeout=timeout, check=False,
-            input=input_text or None,
+            input=input_text or None, env=env,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise AdapterError(ERR_CLI, f"{argv[0]} failed to run: {exc}")
@@ -398,6 +419,58 @@ def plugin_market_add(source: str) -> None:
     _run_cli(["claude-real", "plugin", "marketplace", "add", source],
              timeout=180.0)
 
+
+def mcp_search(query: str) -> list[dict[str, Any]]:
+    """b10 手测 #1: search the Smithery MCP registry and return installable items."""
+    import urllib.request
+    import urllib.parse
+    if not query.strip():
+        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+    url = ("https://registry.smithery.ai/servers?q="
+           + urllib.parse.quote(query) + "&pageSize=10")
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise AdapterError(ERR_CLI, f"Smithery search failed: {exc}")
+    servers = data.get("servers", []) if isinstance(data, dict) else []
+    out: list[dict[str, Any]] = []
+    for s in servers:
+        if not isinstance(s, dict):
+            continue
+        out.append({
+            "kind": "market-mcp",
+            "id": s.get("qualifiedName") or s.get("name") or "",
+            "name": s.get("displayName") or s.get("name") or "",
+            "description": (s.get("description") or "")[:200],
+            "repo": s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
+            "source": "smithery",
+            "installs": str(s.get("useCount", "")),
+        })
+    return out
+
+
+def mcp_market_install(market_id: str) -> str:
+    """b10: fetch Smithery server config and return an mcpServers JSON payload."""
+    import urllib.request
+    url = f"https://registry.smithery.ai/servers/{market_id}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise AdapterError(ERR_CLI, f"Smithery fetch failed for {market_id}: {exc}")
+    server = data if isinstance(data, dict) else {}
+    cmd = server.get("command") or ""
+    args = server.get("args") or []
+    if not cmd:
+        raise AdapterError(ERR_CLI, f"Smithery server {market_id} has no command")
+    config = {"mcpServers": {market_id.split("/")[-1]: {
+        "command": cmd, "args": args if isinstance(args, list) else []
+    }}}
+    return json.dumps(config)
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-extensions-adapter")
     parser.add_argument("op", choices=["list", "toggle", "delete", "skill-install",
@@ -493,6 +566,18 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--id required")
             plugin_market_add(args.id)
             print(json.dumps(_envelope("plugin-market-add", True)))
+            return 0
+        if args.op == "mcp-search":
+            if not args.query:
+                raise AdapterError(ERR_BAD_REQUEST, "--query required")
+            print(json.dumps(_envelope("mcp-search", True, items=mcp_search(args.query))))
+            return 0
+        if args.op == "mcp-market-install":
+            if not args.id:
+                raise AdapterError(ERR_BAD_REQUEST, "--id required")
+            config = mcp_market_install(args.id)
+            mcp_add(config, ["claude", "codex"])
+            print(json.dumps(_envelope("mcp-market-install", True)))
             return 0
         raise AdapterError(ERR_BAD_REQUEST, f"unhandled op: {args.op}")
     except AdapterError as exc:

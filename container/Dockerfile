@@ -257,7 +257,7 @@ COPY container/global-claude.md /opt/aisc/factory/.claude/CLAUDE.md
 # 2. 注入插件机制技能套件（离线可用）：
 #    caveman（默认激活）/ claude-hud / document-skills / superpowers / skill-creator
 #    由 stage-skills.sh 预暂存到 _bundle/plugins（含 cache + marketplaces + 注册表）
-COPY container/_bundle/plugins/ /opt/aisc/factory/.claude/plugins/
+# b10 手测 #6: 工厂 plugins 清空——用户经商城自装（2026-10-23 用户裁定）
 
 # 2b. entrypoint 会把插件 bundle 中的构建期绝对路径改为当前运行作用域。
 
@@ -289,7 +289,7 @@ COPY container/commands/ /opt/aisc/factory/.claude/commands/
 COPY container/claude-settings.json /opt/aisc/factory/.claude/settings.json
 
 # 6. skill-creator 在 host 未预装，从本地 marketplace 离线安装（写入 installed_plugins.json）
-RUN CLAUDE_CONFIG_DIR=/opt/aisc/factory/.claude claude plugin install skill-creator@claude-plugins-official 2>&1 | tail -1 || true
+# b10: skill-creator 出厂安装移除（用户裁定清空初始插件）
 
 # 7. 默认 settings.local.json 放入 CLI 原生目录（随 .claude 一并复制到项目）
 RUN echo '{ "enableAllProjectMcpServers": true }' > /opt/aisc/factory/.claude/settings.local.json
@@ -578,22 +578,8 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
 # cc-switch 离线 skills：元技能说明 + 已暂存插件中的实际 skill 内容。
-COPY container/cc-switch-skills/ /opt/aisc/skills/
-RUN set -eux; \
-    caveman_src="$(find /opt/aisc/factory/.claude/plugins/cache/caveman -type d -path '*/skills/caveman' | head -1)"; \
-    document_src="$(find /opt/aisc/factory/.claude/plugins/cache/anthropic-agent-skills/document-skills -mindepth 1 -maxdepth 1 -type d | head -1)"; \
-    superpowers_src="$(find /opt/aisc/factory/.claude/plugins/cache/claude-plugins-official/superpowers -mindepth 1 -maxdepth 1 -type d | head -1)"; \
-    test -f "$caveman_src/SKILL.md"; \
-    test -d "$document_src/skills"; \
-    test -d "$superpowers_src/skills"; \
-    mkdir -p /opt/aisc/skills/caveman /opt/aisc/skills/document-skills/skills /opt/aisc/skills/superpowers/skills; \
-    cp -a "$caveman_src/." /opt/aisc/skills/caveman/; \
-    cp -a "$document_src/skills/." /opt/aisc/skills/document-skills/skills/; \
-    cp -a "$superpowers_src/skills/." /opt/aisc/skills/superpowers/skills/; \
-    (cd /opt/aisc/skills && \
-        find . -type f -print0 | sort -z | xargs -0 sha256sum | \
-        sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
-    mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256
+# b10 手测 #6: 工厂 skills 清空（用户裁定）
+RUN mkdir -p /opt/aisc/skills /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins && echo -n '' > /opt/aisc/skills/.aisc-bundle.sha256 && echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json && echo '{}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

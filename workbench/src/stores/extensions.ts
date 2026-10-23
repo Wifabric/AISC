@@ -24,6 +24,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const items = ref<ExtensionsItem[]>([]);
   const loading = ref(false);
   const busy = ref(false);
+  const opBusyId = ref<string | null>(null);
   const error = ref<string | null>(null);
 
   const context = ref<{ workspace: string; runtimeId: string } | null>(null);
@@ -32,6 +33,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketBusy = ref(false);
   /** b7 商城：插件市场列表。 */
   const pluginMarkets = ref<ExtensionsItem[]>([]);
+  const marketMcp = ref<ExtensionsItem[]>([]);
   const canLoad = computed(() => context.value !== null);
 
   async function call<T = Record<string, unknown>>(
@@ -170,7 +172,33 @@ export const useExtensionsStore = defineStore("extensions", () => {
     }
   }
 
-  async function loadPluginMarkets(): Promise<void> {
+    async function searchMcp(query: string): Promise<void> {
+    marketBusy.value = true;
+    error.value = null;
+    try {
+      const out = await call<{ items?: ExtensionsItem[] }>("mcp-search", { query });
+      marketMcp.value = out.items ?? [];
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      marketBusy.value = false;
+    }
+  }
+
+  async function installMcpMarket(marketId: string): Promise<void> {
+    opBusyId.value = marketId;
+    busy.value = true;
+    error.value = null;
+    try {
+      await call("mcp-market-install", { id: marketId });
+      await load("mcp");
+    } catch (e) {
+      error.value = errorText(e);
+    } finally {
+      busy.value = false; opBusyId.value = null;
+    }
+  }
+async function loadPluginMarkets(): Promise<void> {
     marketBusy.value = true;
     error.value = null;
     try {
@@ -202,8 +230,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   return {
     kind, items, loading, busy, error, canLoad,
-    marketSkills, marketBusy, pluginMarkets,
-    searchSkills, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
+    marketSkills, marketBusy, pluginMarkets, opBusyId, marketMcp,
+    searchSkills, searchMcp, installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
     load, toggle, remove, installSkill, addMcp, pluginAction, setContext,
   };
 });
