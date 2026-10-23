@@ -3,6 +3,19 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b10 MCP 市场/进度动画/终端复制/工厂清空（2026-10-23，PR #38）
+
+- **#1 MCP 市场**：Smithery API 搜索 + 一键安装（构造 mcpServers → deeplink）。
+- **#2 进度**：opBusyId + spinner（安装/卸载/更新按钮转圈）。
+- **#3 插件更新**：``_run_cli`` 注入 CLAUDE_CONFIG_DIR（claude plugin 能找
+  已装列表——旧版 subprocess 丢失 scope env）。
+- **#4 --kind 报错**：host CLI plugin-uninstall/update/install 补 --kind。
+- **#5 Skill 来源**：``_skill_items`` 交叉 installed_plugins.json →
+  sources/source/conflict；UI ⚠ 标记 + 展开显示来源。
+- **#6 工厂清空**：BUNDLED_SKILLS=() + Dockerfile 跳过 _bundle plugins +
+  cc-switch-skills 离线提取移除；factory 空目录+空 JSON 保 entrypoint 兼容。
+- **#7 自动复制**：xterm onSelectionChange → writeText（全终端生效）。
+- 门禁：pytest 1439 / Vitest 611 / vue-tsc 0 / cargo 0 / vendor 1520/0。
 # v2.1.16 b9 扩展 UX 统一 + 缓存全量裁定（2026-10-23，PR #37）
 
 - **#1 UI**：三页签统一单行（chevron+名称+徽标+右侧 C/X/⟳/✕），左键展开；
