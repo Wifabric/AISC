@@ -3,6 +3,17 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b1–b13 开发闭环（2026-10-24）
+
+- **阶段范围**：四条开题反馈（CLI 自更新、Work Records、Docker 资源、扩展统一管理）经 b1–b5 落地，随后按七轮用户手测追加 b6–b13。
+- **扩展系统**：供应商/扩展进入左侧 rail；Skills/MCP/Plugins 统一单行管理，补齐 skills.sh、Smithery、Claude 官方插件市场与进度动画；Skill 按仓库聚合并支持子项/仓库级操作；出厂安装清空。
+- **CLI 更新链路**：npm 全局前缀改持久 toolchain；Codex 在 project bind mount 中通过容器内 shadow 副本运行，自更新写入持久 prefix，EEXIST 与 EACCES 均闭环。
+- **终端复制**：xterm selection 自动写宿主剪贴板；Codex mouse tracking 场景将普通拖选转为 forced selection，并保留未移动单击回放。
+- **Docker/磁盘**：资源卡片与 itemized scan 统一；builder cache 按用户裁定全量 `--all` 清理并移除 Node 基础标签；冷启动基础镜像预拉 120 秒轮转。
+- **构建链路**：cc-switch resolver 钉版时严格消费 exact asset，避免新版 sha 配旧离线包；镜像升级至 cc-switch 5.11.3。
+- **验证**：Python 1449 / Vitest 622 / Rust 362 / vue-tsc / vendor 1520 全绿；MCP、插件市场、Skill 分组、Codex 更新、剪贴板、Docker 冷启动与缓存全清均完成真实链路预复测。
+- **发布准备**：Workbench 开发版本升至 2.1.16，新增 `v2.1.16-preview.1` release notes；CLI `0.1.9.dev0` notes 更新为阶段配对说明；阶段计划归档至 `docs/archive/2.1.16-dev-plans/`。
+
 # v2.1.16 b13 MCP 403/Codex 更新锁/Skill 分组/缓存全清（2026-10-24）
 
 - **#1 MCP 403**：Smithery WAF 拒绝 Python urllib 默认 UA；搜索与详情请求补 `User-Agent: AISC/2.1.16`，容器实测 `pdf` 返回 10 条。

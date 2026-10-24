@@ -236,17 +236,26 @@
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
   - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（v2.1.15 final 收口）
 
-# v2.1.16-target（2026-10-17 开题；20261017 反馈 3 条 + 需求 1 条纳入）
+# v2.1.16-target（2026-10-17 开题；2026-10-24 b1–b13 开发闭环，v2.1.16-preview.1 发布；计划已归档 docs/archive/2.1.16-dev-plans/）
 - fix
-  - [x] 容器内 codex 自动更新报 npm EEXIST（/usr/local/bin/codex 已存在）更新失败；修复 codex/claude 自动更新覆盖安装链路（反馈 #10；b1 已并回 develop，PR #26；待实机手测 T1–T4）
+  - [x] 容器内 codex 自动更新报 npm EEXIST；codex/claude 更新落持久 toolchain（b1）
+  - [x] project bind mount 上 Codex 自更新 EACCES rename；shadow 运行 + 持久安装链路修复（b13）
 - UX
-  - [x] Work Records 可用性五项：左键只读预览会话内容；拖动父节点时子节点跟随；「创建会话」「分支会话」入口并即时刷新；「引用缺失」占位不再闪现；删除会话级联同名未显示会话（反馈 #11；b2 已实现，待实机手测 T5–T9）
-  - [x] Docker 资源面板：扫描结果信息层级重排、术语中文化（Build Cache 等）、补充资源信息；「重新构建镜像」右移，原位置新增「清理构建缓存」，清理前后数据正确刷新（反馈 #9；b3 已实现，待实机手测 T10–T12）
-- 调研
-  - [x] 扩展统一管理实施（b5，2026-10-18 裁定 D-1–D-4）：rail 新增供应商/扩展视图、Provider UI 迁出 TabBar、ExtensionsView 三页签（技能/MCP/插件查看+开关+删除+安装，MCP 非交互新增，插件装卸更新）；数据面+UI 全部落地，待实机手测 T13–T15
-- 追加（用户复测第四轮，2026-10-23；b9 已实现）
-  - [x] 扩展三页签单行 UI/图标安装/左键展开；市场安装 repos-add 前置；终端右键选词复制；移入子菜单；**缓存清理改全量（用户裁定，悬空/容器保 24h）**；node 纳入 aisc 相关镜像；标签去重；「清不掉」根因=旧 24h 过滤（已记录）- 追加（用户复测第三轮，2026-10-22；b8 已修）
-  - [x] 磁盘页空预览行/重复零回收日志；缓存卡片「可清理」过度承诺；Rust 商城 op 数组遗漏；b7 工厂 npm 被 toolchain 挂载遮蔽致 claude/codex not found（工厂改 /opt/aisc/factory-npm）- 追加（用户复测第二轮，2026-10-21；b7 已实现）
-  - [x] MCP 卸载 TTY 报错（script 伪 PTY）；codex/claude 更新跨 runtime 重启持久（镜像层指 /opt toolchain）；三资产商城（skills.sh 检索 / ccswitch:// 链接 / 插件市场添加与列表）- 追加（用户手测第一轮，2026-10-19；b6 已修）
-  - [x] TabBar Provider 残留 + services 面板 v-else 泄漏进 providers/extensions 视图 + 关工作区后租约未释放致重进阻断（release 改 await + reconcile 自愈）- 追加（b1 门禁发现，2026-10-17）
-  - [x] tests.yml（unittest）对 5 个模块级 `import pytest` 的测试模块 loader 失败——2026-10-18 用户裁定方案 B：tests.yml 改跑 pytest（与 workbench-ci 同构），并随批修复 macOS /var 符号链接临时目录、Windows 8.3 短路径与 artifact containment 产品 bug；九组矩阵全绿（PR #29）
+  - [x] Work Records 五项：只读预览、父子拖拽、新建/分支、加载占位、同名级联删除（b2）
+  - [x] Docker 资源卡片、中文语义、扫描/清理/重建布局与数据刷新（b3/b8/b9/b13）
+- 扩展
+  - [x] 供应商/扩展迁入左侧 rail，TabBar 仅 bash/codex/claude（b5/b6）
+  - [x] Skills/MCP/Plugins 查看与生命周期管理、三市场检索安装、进度动画、来源冲突提示（b5–b13）
+  - [x] Skill 按仓库聚合，支持子项单独操作与仓库级批量操作（b13）
+  - [x] 出厂 Skills/Plugins 清空，官方插件市场保留（b10/b12）
+- 终端
+  - [x] bash/claude/codex 普通拖选自动进宿主剪贴板；Codex mouse tracking 下无需 Shift（b9–b12）
+- 稳定性
+  - [x] 关闭工作区后租约释放，重进不被阻断（b6）
+  - [x] factory npm 与 runtime toolchain 分离，claude/codex wrappers 不再 not found（b8）
+  - [x] Docker 冷启动基础镜像按源轮转；每源 120 秒，无需手工 tag（b12）
+  - [x] builder cache 全量 `--all` 清理并移除 Node 基础标签（b9/b13）
+  - [x] tests.yml 收敛 pytest，九组矩阵全绿（方案 B）
+- 发布
+  - [x] b1–b13 本地门禁与 develop CI 全绿；关键链路 Computer Use/真实容器/真实 Docker 预复测通过
+  - [x] Workbench `v2.1.16-preview.1` 发布准备；CLI `0.1.9.dev0` TestPyPI 配对验证
