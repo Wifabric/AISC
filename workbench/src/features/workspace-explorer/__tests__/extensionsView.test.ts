@@ -33,6 +33,11 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
   it("keeps rendering after switching skills -> mcp -> plugins", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
+    // b13：同仓库技能先显示仓库组，展开后才显示子技能。
+    expect(wrapper.text()).toContain("x/y");
+    expect(wrapper.text()).toContain("1 个技能");
+    await wrapper.find("[data-testid^=ext-skill-group-]").trigger("click");
+    await flushPromises();
     expect(wrapper.text()).toContain("caveman");
     await wrapper.find("[data-testid=ext-tab-mcp]").trigger("click");
     await flushPromises();

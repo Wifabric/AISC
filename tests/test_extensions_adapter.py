@@ -79,6 +79,7 @@ class ListTests(TempEnv):
         self.assertEqual(len(items), 1)
         item = items[0]
         self.assertEqual(item["id"], "superpowers")
+        self.assertEqual(item["directory"], "superpowers")
         self.assertTrue(item["enabled_claude"])
         self.assertFalse(item["enabled_codex"])
         self.assertEqual(item["repo"], "obra/superpowers")
@@ -222,6 +223,32 @@ class MarketTests(TempEnv):
         items = A._parse_market_table(raw)
         self.assertEqual(items[0]["id"], "anthropics/skills:pdf")
         self.assertEqual(items[0]["installs"], "214047")
+    def test_mcp_search_sends_explicit_user_agent(self):
+        import urllib.request
+
+        captured = {}
+
+        class Resp:
+            def read(self):
+                return json.dumps({"servers": []}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def urlopen(req, timeout=None):
+            captured["headers"] = dict(req.header_items())
+            captured["timeout"] = timeout
+            return Resp()
+
+        with mock.patch.object(A.urllib.request, "urlopen", urlopen):
+            items = A.mcp_search("pdf")
+        self.assertEqual(items, [])
+        self.assertEqual(captured["headers"].get("User-agent"), "AISC/2.1.16")
+        self.assertLessEqual(captured["timeout"], 20)
+
     def test_skill_search_builds_market_argv(self):
         calls, run = self._fake(stdout="no table")
         with mock.patch.object(A.subprocess, "run", run):

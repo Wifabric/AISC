@@ -54,6 +54,44 @@ async function onTab(target: ExtensionsKind): Promise<void> {
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>
     <p v-else-if="!store.items.length" class="explorer-empty">{{ t("extensions.empty") }}</p>
 
+    <template v-else-if="store.kind === 'skills'">
+      <div v-for="group in store.installedSkillGroups" :key="group.id" class="extensions-card one-line" :data-testid="'ext-skill-group-' + group.id" @click="expandedId = expandedId === 'installed:' + group.id ? null : 'installed:' + group.id">
+        <div class="ext-row">
+          <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'installed:' + group.id ? "▾" : "▸" }}</span>
+          <span v-if="group.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
+          <span class="ext-name" :title="group.repo">{{ group.name }}</span>
+          <span class="ext-badge">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
+          <span class="ext-spacer" />
+          <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true) }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))">{{ agent === "claude" ? "C" : "X" }}</button>
+          <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.updateAll')" @click.stop="store.updateSkillGroup(group)">
+            <span v-if="store.opBusyId === 'installed:' + group.id" class="spinner" />
+            <span v-else>⟳</span>
+          </button>
+          <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.removeAll')" @click.stop="store.removeSkillGroup(group)">
+            <span v-if="store.opBusyId === 'installed:' + group.id" class="spinner" />
+            <span v-else>✕</span>
+          </button>
+        </div>
+        <div v-if="expandedId === 'installed:' + group.id" class="skill-children">
+          <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" @click.stop="expandedId = expandedId === 'installed-child:' + item.id ? 'installed:' + group.id : 'installed-child:' + item.id">
+            <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'installed-child:' + item.id ? "▾" : "▸" }}</span>
+            <span class="ext-name" :title="item.id">{{ item.name }}</span>
+            <span class="ext-badge">{{ item.source }}</span>
+            <span class="ext-spacer" />
+            <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggle(item, agent, !(agent === 'claude' ? item.enabled_claude : item.enabled_codex))">{{ agent === "claude" ? "C" : "X" }}</button>
+            <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.skillUpdate')" @click.stop="store.updateSkill(item)">
+              <span v-if="store.opBusyId === item.id" class="spinner" />
+              <span v-else>⟳</span>
+            </button>
+            <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.remove')" @click.stop="store.remove(item)">
+              <span v-if="store.opBusyId === item.id" class="spinner" />
+              <span v-else>✕</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <template v-else>
       <div v-for="item in store.items" :key="item.id" class="extensions-card one-line" :data-testid="'ext-item-' + item.id" @click="expandedId = expandedId === item.id ? null : item.id">
         <div class="ext-row">
@@ -89,16 +127,28 @@ async function onTab(target: ExtensionsKind): Promise<void> {
         <input v-model="skillQuery" type="text" :placeholder="t('extensions.marketSearch')" :aria-label="t('extensions.marketSearch')" data-testid="ext-skill-search" @keydown.enter.prevent="store.searchSkills(skillQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!skillQuery.trim() || store.marketBusy" data-testid="ext-skill-search-btn" @click="store.searchSkills(skillQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
-      <div v-for="m in store.marketSkills" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
-        <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
-        <span class="mh-name" :title="m.id">{{ m.name }}</span>
-        <span class="mh-meta">{{ m.repo }} · ⬇ {{ m.installs }}</span>
+      <div v-for="group in store.marketSkillGroups" :key="group.id" class="market-hit" @click="expandedId = expandedId === 'market:' + group.id ? null : 'market:' + group.id">
+        <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'market:' + group.id ? "▾" : "▸" }}</span>
+        <span class="mh-name" :title="group.id">{{ group.name }}</span>
+        <span class="mh-meta">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
         <span class="ext-spacer" />
-        <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.installSkill(m.id)">
-          <span v-if="store.opBusyId === m.id" class="spinner" />
+        <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.installAll')" @click.stop="store.installSkillGroup(group)">
+          <span v-if="store.opBusyId === 'market:' + group.id" class="spinner" />
           <span v-else>＋</span>
         </button>
-        <p v-if="expandedId === m.id" class="mh-detail">{{ m.id }} · {{ m.repo }}:{{ m.directory }}</p>
+        <div v-if="expandedId === 'market:' + group.id" class="skill-children">
+          <div v-for="m in group.items" :key="m.id" class="ext-row skill-child" @click.stop="expandedId = expandedId === 'market-child:' + m.id ? 'market:' + group.id : 'market-child:' + m.id">
+            <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'market-child:' + m.id ? "▾" : "▸" }}</span>
+            <span class="ext-name" :title="m.id">{{ m.name }}</span>
+            <span class="mh-meta">⬇ {{ m.installs }}</span>
+            <span class="ext-spacer" />
+            <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.installSkill(m.id)">
+              <span v-if="store.opBusyId === m.id" class="spinner" />
+              <span v-else>＋</span>
+            </button>
+            <p v-if="expandedId === 'market-child:' + m.id" class="mh-detail">{{ m.id }} · {{ m.repo }}:{{ m.directory }}</p>
+          </div>
+        </div>
       </div>
       <div class="market-row">
         <input v-model="skillLink" type="text" :placeholder="t('extensions.skillLink')" :aria-label="t('extensions.skillLink')" data-testid="ext-skill-repo" @keydown.enter.prevent="void store.addSkillRepo(skillLink.trim()).then(() => (skillLink = ''))" />
@@ -183,6 +233,9 @@ async function onTab(target: ExtensionsKind): Promise<void> {
 .ext-row .ui-icon-button.on { color: var(--accent); border-color: var(--accent); }
 .ext-desc { margin: 2px 0 4px 18px; font-size: var(--font-xs); color: var(--text-muted); overflow-wrap: anywhere; }
 .ext-sources { color: var(--text-faint); }
+.skill-children { display: grid; gap: 2px; margin: 2px 0 3px 18px; }
+.skill-child { min-height: 26px; border-top: var(--border-w) solid var(--border-2); }
+.skill-child .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extensions-market { display: grid; gap: var(--space-1); padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
 .market-row { display: flex; gap: var(--space-1); }
 .market-row input, .extensions-market textarea { width: 100%; box-sizing: border-box; flex: 1; min-width: 0; }

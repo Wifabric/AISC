@@ -6,6 +6,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import * as ipc from "../lib/ipc";
 import type { ExtensionsItem } from "../lib/ipc";
+import { groupSkillItems, skillUpdateSpec, type SkillGroup } from "../features/workspace-explorer/skillGroups";
 
 export type ExtensionsKind = "skills" | "mcp" | "plugins";
 
@@ -31,6 +32,11 @@ export const useExtensionsStore = defineStore("extensions", () => {
   /** b7 商城：技能搜索结果（market-skill 条目）。 */
   const marketSkills = ref<ExtensionsItem[]>([]);
   const marketBusy = ref(false);
+  /** b13：同仓库技能聚合（已装 + 商城）。 */
+  const installedSkillGroups = computed(() =>
+    kind.value === "skills" ? groupSkillItems(items.value) : [],
+  );
+  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value));
   /** b7 商城：插件市场列表。 */
   const pluginMarkets = ref<ExtensionsItem[]>([]);
   /** b12 插件商城搜索结果（claude plugin list --available --json）。 */
@@ -82,6 +88,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   async function remove(item: ExtensionsItem): Promise<void> {
     busy.value = true;
+    opBusyId.value = item.id;
     error.value = null;
     try {
       await call(kind.value === "plugins" ? "plugin-uninstall" : "delete", {
@@ -93,20 +100,72 @@ export const useExtensionsStore = defineStore("extensions", () => {
       error.value = errorText(e);
     } finally {
       busy.value = false;
+      opBusyId.value = null;
+    }
+  }
+
+  async function runSkillOperations(
+    busyId: string,
+    operations: Array<() => Promise<unknown>>,
+  ): Promise<void> {
+    if (operations.length === 0) return;
+    busy.value = true;
+    opBusyId.value = busyId;
+    error.value = null;
+    try {
+      for (const operation of operations) await operation();
+      await load("skills");
+    } catch (e) {
+      error.value = errorText(e);
+      await load("skills").catch(() => undefined);
+    } finally {
+      busy.value = false;
+      opBusyId.value = null;
     }
   }
 
   async function installSkill(spec: string): Promise<void> {
-    busy.value = true;
-    error.value = null;
-    try {
-      await call("skill-install", { spec });
-      await load("skills");
-    } catch (e) {
-      error.value = errorText(e);
-    } finally {
-      busy.value = false;
-    }
+    await runSkillOperations(spec, [() => call("skill-install", { spec })]);
+  }
+
+  async function installSkillGroup(group: SkillGroup): Promise<void> {
+    await runSkillOperations(
+      `market:${group.id}`,
+      group.items.map((item) => () => call("skill-install", { spec: item.id })),
+    );
+  }
+
+  async function updateSkill(item: ExtensionsItem): Promise<void> {
+    const spec = skillUpdateSpec(item);
+    await runSkillOperations(item.id, [() => call("skill-install", { spec })]);
+  }
+
+  async function updateSkillGroup(group: SkillGroup): Promise<void> {
+    await runSkillOperations(
+      `installed:${group.id}`,
+      group.items.map((item) => () =>
+        call("skill-install", { spec: skillUpdateSpec(item) })),
+    );
+  }
+
+  async function removeSkillGroup(group: SkillGroup): Promise<void> {
+    await runSkillOperations(
+      `installed:${group.id}`,
+      group.items.map((item) =>
+        () => call("delete", { kind: "skills", id: item.id })),
+    );
+  }
+
+  async function toggleSkillGroup(
+    group: SkillGroup,
+    agent: "claude" | "codex",
+    on: boolean,
+  ): Promise<void> {
+    await runSkillOperations(
+      `installed:${group.id}:${agent}`,
+      group.items.map((item) =>
+        () => call("toggle", { kind: "skills", id: item.id, agent, on })),
+    );
   }
 
   async function addMcp(configJson: string, apps: string): Promise<void> {
@@ -247,8 +306,10 @@ async function loadPluginMarkets(): Promise<void> {
 
   return {
     kind, items, loading, busy, error, canLoad,
-    marketSkills, marketBusy, pluginMarkets, marketPlugins, opBusyId, marketMcp,
-    searchSkills, searchPlugins, searchMcp, installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
+    marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
+    pluginMarkets, marketPlugins, opBusyId, marketMcp,
+    installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
+    toggleSkillGroup, searchSkills, searchPlugins, searchMcp, installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets, addPluginMarket,
     load, toggle, remove, installSkill, addMcp, pluginAction, setContext,
   };
 });

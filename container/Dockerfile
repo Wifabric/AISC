@@ -473,8 +473,7 @@ RUN set -eux; \
     case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
     ccs_preset=""; \
     if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
-        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; \
-        else ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; fi; \
+        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi; \
     else \
         ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; \
     fi; \

@@ -361,6 +361,8 @@ config/versions.env
 
 ### 4.5 Docker 构建与运行
 
+构建前宿主侧会按 `NODE_IMAGE` 与 `NODE_IMAGE_MIRRORS` 预拉基础镜像；每个源默认最多 120 秒并自动切换，成功后写入 bare 本地 tag。`AISC_PULL_TIMEOUT_S` 是慢链路显式覆盖。
+
 `aisc build` 从 `config/versions.env` 解析 `USE_CN_MIRROR`、`NODE_IMAGE`、`NODE_IMAGE_CN`，将选定 Node image 和镜像源标志传给：
 
 ```text
@@ -395,6 +397,8 @@ docker run --rm -it \
 8. 可选运行 AI brief，然后将 PID 1 `exec` 给用户选择的进程。
 
 `container/claude-wrapper` 每次启动重新注入 Claude env，并默认绕过权限确认。`container/codex-wrapper` 注入 Codex env，并默认绕过 approvals/sandbox/hook trust。用户显式给出相应权限参数时 wrapper 不重复追加。`container/cc-switch-wrapper` 通过当前作用域设置 `HOME`，使 Skills 目标与 temporary/project 一致。
+
+b13 起Codex project 模式自更新额外经过容器内 shadow：`codex-wrapper` 先把持久 prefix 的完整 `@openai` scope 复制到 `/tmp/aisc-codex-shadow`，再执行 shadow 入口。这样 Codex 自更新仍安装到 `/opt/aisc/toolchain/npm-global`，但避免 Windows bind mount 对正在运行包目录执行 rename 的 EACCES。
 
 ## 5. 仓库地图
 

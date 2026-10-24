@@ -998,17 +998,47 @@ def cache_inspect(executor: Any, *, cleanup_min_age_hours: int = 24) -> Dict[str
     }
 
 
+
+
+def _node_base_image_refs(executor: Any) -> List[str]:
+    """Return the configured Node base tag aliases present locally.
+
+    `super-claude` shares Node layers, so `rmi` only removes the base tag and
+    leaves still-referenced content intact. Mirror aliases are included when
+    present; unrelated third-party Node images are never touched.
+    """
+    result = executor.run_captured(
+        ["images", "--format", "{{.Repository}}\t{{.Tag}}"], timeout=30.0
+    )
+    if getattr(result, "exit_code", 1) != 0:
+        return []
+    refs = []
+    wanted = {
+        "node:22-slim",
+        "docker.1ms.run/library/node:22-slim",
+        "docker.m.daocloud.io/library/node:22-slim",
+        "dockerproxy.net/library/node:22-slim",
+    }
+    for line in (result.stdout or "").splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) == 2:
+            ref = f"{parts[0]}:{parts[1]}"
+            if ref in wanted:
+                refs.append(ref)
+    return refs
+
 def _cache_cleanup_argv(kind: str, min_age_hours: int) -> List[str]:
     """Pure argv builder for the two prune kinds (test-pinned invariants).
 
     2026-10-23 用户裁定：构建缓存是纯派生数据 → 全量清理，不再带 24h 过滤；
     悬空镜像保持 ≥24h 安全窗（旧版把缓存也套 24h，导致「明明可清理
     却清不掉」——新构建缓存全部 <24h，回收恒为 0B）。
-    builder → `docker builder prune --force`
+    builder → `docker builder prune --force --all`（--all 才包含非 dangling cache；
+    Docker 29 实测无 --all 会留下大量 unused cache）
     dangling → `docker image prune --force --filter until=<h>h` (NO -a)
     """
     if kind == "builder":
-        return ["builder", "prune", "--force"]
+        return ["builder", "prune", "--force", "--all"]
     if kind == "dangling":
         # image prune WITHOUT -a removes DANGLING (<none>) images only.
         return ["image", "prune", "--force",
@@ -1110,6 +1140,21 @@ def docker_cache_cleanup(
             if pr.exit_code != 0:
                 entry["error"] = (pr.stderr or pr.stdout or "").strip()[:200]
                 result["warnings"].append(f"{kind} prune failed")
+            result["prunes"].append(entry)
+
+        # b13 user ruling: the dedicated build-cache action also removes the
+        # configured Node base tag. This forces a fresh pre-pull/build and does
+        # not delete unrelated normal images. Docker refuses if it is in use.
+        for ref in _node_base_image_refs(executor):
+            argv = ["rmi", ref]
+            pr = executor.run_captured(argv, timeout=60.0)
+            entry = {"kind": "node-image", "argv": argv,
+                     "exit_code": pr.exit_code,
+                     "reclaimed": (pr.stdout or "").strip().splitlines()[0]
+                                  if (pr.stdout or "").strip() else ""}
+            if pr.exit_code != 0:
+                entry["error"] = (pr.stderr or pr.stdout or "").strip()[:200]
+                result["warnings"].append(f"node image remove failed: {ref}")
             result["prunes"].append(entry)
 
     result["df_after"] = _system_df(executor)

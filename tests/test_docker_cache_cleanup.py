@@ -12,9 +12,10 @@ from aisc.domain.models import CliError
 
 
 class FakeExecutor:
-    def __init__(self, *, df_ok=True, prune_rc=0):
+    def __init__(self, *, df_ok=True, prune_rc=0, images=""):
         self.df_ok = df_ok
         self.prune_rc = prune_rc
+        self.images = images
         self.calls = []
 
     def run_captured(self, argv, timeout=60.0, input_text=None):
@@ -30,12 +31,16 @@ class FakeExecutor:
                 ),
                 stderr="",
             )
+        if argv[:2] == ["images", "--format"]:
+            return SimpleNamespace(exit_code=0, stdout=self.images, stderr="")
         if argv[0] in ("builder", "image"):
             return SimpleNamespace(
                 exit_code=self.prune_rc,
                 stdout="Total reclaimed space: 4.1GB\n",
                 stderr="",
             )
+        if argv[:2] == ["rmi", "node:22-slim"]:
+            return SimpleNamespace(exit_code=0, stdout="Untagged: node:22-slim\n", stderr="")
         return SimpleNamespace(exit_code=0, stdout="", stderr="")
 
 
@@ -44,12 +49,16 @@ def test_argv_invariants_never_global_prune_never_all_flag():
     dangling = _cache_cleanup_argv("dangling", 48)
     for argv in (builder, dangling):
         assert argv[0] != "system"  # never a global prune
-        assert "-a" not in argv and "--all" not in argv  # never non-dangling images
         assert "--force" in argv
+    # `builder prune` WITHOUT --all only removes dangling cache (Docker 29
+    #实测 1.303GB → 1.246GB)。构建缓存用户裁定为全量，因此 builder 必须 --all。
+    assert "--all" in builder
+    # image prune 仍绝不能 -a/--all：那只处理悬空镜像，不动正常镜像。
+    assert "-a" not in dangling and "--all" not in dangling
     assert builder[0] == "builder" and builder[1] == "prune"
     assert dangling[0] == "image" and dangling[1] == "prune"
     # 2026-10-23 用户裁定：构建缓存全量清（无 until 过滤）；悬空镜像保 24h 窗。
-    assert builder == ["builder", "prune", "--force"]
+    assert builder == ["builder", "prune", "--force", "--all"]
     assert "until=48h" in dangling
 
 
@@ -83,6 +92,21 @@ def test_cleanup_runs_both_prunes_and_reports(monkeypatch, tmp_path):
     assert kinds == ["builder", "image"]
     assert data["prunes"][0]["reclaimed"].startswith("Total reclaimed")
     assert data["df_after"]["Build Cache"]["size"] == "6.7GB"
+    assert data["warnings"] == []
+
+
+
+
+def test_cleanup_untags_node_base_image(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "aisc.adapters.maintenance_lock.docker_maintenance_lock_at_root",
+        lambda root: _NullCtx(),
+    )
+    ex = FakeExecutor(images="node\t22-slim\nother/node\t22-slim\n")
+    data = docker_cache_cleanup(ex, min_age_hours=24, data_root=tmp_path)
+    assert ["rmi", "node:22-slim"] in ex.calls
+    assert ["rmi", "other/node:22-slim"] not in ex.calls
+    assert data["prunes"][-1]["kind"] == "node-image"
     assert data["warnings"] == []
 
 

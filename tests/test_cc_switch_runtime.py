@@ -1141,3 +1141,20 @@ class ContainerToolUpdateContractTests(unittest.TestCase):
 
         self.assertIn('export PATH="$TC/bin:$PATH:$TC/npm-global/bin:$TC/cargo/bin"', entrypoint)
         self.assertNotIn('export PATH="$TC/bin:$TC/npm-global/bin:$TC/cargo/bin:$PATH"', entrypoint)
+
+class CodexProjectMountUpdateShadowTests(unittest.TestCase):
+    def test_project_mount_updates_through_container_shadow(self):
+        wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
+        self.assertIn("/tmp/aisc-codex-shadow", wrapper)
+        self.assertIn("CODEX_MANAGED_BY_NPM=1", wrapper)
+        self.assertIn('node "$shadow_entry"', wrapper)
+        self.assertIn('cp -a "$scope_root"', wrapper)
+
+
+class ResolvedCcSwitchAssetPresetTests(unittest.TestCase):
+    def test_resolved_cc_switch_asset_must_not_consume_a_stale_preset(self):
+        dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn('if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi', dockerfile)
+        # Resolver pin v5.11.3 + staged v5.10.5 once fell into the glob fallback
+        # and failed sha256; a resolved build must download the exact asset.
+        self.assertNotIn('else ccs_preset="$(ls /tmp/dl/cc-switch-cli-', dockerfile)

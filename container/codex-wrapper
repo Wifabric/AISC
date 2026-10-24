@@ -62,11 +62,35 @@ for candidate in \
 done
 
 if [ -n "$real_bin" ]; then
-    if [ "$has_permission_flag" = "0" ]; then
-        exec "$real_bin" "${full_access_flags[@]}" "$@"
-    else
-        exec "$real_bin" "$@"
-    fi
+    # b13: Docker Desktop's project bind mount cannot rename the @openai/codex
+    # directory while Codex is executing from it (`codex update` → EACCES).
+    # Copy the complete @openai scope into the container filesystem and run
+    # that shadow entrypoint; npm still installs to the persistent prefix.
+    case "$real_bin" in
+        /opt/aisc/toolchain/npm-global/bin/codex)
+            resolved_bin="$(readlink -f "$real_bin")"
+            pkg_root="$(dirname "$(dirname "$resolved_bin")")"
+            scope_root="$(dirname "$pkg_root")"
+            shadow_root=/tmp/aisc-codex-shadow
+            shadow_entry="$shadow_root/@openai/codex/bin/codex.js"
+            rm -rf "$shadow_root"
+            mkdir -p "$shadow_root"
+            cp -a "$scope_root" "$shadow_root/"
+            export CODEX_MANAGED_BY_NPM=1
+            if [ "$has_permission_flag" = "0" ]; then
+                exec node "$shadow_entry" "${full_access_flags[@]}" "$@"
+            else
+                exec node "$shadow_entry" "$@"
+            fi
+            ;;
+        *)
+            if [ "$has_permission_flag" = "0" ]; then
+                exec "$real_bin" "${full_access_flags[@]}" "$@"
+            else
+                exec "$real_bin" "$@"
+            fi
+            ;;
+    esac
 fi
 
 if [ "$has_permission_flag" = "0" ]; then

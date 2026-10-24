@@ -3,6 +3,14 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 b13 MCP 403/Codex 更新锁/Skill 分组/缓存全清（2026-10-24）
+
+- **#1 MCP 403**：Smithery WAF 拒绝 Python urllib 默认 UA；搜索与详情请求补 `User-Agent: AISC/2.1.16`，容器实测 `pdf` 返回 10 条。
+- **#2 Codex 更新 EACCES**：project toolchain bind mount 上正在执行的 `@openai/codex` 无法 rename。Codex wrapper 将持久 prefix 的完整 `@openai` scope 复制到 `/tmp/aisc-codex-shadow` 后由 node 启动 shadow，自更新仍写入持久 prefix；实测 0.154→0.164 成功。
+- **#3 Skill 仓库分组**：已安装与商城结果按 `repo` 聚合；组行支持批量 C/X、更新、卸载/安装，展开后保留单技能操作；adapter 快照补 `directory` 供重装更新。
+- **#4 构建缓存**：Docker 29 实测 `builder prune --force` 只清 dangling（1.303GB→1.246GB），改为 `--force --all` 后归 0B；同时 untag `node:22-slim`/配置镜像源别名，不强删被容器直接占用或无关 Node 镜像。
+- **验证**：新增 Python/Vitest 回归；真实容器验证 Smithery/Codex；真实 Docker 验证 Build Cache=0B 且 node 标签消失。
+
 # v2.1.16 b12 Docker 冷启动/插件商城/Codex 选区（2026-10-24）
 
 - **#1 基础镜像冷启动**：预拉默认 900s/源改为 120s/源，输出“最长/失败原因/

@@ -142,3 +142,24 @@
 ### R24 Bash/Claude 回归
 1. Bash 中拖选提示符文本；Claude 中拖选任意可见文本。
 2. **期望**：均自动进入宿主剪贴板；Codex 捕获层不影响两者普通拖选。
+
+## 第八部分：b13 复测（R25–R27，2026-10-24 第七轮反馈）
+
+### R25 MCP 市场搜索 403
+1. 扩展 → MCP → 搜索 `pdf`。
+2. **期望**：返回 Smithery 结果；无 `HTTP Error 403: Forbidden`。
+
+### R26 Codex 自更新 EACCES
+1. project 工作区安装/保留任意 Codex 版本，打开 Codex 页签。
+2. 执行 `codex update` 或 UI 更新提示中的 Update now。
+3. **期望**：无 `EACCES rename ... @openai/codex`；重启 Codex 后版本保持新版本。
+
+### R27 Skill 同仓库分组
+1. 安装或搜索来自同一仓库的多个技能（如 `obra/superpowers`）。
+2. **期望**：已安装与搜索结果均按仓库显示一行；展开后可见单个技能。
+3. 单技能 C/X、更新、卸载可用；组行 C/X、更新全部、卸载全部/安装全部可用。
+
+### R28 构建缓存全量清理 + Node
+1. 先构建一次使 `node:22-slim` 与 Build Cache 存在。
+2. 设置 → 磁盘与缓存 → 清理构建缓存。
+3. **期望**：Build Cache / builder du 归零；`node:22-slim` 标签消失；`super-claude:latest` 不被删除。
