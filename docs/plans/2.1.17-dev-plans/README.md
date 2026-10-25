@@ -58,4 +58,5 @@
 - Host `extensions_call_raw` 透传 cache 元数据；Workbench store 按 kind 独立记录 cache 状态，查询清空时同步清理。
 - Extensions UI 在三个市场搜索框下显示「已刷新 / 缓存结果」、抓取时间与远端刷新失败原因。
 - 尚未完成：已安装项可靠更新信号、市场版本字段对齐与真实容器三市场手测。
-- 首片 targeted 验证：Python adapter/bridge 39 通过；Vitest 15 通过；vue-tsc 通过。
+- 首片 targeted 验证：Python adapter/bridge 39 通过；Vitest 15 通过；vue-tsc 通过；全门禁 Python 1470 / Rust 365 / Vitest 647 全绿；vendor 1532 全通过；sidecar 已重建。
+- 实容器冒烟：三个市场远端搜索分别返回 20 / 10 / 1 项；远端失败后均回退上次成功结果并携带 cached 元数据。
