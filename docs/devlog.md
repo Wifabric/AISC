@@ -3,6 +3,15 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 final 收口完成 / v2.1.17 开题（2026-10-26）
+
+- **Workbench final**：PR #39 经用户批准合入 `main`，tag `v2.1.16` 的 Workbench / CLI sidecar / Bundle / NSIS CI 全绿；NSIS 安装包与 SHA256 完整下载校验通过。
+- **CLI final**：`cli-v0.1.9` PyPI workflow 的 build / TestPyPI 守卫通过；用户为当前 token 账号追加 `pypi` environment 代批权后完成人工审批，正式 PyPI workflow success。干净 venv 安装 `aisc-cli==0.1.9` 后 `aisc version --format json` 返回 `0.1.9`。
+- **Release 清理**：删除 `v2.1.16-preview.1`–`preview.4` 四条 prerelease Release 与资产；Releases 页当前无 prerelease，git tag 保留不可变历史。
+- **反馈站结案**：2026-10-17 的 4 条反馈均追加 `v2.1.16 final` 解决回复并置 `resolved`；反馈仓库 `main` 推送完成。
+- **分支清理**：本地与远端 12 条 `2.1.16-*` 临时分支全部删除，仅保留 `main` / `develop`（另有历史 detached Codex worktree，不属于本阶段活动分支）。
+- **下一阶段**：按默认方案 A 开题 `v2.1.17-dev-plans`，范围为市场元数据缓存、扩展操作恢复、网络健康报告、升级配对检查与高频链路自动化冒烟；CLI 开发版本 bump 至 `0.1.10.dev0`。
+
 # v2.1.16 final 收口（2026-10-25）
 
 - 用户宣布 preview.4 后进入最终收尾并开启下一阶段。
