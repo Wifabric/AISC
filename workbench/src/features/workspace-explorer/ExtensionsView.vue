@@ -169,6 +169,11 @@ watch(pluginQuery, (value) => {
         <input v-model="skillQuery" type="text" :placeholder="t('extensions.marketSearch')" :aria-label="t('extensions.marketSearch')" data-testid="ext-skill-search" @keydown.enter.prevent="store.searchSkills(skillQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!skillQuery.trim() || store.marketBusy" data-testid="ext-skill-search-btn" @click="store.searchSkills(skillQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
+      <p v-if="store.marketCacheByKind.skills" class="market-cache" :data-testid="'ext-skill-market-cache'" role="status">
+        {{ store.marketCacheByKind.skills.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <template v-if="store.marketCacheByKind.skills.fetched_at"> · {{ store.marketCacheByKind.skills.fetched_at }}</template>
+        <template v-if="store.marketCacheByKind.skills.error"> · {{ t("extensions.marketRefreshFailed") }}：{{ store.marketCacheByKind.skills.error }}</template>
+      </p>
       <div v-for="group in store.marketSkillGroups" :key="group.id" class="market-hit" @click="expandedGroupId = expandedGroupId === 'market:' + group.id ? null : 'market:' + group.id; expandedChildId = null">
         <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === 'market:' + group.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="group.id">{{ group.name }}</span>
@@ -203,6 +208,11 @@ watch(pluginQuery, (value) => {
         <input v-model="mcpQuery" type="text" :placeholder="t('extensions.mcpMarketSearch')" :aria-label="t('extensions.mcpMarketSearch')" data-testid="ext-mcp-search" @keydown.enter.prevent="store.searchMcp(mcpQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!mcpQuery.trim() || store.marketBusy" data-testid="ext-mcp-search-btn" @click="store.searchMcp(mcpQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
+      <p v-if="store.marketCacheByKind.mcp" class="market-cache" data-testid="ext-mcp-market-cache" role="status">
+        {{ store.marketCacheByKind.mcp.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <template v-if="store.marketCacheByKind.mcp.fetched_at"> · {{ store.marketCacheByKind.mcp.fetched_at }}</template>
+        <template v-if="store.marketCacheByKind.mcp.error"> · {{ t("extensions.marketRefreshFailed") }}：{{ store.marketCacheByKind.mcp.error }}</template>
+      </p>
       <div v-for="m in store.marketMcp" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
         <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="m.id">{{ m.name }}</span>
@@ -227,6 +237,11 @@ watch(pluginQuery, (value) => {
         <input v-model="pluginQuery" type="text" :placeholder="t('extensions.pluginMarketSearch')" :aria-label="t('extensions.pluginMarketSearch')" data-testid="ext-plugin-search" @keydown.enter.prevent="store.searchPlugins(pluginQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!pluginQuery.trim() || store.marketBusy" data-testid="ext-plugin-search-btn" @click="store.searchPlugins(pluginQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
+      <p v-if="store.marketCacheByKind.plugins" class="market-cache" data-testid="ext-plugin-market-cache" role="status">
+        {{ store.marketCacheByKind.plugins.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <template v-if="store.marketCacheByKind.plugins.fetched_at"> · {{ store.marketCacheByKind.plugins.fetched_at }}</template>
+        <template v-if="store.marketCacheByKind.plugins.error"> · {{ t("extensions.marketRefreshFailed") }}：{{ store.marketCacheByKind.plugins.error }}</template>
+      </p>
       <div v-for="m in store.marketPlugins" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
         <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="m.id">{{ m.name }}</span>
@@ -282,6 +297,7 @@ watch(pluginQuery, (value) => {
 .skill-child .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extensions-market { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
 .market-row { display: flex; gap: var(--space-1); }
+.market-cache { margin: -2px 0 0; font-size: var(--font-xs); color: var(--text-faint); overflow-wrap: anywhere; }
 .market-row input, .extensions-market textarea { width: 100%; box-sizing: border-box; flex: 1; min-width: 0; }
 .market-hit { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px var(--space-1); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
 .operation-progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }

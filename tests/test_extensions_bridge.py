@@ -85,3 +85,21 @@ class BridgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarketCacheBridgeTests(unittest.TestCase):
+    def test_extensions_call_raw_preserves_market_cache_metadata(self):
+        cache = {"source": "cache", "cached": True, "fetched_at": "2026-10-26T00:00:00Z"}
+        def run_captured(argv, timeout=0.0, input_text=""):
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op", "op": "skill-search",
+                    "ok": True, "items": [], "cache": cache,
+                }) + "\n",
+                stderr="",
+            )
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_call_raw("rid", "skill-search", "/ws", executor, query="demo")
+        self.assertEqual(data["cache"], cache)

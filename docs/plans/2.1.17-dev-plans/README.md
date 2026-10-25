@@ -32,7 +32,7 @@
 
 | 批 | 内容 | 终态 |
 | --- | --- | --- |
-| b1 | 市场元数据缓存、更新信号与搜索可靠性 | 待开工 |
+| b1 | 市场元数据缓存、更新信号与搜索可靠性 | 进行中（缓存兜底与 UI 状态首片完成） |
 | b2 | 扩展操作失败恢复、单独重试与诊断日志 | 待开工 |
 | b3 | 网络 / 更新 / 版本配对健康报告 | 待开工 |
 | b4 | 升级后首启健康检查与安装器升级矩阵 | 待开工 |
@@ -51,3 +51,11 @@
 - 每批至少通过 targeted Python / Vitest / Rust 与相关静态契约；
 - 收尾前执行 `scripts/local-gates.ps1`、sidecar 重建、vendor verify 与真实容器冒烟；
 - preview 发布前记录无代理市场搜索、安装、更新、卸载与自更新检查结果。
+
+## b1 执行记录（2026-10-26）
+
+- 首片已落地：adapter 为 skills / MCP / plugins 搜索引入 `aisc.extensions.market-cache/v1` 本地缓存；每次搜索仍先远端刷新，远端全失败时按 normalized query 回退上次成功结果，并返回 `cache` 元数据。
+- Host `extensions_call_raw` 透传 cache 元数据；Workbench store 按 kind 独立记录 cache 状态，查询清空时同步清理。
+- Extensions UI 在三个市场搜索框下显示「已刷新 / 缓存结果」、抓取时间与远端刷新失败原因。
+- 尚未完成：已安装项可靠更新信号、市场版本字段对齐与真实容器三市场手测。
+- 首片 targeted 验证：Python adapter/bridge 39 通过；Vitest 15 通过；vue-tsc 通过。

@@ -19,9 +19,9 @@ v2.1.16 已能检索并安装 Skills / MCP / Plugins，但市场结果每次依�
 
 ## 任务
 
-- [ ] 设计并测试 metadata cache schema 与 TTL / 刷新语义。
-- [ ] Python adapter 增加市场元数据缓存与统一解析函数。
-- [ ] Workbench Extensions store 接入缓存状态与手动刷新。
+- [x] 设计并测试 metadata cache schema 与 TTL / 刷新语义。
+- [x] Python adapter 增加市场元数据缓存与统一解析函数。
+- [x] Workbench Extensions store 接入缓存状态与手动刷新。
 - [ ] 已安装列表补充可更新信号，不自动触发破坏性操作。
 - [ ] 增加无代理 / 远端失败时缓存兜底的组件与 adapter 测试。
 - [ ] 真实容器手测三个市场的搜索、刷新、安装与更新信号。
@@ -33,3 +33,8 @@ v2.1.16 已能检索并安装 Skills / MCP / Plugins，但市场结果每次依�
 - 已安装项只在有可靠版本证据时显示可更新。
 - Skills / MCP / Plugins 搜索与安装互不污染缓存。
 - Targeted tests 与 local gates 全绿。
+
+## 执行记录（2026-10-26 首片）
+
+- 已完成本地 metadata cache、远端优先 / 失败回退、cache 元数据透传与三个市场的缓存状态展示。
+- 更新信号仍保持保守未显示；待市场版本字段可靠对齐后实现。
