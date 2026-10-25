@@ -3,6 +3,11 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16-preview.4 发布准备（2026-10-25）
+
+- 汇总 preview.3 第三轮反馈修复为 Workbench `v2.1.16-preview.4`；新增 release notes。
+- 覆盖 caveman 13 出厂技能、无代理 skill / 自更新 / cc-switch resolver、按钮动画区分与构建网络契约。
+
 # v2.1.16-preview.3 发布准备（2026-10-25）
 
 - 汇总 preview.2 第二轮反馈修复为 Workbench `v2.1.16-preview.3`；新增 release notes。
