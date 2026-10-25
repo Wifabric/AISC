@@ -261,13 +261,16 @@ def list_items(kind: str) -> list[dict[str, Any]]:
 
 
 def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
-             input_text: str = "") -> str:
+             input_text: str = "",
+             env_overrides: dict[str, str] | None = None) -> str:
     # b10 手测 #3/#4: claude plugin 命令依赖 CLAUDE_CONFIG_DIR 找已装列表；
     # scope wrapper 恢复了 CC_SWITCH_CONFIG_DIR 但 adapter 经 subprocess 丢失
     # 其他 scope env —— 用 /root/app/.claude 兜底（项目模式标准路径）。
     env = os.environ.copy()
     if not env.get("CLAUDE_CONFIG_DIR"):
         env["CLAUDE_CONFIG_DIR"] = "/root/app/.claude"
+    if env_overrides:
+        env.update(env_overrides)
     try:
         proc = subprocess.run(
             argv, capture_output=True, text=True, timeout=timeout, check=False,
@@ -279,6 +282,54 @@ def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
         tail = (proc.stderr or proc.stdout or "").strip()[-400:]
         raise AdapterError(ERR_CLI, f"{argv[0]} exit {proc.returncode}: {tail}")
     return proc.stdout or ""
+
+
+
+
+_GIT_MIRRORS = ("https://ghfast.top/", "https://gh-proxy.com/")
+
+
+def _git_mirror_env(mirror: str) -> dict[str, str]:
+    """Rewrite only GitHub URLs through one mirror on an explicit retry."""
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": f"url.{mirror}https://github.com/.insteadOf",
+        "GIT_CONFIG_VALUE_0": "https://github.com/",
+    }
+
+
+def _run_cli_git_fallback(argv: list[str], *, timeout: float,
+                           input_text: str = "") -> str:
+    """Direct first; only if direct fails, retry public GitHub mirrors."""
+    try:
+        return _run_cli(argv, timeout=timeout, input_text=input_text)
+    except AdapterError:
+        last: AdapterError | None = None
+        for mirror in _GIT_MIRRORS:
+            try:
+                return _run_cli(argv, timeout=timeout, input_text=input_text,
+                                env_overrides=_git_mirror_env(mirror))
+            except AdapterError as exc:
+                last = exc
+        raise last or AdapterError(ERR_CLI, "git mirror retry failed")
+
+
+def _http_json(urls: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
+    import urllib.request
+    last: Exception | None = None
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json", "User-Agent": "AISC/2.1.16"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            if isinstance(data, dict):
+                return data
+        except Exception as exc:
+            last = exc
+    raise AdapterError(ERR_CLI, f"remote request failed: {last}")
 
 
 def toggle(kind: str, item_id: str, agent: str, on: bool) -> None:
@@ -305,17 +356,33 @@ def delete(kind: str, item_id: str) -> None:
         raise AdapterError(ERR_BAD_REQUEST, f"unknown kind: {kind}")
 
 
-def skill_install(spec: str) -> None:
+def _install_skill(spec: str, *, enable_both: bool) -> None:
     # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
     # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
     repo = spec.split(":", 1)[0]
     if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
         try:
-            _run_cli(["cc-switch", "skills", "repos", "add", repo], timeout=120.0)
+            _run_cli_git_fallback(
+                ["cc-switch", "skills", "repos", "add", repo], timeout=120.0)
         except AdapterError:
             pass
-    _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+    _run_cli_git_fallback(
+        ["cc-switch", "skills", "install", spec], timeout=120.0)
+    if enable_both:
+        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+        for agent in AGENTS:
+            _run_cli(["cc-switch", "skills", "enable", directory, "-a", agent])
+
+
+def skill_install(spec: str) -> None:
+    # preview b2 用户裁定：市场安装默认 Claude + Codex 均启用。
+    _install_skill(spec, enable_both=True)
+
+
+def skill_update(spec: str) -> None:
+    # Update must preserve the user's existing enable/disable choices.
+    _install_skill(spec, enable_both=False)
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
@@ -341,12 +408,12 @@ def mcp_add(config_json: str, apps: list[str]) -> str:
 def plugin_install(plugin_id: str) -> None:
     if "@" not in plugin_id:
         raise AdapterError(ERR_BAD_REQUEST, "plugin id must be name@marketplace")
-    _run_cli(["claude-real", "plugin", "install", plugin_id], timeout=180.0)
+    _run_cli_git_fallback(["claude-real", "plugin", "install", plugin_id], timeout=180.0)
 
 
 def plugin_update(plugin_id: str) -> None:
     name = plugin_id.partition("@")[0]
-    _run_cli(["claude-real", "plugin", "update", name], timeout=180.0)
+    _run_cli_git_fallback(["claude-real", "plugin", "update", name], timeout=180.0)
 
 
 # --- b7 商城（用户裁定 2026-10-21：三资产检索 + 链接安装） --------------------
@@ -374,13 +441,43 @@ def _parse_market_table(raw: str) -> list[dict[str, Any]]:
     return out
 
 
+def _parse_skills_api(data: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in data.get("skills", []):
+        if not isinstance(item, dict) or not item.get("source") or not item.get("skillId"):
+            continue
+        source = str(item["source"])
+        directory = str(item["skillId"])
+        out.append({
+            "kind": "market-skill",
+            "id": f"{source}:{directory}",
+            "name": str(item.get("name") or directory),
+            "directory": directory,
+            "installs": str(item.get("installs", "")),
+            "repo": source,
+        })
+    return out[:20]
+
+
 def skill_search(query: str) -> list[dict[str, Any]]:
+    import urllib.parse
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    raw = _run_cli(
-        ["cc-switch", "skills", "market", query, "--limit", "20"], timeout=60.0
-    )
-    return _parse_market_table(raw)
+    try:
+        raw = _run_cli(
+            ["cc-switch", "skills", "market", query, "--limit", "20"], timeout=60.0
+        )
+        items = _parse_market_table(raw)
+        if items:
+            return items
+    except AdapterError:
+        pass
+    encoded = urllib.parse.quote(query.strip())
+    data = _http_json([
+        f"https://skills.sh/api/search?q={encoded}",
+        f"https://www.skills.sh/api/search?q={encoded}",
+    ], timeout=15.0)
+    return _parse_skills_api(data)
 
 
 def deeplink_import(url: str) -> None:
@@ -392,7 +489,7 @@ def deeplink_import(url: str) -> None:
 def skill_repo_add(source: str) -> None:
     if not source.strip():
         raise AdapterError(ERR_BAD_REQUEST, "repo source is required")
-    _run_cli(["cc-switch", "skills", "repos", "add", source], timeout=120.0)
+    _run_cli_git_fallback(["cc-switch", "skills", "repos", "add", source], timeout=120.0)
 
 
 def _parse_plugin_marketplaces(raw: str) -> list[dict[str, Any]]:
@@ -455,27 +552,20 @@ def plugin_search(query: str) -> list[dict[str, Any]]:
 def plugin_market_add(source: str) -> None:
     if not source.strip():
         raise AdapterError(ERR_BAD_REQUEST, "marketplace source is required")
-    _run_cli(["claude-real", "plugin", "marketplace", "add", source],
+    _run_cli_git_fallback(["claude-real", "plugin", "marketplace", "add", source],
              timeout=180.0)
 
 
 def mcp_search(query: str) -> list[dict[str, Any]]:
-    """b10 手测 #1: search the Smithery MCP registry and return installable items."""
-    import urllib.request
+    """Search Smithery; registry is primary and api.smithery.ai is a fallback."""
     import urllib.parse
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    url = ("https://registry.smithery.ai/servers?q="
-           + urllib.parse.quote(query) + "&pageSize=10")
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"Accept": "application/json", "User-Agent": "AISC/2.1.16"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        raise AdapterError(ERR_CLI, f"Smithery search failed: {exc}")
+    encoded = urllib.parse.quote(query)
+    data = _http_json([
+        f"https://registry.smithery.ai/servers?q={encoded}&pageSize=10",
+        f"https://api.smithery.ai/servers?q={encoded}&pageSize=10",
+    ], timeout=15.0)
     servers = data.get("servers", []) if isinstance(data, dict) else []
     out: list[dict[str, Any]] = []
     for s in servers:
@@ -494,27 +584,37 @@ def mcp_search(query: str) -> list[dict[str, Any]]:
 
 
 def mcp_market_install(market_id: str) -> str:
-    """b10: fetch Smithery server config and return an mcpServers JSON payload."""
-    import urllib.request
-    url = f"https://registry.smithery.ai/servers/{market_id}"
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"Accept": "application/json", "User-Agent": "AISC/2.1.16"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        raise AdapterError(ERR_CLI, f"Smithery fetch failed for {market_id}: {exc}")
+    """Fetch a Smithery server and build an MCP config.
+
+    Smithery's deployed servers expose an HTTP connection URL. Legacy local
+    command metadata is supported as a fallback, but must not be required.
+    """
+    data = _http_json([
+        f"https://registry.smithery.ai/servers/{market_id}",
+        f"https://api.smithery.ai/servers/{market_id}",
+    ], timeout=15.0)
     server = data if isinstance(data, dict) else {}
-    cmd = server.get("command") or ""
-    args = server.get("args") or []
-    if not cmd:
-        raise AdapterError(ERR_CLI, f"Smithery server {market_id} has no command")
-    config = {"mcpServers": {market_id.split("/")[-1]: {
-        "command": cmd, "args": args if isinstance(args, list) else []
-    }}}
-    return json.dumps(config)
+    connections = server.get("connections")
+    http_url = ""
+    if isinstance(connections, list):
+        for connection in connections:
+            if (isinstance(connection, dict) and connection.get("type") == "http"
+                    and connection.get("deploymentUrl")):
+                http_url = str(connection["deploymentUrl"])
+                break
+    if not http_url and server.get("deploymentUrl"):
+        http_url = str(server["deploymentUrl"])
+    name = market_id.rsplit("/", 1)[-1]
+    if http_url:
+        server_config = {"url": http_url}
+    else:
+        cmd = server.get("command") or ""
+        args = server.get("args") or []
+        if not cmd:
+            raise AdapterError(ERR_CLI, f"Smithery server {market_id} has no HTTP URL or command")
+        server_config = {"command": cmd, "args": args if isinstance(args, list) else []}
+    return json.dumps({"mcpServers": {name: server_config}})
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-extensions-adapter")
@@ -522,7 +622,8 @@ def main(argv: list[str] | None = None) -> int:
                                        "mcp-add", "plugin-install",
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
-                                       "skill-repo-add", "plugin-market-list",
+                                       "skill-repo-add", "skill-update",
+                                       "plugin-market-list",
                                        "plugin-market-add", "plugin-search",
                                        "mcp-search", "mcp-market-install"])
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
@@ -584,6 +685,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--id required")
             plugin_update(args.id)
             print(json.dumps(_envelope("plugin-update", True)))
+            return 0
+        if args.op == "skill-update":
+            if not args.spec:
+                raise AdapterError(ERR_BAD_REQUEST, "--spec required")
+            skill_update(args.spec)
+            print(json.dumps(_envelope("skill-update", True)))
             return 0
         if args.op == "skill-search":
             if not args.query:

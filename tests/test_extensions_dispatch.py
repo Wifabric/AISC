@@ -11,6 +11,8 @@ class ExtensionsDispatchTests(unittest.TestCase):
         cases = [
             ("mcp-search", "cmd_extensions_mcp_search"),
             ("mcp-market-install", "cmd_extensions_mcp_market_install"),
+            ("plugin-update", "cmd_extensions_plugin_update"),
+            ("skill-update", "cmd_extensions_skill_update"),
             ("plugin-search", "cmd_extensions_plugin_search"),
         ]
         for sub, command_name in cases:
@@ -21,6 +23,7 @@ class ExtensionsDispatchTests(unittest.TestCase):
                     "workspace": ".",
                     "query": "pdf",
                     "id": "example",
+                    "spec": "owner/repo:skill",
                 }
                 args = SimpleNamespace(**attrs)
                 with mock.patch.object(ext_cmd, command_name, return_value={"ok": True}) as cmd:

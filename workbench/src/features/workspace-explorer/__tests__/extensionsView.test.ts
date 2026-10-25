@@ -62,10 +62,11 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     await child.trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("Ultra-compressed agent communication");
+    expect(wrapper.text()).toContain("caveman");
 
     await child.trigger("click");
     await flushPromises();
-    expect(wrapper.text()).toContain("Ultra-compressed agent communication");
+    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
     expect(wrapper.text()).toContain("caveman");
 
     await group.trigger("click");

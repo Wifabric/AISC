@@ -32,10 +32,10 @@ describe("b13 skill repository batch operations", () => {
     await store.updateSkillGroup(store.installedSkillGroups[0]!);
 
     expect(call).toHaveBeenCalledWith(expect.objectContaining({
-      op: "skill-install", spec: "obra/superpowers:brainstorming",
+      op: "skill-update", spec: "obra/superpowers:brainstorming",
     }));
     expect(call).toHaveBeenCalledWith(expect.objectContaining({
-      op: "skill-install", spec: "obra/superpowers:debugging",
+      op: "skill-update", spec: "obra/superpowers:debugging",
     }));
   });
 

@@ -250,8 +250,21 @@ class MarketTests(TempEnv):
         self.assertLessEqual(captured["timeout"], 20)
 
     def test_skill_search_builds_market_argv(self):
+        import urllib.request
         calls, run = self._fake(stdout="no table")
-        with mock.patch.object(A.subprocess, "run", run):
+
+        class Resp:
+            def read(self):
+                return json.dumps({"skills": []}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch.object(A.subprocess, "run", run), \
+             mock.patch.object(A.urllib.request, "urlopen", return_value=Resp()):
             items = A.skill_search("pdf")
         self.assertEqual(calls[0]["argv"][:5], ["cc-switch", "skills", "market", "pdf", "--limit"])
         self.assertEqual(items, [])
@@ -302,6 +315,87 @@ class MarketTests(TempEnv):
             A.skill_install("caveman")
         self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "install", "caveman"])
 
+
+    def test_mcp_market_install_uses_smithery_http_deployment_url(self):
+        import urllib.request
+
+        payload = {
+            "qualifiedName": "re-port-flow/reportflow-mcp",
+            "deploymentUrl": "https://reportflow-mcp--re-port-flow.run.tools",
+            "connections": [{"type": "http", "deploymentUrl": "https://reportflow-mcp--re-port-flow.run.tools"}],
+        }
+
+        class Resp:
+            def read(self):
+                return json.dumps(payload).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch.object(A.urllib.request, "urlopen", return_value=Resp()):
+            config = A.mcp_market_install("re-port-flow/reportflow-mcp")
+        parsed = json.loads(config)["mcpServers"]["reportflow-mcp"]
+        self.assertEqual(parsed["url"], "https://reportflow-mcp--re-port-flow.run.tools")
+
+    def test_skill_install_enables_claude_and_codex_by_default(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_install("obra/superpowers:using-superpowers")
+        self.assertEqual(calls[-2]["argv"], ["cc-switch", "skills", "enable", "using-superpowers", "-a", "claude"])
+        self.assertEqual(calls[-1]["argv"], ["cc-switch", "skills", "enable", "using-superpowers", "-a", "codex"])
+
+    def test_skill_update_preserves_existing_enable_state(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_update("obra/superpowers:using-superpowers")
+        self.assertFalse(any(call["argv"][:3] == ["cc-switch", "skills", "enable"] for call in calls))
+
+    def test_github_operations_retry_through_git_mirrors(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env")})
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(argv, 1, "", "network down")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            A.plugin_install("demo@market")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["env"]["GIT_CONFIG_COUNT"], "1")
+        self.assertIn("ghfast.top", calls[1]["env"]["GIT_CONFIG_KEY_0"])
+        self.assertEqual(calls[1]["env"]["GIT_CONFIG_VALUE_0"], "https://github.com/")
+
+    def test_skill_search_falls_back_to_skills_api(self):
+        import urllib.request
+
+        def failed_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 1, "", "network down")
+
+        payload = {
+            "skills": [
+                {"source": "obra/superpowers", "skillId": "brainstorming", "name": "brainstorming", "installs": 123}
+            ]
+        }
+
+        class Resp:
+            def read(self):
+                return json.dumps(payload).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch.object(A.subprocess, "run", failed_run), mock.patch.object(A.urllib.request, "urlopen", return_value=Resp()):
+            items = A.skill_search("brainstorming")
+        self.assertEqual(items[0]["id"], "obra/superpowers:brainstorming")
+        self.assertEqual(items[0]["directory"], "brainstorming")
+
     def test_parse_plugin_available_filters_and_shapes_items(self):
         raw = json.dumps({
             "installed": [],
@@ -331,3 +425,30 @@ class MarketTests(TempEnv):
             "claude-real", "plugin", "list", "--available", "--json",
         ])
         self.assertEqual(items, [])
+
+
+    def test_mcp_search_falls_back_to_alternate_smithery_host(self):
+        import urllib.request
+        attempts = []
+
+        class Resp:
+            def read(self):
+                return json.dumps({"servers": []}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def urlopen(req, timeout=None):
+            attempts.append(req.full_url)
+            if len(attempts) == 1:
+                raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+            return Resp()
+
+        with mock.patch.object(A.urllib.request, "urlopen", urlopen):
+            items = A.mcp_search("pdf")
+        self.assertEqual(items, [])
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[1], "https://api.smithery.ai/servers?q=pdf&pageSize=10")

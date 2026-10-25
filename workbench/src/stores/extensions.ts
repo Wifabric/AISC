@@ -7,6 +7,8 @@ import { computed, ref } from "vue";
 import * as ipc from "../lib/ipc";
 import type { ExtensionsItem } from "../lib/ipc";
 import { groupSkillItems, skillUpdateSpec, type SkillGroup } from "../features/workspace-explorer/skillGroups";
+import { useToastStore } from "./toast";
+import { i18n } from "../i18n";
 
 export type ExtensionsKind = "skills" | "mcp" | "plugins";
 export type ExtensionAction =
@@ -38,6 +40,7 @@ function errorText(e: unknown): string {
 }
 
 export const useExtensionsStore = defineStore("extensions", () => {
+  const toast = useToastStore();
   const kind = ref<ExtensionsKind>("skills");
   const context = ref<{ workspace: string; runtimeId: string } | null>(null);
 
@@ -107,6 +110,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
     await refresh(targetKind);
   }
 
+  function operationSuccess(action: ExtensionAction, target: string): string {
+    return i18n.global.t(`extensions.toast.${action}Success`, { target });
+  }
+
+  function operationFailure(target: string, message: string): string {
+    return i18n.global.t("extensions.toast.operationFailed", { target, message });
+  }
+
   async function runOperation(
     target: ExtensionsKind,
     action: ExtensionAction,
@@ -129,8 +140,11 @@ export const useExtensionsStore = defineStore("extensions", () => {
         };
       }
       await refresh(target, { silent: true });
+      toast.success(operationSuccess(action, label));
     } catch (e) {
-      errorsByKind.value[target] = errorText(e);
+      const message = errorText(e);
+      errorsByKind.value[target] = message;
+      toast.error(operationFailure(label, message));
       await refresh(target, { silent: true }).catch(() => undefined);
     } finally {
       busyByKind.value[target] = false;
@@ -192,22 +206,22 @@ export const useExtensionsStore = defineStore("extensions", () => {
     ]);
   }
 
+  async function updateSkill(item: ExtensionsItem): Promise<void> {
+    const spec = skillUpdateSpec(item);
+    await runOperation("skills", "update", item.id, item.name, [
+      () => call("skill-update", { spec }),
+    ]);
+  }
+
   async function installSkillGroup(group: SkillGroup): Promise<void> {
     await runOperation("skills", "install", `market:${group.id}`, group.name,
       group.items.map((item) => () => call("skill-install", { spec: item.id })));
   }
 
-  async function updateSkill(item: ExtensionsItem): Promise<void> {
-    const spec = skillUpdateSpec(item);
-    await runOperation("skills", "update", item.id, item.name, [
-      () => call("skill-install", { spec }),
-    ]);
-  }
-
   async function updateSkillGroup(group: SkillGroup): Promise<void> {
     await runOperation("skills", "update", `installed:${group.id}`, group.name,
       group.items.map((item) => () =>
-        call("skill-install", { spec: skillUpdateSpec(item) })));
+        call("skill-update", { spec: skillUpdateSpec(item) })));
   }
 
   async function removeSkillGroup(group: SkillGroup): Promise<void> {

@@ -26,7 +26,7 @@ _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
     "skill-search", "deeplink", "skill-repo-add",
-    "plugin-market-list", "plugin-market-add", "plugin-search",
+    "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
     "mcp-search", "mcp-market-install",
 )
 _KINDS = ("skills", "mcp", "plugins")
@@ -172,6 +172,15 @@ def extensions_skill_install(runtime_id: str, spec: str,
     _validate("skill-install", None, None)
     _exec_adapter(
         runtime_id, _registry_root(workspace), executor, "skill-install", spec=spec
+    )
+    return {"kind": "skills", "spec": spec}
+
+
+def extensions_skill_update(runtime_id: str, spec: str,
+                             workspace: Optional[str], executor: Any) -> Dict[str, Any]:
+    _validate("skill-update", None, None)
+    _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-update", spec=spec
     )
     return {"kind": "skills", "spec": spec}
 

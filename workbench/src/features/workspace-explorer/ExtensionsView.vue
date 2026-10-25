@@ -69,12 +69,17 @@ watch(pluginQuery, (value) => {
       data-testid="ext-operation-progress"
       role="status"
     >
-      <span class="spinner" aria-hidden="true" />
       <span class="op-action">{{ t(`extensions.op.${store.activeOperation.action}`) }}</span>
       <span v-if="store.activeOperation.total > 1" class="op-count">
         {{ store.activeOperation.completed }}/{{ store.activeOperation.total }}
       </span>
       <span class="op-target">{{ store.activeOperation.label }}</span>
+      <span class="op-progress-track" aria-hidden="true">
+        <span
+          class="op-progress-fill"
+          :style="{ width: `${Math.round((store.activeOperation.completed / store.activeOperation.total) * 100)}%` }"
+        />
+      </span>
     </div>
 
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
@@ -101,7 +106,7 @@ watch(pluginQuery, (value) => {
           </button>
         </div>
         <div v-if="expandedGroupId === group.id" class="skill-children">
-          <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" :data-testid="'ext-skill-child-' + item.id" @click.stop="expandedChildId = item.id">
+          <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" :data-testid="'ext-skill-child-' + item.id" @click.stop="expandedChildId = expandedChildId === item.id ? null : item.id">
             <span class="ext-chevron" aria-hidden="true">{{ expandedChildId === item.id ? "▾" : "▸" }}</span>
             <span class="ext-name" :title="item.id">{{ item.name }}</span>
             <span class="ext-badge">{{ item.source }}</span>
@@ -169,7 +174,7 @@ watch(pluginQuery, (value) => {
           <span v-else>＋</span>
         </button>
         <div v-if="expandedGroupId === 'market:' + group.id" class="skill-children">
-          <div v-for="m in group.items" :key="m.id" class="ext-row skill-child" :data-testid="'ext-market-child-' + m.id" @click.stop="expandedChildId = 'market:' + m.id">
+          <div v-for="m in group.items" :key="m.id" class="ext-row skill-child" :data-testid="'ext-market-child-' + m.id" @click.stop="expandedChildId = expandedChildId === 'market:' + m.id ? null : 'market:' + m.id">
             <span class="ext-chevron" aria-hidden="true">{{ expandedChildId === 'market:' + m.id ? "▾" : "▸" }}</span>
             <span class="ext-name" :title="m.id">{{ m.name }}</span>
             <span class="mh-meta">⬇ {{ m.installs }}</span>
@@ -267,7 +272,8 @@ watch(pluginQuery, (value) => {
 .ext-desc { margin: 2px 0 4px 18px; font-size: var(--font-xs); color: var(--text-muted); overflow-wrap: anywhere; }
 .ext-sources { color: var(--text-faint); }
 .skill-children { display: grid; gap: 2px; margin: 2px 0 3px 18px; }
-.skill-child { min-height: 26px; border-top: var(--border-w) solid var(--border-2); }
+.skill-child { flex-wrap: wrap; min-height: 26px; border-top: var(--border-w) solid var(--border-2); }
+.skill-child .mh-detail { flex: 1 1 100%; }
 .skill-child .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extensions-market { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
 .market-row { display: flex; gap: var(--space-1); }
@@ -277,6 +283,8 @@ watch(pluginQuery, (value) => {
 .op-action { flex: 0 0 auto; font-size: var(--font-sm); font-weight: 600; }
 .op-count { flex: 0 0 auto; font-size: var(--font-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .op-target { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-xs); color: var(--text-faint); }
+.op-progress-track { flex: 0 0 100%; height: 3px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
+.op-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--duration-normal) var(--ease); }
 .mh-name { font-size: var(--font-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mh-detail { flex-basis: 100%; margin: 2px 0 0 14px; font-size: var(--font-xs); color: var(--text-faint); overflow-wrap: anywhere; }

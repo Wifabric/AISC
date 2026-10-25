@@ -19,6 +19,12 @@ from typing import TextIO
 # 管理链路预装 grill-me 与 caveman。其余技能仍由扩展商城按需安装。
 BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = (
     ("caveman", "Ultra-compressed agent communication", "JuliusBrussee", "caveman"),
+    ("cavecrew", "Caveman subagent delegation guide", "JuliusBrussee", "caveman"),
+    ("caveman-commit", "Ultra-compressed commit messages", "JuliusBrussee", "caveman"),
+    ("caveman-compress", "Compress memory files into caveman format", "JuliusBrussee", "caveman"),
+    ("caveman-help", "Caveman modes quick reference", "JuliusBrussee", "caveman"),
+    ("caveman-review", "Ultra-compressed code review comments", "JuliusBrussee", "caveman"),
+    ("caveman-stats", "Caveman token usage and savings report", "JuliusBrussee", "caveman"),
     ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
 )
 REVISION_FILE = ".aisc-bundle.sha256"

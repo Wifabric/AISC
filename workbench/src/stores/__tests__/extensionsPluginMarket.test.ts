@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useExtensionsStore } from "../extensions";
 import { extensionsCall } from "../../lib/ipc";
+import { useToastStore } from "../toast";
 
 vi.mock("../../lib/ipc", () => ({
   extensionsCall: vi.fn(),
@@ -103,5 +104,32 @@ describe("v2.1.16 preview b1 extension isolation", () => {
     store.marketPlugins = [{ kind: "market-plugin", id: "old@market", name: "old" }];
     store.clearMarketResults("plugins");
     expect(store.marketPlugins).toEqual([]);
+  });
+});
+
+
+describe("v2.1.16 preview b2 operation outcomes", () => {
+  it("notifies on successful operations", async () => {
+    extensionsCallMock.mockResolvedValue({ items: [] });
+    const store = useExtensionsStore();
+    const toast = useToastStore();
+    store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
+    await store.installMcpMarket("re-port-flow/reportflow-mcp");
+    expect(toast.toasts[toast.toasts.length - 1]).toMatchObject({
+      kind: "success",
+      message: "安装完成：re-port-flow/reportflow-mcp",
+    });
+  });
+
+  it("notifies on failed operations", async () => {
+    extensionsCallMock.mockRejectedValue({ message: "network down" });
+    const store = useExtensionsStore();
+    const toast = useToastStore();
+    store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
+    await store.installMcpMarket("re-port-flow/reportflow-mcp");
+    expect(toast.toasts[toast.toasts.length - 1]).toMatchObject({
+      kind: "error",
+      message: "操作失败：re-port-flow/reportflow-mcp — network down",
+    });
   });
 });

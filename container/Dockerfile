@@ -588,13 +588,14 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo 'fi' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
-# cc-switch 离线 skills：preview b1 用户裁定仅预装 grill-me 与 caveman。
+# cc-switch 离线 skills：preview b2 用户裁定预装 caveman 仓库全部 skills 与 grill-me。
 # 仍走既有 cc-switch 注册/同步管理链路；其他技能由扩展商城安装。
 COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/
-COPY container/_bundle/plugins/marketplaces/caveman/skills/caveman/ /opt/aisc/skills/caveman/
+COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/
 RUN set -eux; \
-    test -f /opt/aisc/skills/caveman/SKILL.md; \
-    test -f /opt/aisc/skills/grill-me/SKILL.md; \
+    for skill in caveman cavecrew caveman-commit caveman-compress caveman-help caveman-review caveman-stats grill-me; do \
+        test -f "/opt/aisc/skills/$skill/SKILL.md"; \
+    done; \
     (cd /opt/aisc/skills && \
         find . -type f -print0 | sort -z | xargs -0 sha256sum | \
         sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \

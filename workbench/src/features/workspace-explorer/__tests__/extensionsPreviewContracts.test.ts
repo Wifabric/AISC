@@ -27,3 +27,20 @@ describe("v2.1.16 preview b1 extension layout contracts", () => {
     expect(extensionsSource).toContain(`total`);
   });
 });
+
+
+describe("v2.1.16 preview b2 extension contracts", () => {
+  it("keeps child actions right-aligned and details on their own wrapped line", () => {
+    expect(extensionsSource).toContain(".skill-child { flex-wrap: wrap;");
+    expect(extensionsSource).toContain(".skill-child .mh-detail { flex: 1 1 100%;");
+    expect(extensionsSource).toContain("expandedChildId = expandedChildId === item.id ? null : item.id");
+  });
+
+  it("renders one operation progress bar without a duplicate spinner", () => {
+    const start = extensionsSource.indexOf('class="operation-progress"');
+    const end = extensionsSource.indexOf("</div>", start);
+    const block = extensionsSource.slice(start, end);
+    expect(block).not.toContain('class="spinner"');
+    expect(block).toContain('class="op-progress-track"');
+  });
+});

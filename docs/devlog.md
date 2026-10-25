@@ -3,6 +3,17 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 preview b2 修复（2026-10-25）
+
+- **MCP 安装**：Smithery 详情改用 HTTP `deploymentUrl`，修复“安装无结果”；默认 Claude/Codex 均启用。
+- **Skill 默认启用**：安装后显式启用 Claude/Codex；更新使用独立 `skill-update` op，保留用户启停选择。
+- **远程兜底**：skills.sh → www；Smithery registry → api；GitHub git 操作直连失败后重试 ghfast/gh-proxy，不默认依赖代理。
+- **扩展 UI**：子技能说明独立收起；操作按钮最右；进度条去重复 spinner；操作完成/失败 toast。
+- **磁盘 UI**：删除重复的第一层容器/镜像名列表。
+- **服务合并**：宿主工具（F2）迁入左侧 Services 视图。
+- **出厂技能**：caveman 仓库全部 7 个 skills + grill-me。
+- **验证**：Python 1460 / Vitest 640 / vue-tsc / Rust 362 全绿。
+
 # v2.1.16-preview.2 发布准备（2026-10-25）
 
 - 汇总 preview.1 反馈修复为 Workbench `v2.1.16-preview.2`；新增 release notes。

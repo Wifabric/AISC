@@ -13,9 +13,13 @@ _loader.loader.exec_module(A)
 
 
 class PreviewFactorySkillsTests(unittest.TestCase):
-    def test_bundled_skills_are_exactly_caveman_and_grill_me(self):
+    def test_bundled_skills_are_complete_caveman_suite_and_grill_me(self):
         self.assertEqual(
-            tuple(row[0] for row in A.BUNDLED_SKILLS), ("caveman", "grill-me")
+            tuple(row[0] for row in A.BUNDLED_SKILLS),
+            (
+                "caveman", "cavecrew", "caveman-commit", "caveman-compress",
+                "caveman-help", "caveman-review", "caveman-stats", "grill-me",
+            ),
         )
 
     def test_dockerfile_stages_only_the_two_ruled_skills_offline(self):
@@ -25,7 +29,7 @@ class PreviewFactorySkillsTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn(
-            "COPY container/_bundle/plugins/marketplaces/caveman/skills/caveman/ /opt/aisc/skills/caveman/",
+            "COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/",
             dockerfile,
         )
         self.assertIn(".aisc-bundle.sha256", dockerfile)
@@ -35,7 +39,7 @@ class PreviewFactorySkillsTests(unittest.TestCase):
 
     def test_entrypoint_reports_the_two_managed_skills(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("已安装 caveman、grill-me", entrypoint)
+        self.assertIn("已安装 caveman 全部技能与 grill-me", entrypoint)
         self.assertIn("/usr/local/bin/lib/cc_switch_skills.py", entrypoint)
         self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
 

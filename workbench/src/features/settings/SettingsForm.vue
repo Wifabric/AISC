@@ -101,13 +101,12 @@ const EFFECT_KEY: Record<EffectKind, string> = {
 // workspace, UI dead until restart). The Record<Group,...> typing below
 // makes a future missing entry a COMPILE error, and the heading falls back
 // to the raw group id instead of undefined.
-const GROUPS = ["ui", "terminal", "window", "hostTools", "machines", "performance", "disk", "about"] as const;
+const GROUPS = ["ui", "terminal", "window", "machines", "performance", "disk", "about"] as const;
 type SettingsGroup = (typeof GROUPS)[number];
 const GROUP_KEY: Record<SettingsGroup, string> = {
   ui: "settings.group.ui",
   terminal: "settings.group.terminal",
   window: "settings.group.window",
-  hostTools: "settings.group.hostTools",
   machines: "settings.group.machines",
   performance: "settings.group.performance",
   disk: "settings.group.disk",
@@ -151,29 +150,6 @@ const terminal = computed<TerminalSettings>(() => store.doc?.terminal ?? ({} as 
 const windowS = computed<WindowSettings>(() => store.doc?.window ?? ({} as WindowSettings));
 /** F2: the host-tools whitelist working copy (mutated in place; rows with an
  * empty name/program are dropped server-side by the sanitizer). */
-const hostTools = ref<import("../../types").HostToolEntry[]>(
-  (store.doc?.hostTools ?? []).map((e) => ({ readOnlyPreset: "", ...e })));
-/** Reload the working copy whenever the backend doc is re-applied (load,
- * cancel, reset). */
-watch(
-  () => store.doc,
-  (d) => {
-    hostTools.value = (d?.hostTools ?? []).map((e) => ({ readOnlyPreset: "", ...e }));
-  },
-);
-/** Edit -> doc sync (dirty + save both read the doc; empty rows are
- * filtered here, the Rust sanitizer is the second gate). */
-watch(hostTools, (rows) => {
-  if (!store.doc) return;
-  store.doc.hostTools = rows
-    .filter((r) => r.name.trim() && r.program.trim())
-    .map((r) => ({
-      name: r.name,
-      program: r.program,
-      ...(r.readOnlyPreset ? { readOnlyPreset: r.readOnlyPreset } : {}),
-    }));
-}, { deep: true });
-
 /** R4b: remote machine profiles working copy — same flow as hostTools. */
 const machines = ref<import("../../types").RemoteMachine[]>(
   (store.doc?.remoteMachines ?? []).map((m) => ({ ...m })));
@@ -319,23 +295,6 @@ function dockerActionableCount(b: {
 }): number {
   return new Set([...b.owned, ...b.legacy_owned].map((row) => row.id)).size;
 }
-
-/** Compact preview rows: one per actionable/unverified bucket, names capped. */
-const dockerPreviewRows = computed(() => {
-  const r = store.dockerReport;
-  if (!r) return [];
-  const names = (list: { name: string }[]) =>
-    list.length === 0
-      ? "—"
-      : list.map((e) => e.name).slice(0, 6).join("、") + (list.length > 6 ? ` …（${list.length}）` : "");
-  return [
-    { label: t("settings.docker.rowContainers"), value: names([...r.containers.owned, ...r.containers.legacy_owned]) },
-    { label: t("settings.docker.rowUnverifiedContainers"), value: names(r.containers.unverified) },
-    { label: t("settings.docker.rowImages"), value: names([...r.images.owned, ...r.images.legacy_owned]) },
-  // b8 手测 #1: 空桶（—）不再渲染——清理后只剩噪音。
-    { label: t("settings.docker.rowUnverifiedImages"), value: names(r.images.unverified) },
-  ].filter((row) => row.value !== "—");
-});
 
 interface DockerSummaryCard {
   key: string;
@@ -664,27 +623,6 @@ async function reopenOnboarding() {
           </p>
         </template>
 
-        <!-- F2 (D-10): host-tools whitelist card. Default EMPTY = the feature
-             is off (every container host_exec call is refused). -->
-        <template v-else-if="group === 'hostTools'">
-          <p class="help">{{ t("settings.hostTools.hint") }}</p>
-          <div v-for="(row, i) in hostTools" :key="i" class="field ht-row">
-            <input v-model.trim="row.name" class="ht-name" :placeholder="t('settings.hostTools.namePh')" :disabled="store.readOnly" />
-            <input v-model.trim="row.program" class="ht-program" :placeholder="t('settings.hostTools.programPh')" :disabled="store.readOnly" />
-            <select v-model="row.readOnlyPreset" :disabled="store.readOnly" :title="t('settings.hostTools.presetHint')">
-              <option value="">{{ t("settings.hostTools.presetNone") }}</option>
-              <option value="git-ro">{{ t("settings.hostTools.presetGitRo") }}</option>
-            </select>
-            <button class="ht-del" :disabled="store.readOnly" :title="t('settings.hostTools.remove')" @click="hostTools.splice(i, 1)">×</button>
-          </div>
-          <div class="field">
-            <button :disabled="store.readOnly" @click="hostTools.push({ name: '', program: '', readOnlyPreset: '' })">
-              ＋ {{ t("settings.hostTools.add") }}
-            </button>
-          </div>
-          <p class="note">{{ t("settings.hostTools.note") }}</p>
-        </template>
-
         <!-- R4b: remote machines — the targets the Workbench can drive. -->
         <template v-else-if="group === 'machines'">
           <p class="help">{{ t("settings.machines.hint") }}</p>
@@ -860,11 +798,6 @@ async function reopenOnboarding() {
                   <span v-if="card.reclaimable !== null" class="ds-sub">{{ formatBytes(card.reclaimable) }}</span>
                 </div>
               </div>
-              <div v-for="row in dockerPreviewRows" :key="row.label" class="field disk-row">
-                <span class="label">{{ row.label }}</span>
-                <span class="val">{{ row.value }}</span>
-              </div>
-
               <div v-if="manageContainers.length" class="manage-list">
                 <p class="manage-title">{{ t("settings.docker.manage.containers") }}</p>
                 <div class="manage-thead">
@@ -1069,10 +1002,6 @@ input:disabled, select:disabled { opacity: 0.5; }
 .note { font-size: var(--font-xs); color: var(--text-faint); margin-top: 8px; }
 .disk-row .label { color: var(--text-2); }
 /* F2: host-tools whitelist rows */
-.ht-row { flex-wrap: nowrap; }
-.ht-name { max-width: 160px; }
-.ht-program { font-family: var(--font-mono); font-size: var(--font-sm); }
-.ht-row select { max-width: 150px; }
 .ht-del {
   min-width: 26px; min-height: 26px; padding: 0; flex: none;
 }

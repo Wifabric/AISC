@@ -80,7 +80,6 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.ui"),
       i18n.global.t("settings.group.terminal"),
       i18n.global.t("settings.group.window"),
-      i18n.global.t("settings.group.hostTools"),
       i18n.global.t("settings.group.machines"),
       i18n.global.t("settings.group.performance"),
       i18n.global.t("settings.group.disk"),
@@ -90,7 +89,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.ui"),
     ]);
     // Picking a section swaps the pane and leaves search mode.
-    await wrapper.findAll(".nav-item")[4]!.trigger("click");
+    await wrapper.findAll(".nav-item")[3]!.trigger("click");
     expect(wrapper.findAll("h3.group").map((h) => h.text())).toEqual([
       i18n.global.t("settings.group.machines"),
     ]);
@@ -123,7 +122,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
     const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
     await check.trigger("click");
     await Promise.resolve();
@@ -144,7 +143,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
     const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
     await check.trigger("click");
     await Promise.resolve();
@@ -162,7 +161,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
 
     // P2-5: navigate to the performance section first (single-section pane).
-    await wrapper.findAll(".nav-item")[5]!.trigger("click");
+    await wrapper.findAll(".nav-item")[4]!.trigger("click");
     const body = wrapper.text();
     expect(body).toContain(i18n.global.t("settings.perf.memory"));
     expect(body).toContain(i18n.global.t("settings.perf.cpus"));
@@ -174,7 +173,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click"); // disk section
+    await wrapper.findAll(".nav-item")[5]!.trigger("click"); // disk section
     return { store, wrapper };
   }
 
@@ -197,7 +196,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
       warnings: [],
     };
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    await wrapper.findAll(".nav-item")[5]!.trigger("click");
     const imageRows = wrapper.findAll(".manage-row");
     expect(imageRows).toHaveLength(1);
     expect(imageRows[0]!.text()).toContain("docker.1ms.run/library/node:22-slim");
@@ -247,7 +246,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    await wrapper.findAll(".nav-item")[5]!.trigger("click");
     return wrapper;
   }
 
@@ -374,5 +373,17 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
 describe("v2.1.16 preview b1 disk output", () => {
   it("does not render the verbose reclaim estimate disclaimer", () => {
     expect(settingsFormSource).not.toContain("settings.disk.inspect.disclaimer");
+  });
+});
+
+
+describe("v2.1.16 preview b2 settings structure", () => {
+  it("removes the duplicate Docker preview-name rows", () => {
+    expect(settingsFormSource).not.toContain("dockerPreviewRows");
+  });
+
+  it("moves host tools out of the standalone settings group", () => {
+    expect(settingsFormSource).not.toContain('"hostTools"');
+    expect(settingsFormSource).not.toContain("group === 'hostTools'");
   });
 });
