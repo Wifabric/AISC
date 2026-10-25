@@ -3,6 +3,15 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
+# v2.1.16 final 收口（2026-10-25）
+
+- 用户宣布 preview.4 后进入最终收尾并开启下一阶段。
+- v2.1.16 target b1–b13 与 preview-fixes b1–b3 全部闭环；
+  `2.1.16-preview-fixes` 已归档。
+- Workbench 发布 `v2.1.16` final；CLI 定版 `0.1.9` final 并随 Workbench 提供。
+- 发布后执行 main 合并、final tag CI、正式 PyPI、GitHub pre-release Release 清理、
+  反馈站 final 回复与临时分支清理。
+
 # v2.1.16-preview.4 发布准备（2026-10-25）
 
 - 汇总 preview.3 第三轮反馈修复为 Workbench `v2.1.16-preview.4`；新增 release notes。

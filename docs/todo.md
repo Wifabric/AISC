@@ -236,7 +236,7 @@
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
   - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（v2.1.15 final 收口）
 
-# v2.1.16-target（2026-10-17 开题；2026-10-24 b1–b13 开发闭环，v2.1.16-preview.1 发布；计划已归档 docs/archive/2.1.16-dev-plans/）
+# v2.1.16-target（2026-10-17 开题；2026-10-25 b1–b13 与 preview-fixes b1–b3 收口，v2.1.16 final 发布；计划已归档）
 - fix
   - [x] 容器内 codex 自动更新报 npm EEXIST；codex/claude 更新落持久 toolchain（b1）
   - [x] project bind mount 上 Codex 自更新 EACCES rename；shadow 运行 + 持久安装链路修复（b13）
@@ -265,3 +265,20 @@
   - [x] Skills/MCP/Plugins 状态与操作互相隔离；搜索清空即清结果
   - [x] 子技能介绍与父组展开分离；安装进度稳定显示 `x/y`
   - [x] 出厂技能改为仅 grill-me + caveman（覆盖 b10 全清裁定）
+- 追加（v2.1.16 preview.2 反馈，2026-10-25；preview-fixes b2；v2.1.16-preview.3 发布准备）
+  - [x] 子技能动作右置、说明独立换行并再次点击收起
+  - [x] 磁盘页删除第一层重复资源名列表
+  - [x] 宿主工具 F2 合并到 Services 视图
+  - [x] Smithery MCP 改用 HTTP deploymentUrl 安装
+  - [x] 操作完成 / 失败 toast 与重复 spinner 收敛
+  - [x] skills.sh / Smithery / GitHub 操作镜像兜底
+- 追加（v2.1.16 preview.3 反馈，2026-10-25；preview-fixes b3；v2.1.16 final 收口）
+  - [x] 出厂 caveman 改为 13 个 `caveman-*` + grill-me
+  - [x] 无宿主代理 skill 安装 / 更新使用 archive 探测 + 镜像 Git 暂存
+  - [x] 更新 / 卸载按钮动画按 action + target 区分
+  - [x] Workbench 自更新 API / asset / raw 镜像兜底
+  - [x] cc-switch resolver 与构建网络静态契约补齐
+  - [x] v2.1.16-preview.4 实机冒烟与远程 CI 全绿
+- 发布
+  - [x] Workbench `v2.1.16` final；CLI `0.1.9` final
+  - [x] `2.1.16-dev-plans` 与 `2.1.16-preview-fixes` 均归档

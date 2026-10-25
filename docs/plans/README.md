@@ -6,6 +6,6 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- 无。v2.1.15 开发计划与 preview 修复链均已归档：
-  - `docs/archive/2.1.15-dev-plans/`
-  - `docs/archive/2.1.15-preview-fixes/`
+- 无。v2.1.16 开发计划与 preview 修复链均已归档：
+  - `docs/archive/2.1.16-dev-plans/`
+  - `docs/archive/2.1.16-preview-fixes/`
