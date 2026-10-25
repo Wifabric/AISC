@@ -3,15 +3,287 @@
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
 
-# v2.1.15 final 收口（2026-10-15）
+# v2.1.16 final 收口（2026-10-25）
+
+- 用户宣布 preview.4 后进入最终收尾并开启下一阶段。
+- v2.1.16 target b1–b13 与 preview-fixes b1–b3 全部闭环；
+  `2.1.16-preview-fixes` 已归档。
+- Workbench 发布 `v2.1.16` final；CLI 定版 `0.1.9` final 并随 Workbench 提供。
+- 发布后执行 main 合并、final tag CI、正式 PyPI、GitHub pre-release Release 清理、
+  反馈站 final 回复与临时分支清理。
+
+# v2.1.16-preview.4 发布准备（2026-10-25）
+
+- 汇总 preview.3 第三轮反馈修复为 Workbench `v2.1.16-preview.4`；新增 release notes。
+- 覆盖 caveman 13 出厂技能、无代理 skill / 自更新 / cc-switch resolver、按钮动画区分与构建网络契约。
+
+# v2.1.16-preview.3 发布准备（2026-10-25）
+
+- 汇总 preview.2 第二轮反馈修复为 Workbench `v2.1.16-preview.3`；新增 release notes。
+- 覆盖 MCP HTTP 安装、双引擎默认启用、操作 toast、镜像兜底、Services 合并和 caveman 全量出厂技能。
+
+# v2.1.16 preview b2 修复（2026-10-25）
+
+- **MCP 安装**：Smithery 详情改用 HTTP `deploymentUrl`，修复“安装无结果”；默认 Claude/Codex 均启用。
+- **Skill 默认启用**：安装后显式启用 Claude/Codex；更新使用独立 `skill-update` op，保留用户启停选择。
+- **远程兜底**：skills.sh → www；Smithery registry → api；GitHub git 操作直连失败后重试 ghfast/gh-proxy，不默认依赖代理。
+- **扩展 UI**：子技能说明独立收起；操作按钮最右；进度条去重复 spinner；操作完成/失败 toast。
+- **磁盘 UI**：删除重复的第一层容器/镜像名列表。
+- **服务合并**：宿主工具（F2）迁入左侧 Services 视图。
+- **出厂技能**：caveman 仓库全部 7 个 skills + grill-me。
+- **验证**：Python 1460 / Vitest 640 / vue-tsc / Rust 362 全绿。
+
+# v2.1.16-preview.2 发布准备（2026-10-25）
+
+- 汇总 preview.1 反馈修复为 Workbench `v2.1.16-preview.2`；新增 release notes。
+- 本版包含前端、CLI sidecar 与容器镜像变更；出厂技能按新裁定恢复 `grill-me` 与 `caveman`。
+
+# v2.1.16 preview b1 修复（2026-10-25）
+
+- **磁盘日志**：清理结果压缩为一行；移除常驻“可回收量估算”disclaimer；操作日志每次清空后只保留本次结果。
+- **扩展侧栏**：内容改为弹性列并随侧栏宽度收缩；Provider/Extensions 隐藏无效果的顶层文件搜索框。
+- **状态隔离**：Skills/MCP/Plugins 拥有独立列表、loading、busy、搜索 busy、错误与操作状态；跨页签安装/搜索互不影响。
+- **搜索清空**：市场搜索框清空时立即移除旧结果。
+- **子技能展开**：父仓库组与子技能介绍分离；重复点击子技能不折叠父组。
+- **安装进度**：新增稳定进度条，显示动作、目标、`x/y`；批量操作逐项推进，完成前不触发列表 loading 闪烁。
+- **出厂技能**：按新裁定仅预装 `grill-me` 与 `caveman`，继续走 cc-switch 注册与同步管理链路。
+- **验证**：Python 1454 / Vitest 633 / vue-tsc / Rust 362 全绿。
+
+# v2.1.16 b1–b13 开发闭环（2026-10-24）
+
+- **阶段范围**：四条开题反馈（CLI 自更新、Work Records、Docker 资源、扩展统一管理）经 b1–b5 落地，随后按七轮用户手测追加 b6–b13。
+- **扩展系统**：供应商/扩展进入左侧 rail；Skills/MCP/Plugins 统一单行管理，补齐 skills.sh、Smithery、Claude 官方插件市场与进度动画；Skill 按仓库聚合并支持子项/仓库级操作；出厂安装清空。
+- **CLI 更新链路**：npm 全局前缀改持久 toolchain；Codex 在 project bind mount 中通过容器内 shadow 副本运行，自更新写入持久 prefix，EEXIST 与 EACCES 均闭环。
+- **终端复制**：xterm selection 自动写宿主剪贴板；Codex mouse tracking 场景将普通拖选转为 forced selection，并保留未移动单击回放。
+- **Docker/磁盘**：资源卡片与 itemized scan 统一；builder cache 按用户裁定全量 `--all` 清理并移除 Node 基础标签；冷启动基础镜像预拉 120 秒轮转。
+- **构建链路**：cc-switch resolver 钉版时严格消费 exact asset，避免新版 sha 配旧离线包；镜像升级至 cc-switch 5.11.3。
+- **验证**：Python 1449 / Vitest 622 / Rust 362 / vue-tsc / vendor 1520 全绿；MCP、插件市场、Skill 分组、Codex 更新、剪贴板、Docker 冷启动与缓存全清均完成真实链路预复测。
+- **发布准备**：Workbench 开发版本升至 2.1.16，新增 `v2.1.16-preview.1` release notes；CLI `0.1.9.dev0` notes 更新为阶段配对说明；阶段计划归档至 `docs/archive/2.1.16-dev-plans/`。
+
+# v2.1.16 b13 MCP 403/Codex 更新锁/Skill 分组/缓存全清（2026-10-24）
+
+- **#1 MCP 403**：Smithery WAF 拒绝 Python urllib 默认 UA；搜索与详情请求补 `User-Agent: AISC/2.1.16`，容器实测 `pdf` 返回 10 条。
+- **#2 Codex 更新 EACCES**：project toolchain bind mount 上正在执行的 `@openai/codex` 无法 rename。Codex wrapper 将持久 prefix 的完整 `@openai` scope 复制到 `/tmp/aisc-codex-shadow` 后由 node 启动 shadow，自更新仍写入持久 prefix；实测 0.154→0.164 成功。
+- **#3 Skill 仓库分组**：已安装与商城结果按 `repo` 聚合；组行支持批量 C/X、更新、卸载/安装，展开后保留单技能操作；adapter 快照补 `directory` 供重装更新。
+- **#4 构建缓存**：Docker 29 实测 `builder prune --force` 只清 dangling（1.303GB→1.246GB），改为 `--force --all` 后归 0B；同时 untag `node:22-slim`/配置镜像源别名，不强删被容器直接占用或无关 Node 镜像。
+- **验证**：新增 Python/Vitest 回归；真实容器验证 Smithery/Codex；真实 Docker 验证 Build Cache=0B 且 node 标签消失。
+
+# v2.1.16 b12 Docker 冷启动/插件商城/Codex 选区（2026-10-24）
+
+- **#1 基础镜像冷启动**：预拉默认 900s/源改为 120s/源，输出“最长/失败原因/
+  自动切换”；保留 ``AISC_PULL_TIMEOUT_S`` 慢链路显式覆盖。清空 Docker 后实测
+  首源超时自动轮转，后续源拉取成功并完成 ``super-claude:latest`` 构建，无需
+  手工 ``docker tag``。
+- **#2 插件商城**：b10 清空出厂安装时误把唯一 marketplace 也清空。现出厂
+  ``installed_plugins={}`` 但内置 ``claude-plugins-official``；新增
+  ``plugin-search``（``claude plugin list --available --json`` → 过滤/20 条
+  UI 结果）并贯通 adapter→host CLI→Rust→Pinia→Vue；同时补齐 b10 遗漏的
+  MCP search/install host dispatch 与 adapter choices。镜像实测 available=243、
+  installed=0、搜索/安装 ``skill-creator`` 成功。
+- **#3 Codex 普通拖选**：Codex 开启 xterm mouse tracking 后普通拖动被转发给
+  TUI、xterm 选区服务禁用（Shift+drag 才是强制选区）。新增 Codex-only 捕获层：
+  普通 drag 合成 forced-selection mousedown，未移动单击回放给 Codex；mouseup
+  必须继续冒泡，让 xterm document 监听完成 selection change 并触发系统剪贴板。
+- **#4 右键复制**：右键选词后的菜单复制按钮使用当前/最近选区兜底；预复测
+  Codex 普通拖选 → 宿主剪贴板得到 ``Update available · 0.163.0 → 0.164.0``，
+  右键“复制”可点；Bash 回归仍自动复制。
+- **门禁/实机**：Python 1445+、Vitest 617+、vue-tsc、cargo 362、vendor 1520；
+  Workbench UI 实测官方市场、搜索结果展开、Codex/Bash 剪贴板。
+
+# v2.1.16 b10 MCP 市场/进度动画/终端复制/工厂清空（2026-10-23，PR #38）
+
+- **#1 MCP 市场**：Smithery API 搜索 + 一键安装（构造 mcpServers → deeplink）。
+- **#2 进度**：opBusyId + spinner（安装/卸载/更新按钮转圈）。
+- **#3 插件更新**：``_run_cli`` 注入 CLAUDE_CONFIG_DIR（claude plugin 能找
+  已装列表——旧版 subprocess 丢失 scope env）。
+- **#4 --kind 报错**：host CLI plugin-uninstall/update/install 补 --kind。
+- **#5 Skill 来源**：``_skill_items`` 交叉 installed_plugins.json →
+  sources/source/conflict；UI ⚠ 标记 + 展开显示来源。
+- **#6 工厂清空**：BUNDLED_SKILLS=() + Dockerfile 跳过 _bundle plugins +
+  cc-switch-skills 离线提取移除；factory 空目录+空 JSON 保 entrypoint 兼容。
+- **#7 自动复制**：xterm onSelectionChange → writeText（全终端生效）。
+- 门禁：pytest 1439 / Vitest 611 / vue-tsc 0 / cargo 0 / vendor 1520/0。
+# v2.1.16 b9 扩展 UX 统一 + 缓存全量裁定（2026-10-23，PR #37）
+
+- **#1 UI**：三页签统一单行（chevron+名称+徽标+右侧 C/X/⟳/✕），左键展开；
+  市场结果同构，安装＝＋图标；MCP 链接+JSON、插件安装+市场添加齐备。
+- **#2 市场安装**：owner/name:key 先幂等 repos add 再 install（根因：仓库
+  未注册时 cc-switch 直接 SKILL_DIR_NOT_FOUND）。
+- **#3 终端复制**：TUI 接管鼠标致拖选无选区——rightClickSelectsWord 让
+  右键建选区，菜单复制可用并写系统剪贴板。
+- **#4**：「移入工作记录 ▸」hover 子菜单替代扁平移入列表。
+- **#5 用户裁定**：构建缓存**全量**清理（builder prune 去 until 过滤）；
+  悬空镜像/容器保持 ≥24h。#8「15GB 清不掉」根因即旧 24h 过滤。
+- **#6**：node/node:* 归类 legacy_owned（build-base-image）进镜像管理。
+- **#7**：容器/镜像卡片标签统一「（aisc 相关）」。
+- 门禁：pytest 1443 / Vitest 611 / vue-tsc 0 / cargo 362 / vendor 1520/0。
+# v2.1.16 b8 复测第三轮四项修复（2026-10-22，develop eb1f578）
+
+- **#1/#2 磁盘页**：空预览行（—）过滤；零回收压缩为一行「24 小时安全窗内
+  无可回收」；构建缓存卡片去掉「可清理」过度承诺（24h 窗语义已在 disclaimer）。
+- **#3 插件市场 unknown op**：b7 Rust OPS 数组行级编辑未生效（签名/argv 在、
+  数组仍 8 op）→ 补齐 13 op。
+- **#4 claude/codex not found（关键）**：b7 把工厂 npm -g 装进
+  /opt/aisc/toolchain——project 模式被宿主挂载遮蔽、symlink 目标消失 →
+  工厂安装改 /opt/aisc/factory-npm（非挂载路径）；运行时前缀仍指 toolchain。
+  空挂载模拟实测 claude 2.1.273 / codex 0.154.0 正常。
+- 门禁：pytest（契约更新）/ Vitest 611 / vue-tsc 0 / cargo 362 / vendor 1520/0。
+# v2.1.16 b7 MCP 卸载/更新持久/扩展商城（2026-10-21，PR #36）
+
+- **MCP 卸载 TTY 修复**：``cc-switch mcp delete`` 的确认是 dialoguer（管道 y
+  无效）→ 适配器 ``script -qec`` 伪 PTY 喂 ``y``，镜像实机验证。
+- **更新跨重启持久**：镜像层 npm 前缀从 /tmp 改指 /opt/aisc/toolchain
+  （project 持久挂载；temporary entrypoint 覆盖 /tmp）。
+- **商城**：技能=skills.sh 检索+一键安装+GitHub/owner:name/ccswitch:// 链接；
+  MCP=ccswitch:// 导入；插件=市场列表+添加。宿主 CLI/Rust/UI 三层贯通。
+- **门禁**：pytest 1441 / Vitest 611 / vue-tsc 0 / cargo 362；镜像实机四项
+  全过；vendor verify 1520/0。RETEST.md 新增 R5–R8。
+# v2.1.16 b6 预复测 + i18n 渲染双杀修复（2026-10-20，PR #35 + e5236ff）
+
+- computer use 实机预复测 R1–R4 全 PASS（R3：关工作区→+3.4s 重进→直达摘要）。
+- **新发现（用户 #4 深层根因）**：扩展视图切页签整体消失——i18n 文案
+  ``{mcpServers:{…}}`` 与 ``name@marketplace`` 被 vue-i18n 当占位符/链接
+  语法解析 → 编译错误 → 渲染抛错 → 组件卸载。修复 + skills→mcp→plugins
+  切换回归测试。
+- 新增 ``docs/plans/2.1.16-dev-plans/RETEST.md`` 统一复测手册（R1–R4 +
+  T1–T15 全量步骤与验收口径）。
+- 门禁：Vitest 76 files / 611 tests；vue-tsc 0。
+# v2.1.16 b6 用户手测第一轮修复（2026-10-19，PR #34）
+
+- **#1 TabBar 残留**：▾ 菜单删除「Provider 管理」入口与分隔线；AGENTS 收敛
+  claude/codex/bash；openCcSwitch 改走 rail 重定向。
+- **#2/#4 services 泄漏**：services 面板裸 v-else 兜底吃掉 providers/extensions
+  视图（「暂无已注册服务」+ 布局破坏）→ v-else-if 精确匹配。
+- **#3 关工作区后重进阻断**：leaseRelease fire-and-forget 竞态 → teardown 内
+  await；reconcile 对 active_same_instance 无可聚焦实例时 release+重跑自愈。
+- 门禁：Vitest 76 files / 610 tests；vue-tsc 0。
+# v2.1.16 预手测（2026-10-19，computer use + 后端全链，PR #33）
+
+- computer use（node_repl + @oai/sky）打通 Tauri WebView：带截图观察→立即
+  点击；rail 图标坐标映射（供应商 y≈204 / 扩展 y≈240）。
+- 修复 Extensions store 错误渲染 ``[object Object]`` → ``errorText()``
+  （PR #33）。
+- 后端全链 PASS：T13 rail/视图渲染；T14 skills/mcp/plugins 快照 + 开关往返；
+  T15 MCP 新增（CLI→deeplink→SSOT→Codex config.toml 落盘）；T1/T3 自更新
+  前缀/wrapper 完整/无 EEXIST（假包实测后还原）；T4 toolchain 挂载。
+- 环境坑修正：dev sidecar 旧冻结二进制需 ``scripts\build-cli.ps1`` 重建；
+  本机 runtime 镜像需含 b5 适配器的新代镜像。
+- 留统一手测：T2 claude 更新、T5–T12 UI 交互、T15 UI 表单/插件装卸；
+  观察项：cc-switch MCP sync 的 Claude ``.mcp.json`` 落点。
+# v2.1.16 b5 扩展统一管理实施（2026-10-18，D-1–D-4 裁定，PR #31）
+
+- **数据面（b5a）**：容器适配器 ``aisc-extensions-adapter``（skills/mcp/plugins
+  快照 + 全生命周期；MCP env 值不出容器）；MCP 非交互新增走 deeplink（实测）；
+  插件桥接 ``claude plugin`` CLI；宿主 ``aisc extensions`` 八子命令。
+- **UI（b5b）**：左侧 rail 新增「供应商」「扩展」视图；Provider UI 迁出
+  TabBar（原入口重定向 rail）；ExtensionsView 三页签查看/开关/删除/安装/
+  更新；Rust 单命令 ``extensions_call``。
+- **门禁**：pytest 1432 / Vitest 608 / vue-tsc 0 / cargo 362；镜像实构建 +
+  容器冒烟 + vendor verify 1519/0。手测 T13–T15 待实机。
+# v2.1.16 b4 扩展统一管理调研完成（2026-10-18，方案待裁决）
+
+- 对 cc-switch v5.10.5 vendored 二进制做 strings 探针 + 既有调用面核对：
+  **原生支持 skills（repo 注册表 + 双引擎开关 + sync）与 MCP（统一配置 v2、
+  add/edit/delete/import、per-app enable）**；**不支持 plugins**（Claude 独有
+  marketplace 体系，Codex 无此概念）。
+- 方案：三 Tab「扩展管理」（Skills / MCP / Plugins）——Skills 与 MCP 全生命
+  周期走 cc-switch 桥（复用 provider adapter 的「只读快照 + 官方 CLI 变更」
+  模式）；Plugins 首期只读 + 更新提示（version/gitCommitSha vs marketplace），
+  安装卸载 P2 桥接 `claude plugin`。
+- 分期 P1（查看+开关+删除）/ P2（安装/新增/插件操作）/ P3（更新检查/浏览器）。
+- 裁决点 D-1–D-4（入口位置、P1 排期、Plugins 深度、MCP 表单归属）见
+  `docs/plans/2.1.16-dev-plans/b4-skill-plugin-mcp-research.md`，待用户裁定。
+# v2.1.16 b3 Docker 资源面板卡片化与专用缓存清理（2026-10-18）
+
+- **反馈 #9** 四项落地（PR #30 squash 并回 develop，``8d4e5f7``）：
+  1. 摘要 label/val 行列表 → 卡片网格 + 「合计」卡（总条目/总可回收），
+     每类卡显示可回收字节，卷/网络带「仅报告」角标；
+  2. ``Build Cache`` → 「构建缓存（可清理）」；
+  3. 专用「清理构建缓存」按钮：``cacheCleanup(24)``（builder + dangling
+     prune，CLI 安全过滤既有测试钉死）→ 日志 → 统一刷新扫描，不动容器/镜像；
+  4. 按钮序：扫描 → 清理 AISC → 清理构建缓存 → 重建（最右）。
+- 顺带删除 b16 遗留死代码 ``runCacheCleanup(minAgeHours)``（vue-tsc 重复
+  定义暴露）。零 Rust/CLI 变更。
+- **门禁**：TDD 新增 3 用例；全量 Vitest 76 files / 608 tests；vue-tsc 通过。
+# v2.1.16 tests.yml 框架收敛为 pytest（2026-10-18，用户裁定方案 B）
+
+- **PR #29**：tests.yml 由 unittest discover 改为 `pip install -e ".[dev]"` +
+  `python -m pytest tests -q`（与 workbench-ci Python tests step 同构）；
+  wiki §9.1/§9.2/§9.3/§14 文档先行同步（运行器统一 pytest，unittest 保留为
+  源文件级调试形态）。
+- 矩阵首次全量运行暴露的平台问题随批修复：conftest 会话隔离根 +
+  `TemporaryDirectory`/`mkdtemp` 统一 resolve（macOS `/var` 符号链接触发
+  data-root reparse 守卫）；`test_update` 相邻 bundle 断言双侧 resolve
+  （GH Windows 8.3 短名）；`artifact.py::_normalize_record_path` 对入参
+  resolve 后再 relpath（产品侧 containment 误判，real bug）；`test_serve`
+  在 Win/Py3.11 无 `os.set_blocking` 时 skip。
+- **验证**：本地 `pip install -e ".[dev]"` 后全量 1417 passed / 69 skipped；
+  分支 dispatch tests.yml 3 OS × 3 Python 九组矩阵全绿（run 39097066673）。
+# v2.1.16 b1 补：vendor checksums 刷新 + develop CI 全绿（2026-10-18）
+
+- b1 并回后 NSIS / Bundle 报 4 项 checksum mismatch——b1 改了
+  ``container/{Dockerfile,claude-wrapper,codex-wrapper,entrypoint.sh}`` 但未按
+  wiki §6.4/§14 先跑 ``vendor-refresh.sh``（教训已记入 b1 计划文档）。
+  PR #28 仅刷新这 4 行 checksums（本地 ``vendor-verify`` 1519/0 通过）。
+- fix 提交 ``dd9f5da`` 上 develop 四条 workflow 全绿：NSIS installer、
+  Bundle Linux/macOS、CLI sidecar、Workbench CI（b2 提交上）。
+# v2.1.16 b2 Work Records 可用性五项（2026-10-17）
+
+- **反馈 #11** 五项全部落地（PR #27 squash 并回 develop，``6a5380a``）：
+  1. 成员/未归档行左键打开只读 ConversationViewer（富文本预览，非恢复）；
+  2. 拖动父节点整树跟随（drag payload 携带子树，同区批量 reorder / 跨区批量
+     move，保持 drop-on-row 槽位语义）；
+  3. 右键菜单新增「新建会话」（createTab，等价 /new）与「分支会话」
+     （resumeConversation(c, true)，等价 /fork），动作后立即刷新；
+  4. 会话列表加载期间显示「加载中…」，不再闪现「引用缺失」；
+  5. 删除级联同 agent + 同标题全部会话（含未显示），确认弹窗显示数量，
+     跨 agent 同名不误删。
+- 仅动 WorkRecordsView 展示/编排层与 i18n，未改 Rust 数据面 / IPC。
+- **门禁**：TDD 新增 6 用例；全量 Vitest 76 files / 605 tests；vue-tsc 通过。
+# v2.1.16 开题 + b1 容器内 codex/claude 自更新修复（2026-10-17）
+
+- **阶段开题**：读取反馈站 2026-10-17 新增 3 条反馈 + 1 条需求（Docker 资源
+  面板、codex 自更新、Work Records 可用性、技能/插件/MCP 统一管理），首轮
+  回复全部 `submitted` → `replied`（反馈仓 `4e39e00`）；建立
+  `docs/plans/2.1.16-dev-plans/`（README / feedback-intake / HANDTEST / b1）
+  与 `docs/todo.md` v2.1.16-target。
+- **b1（反馈 #10）**：容器内 codex 自更新 `npm install -g` 报 EEXIST——
+  Workbench docker exec 会话不继承 entrypoint 的 `NPM_CONFIG_PREFIX`，npm 回落
+  `/usr/local` 撞上注入 wrapper。修复：镜像层统一重定向 npm -g 前缀到
+  toolchain 布局（与 D-RUNTIME-09 契约一致）；出厂二进制 `readlink -f` 归一
+  （离线直装/在线 npm 双形态）；codex/claude wrapper 按会话 prefix → 持久 →
+  临时 toolchain 感知解析新装二进制并保持注入不旁路；entrypoint PATH 把
+  npm-global/cargo 移到系统路径之后。PR #26 squash 并回 develop。
+- **验证**：全量 pytest 1409 passed / 57 skipped；unittest discover（Windows）
+  OK 1367；本机 Docker 实构建镜像（在线分支）+ 容器内模拟自更新——npm -g
+  成功、wrapper 完整、解析到新二进制、`*-real` 回退正常。
+- **门禁发现（先于 b1 存在）**：tests.yml（dispatch-only）自 2026-08-09 后
+  未再运行；5 个 2.1.15 时代测试模块模块级 `import pytest`，runner 无
+  pytest → loader error（b1 分支与 develop HEAD 同败）。已立账 todo 追加项，
+  修复方式（runner 装 pytest 或移植 unittest）待裁定。
+# v2.1.15 final 收口完成（2026-10-16）
 
 - 用户宣布进入最终收尾，并新增裁定：final Release 验证通过后删除 GitHub 全部
-  pre-release Release 记录与资产；git tag 保留为不可变发布标识。
+  pre-release Release 记录与资产；反馈站补最终解决回复；本地与远端清理临时开发分支；
+  git tag 均保留为不可变发布标识。
 - b1–b16 与 preview.1–preview.8 反馈链全部收口；`2.1.15-dev-plans` 与
   `2.1.15-preview-fixes` 均已归档。
-- CLI 升级为 `0.1.8` final，Workbench 发布 `v2.1.15` final。
-- 发布前门禁沿用 final release 清单；发布后执行 main 合并、tag CI、正式 PyPI、
-  Releases 清理与文档收口。
+- **Workbench final**：`v2.1.15` NSIS workflow、安装冒烟与 Release 资产验证通过；
+  Release 为 `AISC Workbench v2.1.15`，非 draft / prerelease，并标记 latest。
+- **Release 元数据修复**：NSIS workflow 原先把所有 `v*` tag 标成 prerelease；
+  已改为仅 `-dev` / `.dev*` / `-preview.*` 使用 prerelease，普通 `vX.Y.Z` 使用
+  final/latest。PR #23 合入 develop、PR #24 合入 main，两个分支 NSIS CI 全绿。
+- **CLI final**：`cli-v0.1.8` PyPI workflow 在 `pypi` environment 人工审批后
+  success；正式 PyPI latest 为 `0.1.8`，wheel / sdist 就位，干净 venv 安装后
+  `aisc version --format json` 返回 `0.1.8`。
+- **Releases 清理**：删除 GitHub 全部 14 条 pre-release Release 记录及资产；
+  Releases 页仅剩正式 release。对应 git tags 全部保留为不可变标识。
+- **反馈站结案**：2026-10-12 的 5 条反馈已追加 v2.1.15 final 解决回复，
+  status → `resolved`；反馈数据仓库提交 `6746fb2` 已推送。
+- **分支清理**：v2.1.15 开发/preview/release-prep 产生的本地与远端临时分支已删除，
+  仅保留 `main` / `develop`；PR、merge commit 与 git tag 保留审计和发布历史。
+- **发布后推进**：CLI 开发版本 bump 至 `0.1.9.dev0`，补充 release notes 与版本
+  fixture，继续仅在 develop 上承接后续开发验证。
 
 # v2.1.15-preview.8 / b16 preview.7 字段修复（2026-10-15）
 

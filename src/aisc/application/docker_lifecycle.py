@@ -657,6 +657,19 @@ def _size_bytes(value: Any) -> Optional[int]:
     return int(num * _SIZE_UNITS[unit])
 
 
+def _format_bytes(value: int) -> str:
+    """Compact decimal Docker-style bytes for concise cleanup results."""
+    if value == 0:
+        return "0B"
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(value)
+    for unit in units:
+        if size < 1000 or unit == units[-1]:
+            return f"{size:.1f}{unit}"
+        size /= 1000
+    return f"{size:.1f}TB"
+
+
 def _container_rw_size(value: Any) -> Optional[int]:
     """`ps -s` size strings: `35.6 kB (virtual 109 MB)` → writable layer."""
     if value is None:
@@ -998,15 +1011,47 @@ def cache_inspect(executor: Any, *, cleanup_min_age_hours: int = 24) -> Dict[str
     }
 
 
+
+
+def _node_base_image_refs(executor: Any) -> List[str]:
+    """Return the configured Node base tag aliases present locally.
+
+    `super-claude` shares Node layers, so `rmi` only removes the base tag and
+    leaves still-referenced content intact. Mirror aliases are included when
+    present; unrelated third-party Node images are never touched.
+    """
+    result = executor.run_captured(
+        ["images", "--format", "{{.Repository}}\t{{.Tag}}"], timeout=30.0
+    )
+    if getattr(result, "exit_code", 1) != 0:
+        return []
+    refs = []
+    wanted = {
+        "node:22-slim",
+        "docker.1ms.run/library/node:22-slim",
+        "docker.m.daocloud.io/library/node:22-slim",
+        "dockerproxy.net/library/node:22-slim",
+    }
+    for line in (result.stdout or "").splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) == 2:
+            ref = f"{parts[0]}:{parts[1]}"
+            if ref in wanted:
+                refs.append(ref)
+    return refs
+
 def _cache_cleanup_argv(kind: str, min_age_hours: int) -> List[str]:
     """Pure argv builder for the two prune kinds (test-pinned invariants).
 
-    builder → `docker builder prune --force --filter until=<h>h`
+    2026-10-23 用户裁定：构建缓存是纯派生数据 → 全量清理，不再带 24h 过滤；
+    悬空镜像保持 ≥24h 安全窗（旧版把缓存也套 24h，导致「明明可清理
+    却清不掉」——新构建缓存全部 <24h，回收恒为 0B）。
+    builder → `docker builder prune --force --all`（--all 才包含非 dangling cache；
+    Docker 29 实测无 --all 会留下大量 unused cache）
     dangling → `docker image prune --force --filter until=<h>h` (NO -a)
     """
     if kind == "builder":
-        return ["builder", "prune", "--force",
-                "--filter", f"until={min_age_hours}h"]
+        return ["builder", "prune", "--force", "--all"]
     if kind == "dangling":
         # image prune WITHOUT -a removes DANGLING (<none>) images only.
         return ["image", "prune", "--force",
@@ -1110,225 +1155,476 @@ def docker_cache_cleanup(
                 result["warnings"].append(f"{kind} prune failed")
             result["prunes"].append(entry)
 
+        # b13 user ruling: the dedicated build-cache action also removes the
+        # configured Node base tag. This forces a fresh pre-pull/build and does
+        # not delete unrelated normal images. Docker refuses if it is in use.
+        for ref in _node_base_image_refs(executor):
+            argv = ["rmi", ref]
+            pr = executor.run_captured(argv, timeout=60.0)
+            entry = {"kind": "node-image", "argv": argv,
+                     "exit_code": pr.exit_code,
+                     "reclaimed": (pr.stdout or "").strip().splitlines()[0]
+                                  if (pr.stdout or "").strip() else ""}
+            if pr.exit_code != 0:
+                entry["error"] = (pr.stderr or pr.stdout or "").strip()[:200]
+                result["warnings"].append(f"node image remove failed: {ref}")
+            result["prunes"].append(entry)
+
     result["df_after"] = _system_df(executor)
+
+    # Docker 29's captured `builder prune` output can omit the human summary
+    # even when `--all` removes several GB. Derive the concise result from the
+    # df before/after delta so the UI never reports "no reclaim" for a full
+    # build-cache prune.
+    builder_entry = next(
+        (entry for entry in result["prunes"] if entry.get("kind") == "builder"),
+        None,
+    )
+    if builder_entry is not None and not builder_entry.get("reclaimed"):
+        before_size = _size_bytes((before.get("Build Cache") or {}).get("size"))
+        after_size = _size_bytes(
+            (result["df_after"].get("Build Cache") or {}).get("size")
+        )
+        if before_size is not None and after_size is not None and before_size > after_size:
+            builder_entry["reclaimed"] = _format_bytes(before_size - after_size)
+
     return result
-
-
-# --- v2.1.13 (docker-management, D-12): owned-resource operations -----------
-#
-# Boundary (user ruling 2026-09-20): start/stop/rm for AISC-owned containers,
-# rm/retag for AISC-owned images - NOTHING else, and ONLY owned/legacy_owned
-# resources are operable (unverified is report-only, forever). Every action
-# re-classifies IN-LOCK at execution time: a stale UI snapshot never authorizes
-# a delete. Volumes/networks: never touched. Target-following comes free -
-# the CLI subcommand runs on whatever machine the drive target points at.
-
-MANAGEMENT_SCHEMA = "aisc.docker-management/v1"
-
-_MANAGEMENT_ACTIONS = ("start", "stop", "rm")
-
-
-def _assert_container_owned(
-    executor: Any, *, name: str, data_root: Optional[Path]
-) -> Dict[str, Any]:
-    """Re-scan and assert `name` is an owned/legacy_owned container (D-12)."""
-    rows = _ps_rows(executor)
-    registry = _registry_evidence(data_root)
-    buckets = classify_containers(rows, registry)
-    for bucket in ("owned", "legacy_owned"):
-        for row in buckets[bucket]:
-            if row["name"] == name:
-                return row
-    raise CliError(
-        message=(
-            f"container {name!r} is not an AISC-owned resource "
-            "(unverified or unknown) - action refused"
-        ),
-        exit_code=6,
-        error_code="AISC_ERR_OWNERSHIP_REFUSED",
-    )
-
-
-def _assert_image_operable(
-    executor: Any, *, image_id: str, data_root: Optional[Path],
-    allow_in_use: bool,
-) -> Dict[str, Any]:
-    """Re-scan and assert the image is owned/legacy_owned (D-12). When
-    allow_in_use=False an ancestor-container check is also enforced
-    (retag works on in-use images; rmi does not)."""
-    rows = _image_universe(executor)
-    owned_ids = _filtered_image_ids(executor, "label=org.aisc.managed=true")
-    buckets, dangling = classify_images(
-        rows, context="management", owned_ids=owned_ids
-    )
-    target: Optional[Dict[str, Any]] = None
-
-    def matches(row: Dict[str, Any]) -> bool:
-        rid = str(row.get("id") or "")
-        return rid == image_id or rid.endswith(image_id)
-
-    for bucket in ("owned", "legacy_owned"):
-        for row in buckets[bucket]:
-            if matches(row):
-                target = dict(row)
-                break
-        if target:
-            break
-    if target is None:
-        for row in dangling:
-            if matches(row):
-                target = {"id": row["id"], "name": row["id"]}
-                break
-    if target is None:
-        raise CliError(
-            message=(
-                f"image {image_id!r} is not an AISC-owned resource "
-                "(unverified or unknown) - action refused"
-            ),
-            exit_code=6,
-            error_code="AISC_ERR_OWNERSHIP_REFUSED",
-        )
-    if not allow_in_use:
-        ps = executor.run_captured(
-            ["ps", "-a", "--filter", f"ancestor={target['id']}",
-             "--format", "{{.ID}}"],
-            timeout=15.0,
-        )
-        if getattr(ps, "exit_code", 1) == 0 and (ps.stdout or "").strip():
-            raise CliError(
-                message=(
-                    "image is referenced by a container - "
-                    "remove the container(s) first"
-                ),
-                exit_code=6,
-                error_code="AISC_ERR_OWNERSHIP_REFUSED",
-            )
-    return target
-
-
-def container_management_action(
-    executor: Any, *, name: str, action: str, data_root: Optional[Path] = None
-) -> Dict[str, Any]:
-    """Start/stop/remove ONE aisc-owned container (D-12).
-
-    rm = stop + rm -f composed (same order as docker_cleanup). The
-    ownership re-scan runs inside the maintenance lock; a refused action
-    never touches docker."""
-    if action not in _MANAGEMENT_ACTIONS:
-        raise CliError(
-            message=f"unknown container action: {action}",
-            exit_code=RuntimeExitCode.USAGE_ERROR,
-            error_code="AISC_ERR_USAGE",
-        )
-    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
-    from aisc.application.data_root import shared_root
-
-    root = Path(data_root) if data_root else shared_root()
-    argvs: List[List[str]] = []
-    with docker_maintenance_lock_at_root(root):
-        row = _assert_container_owned(executor, name=name, data_root=root)
-        running = row["state"] == "running"
-        if action == "start":
-            argvs.append(["start", name])
-        elif action == "stop":
-            if running:
-                argvs.append(["stop", name])
-        else:  # rm: stop (if needed) then remove
-            if running:
-                argvs.append(["stop", name])
-            argvs.append(["rm", "-f", name])
-        for argv in argvs:
-            pr = executor.run_captured(argv, timeout=60.0)
-            if pr.exit_code != 0:
-                raise CliError(
-                    message=(
-                        f"container {action} failed: "
-                        f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
-                    ),
-                    exit_code=10,
-                    error_code="AISC_ERR_CONTAINER_FAILED",
-                )
-    return {
-        "schema_version": MANAGEMENT_SCHEMA,
-        "action": f"container-{action}",
-        "name": name,
-        "ownership": row["ownership"],
-        "argvs": argvs,
-        "warnings": [],
-    }
-
-
-def image_management_rm(
-    executor: Any, *, image_id: str, data_root: Optional[Path] = None
-) -> Dict[str, Any]:
-    """Remove ONE unreferenced aisc-owned image (D-12)."""
-    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
-    from aisc.application.data_root import shared_root
-
-    root = Path(data_root) if data_root else shared_root()
-    with docker_maintenance_lock_at_root(root):
-        target = _assert_image_operable(
-            executor, image_id=image_id, data_root=root, allow_in_use=False
-        )
-        argv = ["rmi", target["id"]]
-        pr = executor.run_captured(argv, timeout=120.0)
-        if pr.exit_code != 0:
-            raise CliError(
-                message=(
-                    f"image rmi failed: "
-                    f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
-                ),
-                exit_code=10,
-                error_code="AISC_ERR_IMAGE_NOT_FOUND",
-            )
-    return {
-        "schema_version": MANAGEMENT_SCHEMA,
-        "action": "image-rm",
-        "id": target["id"],
-        "argv": argv,
-        "warnings": [],
-    }
-
-
-def image_management_tag(
-    executor: Any, *, image_id: str, repository: str, tag: str,
-    data_root: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """Retag ONE aisc-owned image (D-12 'rename'): adds repository:tag.
-    The old tag is preserved (retag semantics); in-use images allowed."""
-    if not repository or not tag or any(
-        ch.isspace() or ch == "'" or ch == '"' for ch in repository + tag
-    ):
-        raise CliError(
-            message="invalid repository/tag",
-            exit_code=RuntimeExitCode.USAGE_ERROR,
-            error_code="AISC_ERR_USAGE",
-        )
-    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
-    from aisc.application.data_root import shared_root
-
-    root = Path(data_root) if data_root else shared_root()
-    ref = f"{repository}:{tag}"
-    with docker_maintenance_lock_at_root(root):
-        target = _assert_image_operable(
-            executor, image_id=image_id, data_root=root, allow_in_use=True
-        )
-        argv = ["tag", target["id"], ref]
-        pr = executor.run_captured(argv, timeout=60.0)
-        if pr.exit_code != 0:
-            raise CliError(
-                message=(
-                    f"image tag failed: "
-                    f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
-                ),
-                exit_code=10,
-                error_code="AISC_ERR_GENERAL",
-            )
-    return {
-        "schema_version": MANAGEMENT_SCHEMA,
-        "action": "image-tag",
-        "id": target["id"],
-        "ref": ref,
-        "argv": argv,
-        "warnings": [],
+
+
+
+
+# --- v2.1.13 (docker-management, D-12): owned-resource operations -----------
+
+#
+
+# Boundary (user ruling 2026-09-20): start/stop/rm for AISC-owned containers,
+
+# rm/retag for AISC-owned images - NOTHING else, and ONLY owned/legacy_owned
+
+# resources are operable (unverified is report-only, forever). Every action
+
+# re-classifies IN-LOCK at execution time: a stale UI snapshot never authorizes
+
+# a delete. Volumes/networks: never touched. Target-following comes free -
+
+# the CLI subcommand runs on whatever machine the drive target points at.
+
+
+
+MANAGEMENT_SCHEMA = "aisc.docker-management/v1"
+
+
+
+_MANAGEMENT_ACTIONS = ("start", "stop", "rm")
+
+
+
+
+
+def _assert_container_owned(
+
+    executor: Any, *, name: str, data_root: Optional[Path]
+
+) -> Dict[str, Any]:
+
+    """Re-scan and assert `name` is an owned/legacy_owned container (D-12)."""
+
+    rows = _ps_rows(executor)
+
+    registry = _registry_evidence(data_root)
+
+    buckets = classify_containers(rows, registry)
+
+    for bucket in ("owned", "legacy_owned"):
+
+        for row in buckets[bucket]:
+
+            if row["name"] == name:
+
+                return row
+
+    raise CliError(
+
+        message=(
+
+            f"container {name!r} is not an AISC-owned resource "
+
+            "(unverified or unknown) - action refused"
+
+        ),
+
+        exit_code=6,
+
+        error_code="AISC_ERR_OWNERSHIP_REFUSED",
+
+    )
+
+
+
+
+
+def _assert_image_operable(
+
+    executor: Any, *, image_id: str, data_root: Optional[Path],
+
+    allow_in_use: bool,
+
+) -> Dict[str, Any]:
+
+    """Re-scan and assert the image is owned/legacy_owned (D-12). When
+
+    allow_in_use=False an ancestor-container check is also enforced
+
+    (retag works on in-use images; rmi does not)."""
+
+    rows = _image_universe(executor)
+
+    owned_ids = _filtered_image_ids(executor, "label=org.aisc.managed=true")
+
+    buckets, dangling = classify_images(
+
+        rows, context="management", owned_ids=owned_ids
+
+    )
+
+    target: Optional[Dict[str, Any]] = None
+
+
+
+    def matches(row: Dict[str, Any]) -> bool:
+
+        rid = str(row.get("id") or "")
+
+        return rid == image_id or rid.endswith(image_id)
+
+
+
+    for bucket in ("owned", "legacy_owned"):
+
+        for row in buckets[bucket]:
+
+            if matches(row):
+
+                target = dict(row)
+
+                break
+
+        if target:
+
+            break
+
+    if target is None:
+
+        for row in dangling:
+
+            if matches(row):
+
+                target = {"id": row["id"], "name": row["id"]}
+
+                break
+
+    if target is None:
+
+        raise CliError(
+
+            message=(
+
+                f"image {image_id!r} is not an AISC-owned resource "
+
+                "(unverified or unknown) - action refused"
+
+            ),
+
+            exit_code=6,
+
+            error_code="AISC_ERR_OWNERSHIP_REFUSED",
+
+        )
+
+    if not allow_in_use:
+
+        ps = executor.run_captured(
+
+            ["ps", "-a", "--filter", f"ancestor={target['id']}",
+
+             "--format", "{{.ID}}"],
+
+            timeout=15.0,
+
+        )
+
+        if getattr(ps, "exit_code", 1) == 0 and (ps.stdout or "").strip():
+
+            raise CliError(
+
+                message=(
+
+                    "image is referenced by a container - "
+
+                    "remove the container(s) first"
+
+                ),
+
+                exit_code=6,
+
+                error_code="AISC_ERR_OWNERSHIP_REFUSED",
+
+            )
+
+    return target
+
+
+
+
+
+def container_management_action(
+
+    executor: Any, *, name: str, action: str, data_root: Optional[Path] = None
+
+) -> Dict[str, Any]:
+
+    """Start/stop/remove ONE aisc-owned container (D-12).
+
+
+
+    rm = stop + rm -f composed (same order as docker_cleanup). The
+
+    ownership re-scan runs inside the maintenance lock; a refused action
+
+    never touches docker."""
+
+    if action not in _MANAGEMENT_ACTIONS:
+
+        raise CliError(
+
+            message=f"unknown container action: {action}",
+
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+
+            error_code="AISC_ERR_USAGE",
+
+        )
+
+    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
+
+    from aisc.application.data_root import shared_root
+
+
+
+    root = Path(data_root) if data_root else shared_root()
+
+    argvs: List[List[str]] = []
+
+    with docker_maintenance_lock_at_root(root):
+
+        row = _assert_container_owned(executor, name=name, data_root=root)
+
+        running = row["state"] == "running"
+
+        if action == "start":
+
+            argvs.append(["start", name])
+
+        elif action == "stop":
+
+            if running:
+
+                argvs.append(["stop", name])
+
+        else:  # rm: stop (if needed) then remove
+
+            if running:
+
+                argvs.append(["stop", name])
+
+            argvs.append(["rm", "-f", name])
+
+        for argv in argvs:
+
+            pr = executor.run_captured(argv, timeout=60.0)
+
+            if pr.exit_code != 0:
+
+                raise CliError(
+
+                    message=(
+
+                        f"container {action} failed: "
+
+                        f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
+
+                    ),
+
+                    exit_code=10,
+
+                    error_code="AISC_ERR_CONTAINER_FAILED",
+
+                )
+
+    return {
+
+        "schema_version": MANAGEMENT_SCHEMA,
+
+        "action": f"container-{action}",
+
+        "name": name,
+
+        "ownership": row["ownership"],
+
+        "argvs": argvs,
+
+        "warnings": [],
+
+    }
+
+
+
+
+
+def image_management_rm(
+
+    executor: Any, *, image_id: str, data_root: Optional[Path] = None
+
+) -> Dict[str, Any]:
+
+    """Remove ONE unreferenced aisc-owned image (D-12)."""
+
+    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
+
+    from aisc.application.data_root import shared_root
+
+
+
+    root = Path(data_root) if data_root else shared_root()
+
+    with docker_maintenance_lock_at_root(root):
+
+        target = _assert_image_operable(
+
+            executor, image_id=image_id, data_root=root, allow_in_use=False
+
+        )
+
+        argv = ["rmi", target["id"]]
+
+        pr = executor.run_captured(argv, timeout=120.0)
+
+        if pr.exit_code != 0:
+
+            raise CliError(
+
+                message=(
+
+                    f"image rmi failed: "
+
+                    f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
+
+                ),
+
+                exit_code=10,
+
+                error_code="AISC_ERR_IMAGE_NOT_FOUND",
+
+            )
+
+    return {
+
+        "schema_version": MANAGEMENT_SCHEMA,
+
+        "action": "image-rm",
+
+        "id": target["id"],
+
+        "argv": argv,
+
+        "warnings": [],
+
+    }
+
+
+
+
+
+def image_management_tag(
+
+    executor: Any, *, image_id: str, repository: str, tag: str,
+
+    data_root: Optional[Path] = None,
+
+) -> Dict[str, Any]:
+
+    """Retag ONE aisc-owned image (D-12 'rename'): adds repository:tag.
+
+    The old tag is preserved (retag semantics); in-use images allowed."""
+
+    if not repository or not tag or any(
+
+        ch.isspace() or ch == "'" or ch == '"' for ch in repository + tag
+
+    ):
+
+        raise CliError(
+
+            message="invalid repository/tag",
+
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+
+            error_code="AISC_ERR_USAGE",
+
+        )
+
+    from aisc.adapters.maintenance_lock import docker_maintenance_lock_at_root
+
+    from aisc.application.data_root import shared_root
+
+
+
+    root = Path(data_root) if data_root else shared_root()
+
+    ref = f"{repository}:{tag}"
+
+    with docker_maintenance_lock_at_root(root):
+
+        target = _assert_image_operable(
+
+            executor, image_id=image_id, data_root=root, allow_in_use=True
+
+        )
+
+        argv = ["tag", target["id"], ref]
+
+        pr = executor.run_captured(argv, timeout=60.0)
+
+        if pr.exit_code != 0:
+
+            raise CliError(
+
+                message=(
+
+                    f"image tag failed: "
+
+                    f"{(pr.stderr or pr.stdout or '').strip()[:200]}"
+
+                ),
+
+                exit_code=10,
+
+                error_code="AISC_ERR_GENERAL",
+
+            )
+
+    return {
+
+        "schema_version": MANAGEMENT_SCHEMA,
+
+        "action": "image-tag",
+
+        "id": target["id"],
+
+        "ref": ref,
+
+        "argv": argv,
+
+        "warnings": [],
+
     }

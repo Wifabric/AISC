@@ -26,6 +26,9 @@ import { setExplorerCollapsed } from "../../lib/panelLayout";
 import { validateBasename } from "./basename";
 import ChangeBadge from "./ChangeBadge.vue";
 import WorkRecordsView from "./WorkRecordsView.vue";
+import CcSwitchUiTab from "../ccswitch/CcSwitchUiTab.vue";
+import ExtensionsView from "./ExtensionsView.vue";
+import HostToolsServicePanel from "./HostToolsServicePanel.vue";
 import ConversationsPane from "./ConversationsPane.vue";
 import TypeIcon from "./TypeIcon.vue";
 import type { WorkspaceNode } from "../../types";
@@ -220,6 +223,8 @@ const TITLE_KEY: Record<string, string> = {
   "work-records": "explorer.tab.workRecords",
   artifacts: "explorer.tab.artifacts",
   services: "explorer.tab.services",
+  providers: "explorer.tab.providers",
+  extensions: "explorer.tab.extensions",
 };
 
 const WEB_REASON_KEY: Record<string, string> = {
@@ -899,7 +904,7 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- v2.1.7 S5c: shared top search (VSCode-style). Applies to the active
          panel: files tab = flat match list over every loaded directory;
          artifacts tab = filters every group. Hidden on the services tab. -->
-    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records'" class="explorer-search">
+    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records' && artifactFilter !== 'providers' && artifactFilter !== 'extensions'" class="explorer-search">
       <input
         v-model="panelSearch"
         type="search"
@@ -910,6 +915,16 @@ function onTreeKeydown(e: KeyboardEvent) {
       />
     </div>
 
+    <!-- b5 D-1: Provider UI（原 TabBar 虚拟页签）与扩展管理进 dock。
+         两个独立 v-if（自成块，不接下方 work-records 的 else-if 链）。 -->
+    <div
+      v-if="explorer.activeKind === 'providers' || explorer.activeKind === 'extensions'"
+      class="explorer-body"
+      :data-testid="explorer.activeKind === 'providers' ? 'providers-view' : 'extensions-view'"
+    >
+      <CcSwitchUiTab v-if="explorer.activeKind === 'providers'" :visible="true" />
+      <ExtensionsView v-else />
+    </div>
     <!-- 10e: cross-fade between the tree and artifacts panels (out-in). -->
     <Transition name="fade" mode="out-in">
     <!-- Explorer tree -->
@@ -1077,6 +1092,7 @@ function onTreeKeydown(e: KeyboardEvent) {
       </template>
     </div>
 
+
     <!-- v2.1.15 b6: Work Records aggregates provider conversations while
          All Sessions keeps its unchanged flat history semantics. -->
     <WorkRecordsView
@@ -1124,7 +1140,8 @@ function onTreeKeydown(e: KeyboardEvent) {
         </div>
 
     <!-- svc-4+: Web services panel (gateway state + registered services) -->
-    <div v-else key="services" class="explorer-body services-panel">
+    <div v-else-if="artifactFilter === 'services'" key="services" class="explorer-body services-panel">
+      <HostToolsServicePanel />
       <p v-if="!servicesSupported" class="explorer-empty">{{ t("sidebar.webServicesUnsupported") }}</p>
       <template v-else-if="runtime.webServices">
         <p v-if="runtime.webServices.gateway.state !== 'ready'" class="explorer-empty">

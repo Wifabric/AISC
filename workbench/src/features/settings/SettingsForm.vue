@@ -101,13 +101,12 @@ const EFFECT_KEY: Record<EffectKind, string> = {
 // workspace, UI dead until restart). The Record<Group,...> typing below
 // makes a future missing entry a COMPILE error, and the heading falls back
 // to the raw group id instead of undefined.
-const GROUPS = ["ui", "terminal", "window", "hostTools", "machines", "performance", "disk", "about"] as const;
+const GROUPS = ["ui", "terminal", "window", "machines", "performance", "disk", "about"] as const;
 type SettingsGroup = (typeof GROUPS)[number];
 const GROUP_KEY: Record<SettingsGroup, string> = {
   ui: "settings.group.ui",
   terminal: "settings.group.terminal",
   window: "settings.group.window",
-  hostTools: "settings.group.hostTools",
   machines: "settings.group.machines",
   performance: "settings.group.performance",
   disk: "settings.group.disk",
@@ -151,29 +150,6 @@ const terminal = computed<TerminalSettings>(() => store.doc?.terminal ?? ({} as 
 const windowS = computed<WindowSettings>(() => store.doc?.window ?? ({} as WindowSettings));
 /** F2: the host-tools whitelist working copy (mutated in place; rows with an
  * empty name/program are dropped server-side by the sanitizer). */
-const hostTools = ref<import("../../types").HostToolEntry[]>(
-  (store.doc?.hostTools ?? []).map((e) => ({ readOnlyPreset: "", ...e })));
-/** Reload the working copy whenever the backend doc is re-applied (load,
- * cancel, reset). */
-watch(
-  () => store.doc,
-  (d) => {
-    hostTools.value = (d?.hostTools ?? []).map((e) => ({ readOnlyPreset: "", ...e }));
-  },
-);
-/** Edit -> doc sync (dirty + save both read the doc; empty rows are
- * filtered here, the Rust sanitizer is the second gate). */
-watch(hostTools, (rows) => {
-  if (!store.doc) return;
-  store.doc.hostTools = rows
-    .filter((r) => r.name.trim() && r.program.trim())
-    .map((r) => ({
-      name: r.name,
-      program: r.program,
-      ...(r.readOnlyPreset ? { readOnlyPreset: r.readOnlyPreset } : {}),
-    }));
-}, { deep: true });
-
 /** R4b: remote machine profiles working copy — same flow as hostTools. */
 const machines = ref<import("../../types").RemoteMachine[]>(
   (store.doc?.remoteMachines ?? []).map((m) => ({ ...m })));
@@ -320,48 +296,69 @@ function dockerActionableCount(b: {
   return new Set([...b.owned, ...b.legacy_owned].map((row) => row.id)).size;
 }
 
-/** Compact preview rows: one per actionable/unverified bucket, names capped. */
-const dockerPreviewRows = computed(() => {
-  const r = store.dockerReport;
-  if (!r) return [];
-  const names = (list: { name: string }[]) =>
-    list.length === 0
-      ? "—"
-      : list.map((e) => e.name).slice(0, 6).join("、") + (list.length > 6 ? ` …（${list.length}）` : "");
-  return [
-    { label: t("settings.docker.rowContainers"), value: names([...r.containers.owned, ...r.containers.legacy_owned]) },
-    { label: t("settings.docker.rowUnverifiedContainers"), value: names(r.containers.unverified) },
-    { label: t("settings.docker.rowImages"), value: names([...r.images.owned, ...r.images.legacy_owned]) },
-    { label: t("settings.docker.rowUnverifiedImages"), value: names(r.images.unverified) },
-  ];
-});
-
-const dockerResourceSummaryRows = computed(() => {
+interface DockerSummaryCard {
+  key: string;
+  label: string;
+  value: string;
+  reclaimable: number | null;
+  reportOnly: boolean;
+}
+/** b3 (2.1.16 反馈 #9): card-grid summary — per-category count + reclaimable
+ * plus a leading totals card, replacing the bare label/value row list. */
+const dockerResourceSummary = computed(() => {
   const report = store.dockerReport;
   const inspect = store.inspectReport;
-  if (!report) return [];
+  if (!report) return null;
   const categoryCount = (key: string) => inspect?.categories?.[key]?.summary.count ?? 0;
   const reclaimable = (key: string) => inspect?.categories?.[key]?.summary.reclaimable_bytes ?? 0;
-  return [
+  const cards: DockerSummaryCard[] = [
     {
+      key: "containers",
       label: t("settings.docker.rowContainers"),
       value: `${dockerActionableCount(report.containers)} / ${categoryCount("containers")}`,
+      reclaimable: reclaimable("containers"),
+      reportOnly: false,
     },
     {
+      key: "images",
       label: t("settings.docker.rowImages"),
       value: `${dockerActionableCount(report.images)} / ${categoryCount("images")}`,
+      reclaimable: reclaimable("images"),
+      reportOnly: false,
     },
     {
+      key: "dangling",
       label: t("settings.docker.rowDangling"),
       value: `${report.danglingOwned.length}`,
+      reclaimable: null,
+      reportOnly: false,
     },
     {
+      key: "build_cache",
       label: t("settings.docker.rowBuildCache"),
-      value: `${categoryCount("build_cache")} · ${formatBytes(reclaimable("build_cache"))}`,
+      value: `${categoryCount("build_cache")}`,
+      reclaimable: reclaimable("build_cache"),
+      reportOnly: false,
     },
-    { label: t("settings.docker.rowVolumes"), value: `${categoryCount("volumes")}` },
-    { label: t("settings.docker.rowNetworks"), value: `${categoryCount("networks")}` },
+    {
+      key: "volumes",
+      label: t("settings.docker.rowVolumes"),
+      value: `${categoryCount("volumes")}`,
+      reclaimable: null,
+      reportOnly: true,
+    },
+    {
+      key: "networks",
+      label: t("settings.docker.rowNetworks"),
+      value: `${categoryCount("networks")}`,
+      reclaimable: null,
+      reportOnly: true,
+    },
   ];
+  const known = Object.values(inspect?.categories ?? {});
+  const totalCount = known.reduce((sum, c) => sum + (c?.summary.count ?? 0), 0);
+  const totalReclaimable = known.reduce((sum, c) => sum + (c?.summary.reclaimable_bytes ?? 0), 0);
+  return { cards, totalCount, totalReclaimable };
 });
 
 async function onDockerCleanup() {
@@ -376,6 +373,14 @@ async function onDockerRebuild() {
   const ok = await confirm(t("settings.docker.rebuildConfirm"));
   if (!ok) return;
   await store.runDockerRebuild();
+}
+
+/** b3 (反馈 #9): dedicated build-cache cleanup — never touches containers. */
+async function onCacheCleanup() {
+  const { confirm } = await import("@tauri-apps/plugin-dialog");
+  const ok = await confirm(t("settings.docker.cacheCleanupConfirm"));
+  if (!ok) return;
+  await store.runCacheCleanup();
 }
 
 // --- v2.1.13 D-12: owned-resource management actions ------------------------
@@ -618,27 +623,6 @@ async function reopenOnboarding() {
           </p>
         </template>
 
-        <!-- F2 (D-10): host-tools whitelist card. Default EMPTY = the feature
-             is off (every container host_exec call is refused). -->
-        <template v-else-if="group === 'hostTools'">
-          <p class="help">{{ t("settings.hostTools.hint") }}</p>
-          <div v-for="(row, i) in hostTools" :key="i" class="field ht-row">
-            <input v-model.trim="row.name" class="ht-name" :placeholder="t('settings.hostTools.namePh')" :disabled="store.readOnly" />
-            <input v-model.trim="row.program" class="ht-program" :placeholder="t('settings.hostTools.programPh')" :disabled="store.readOnly" />
-            <select v-model="row.readOnlyPreset" :disabled="store.readOnly" :title="t('settings.hostTools.presetHint')">
-              <option value="">{{ t("settings.hostTools.presetNone") }}</option>
-              <option value="git-ro">{{ t("settings.hostTools.presetGitRo") }}</option>
-            </select>
-            <button class="ht-del" :disabled="store.readOnly" :title="t('settings.hostTools.remove')" @click="hostTools.splice(i, 1)">×</button>
-          </div>
-          <div class="field">
-            <button :disabled="store.readOnly" @click="hostTools.push({ name: '', program: '', readOnlyPreset: '' })">
-              ＋ {{ t("settings.hostTools.add") }}
-            </button>
-          </div>
-          <p class="note">{{ t("settings.hostTools.note") }}</p>
-        </template>
-
         <!-- R4b: remote machines — the targets the Workbench can drive. -->
         <template v-else-if="group === 'machines'">
           <p class="help">{{ t("settings.machines.hint") }}</p>
@@ -775,6 +759,13 @@ async function reopenOnboarding() {
               :title="t('settings.docker.cleanupTip')"
               @click="onDockerCleanup"
             >{{ t("settings.docker.cleanup") }}</button>
+            <!-- b3 (反馈 #9): 原重建位置改为专用构建缓存清理；重建右移 -->
+            <button
+              :disabled="store.dockerBusy || !store.dockerReport"
+              :title="t('settings.docker.cacheCleanupTip')"
+              data-testid="cache-cleanup-button"
+              @click="onCacheCleanup"
+            >{{ t("settings.docker.cacheCleanup") }}</button>
             <button
               :disabled="store.dockerRebuilding || !store.dockerReport"
               :title="t('settings.docker.rebuildTip')"
@@ -787,18 +778,26 @@ async function reopenOnboarding() {
               {{ t("settings.docker.unavailable") }}
             </p>
             <template v-else>
-              <div class="docker-resource-summary" data-testid="docker-resource-summary">
-                <div v-for="row in dockerResourceSummaryRows" :key="row.label" class="field disk-row">
-                  <span class="label">{{ row.label }}</span>
-                  <span class="val">{{ row.value }}</span>
+              <div v-if="dockerResourceSummary" class="docker-resource-summary" data-testid="docker-resource-summary">
+                <div class="docker-summary-card docker-summary-total" data-testid="docker-summary-card">
+                  <span class="ds-label">{{ t("settings.docker.totalCard") }}</span>
+                  <span class="ds-value">{{ dockerResourceSummary.totalCount }}</span>
+                  <span class="ds-sub">{{ t("settings.disk.reclaimable", { c: "", n: formatBytes(dockerResourceSummary.totalReclaimable) }) }}</span>
+                </div>
+                <div
+                  v-for="card in dockerResourceSummary.cards"
+                  :key="card.key"
+                  class="docker-summary-card"
+                  data-testid="docker-summary-card"
+                >
+                  <span class="ds-label">
+                    {{ card.label }}
+                    <em v-if="card.reportOnly">{{ t("settings.docker.reportOnly") }}</em>
+                  </span>
+                  <span class="ds-value">{{ card.value }}</span>
+                  <span v-if="card.reclaimable !== null" class="ds-sub">{{ formatBytes(card.reclaimable) }}</span>
                 </div>
               </div>
-              <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
-              <div v-for="row in dockerPreviewRows" :key="row.label" class="field disk-row">
-                <span class="label">{{ row.label }}</span>
-                <span class="val">{{ row.value }}</span>
-              </div>
-
               <div v-if="manageContainers.length" class="manage-list">
                 <p class="manage-title">{{ t("settings.docker.manage.containers") }}</p>
                 <div class="manage-thead">
@@ -1003,10 +1002,6 @@ input:disabled, select:disabled { opacity: 0.5; }
 .note { font-size: var(--font-xs); color: var(--text-faint); margin-top: 8px; }
 .disk-row .label { color: var(--text-2); }
 /* F2: host-tools whitelist rows */
-.ht-row { flex-wrap: nowrap; }
-.ht-name { max-width: 160px; }
-.ht-program { font-family: var(--font-mono); font-size: var(--font-sm); }
-.ht-row select { max-width: 150px; }
 .ht-del {
   min-width: 26px; min-height: 26px; padding: 0; flex: none;
 }
@@ -1089,5 +1084,11 @@ button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .manage-title { margin: 6px 0 2px; font-size: var(--font-xs); color: var(--text-2); }
 .manage-list + .manage-list { margin-top: 10px; }
 
-.docker-resource-summary { display:grid; gap:var(--space-1); padding:var(--space-2); border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
+.docker-resource-summary { display:grid; grid-template-columns:repeat(auto-fill, minmax(148px, 1fr)); gap:var(--space-1); padding:var(--space-2); border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
+.docker-summary-card { display:grid; gap:2px; padding:var(--space-2); border:var(--border-w) solid var(--border-2); border-radius:var(--radius-sm); background:var(--surface); min-width:0; }
+.docker-summary-card .ds-label { font-size:var(--font-xs); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-card .ds-label em { font-style:normal; margin-left:4px; color:var(--text-faint); border:var(--border-w) solid var(--border-2); border-radius:999px; padding:0 4px; }
+.docker-summary-card .ds-value { font-size:var(--font-lg); font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-card .ds-sub { font-size:var(--font-xs); color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docker-summary-total { border-color:var(--accent); background:var(--surface-3); }
 </style>

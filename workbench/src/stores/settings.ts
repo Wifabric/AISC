@@ -216,25 +216,6 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  async function runCacheCleanup(minAgeHours: number): Promise<void> {
-    cacheBusy.value = true;
-    cacheError.value = null;
-    try {
-      const result = await ipc.cacheCleanup(minAgeHours);
-      for (const p of result.prunes) {
-        cacheLog.value.push(
-          `${p.kind}: ${p.reclaimed || (p.error ? "失败 " + p.error : "无回收")}`
-        );
-      }
-      for (const w of result.warnings) cacheLog.value.push(`⚠ ${w}`);
-      if (cacheLog.value.length > 20) cacheLog.value.splice(0, cacheLog.value.length - 20);
-      cacheUsage.value = { dockerAvailable: true, rows: result.rows_after };
-    } catch (e) {
-      cacheError.value = errorText(e);
-    } finally {
-      cacheBusy.value = false;
-    }
-  }
 
   // --- B3 (2.1.12): docker resource admin (scan preview -> confirm -> act) ---
   const dockerReport = ref<import("../lib/ipc").DockerScanReport | null>(null);
@@ -264,6 +245,30 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   /** b16: one Docker data plane — ownership scan plus itemized inspect. */
+  type CachePrune = { kind: string; reclaimed?: string; error?: string | null };
+  type CacheCleanup = { prunes: CachePrune[]; warnings: string[] };
+
+  /** v2.1.16 preview b1: Docker cleanup output is one actionable result line. */
+  function cacheCleanupText(cache: CacheCleanup): string {
+    const cachePrunes = cache.prunes.filter((p) => p.kind === "builder" || p.kind === "dangling");
+    const failed = cache.prunes.filter((p) => p.error).length;
+    const reclaimed = [...cachePrunes]
+      .reverse()
+      .map((p) => {
+        const total = /Total reclaimed space:\s*(.+)/.exec(p.reclaimed ?? "")?.[1]?.trim();
+        return total ?? p.reclaimed?.trim();
+      })
+      .find((value) => value && value !== "0B" && value !== "0 B");
+    const nodeRemoved = cache.prunes.some((p) =>
+      p.kind === "node-image" && !p.error && /Untagged:/.test(p.reclaimed ?? ""));
+    const parts = [
+      reclaimed ? `回收 ${reclaimed}` : "无可回收空间",
+      failed ? `失败 ${failed}` : "",
+      nodeRemoved ? "Node 基础镜像标签已移除" : "",
+      cache.warnings.length ? `警告 ${cache.warnings.length}` : "",
+    ].filter(Boolean);
+    return parts.join("，");
+  }
   async function refreshDockerResources(): Promise<void> {
     const [scan, inspect] = await Promise.all([
       ipc.dockerScan("upgrade"),
@@ -271,8 +276,8 @@ export const useSettingsStore = defineStore("settings", () => {
     ]);
     dockerReport.value = scan;
     inspectReport.value = inspect;
-    for (const warning of scan.warnings) dockerLogLine(`⚠ ${warning}`);
-    for (const warning of inspect.warnings) dockerLogLine(`⚠ ${warning}`);
+    // Preview b1: warnings stay on the cards/diagnostics instead of flooding
+    // the operation log after every cleanup refresh.
   }
 
   async function scanDockerResources(): Promise<void> {
@@ -293,29 +298,36 @@ export const useSettingsStore = defineStore("settings", () => {
   async function runDockerCleanup(): Promise<void> {
     dockerBusy.value = true;
     dockerError.value = null;
+    dockerLog.value = [];
     try {
       const r = await ipc.dockerCleanup("uninstall");
-      dockerLogLine(
-        `容器: 清除 ${r.containers.removed.length}` +
-          (r.containers.failed.length ? ` · 失败 ${r.containers.failed.length}（${r.containers.failed.join(", ")}）` : "") +
-          (r.containers.not_found.length ? ` · 已不存在 ${r.containers.not_found.length}` : "")
-      );
-      dockerLogLine(
-        `镜像: 清除 ${r.images.removed.length}` +
-          (r.images.failed.length ? ` · 失败 ${r.images.failed.length}（${r.images.failed.join(", ")}）` : "")
-      );
-      if (r.skippedUnverified.length)
-        dockerLogLine(`跳过未验证资源 ${r.skippedUnverified.length} 个（永不删除）`);
-
       const cache = await ipc.cacheCleanup(24);
-      for (const prune of cache.prunes) {
-        dockerLogLine(
-          `${prune.kind}: ${prune.reclaimed || (prune.error ? "失败 " + prune.error : "无回收")}`
-        );
-      }
-      for (const warning of [...r.warnings, ...cache.warnings]) {
-        dockerLogLine(`⚠ ${warning}`);
-      }
+      const failed = r.containers.failed.length + r.images.failed.length;
+      const parts = [
+        `容器 ${r.containers.removed.length}`,
+        `镜像 ${r.images.removed.length}`,
+        failed ? `失败 ${failed}` : "",
+        cacheCleanupText(cache),
+      ].filter(Boolean);
+      dockerLogLine(`清理完成：${parts.join("，")}`);
+      await refreshDockerResources();
+    } catch (e) {
+      dockerError.value = errorText(e);
+    } finally {
+      dockerBusy.value = false;
+    }
+  }
+
+  /** b3 (2.1.16 反馈 #9): dedicated build-cache cleanup — builder + dangling
+   * prune only (CLI owns the 24h safety filter); containers/images untouched.
+   * Refreshes the unified scan so pre/post numbers are always current. */
+  async function runCacheCleanup(): Promise<void> {
+    dockerBusy.value = true;
+    dockerError.value = null;
+    dockerLog.value = [];
+    try {
+      const cache = await ipc.cacheCleanup(24);
+      dockerLogLine(`清理完成：${cacheCleanupText(cache)}`);
       await refreshDockerResources();
     } catch (e) {
       dockerError.value = errorText(e);

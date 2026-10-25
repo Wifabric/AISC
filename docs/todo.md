@@ -235,3 +235,50 @@
   - [x] preview.5 实测追加 b14：协议错误 detail、远程 Explorer 首载、Recent 配置机器名迁移、同 ID image tag 聚合（preview.6 已发布，待实机）
   - [x] preview.6 实测追加 b15：更新链路、中文标题、Claude parent、Work Records 折叠/去 Active、Docker 统计与 alias（preview.7 已发布，待实机）
   - [x] preview.7 实测追加 b16：新建 Work Record 默认折叠、Help/About 语义、fit 弹层移除、更新 Atom fallback、统一 Docker 资源面板（v2.1.15 final 收口）
+
+# v2.1.16-target（2026-10-17 开题；2026-10-25 b1–b13 与 preview-fixes b1–b3 收口，v2.1.16 final 发布；计划已归档）
+- fix
+  - [x] 容器内 codex 自动更新报 npm EEXIST；codex/claude 更新落持久 toolchain（b1）
+  - [x] project bind mount 上 Codex 自更新 EACCES rename；shadow 运行 + 持久安装链路修复（b13）
+- UX
+  - [x] Work Records 五项：只读预览、父子拖拽、新建/分支、加载占位、同名级联删除（b2）
+  - [x] Docker 资源卡片、中文语义、扫描/清理/重建布局与数据刷新（b3/b8/b9/b13）
+- 扩展
+  - [x] 供应商/扩展迁入左侧 rail，TabBar 仅 bash/codex/claude（b5/b6）
+  - [x] Skills/MCP/Plugins 查看与生命周期管理、三市场检索安装、进度动画、来源冲突提示（b5–b13）
+  - [x] Skill 按仓库聚合，支持子项单独操作与仓库级批量操作（b13）
+  - [x] 出厂 Skills/Plugins 清空，官方插件市场保留（b10/b12）
+- 终端
+  - [x] bash/claude/codex 普通拖选自动进宿主剪贴板；Codex mouse tracking 下无需 Shift（b9–b12）
+- 稳定性
+  - [x] 关闭工作区后租约释放，重进不被阻断（b6）
+  - [x] factory npm 与 runtime toolchain 分离，claude/codex wrappers 不再 not found（b8）
+  - [x] Docker 冷启动基础镜像按源轮转；每源 120 秒，无需手工 tag（b12）
+  - [x] builder cache 全量 `--all` 清理并移除 Node 基础标签（b9/b13）
+  - [x] tests.yml 收敛 pytest，九组矩阵全绿（方案 B）
+- 发布
+  - [x] b1–b13 本地门禁与 develop CI 全绿；关键链路 Computer Use/真实容器/真实 Docker 预复测通过
+  - [x] Workbench `v2.1.16-preview.1` 发布准备；CLI `0.1.9.dev0` TestPyPI 配对验证
+- 追加（v2.1.16 preview.1 反馈，2026-10-25；preview-fixes b1；v2.1.16-preview.2 发布准备）
+  - [x] 磁盘清理输出一行化并移除估算 disclaimer
+  - [x] 扩展侧栏随宽度收缩；顶层文件搜索在 Provider/Extensions 隐藏
+  - [x] Skills/MCP/Plugins 状态与操作互相隔离；搜索清空即清结果
+  - [x] 子技能介绍与父组展开分离；安装进度稳定显示 `x/y`
+  - [x] 出厂技能改为仅 grill-me + caveman（覆盖 b10 全清裁定）
+- 追加（v2.1.16 preview.2 反馈，2026-10-25；preview-fixes b2；v2.1.16-preview.3 发布准备）
+  - [x] 子技能动作右置、说明独立换行并再次点击收起
+  - [x] 磁盘页删除第一层重复资源名列表
+  - [x] 宿主工具 F2 合并到 Services 视图
+  - [x] Smithery MCP 改用 HTTP deploymentUrl 安装
+  - [x] 操作完成 / 失败 toast 与重复 spinner 收敛
+  - [x] skills.sh / Smithery / GitHub 操作镜像兜底
+- 追加（v2.1.16 preview.3 反馈，2026-10-25；preview-fixes b3；v2.1.16 final 收口）
+  - [x] 出厂 caveman 改为 13 个 `caveman-*` + grill-me
+  - [x] 无宿主代理 skill 安装 / 更新使用 archive 探测 + 镜像 Git 暂存
+  - [x] 更新 / 卸载按钮动画按 action + target 区分
+  - [x] Workbench 自更新 API / asset / raw 镜像兜底
+  - [x] cc-switch resolver 与构建网络静态契约补齐
+  - [x] v2.1.16-preview.4 实机冒烟与远程 CI 全绿
+- 发布
+  - [x] Workbench `v2.1.16` final；CLI `0.1.9` final
+  - [x] `2.1.16-dev-plans` 与 `2.1.16-preview-fixes` 均归档

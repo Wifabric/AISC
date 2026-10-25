@@ -95,22 +95,67 @@ fn err_chain(error: &dyn std::error::Error) -> String {
     out
 }
 
+fn github_url_candidates(url: &str) -> Vec<String> {
+    let mut candidates = vec![url.to_string()];
+    if url.starts_with("https://api.github.com/") {
+        // ghfast.top returns 403 for API paths; gh-proxy.com has been
+        // verified to proxy GitHub's JSON API without rewriting the body.
+        candidates.push(format!("https://gh-proxy.com/{url}"));
+    } else if url.starts_with("https://github.com/")
+        || url.starts_with("https://raw.githubusercontent.com/")
+    {
+        candidates.push(format!("https://ghfast.top/{url}"));
+        candidates.push(format!("https://gh-proxy.com/{url}"));
+    }
+    candidates
+}
+
 async fn get_with_fallback(
     url: &str,
     headers: reqwest::header::HeaderMap,
 ) -> Result<reqwest::Response, WorkbenchError> {
     let clients = update_clients()?;
+    let candidates = github_url_candidates(url);
     let mut errors = Vec::new();
+    let mut last_response: Option<reqwest::Response> = None;
+    // Attempt-major order matters: on the first pass a reachable mirror gets
+    // a chance before a flaky direct URL is retried. HTTP failures are not
+    // returned immediately, so a direct 403 can still reach the API mirror.
     for attempt in 0..3 {
-        for client in &clients {
-            match client.get(url).headers(headers.clone()).send().await {
-                Ok(response) => return Ok(response),
-                Err(e) => errors.push(format!("attempt {}: {}", attempt + 1, err_chain(&e))),
+        for candidate in &candidates {
+            for client in &clients {
+                match client
+                    .get(candidate.as_str())
+                    .headers(headers.clone())
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => return Ok(response),
+                    Ok(response) => {
+                        let status = response.status();
+                        errors.push(format!(
+                            "attempt {} {}: HTTP {}",
+                            attempt + 1,
+                            candidate,
+                            status
+                        ));
+                        last_response = Some(response);
+                    }
+                    Err(e) => errors.push(format!(
+                        "attempt {} {}: {}",
+                        attempt + 1,
+                        candidate,
+                        err_chain(&e)
+                    )),
+                }
             }
         }
         if attempt < 2 {
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
+    }
+    if let Some(response) = last_response {
+        return Ok(response);
     }
     Err(WorkbenchError::usage(format!(
         "{UPDATE_ERROR_NETWORK}: {url}: {}",
@@ -743,6 +788,44 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn github_url_candidates_add_asset_and_raw_mirrors() {
+        let url = "https://github.com/Wifabric/AISC/releases/download/v2.1.16-preview.3/AISC-Workbench-2.1.16-preview.3-setup.exe";
+        assert_eq!(
+            github_url_candidates(url),
+            vec![
+                url.to_string(),
+                format!("https://ghfast.top/{url}"),
+                format!("https://gh-proxy.com/{url}"),
+            ]
+        );
+
+        let raw = "https://raw.githubusercontent.com/Wifabric/AISC/v2.1.16-preview.3/src/aisc/VERSION";
+        assert_eq!(
+            github_url_candidates(raw),
+            vec![
+                raw.to_string(),
+                format!("https://ghfast.top/{raw}"),
+                format!("https://gh-proxy.com/{raw}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn github_api_candidates_use_only_the_tested_api_mirror() {
+        let url = "https://api.github.com/repos/Wifabric/AISC/releases?per_page=30";
+        assert_eq!(
+            github_url_candidates(url),
+            vec![url.to_string(), format!("https://gh-proxy.com/{url}")]
+        );
+    }
+
+    #[test]
+    fn non_github_urls_have_no_mirror_candidates() {
+        let url = "https://example.com/file";
+        assert_eq!(github_url_candidates(url), vec![url.to_string()]);
+    }
 
     #[test]
     fn local_cli_version_reads_frozen_envelope_cli_version_field() {

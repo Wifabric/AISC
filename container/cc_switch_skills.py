@@ -15,21 +15,23 @@ from pathlib import Path
 from typing import TextIO
 
 
-BUNDLED_SKILLS = (
+# v2.1.16 preview b1（2026-10-25 用户裁定）：安装 AISC 时通过既有 cc-switch
+# 管理链路预装 grill-me 与 caveman。其余技能仍由扩展商城按需安装。
+BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = (
     ("caveman", "Ultra-compressed agent communication", "JuliusBrussee", "caveman"),
-    (
-        "document-skills",
-        "Bundled document creation and editing skills",
-        "anthropics",
-        "skills",
-    ),
+    ("caveman-commit", "Ultra-compressed commit messages", "JuliusBrussee", "caveman"),
+    ("caveman-compress", "Compress memory files into caveman format", "JuliusBrussee", "caveman"),
+    ("caveman-discover", "Discover and label repository LLM workflows", "JuliusBrussee", "caveman"),
+    ("caveman-evidence-review", "Review Caveman Cloud evidence read-only", "JuliusBrussee", "caveman"),
+    ("caveman-explore", "Read-only repository explorer for localization", "JuliusBrussee", "caveman"),
+    ("caveman-help", "Caveman modes quick reference", "JuliusBrussee", "caveman"),
+    ("caveman-learn", "Apply measured Caveman cost fixes", "JuliusBrussee", "caveman"),
+    ("caveman-manage", "Manage Caveman experiment lifecycle safely", "JuliusBrussee", "caveman"),
+    ("caveman-optimize", "Evaluate Caveman optimization observations", "JuliusBrussee", "caveman"),
+    ("caveman-review", "Ultra-compressed code review comments", "JuliusBrussee", "caveman"),
+    ("caveman-setup", "Wire repositories through Caveman Cloud", "JuliusBrussee", "caveman"),
+    ("caveman-stats", "Report session token usage and attribution", "JuliusBrussee", "caveman"),
     ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
-    (
-        "superpowers",
-        "Structured software engineering workflows",
-        "obra",
-        "superpowers",
-    ),
 )
 REVISION_FILE = ".aisc-bundle.sha256"
 MARKER_FILE = ".aisc-bundled-skills.sha256"
@@ -56,8 +58,8 @@ def _load_skill_states(db_path: Path) -> dict[str, tuple[bool, bool]]:
             """
             SELECT name, enabled_claude, enabled_codex
             FROM skills
-            WHERE name IN (?, ?, ?, ?)
-            """,
+            WHERE name IN ({placeholders})
+            """.format(placeholders=",".join("?" for _ in BUNDLED_SKILLS)),
             tuple(skill[0] for skill in BUNDLED_SKILLS),
         ).fetchall()
     finally:

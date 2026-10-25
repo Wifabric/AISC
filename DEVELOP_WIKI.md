@@ -36,6 +36,14 @@ git status --short
      删除仓库内全部标记为 pre-release 的 GitHub Release 记录及其上传资产，逐项复核
      Releases 页只剩正式 final release。`v*` git tag 仍是不可变发布标识，默认保留；
      如需连 tag 一并删除，必须另行获得用户明确裁定。
+   - **最终 release 发布并验证后，反馈站条目补最终解决回复（2026-10-16 用户裁定）**：
+     对已纳入本阶段范围的反馈，在首轮 `replied` 基础上追加 final release 说明回复，
+     并把状态更新为 `resolved`；按反馈数据仓库 README 工作流提交推送，复核站点缓存
+     后显示 final 版本与 resolved 状态。未纳入本阶段的反馈不得伪装关闭，需转后续 intake。
+   - **最终 release 发布并验证后，清理本地和远端临时开发分支（2026-10-16 用户裁定）**：
+     删除本阶段产生且已并入长期线的本地/远端 feature、fix、preview、release-prep 分支；
+     仅保留 `main`、`develop` 及经用户明确裁定的同类长期分支。删除前必须确认分支已合并
+     或其历史已由 PR/merge commit/tag 保留；git tag 不随分支删除。
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
@@ -353,6 +361,8 @@ config/versions.env
 
 ### 4.5 Docker 构建与运行
 
+构建前宿主侧会按 `NODE_IMAGE` 与 `NODE_IMAGE_MIRRORS` 预拉基础镜像；每个源默认最多 120 秒并自动切换，成功后写入 bare 本地 tag。`AISC_PULL_TIMEOUT_S` 是慢链路显式覆盖。
+
 `aisc build` 从 `config/versions.env` 解析 `USE_CN_MIRROR`、`NODE_IMAGE`、`NODE_IMAGE_CN`，将选定 Node image 和镜像源标志传给：
 
 ```text
@@ -387,6 +397,8 @@ docker run --rm -it \
 8. 可选运行 AI brief，然后将 PID 1 `exec` 给用户选择的进程。
 
 `container/claude-wrapper` 每次启动重新注入 Claude env，并默认绕过权限确认。`container/codex-wrapper` 注入 Codex env，并默认绕过 approvals/sandbox/hook trust。用户显式给出相应权限参数时 wrapper 不重复追加。`container/cc-switch-wrapper` 通过当前作用域设置 `HOME`，使 Skills 目标与 temporary/project 一致。
+
+b13 起Codex project 模式自更新额外经过容器内 shadow：`codex-wrapper` 先把持久 prefix 的完整 `@openai` scope 复制到 `/tmp/aisc-codex-shadow`，再执行 shadow 入口。这样 Codex 自更新仍安装到 `/opt/aisc/toolchain/npm-global`，但避免 Windows bind mount 对正在运行包目录执行 rename 的 EACCES。
 
 ## 5. 仓库地图
 
@@ -645,16 +657,28 @@ PROXY_ENABLED=0|1
 
 ### 9.1 实际框架和主命令
 
-仓库测试以 Python stdlib `unittest` 风格编写——不依赖 pytest fixture（dev extra 里的 pytest 只作运行器，不引入 fixture 依赖）。两种跑法等价，都在实际使用：
+测试运行器统一为 **pytest**（tests.yml、workbench-ci.yml 与本地门禁一致）。
+测试代码两种风格并存：历史主体是 stdlib `unittest` 风格（TestCase + assert*，
+pytest 直接收集）；v2.1.15 起新增模块允许 pytest 原生写法（fixture /
+parametrize / raises）。
 
 ```bash
-# unittest（tests.yml CI 与源码级调试）
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
-# pytest（workbench-ci.yml 与 local-gates 门禁；忽略 integration）
-python -m pytest tests/ -q --ignore=tests/integration
+# 全量（两个 CI workflow 与本地门禁同构）
+python -m pytest tests -q
+
+# 源文件级单测调试（仅对 unittest 风格模块可用；pytest 原生模块必须用 pytest 跑）
+PYTHONPATH=src python3 -m unittest tests.test_cc_switch_runtime -v
 ```
 
-新增测试保持 unittest 风格。真 SSH 集成测试在 `AISC_TEST_SSH` 门控下运行（无该环境变量即跳过）。
+新增测试：两种风格都可接受，但同一文件内保持一致；pytest fixture 不得引入
+执行顺序或跨测试全局状态依赖。
+
+**2026-10-18 用户裁定（方案 B）**：tests.yml 由 `unittest discover` 改跑
+pytest——修复 5 个模块级 `import pytest` 模块在无 pytest runner 下的 loader
+漂移；同时否决「只装 pytest 继续跑 unittest」形态（非 TestCase 类与函数式
+测试会被 unittest 静默跳过，形成假绿）。
+
+真 SSH 集成测试在 `AISC_TEST_SSH` 门控下运行（无该环境变量即跳过）。
 
 ### 9.2 测试范围
 
@@ -667,14 +691,14 @@ python -m pytest tests/ -q --ignore=tests/integration
 | `tests/packaging/test_windows_installer.py` | Windows installer 定义 | `PYTHONPATH=src python3 -m unittest tests.packaging.test_windows_installer -v` |
 | `tests/packaging/test_macos_installer.py` | macOS PKG 脚本结构 | `PYTHONPATH=src python3 -m unittest tests.packaging.test_macos_installer -v` |
 
-`__pycache__` 中可能残留已删除测试模块的 bytecode，不代表这些源测试仍存在。判断测试范围以实际 `test_*.py` 源文件和 unittest discovery 为准。
+`__pycache__` 中可能残留已删除测试模块的 bytecode，不代表这些源测试仍存在。判断测试范围以实际 `test_*.py` 源文件和 pytest 收集为准。
 
 ### 9.3 测试边界
 
 - `FakeDockerExecutor` 用于不连接 daemon 的计划和命令测试。
 - artifact 测试使用临时目录，不应在仓库中留下 staging/dist。
 - 静态 entrypoint 测试不能替代真实 Docker 启动；修改镜像、权限、TUN、文件系统锁或 Windows bind mount 后需要对应平台 smoke。
-- CI 分工：`tests.yml` 跑完整 unittest discover；`workbench-ci.yml` 在改动涉及 CLI 时跑 pytest 全量。`develop` 合入前仍应本地跑 `scripts/local-gates.ps1|.sh` 全门禁。
+- CI 分工：`tests.yml`（dispatch）与 `workbench-ci.yml` 均以 pytest 跑完整套件，tests.yml 额外覆盖 3 OS × 3 Python 矩阵。`develop` 合入前仍应本地跑 `scripts/local-gates.ps1|.sh` 全门禁。
 
 ## 10. 打包与产物
 
@@ -861,9 +885,9 @@ dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-
 通用检查：
 
 ```bash
-# Python 语法和完整 unittest
+# Python 语法和完整测试（pytest；2026-10-18 方案 B 起 tests.yml 同构）
 python3 -m compileall -q src packaging
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+python -m pytest tests -q
 
 # 当前真实 Bash 文件语法
 bash -n container/entrypoint.sh

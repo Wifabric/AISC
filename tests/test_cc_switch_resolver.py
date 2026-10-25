@@ -211,6 +211,38 @@ class ResolverTests(unittest.TestCase):
             r.resolve(version="latest")
         self.assertEqual(ctx.exception.code, CC_SWITCH_ERROR_RATE_LIMITED)
 
+    def test_direct_api_failure_retries_tested_github_api_mirror(self):
+        calls = []
+
+        def transport(url, headers, timeout):
+            calls.append(url)
+            if url.startswith("https://api.github.com/"):
+                raise ResolveError(CC_SWITCH_ERROR_NETWORK, "direct down")
+            self.assertTrue(url.startswith("https://gh-proxy.com/https://api.github.com/"))
+            return 200, {}, [V510]
+
+        resolved = self.resolver(transport).resolve(version="latest")
+        self.assertEqual(resolved.source, "api")
+        self.assertEqual(resolved.tag, "v5.10.1")
+        self.assertEqual(len(calls), 2)
+        self.assertTrue((self.cache_dir / "releases.json").exists())
+
+    def test_explicit_api_base_is_not_supplemented_by_public_mirror(self):
+        calls = []
+
+        def transport(url, headers, timeout):
+            calls.append(url)
+            self.assertTrue(url.startswith("https://api.example.test/"))
+            return 200, {}, [V510]
+
+        resolved = self.resolver(
+            transport, api_base="https://api.example.test"
+        ).resolve(version="latest")
+        self.assertEqual(resolved.source, "api")
+        self.assertEqual(calls, [
+            "https://api.example.test/repos/saladday/cc-switch-cli/releases?per_page=50&page=1"
+        ])
+
     def test_network_failure_falls_back_to_fresh_cache_for_latest(self):
         r = self.resolver(fake_transport([[V510]]))
         r.resolve(version="latest")

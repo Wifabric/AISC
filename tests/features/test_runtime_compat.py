@@ -10,13 +10,20 @@ ensuring that new runtime/session commands do not break existing workflows.
 # real %LOCALAPPDATA% AISC data.
 import os as _os
 import tempfile as _tempfile
-_os.environ.setdefault("AISC_DATA_ROOT", _tempfile.mkdtemp(prefix="aisc-test-data-"))
+from pathlib import Path as _Path
+# macOS runners expose TMPDIR through the /var symlink; the CLI's data-root
+# reparse guard correctly rejects symlinked components, so resolve first.
+_os.environ.setdefault(
+    "AISC_DATA_ROOT",
+    str(_Path(_tempfile.mkdtemp(prefix="aisc-test-data-")).resolve()),
+)
 import json
 import os
 import sys
 import tempfile
 import time
 import unittest
+import contextlib
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -27,12 +34,17 @@ from aisc.cli.commands.run import plan_run
 from aisc.domain.models import RunPlan
 
 
+@contextlib.contextmanager
+def _tmpdir():
+    """Yield a symlink-resolved temp dir (macOS TMPDIR sits behind /var)."""
+    with tempfile.TemporaryDirectory() as td:
+        yield str(Path(td).resolve())
 class RuntimeBackwardCompatibilityTests(unittest.TestCase):
     """Tests ensuring new runtime commands don't break existing `aisc run` behavior."""
 
     def test_run_non_interactive_docker_argv_and_env(self):
         """Verify `aisc run --non-interactive` produces correct Docker argv."""
-        with tempfile.TemporaryDirectory() as workspace:
+        with _tmpdir() as workspace:
             plan = plan_run(
                 image="super-claude:latest",
                 workspace=workspace,
@@ -57,7 +69,7 @@ class RuntimeBackwardCompatibilityTests(unittest.TestCase):
 
     def test_run_keep_alive_omits_rm_and_adds_detached(self):
         """Verify `aisc run --keep-alive` does not use --rm and uses -d."""
-        with tempfile.TemporaryDirectory() as workspace:
+        with _tmpdir() as workspace:
             plan = plan_run(
                 image="super-claude:latest",
                 workspace=workspace,
@@ -77,7 +89,7 @@ class RuntimeBackwardCompatibilityTests(unittest.TestCase):
 
     def test_run_interactive_includes_it_flag(self):
         """Verify default `aisc run` (interactive) includes -it."""
-        with tempfile.TemporaryDirectory() as workspace:
+        with _tmpdir() as workspace:
             plan = plan_run(
                 image="super-claude:latest",
                 workspace=workspace,
@@ -96,7 +108,7 @@ class RuntimeBackwardCompatibilityTests(unittest.TestCase):
 
     def test_registry_schema_has_expected_fields(self):
         """Verify registry maintains backward-compatible schema."""
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with _tmpdir() as temp_dir:
             root = Path(temp_dir)
 
             # Register a container with current schema
@@ -131,7 +143,7 @@ class RuntimeBackwardCompatibilityTests(unittest.TestCase):
 
     def test_registry_can_list_and_append_with_v2_1_4_format(self):
         """Verify registry upgrade: read v2.1.4, write new, old preserved, default restoration."""
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with _tmpdir() as temp_dir:
             root = Path(temp_dir)
             aisc_dir = root / ".aisc"
             aisc_dir.mkdir()
@@ -430,7 +442,7 @@ class LegacyCommandBehaviorTests(unittest.TestCase):
         from aisc.domain.models import ProcessResult
         from unittest.mock import MagicMock
 
-        with tempfile.TemporaryDirectory() as temp_root:
+        with _tmpdir() as temp_root:
             root = Path(temp_root)
             # Stage 7: resolve_target resolves the data-root state dir —
             # keep the test out of the real %LOCALAPPDATA%.
@@ -678,7 +690,7 @@ class CLIParameterMappingTests(unittest.TestCase):
         with patch("aisc.cli.commands.run.plan_run", wraps=plan_run) as mock_plan:
             from aisc.cli.main import main
 
-            with tempfile.TemporaryDirectory() as workspace:
+            with _tmpdir() as workspace:
                 with patch("sys.stdout", new=StringIO()),                      patch("sys.stderr", new=StringIO()),                      patch("sys.argv", ["aisc", "run", "--dry-run", workspace]):
                     try:
                         main()
@@ -738,7 +750,7 @@ class CLIParameterMappingTests(unittest.TestCase):
             status=ImageInspectStatus.EXISTS, image="super-claude:latest",
             image_id="sha256:x")
 
-        with tempfile.TemporaryDirectory() as workspace:
+        with _tmpdir() as workspace:
             with patch("aisc.cli.commands.run.RealDockerExecutor", return_value=spy_executor):
                 plan = plan_run(image="super-claude:latest", workspace=workspace,
                                 interactive=False, keep_alive=True)

@@ -157,6 +157,21 @@ RUN set -eux; \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+# b8（2026-10-22 手测 #4）: 工厂 npm 装到 /opt/aisc/factory-npm（绝不在
+# /opt/aisc/toolchain 下——project 模式该路径被宿主挂载遮蔽，b7 把工厂装
+# 挪进 toolchain 后 claude-real/codex-real 运行时 not found）。运行时
+# NPM_CONFIG_PREFIX 仍指 toolchain，更新跨容器持久不受影响。
+# b1 (2.1.16 反馈 #10): codex/claude CLI 内自更新执行 npm install -g。出厂把
+# /usr/local/bin/{codex,claude} 换成注入 wrapper，npm 默认 prefix(/usr/local)
+# 建 bin link 必然 EEXIST。镜像层统一重定向到 toolchain 布局（与 entrypoint
+# D-RUNTIME-09 契约一致）：docker exec 会话（Workbench 页签）继承本 ENV；
+# entrypoint 树按 scope 覆盖（project 持久 / temporary 同路径）。PATH 把
+# toolchain npm-global/cargo 追加在系统路径之后——/usr/local/bin wrapper 永远
+# 先被解析，settings.json 注入不因更新旁路；新装二进制由 wrapper 感知解析。
+ENV NPM_CONFIG_PREFIX="/opt/aisc/toolchain/npm-global"
+ENV PATH="/opt/aisc/toolchain/bin:${PATH}:/opt/aisc/factory-npm/bin:/opt/aisc/toolchain/npm-global/bin:/opt/aisc/toolchain/cargo/bin"
+RUN mkdir -p /opt/aisc/toolchain/npm-global /opt/aisc/toolchain/bin /opt/aisc/toolchain/cargo/bin
+
 # 替换 NPM 源（按 USE_CN_MIRROR）并全局安装 Claude Code 和 Codex CLI
 # 版本校验：防止镜像源返回损坏 tarball 导致装出的二进制 segfault
 # T8c (2.1.9 D-9): npmmirror 单源无兜底 → ① downloads/ 预置 tgz 离线安装
@@ -188,7 +203,7 @@ RUN set -eux; \
     else \
         npm_ok=0; \
         for npm_try in 1 2; do \
-            if npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
+            if NPM_CONFIG_PREFIX=/opt/aisc/factory-npm npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
                     @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
                     @openai/codex@${CODEX_VERSION}; then \
                 npm_ok=1; break; \
@@ -242,9 +257,21 @@ COPY container/global-claude.md /opt/aisc/factory/.claude/CLAUDE.md
 # 2. 注入插件机制技能套件（离线可用）：
 #    caveman（默认激活）/ claude-hud / document-skills / superpowers / skill-creator
 #    由 stage-skills.sh 预暂存到 _bundle/plugins（含 cache + marketplaces + 注册表）
-COPY container/_bundle/plugins/ /opt/aisc/factory/.claude/plugins/
+# b10 手测 #6: 工厂 plugins 清空——用户经商城自装（2026-10-23 用户裁定）
 
-# 2b. entrypoint 会把插件 bundle 中的构建期绝对路径改为当前运行作用域。
+# 2b. b12: factory installs stay EMPTY, but the official plugin marketplace is
+# available offline for search/install. entrypoint rewrites installLocation to
+# the active CLAUDE_CONFIG_DIR.
+COPY container/_bundle/plugins/marketplaces/claude-plugins-official/ /opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official/
+RUN mkdir -p /opt/aisc/factory/.claude/plugins \
+    && printf '%s\n' \
+       '{' \
+       '  "claude-plugins-official": {' \
+       '    "source": {"source": "github", "repo": "anthropics/claude-plugins-official"},' \
+       '    "installLocation": "/opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official",' \
+       '    "lastUpdated": "2026-10-23T00:00:00.000Z"' \
+       '  }' \
+       '}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
 
 # 3. 注入扁平技能（来源 _bundle/skills）：gstack（仅文档，6 子技能）
 COPY container/_bundle/skills/ /opt/aisc/factory/.claude/skills/
@@ -274,7 +301,7 @@ COPY container/commands/ /opt/aisc/factory/.claude/commands/
 COPY container/claude-settings.json /opt/aisc/factory/.claude/settings.json
 
 # 6. skill-creator 在 host 未预装，从本地 marketplace 离线安装（写入 installed_plugins.json）
-RUN CLAUDE_CONFIG_DIR=/opt/aisc/factory/.claude claude plugin install skill-creator@claude-plugins-official 2>&1 | tail -1 || true
+# b10: skill-creator 出厂安装移除（用户裁定清空初始插件）
 
 # 7. 默认 settings.local.json 放入 CLI 原生目录（随 .claude 一并复制到项目）
 RUN echo '{ "enableAllProjectMcpServers": true }' > /opt/aisc/factory/.claude/settings.local.json
@@ -303,12 +330,17 @@ COPY container/mihomo-build-config.js /usr/local/bin/mihomo-build-config.js
 # Claude 包装器：每次启动前从 settings.json 注入 env，并默认追加
 # --dangerously-skip-permissions（跳过权限确认，容器内自动流）。
 # IS_SANDBOX=1 标记当前 root 进程运行在隔离容器内。
-RUN mv /usr/local/bin/claude /usr/local/bin/claude-real
+# b1: 出厂真实二进制统一 readlink 归一——离线直装(/opt/aisc/npm)与在线
+# npm -g(toolchain prefix)两种形态都收敛到 *-real 符号链接；wrapper 仍
+# COPY 占据 /usr/local/bin/claude。
+RUN ln -sf "$(readlink -f "$(command -v claude)")" /usr/local/bin/claude-real \
+    && rm -f /usr/local/bin/claude
 COPY container/claude-wrapper /usr/local/bin/claude
 RUN chmod +x /usr/local/bin/claude
 
 # Codex 包装器：类似 Claude，从配置注入环境变量
-RUN mv /usr/local/bin/codex /usr/local/bin/codex-real
+RUN ln -sf "$(readlink -f "$(command -v codex)")" /usr/local/bin/codex-real \
+    && rm -f /usr/local/bin/codex
 COPY container/codex-wrapper /usr/local/bin/codex
 RUN chmod +x /usr/local/bin/codex
 
@@ -327,9 +359,11 @@ RUN chmod +x /usr/local/bin/aisc-provider-inspect
 # list=只读 SQLite 快照；add/edit/delete=官方非交互 CLI（secret 只走 stdin），
 # edit=switch-away→delete→re-add 舞步。stdout 全部经 redaction 后才出信封。
 COPY container/aisc-cc-provider /usr/local/bin/aisc-cc-provider
+# b5 (2.1.16): skills/MCP/plugins 统一管理适配器（同 provider 模式）。
+COPY container/aisc-extensions-adapter /usr/local/bin/aisc-extensions-adapter
 # P3 热切换：模型映射 shim（15711/15712 → 15721/15722，见 entrypoint）
 COPY container/aisc-model-shim /usr/local/bin/aisc-model-shim
-RUN chmod +x /usr/local/bin/aisc-cc-provider /usr/local/bin/aisc-model-shim
+RUN chmod +x /usr/local/bin/aisc-cc-provider /usr/local/bin/aisc-extensions-adapter /usr/local/bin/aisc-model-shim
 
 # AISC web 服务访问（svc-1，docs/plans/container-service-access.md）：
 #   aisc-web-gateway  容器内 0.0.0.0:45871，按 Host: p<port>.localhost 把字节流
@@ -356,6 +390,7 @@ RUN sed -i 's/\r$//' \
         /usr/local/bin/aisc-session-wrapper \
         /usr/local/bin/aisc-provider-inspect \
         /usr/local/bin/aisc-cc-provider \
+        /usr/local/bin/aisc-extensions-adapter \
         /usr/local/bin/aisc-model-shim \
         /usr/local/bin/aisc-web-gateway \
         /usr/local/bin/aisc-web-expose \
@@ -438,8 +473,7 @@ RUN set -eux; \
     case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
     ccs_preset=""; \
     if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
-        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; \
-        else ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; fi; \
+        if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi; \
     else \
         ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; \
     fi; \
@@ -554,23 +588,20 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo 'fi' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
-# cc-switch 离线 skills：元技能说明 + 已暂存插件中的实际 skill 内容。
-COPY container/cc-switch-skills/ /opt/aisc/skills/
+# cc-switch 离线 skills：preview b3 用户裁定预装 13 个 caveman-* skills 与 grill-me。
+# 仍走既有 cc-switch 注册/同步管理链路；其他技能由扩展商城安装。
+COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/
+COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/
 RUN set -eux; \
-    caveman_src="$(find /opt/aisc/factory/.claude/plugins/cache/caveman -type d -path '*/skills/caveman' | head -1)"; \
-    document_src="$(find /opt/aisc/factory/.claude/plugins/cache/anthropic-agent-skills/document-skills -mindepth 1 -maxdepth 1 -type d | head -1)"; \
-    superpowers_src="$(find /opt/aisc/factory/.claude/plugins/cache/claude-plugins-official/superpowers -mindepth 1 -maxdepth 1 -type d | head -1)"; \
-    test -f "$caveman_src/SKILL.md"; \
-    test -d "$document_src/skills"; \
-    test -d "$superpowers_src/skills"; \
-    mkdir -p /opt/aisc/skills/caveman /opt/aisc/skills/document-skills/skills /opt/aisc/skills/superpowers/skills; \
-    cp -a "$caveman_src/." /opt/aisc/skills/caveman/; \
-    cp -a "$document_src/skills/." /opt/aisc/skills/document-skills/skills/; \
-    cp -a "$superpowers_src/skills/." /opt/aisc/skills/superpowers/skills/; \
+    for skill in caveman caveman-commit caveman-compress caveman-discover caveman-evidence-review caveman-explore caveman-help caveman-learn caveman-manage caveman-optimize caveman-review caveman-setup caveman-stats grill-me; do \
+        test -f "/opt/aisc/skills/$skill/SKILL.md"; \
+    done; \
     (cd /opt/aisc/skills && \
         find . -type f -print0 | sort -z | xargs -0 sha256sum | \
         sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
-    mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256
+    mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256; \
+    mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins; \
+    echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

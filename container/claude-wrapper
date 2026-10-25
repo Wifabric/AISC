@@ -29,6 +29,30 @@ for a in "$@"; do
         --dangerously-skip-permissions|--permission-mode=*) has_flag=1; break ;;
     esac
 done
+# b1 (2.1.16 反馈 #10): CLI 内 npm install -g 自更新把新二进制装到
+# NPM_CONFIG_PREFIX 指向的 toolchain prefix（project=/opt/aisc/toolchain，
+# temporary/exec 会话=/tmp/aisc-toolchain）。按 会话 prefix → 持久 → 临时
+# 顺序解析，命中即 exec；全部未命中才回退出厂 claude-real。wrapper 自身
+# 永远留在 /usr/local/bin 解析链上，settings.json 注入不因更新旁路。
+real_bin=""
+for candidate in \
+    "${NPM_CONFIG_PREFIX:-/nonexistent}/bin/claude" \
+    /opt/aisc/toolchain/npm-global/bin/claude \
+    /tmp/aisc-toolchain/npm-global/bin/claude; do
+    if [ -x "$candidate" ]; then
+        real_bin="$candidate"
+        break
+    fi
+done
+
+if [ -n "$real_bin" ]; then
+    if [ "$has_flag" = "0" ]; then
+        exec "$real_bin" "$skip_perm" "$@"
+    else
+        exec "$real_bin" "$@"
+    fi
+fi
+
 if [ "$has_flag" = "0" ]; then
     exec claude-real "$skip_perm" "$@"
 else

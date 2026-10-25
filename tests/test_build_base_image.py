@@ -198,3 +198,26 @@ class ParseBuildEnvMirrorsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ColdStartBuildTests(unittest.TestCase):
+    def test_base_pull_has_short_bounded_default(self):
+        from aisc.cli.commands import build
+
+        self.assertLessEqual(build._PULL_TIMEOUT_S, 120.0)
+
+    def test_mirror_attempt_tells_user_it_will_rotate(self):
+        from aisc.cli.commands import build
+
+        lines = []
+
+        class Emitter:
+            def emit(self, _event, *, data):
+                lines.append(data["chunk"])
+
+        ex = _RecordingExec()
+        with self.assertRaises(Exception):
+            build._ensure_base_image(ex, _plan(), emitter=Emitter(), streaming=False)
+        text = "".join(lines)
+        self.assertIn("最长 120s，失败自动切换下一源", text)
+        self.assertIn("基础镜像源失败（exit 1）", text)
+        self.assertIn("继续尝试下一源", text)

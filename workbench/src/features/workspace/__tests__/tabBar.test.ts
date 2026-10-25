@@ -176,7 +176,7 @@ describe("IDEA-1 + split button (S3)", () => {
     wrapper.unmount();
   });
 
-  it("▾ menu lists 3 agents + Provider 管理; agent entry creates that tab", async () => {
+  it("▾ menu lists only bash/codex/claude (b6 handtest #1: no Provider entry)", async () => {
     const s = setupStore();
     const wrapper = mount(TabBar, { global: { plugins: [i18n] } });
     // 10d: menu placement measures the anchor rect — jsdom has no layout, so
@@ -188,8 +188,8 @@ describe("IDEA-1 + split button (S3)", () => {
     const menu = document.querySelector(".tab-new-menu");
     expect(menu).toBeTruthy();
     const items = menu!.querySelectorAll("[role=menuitem]");
-    expect(items.length).toBe(4); // claude/codex/bash + Provider 管理（设置已升工作区层，cc-switch TUI 已移除）
-    expect(menu!.querySelector("[role=separator]")).toBeTruthy();
+    expect(items.length).toBe(3); // b6: Provider 管理入口迁 rail 后菜单只剩三引擎
+    expect(menu!.querySelector("[role=separator]")).toBeNull();
 
     (items[1] as HTMLElement).click(); // codex
     await nextTick();

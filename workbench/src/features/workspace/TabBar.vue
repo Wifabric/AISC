@@ -112,8 +112,7 @@ function onMenuKeydown(e: KeyboardEvent) {
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     if (idx >= 0) {
-      if (items[idx].dataset.agent === "cc-switch-ui") chooseCcSwitchUi();
-      else choose(items[idx].dataset.agent as LaunchAgent);
+      choose(items[idx].dataset.agent as LaunchAgent);
     }
   }
 }
@@ -123,10 +122,6 @@ function choose(agent: LaunchAgent) {
   store.createTab(agent);
 }
 
-function chooseCcSwitchUi() {
-  menuOpen.value = false;
-  store.openCcSwitchUiTab();
-}
 
 function onDocMousedown(e: MouseEvent) {
   // The menu is teleported to <body>, so the containment check covers BOTH
@@ -153,12 +148,9 @@ const roving = ref(-1); // -1 = no manual roving; follow the active tab
  * tabs, in this fixed order — the roving/focus model appends them as indexes
  * `store.tabs.length + n`. */
 const virtualTabs = computed(() => {
-  // IDEA-3 (3d): the Settings tab moved to the WORKSPACE strip; the only
-  // session-layer virtual tab left is the cc-switch Provider UI.
-  const out: { id: string; labelKey: string; icon: string }[] = [];
-  if (store.ccSwitchUiTabOpen)
-    out.push({ id: CC_SWITCH_UI_TAB_ID, labelKey: "tabbar.ccSwitchUi", icon: "⇄" });
-  return out;
+  // b5 D-1 (2026-10-18): the cc-switch Provider UI moved to the LEFT RAIL
+  // dock view — no session-layer virtual tabs remain here.
+  return [] as { id: string; labelKey: string; icon: string }[];
 });
 const virtualBtnRefs = new Map<string, HTMLButtonElement>();
 function setVirtualRef(id: string) {
@@ -463,20 +455,15 @@ function canReopen(s: TabSessionState): boolean {
           @keydown="onMenuKeydown"
         >
           <li
-            v-for="a in AGENTS.filter((x) => x !== 'cc-switch')"
+            v-for="a in AGENTS"
             :key="a"
             role="menuitem"
             tabindex="0"
             :data-agent="a"
             @click="choose(a)"
           >{{ t(`tabbar.menu.${a}`) }}</li>
-          <li class="sep" role="separator" />
-          <li
-            role="menuitem"
-            tabindex="0"
-            data-agent="cc-switch-ui"
-            @click="chooseCcSwitchUi"
-          >{{ t("tabbar.ccSwitchUi") }}</li>
+
+
         </ul>
         </Transition>
       </Teleport>

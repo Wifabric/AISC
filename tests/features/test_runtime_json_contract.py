@@ -9,13 +9,27 @@ docs/rfc/aisc-cli-v1.md and docs/gui-planning/05-cli-gui-contract.md.
 # real %LOCALAPPDATA% AISC data.
 import os as _os
 import tempfile as _tempfile
-_os.environ.setdefault("AISC_DATA_ROOT", _tempfile.mkdtemp(prefix="aisc-test-data-"))
+from pathlib import Path as _Path
+# macOS runners expose TMPDIR through the /var symlink; the CLI's data-root
+# reparse guard correctly rejects symlinked components, so resolve first.
+_os.environ.setdefault(
+    "AISC_DATA_ROOT",
+    str(_Path(_tempfile.mkdtemp(prefix="aisc-test-data-")).resolve()),
+)
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+import contextlib
 from pathlib import Path
+
+
+@contextlib.contextmanager
+def _tmpdir():
+    """Yield a symlink-resolved temp dir (macOS TMPDIR sits behind /var)."""
+    with tempfile.TemporaryDirectory() as td:
+        yield str(Path(td).resolve())
 
 
 def get_aisc_executable():
@@ -33,7 +47,7 @@ class TestPreflightJsonContract(unittest.TestCase):
     def test_preflight_json_envelope_structure(self):
         """Test JSON envelope has required meta/data/errors fields."""
         aisc = get_aisc_executable()
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -73,7 +87,7 @@ class TestPreflightJsonContract(unittest.TestCase):
 
     def test_preflight_spec_contains_all_params(self):
         """Test spec field contains all input parameters."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -98,7 +112,7 @@ class TestPreflightJsonContract(unittest.TestCase):
 
     def test_preflight_checks_array_structure(self):
         """Test checks array has correct structure."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -204,7 +218,7 @@ class TestPreflightJsonContract(unittest.TestCase):
 
     def test_preflight_recommended_action_values(self):
         """Test recommended_action is one of the allowed values."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -223,7 +237,7 @@ class TestPreflightJsonContract(unittest.TestCase):
 
     def test_preflight_conflicts_is_array(self):
         """Test conflicts field is always an array."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -239,7 +253,7 @@ class TestPreflightJsonContract(unittest.TestCase):
 
     def test_preflight_observed_at_iso8601(self):
         """Test observed_at is ISO 8601 timestamp."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "preflight",
                     "--runtime-id", "550e8400-e29b-41d4-a716-446655440000",
@@ -358,7 +372,7 @@ class TestRuntimeLifecycleJsonContract(unittest.TestCase):
         """runtime list returns a JSON envelope with data.runtimes list."""
         if not _docker_available():
             self.skipTest("Docker daemon not available")
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "list",
                  "--workspace", tmpdir, "--format", "json"],
@@ -375,7 +389,7 @@ class TestRuntimeLifecycleJsonContract(unittest.TestCase):
         """runtime inspect of an absent runtime returns not_found, exit 0."""
         if not _docker_available():
             self.skipTest("Docker daemon not available")
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "inspect",
                  "--runtime-id", VALID_UUID, "--workspace", tmpdir,
@@ -392,7 +406,7 @@ class TestRuntimeLifecycleJsonContract(unittest.TestCase):
         """runtime start with a missing image returns a non-zero error envelope."""
         if not _docker_available():
             self.skipTest("Docker daemon not available")
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with _tmpdir() as tmpdir:
             result = subprocess.run(
                 [get_aisc_executable(), "runtime", "start",
                  "--runtime-id", VALID_UUID, "--workspace", tmpdir,

@@ -322,6 +322,128 @@ def _build_parser() -> _AiscArgumentParser:
     prpc.add_argument("--workspace", type=str, default=None,
                       help="Workspace path (default: current directory)")
 
+    # --- extensions (v2.1.16 b5: skills/MCP/plugins data plane, aisc.extensions/v1) ---
+    extp = sub.add_parser(
+        "extensions", help="Manage skills, MCP servers and Claude plugins",
+        allow_abbrev=False,
+    )
+    _add_global_args(extp, is_subparser=True)
+    extsub = extp.add_subparsers(dest="extensions_command", title="extensions commands",
+                                 parser_class=_AiscArgumentParser)
+
+    def _extensions_common(p):
+        _add_global_args(p, is_subparser=True)
+        p.add_argument("--runtime-id", type=str, required=True,
+                       help="Runtime ID (UUID v4)")
+        p.add_argument("--workspace", type=str, default=None,
+                       help="Workspace path (default: current directory)")
+
+    extl = extsub.add_parser("list", help="List items (secret-free snapshot)",
+                             allow_abbrev=False)
+    _extensions_common(extl)
+    extl.add_argument("--kind", required=True, choices=["skills", "mcp", "plugins"])
+
+    extt = extsub.add_parser("toggle", help="Enable/disable a skill or MCP server",
+                             allow_abbrev=False)
+    _extensions_common(extt)
+    extt.add_argument("--kind", required=True, choices=["skills", "mcp"])
+    extt.add_argument("--id", required=True)
+    extt.add_argument("--agent", required=True, choices=["claude", "codex"])
+    extt.add_argument("--enable", dest="enable", action="store_true", default=True)
+    extt.add_argument("--disable", dest="enable", action="store_false")
+
+    extd = extsub.add_parser("delete", help="Uninstall/delete an item",
+                             allow_abbrev=False)
+    _extensions_common(extd)
+    extd.add_argument("--kind", required=True, choices=["skills", "mcp", "plugins"])
+    extd.add_argument("--id", required=True)
+
+    extsi = extsub.add_parser("skill-install",
+                              help="Install a skill (owner/name:directory)",
+                              allow_abbrev=False)
+    _extensions_common(extsi)
+    extsi.add_argument("--spec", required=True)
+
+    extma = extsub.add_parser("mcp-add",
+                              help="Add MCP servers (config JSON on stdin)",
+                              allow_abbrev=False)
+    _extensions_common(extma)
+    extma.add_argument("--apps", default="claude,codex",
+                       help="Comma-separated agent list (claude,codex)")
+
+    extpi = extsub.add_parser("plugin-install",
+                              help="Install a Claude plugin (name@marketplace)",
+                              allow_abbrev=False)
+    _extensions_common(extpi)
+    extpi.add_argument("--id", required=True)
+    extpi.add_argument("--kind", choices=["skills", "mcp", "plugins"])
+
+    extpu = extsub.add_parser("plugin-uninstall",
+                              help="Uninstall a Claude plugin",
+                              allow_abbrev=False)
+    _extensions_common(extpu)
+    extpu.add_argument("--id", required=True)
+    extpu.add_argument("--kind", choices=["skills", "mcp", "plugins"])
+
+    extup = extsub.add_parser("plugin-update",
+                              help="Update a Claude plugin",
+                              allow_abbrev=False)
+    _extensions_common(extup)
+    extup.add_argument("--id", required=True)
+    extup.add_argument("--kind", choices=["skills", "mcp", "plugins"])
+
+    extss = extsub.add_parser("skill-search",
+                              help="Search the public skills.sh marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extss)
+    extss.add_argument("--query", required=True)
+
+    extsu = extsub.add_parser("skill-update",
+                              help="Update a skill while preserving enable/disable choices",
+                              allow_abbrev=False)
+    _extensions_common(extsu)
+    extsu.add_argument("--spec", required=True)
+
+    extdl = extsub.add_parser("deeplink",
+                              help="Import a resource from a ccswitch:// link",
+                              allow_abbrev=False)
+    _extensions_common(extdl)
+    extdl.add_argument("--url", required=True)
+
+    extsr = extsub.add_parser("skill-repo-add",
+                              help="Add a skill repository (URL or owner/name[@branch])",
+                              allow_abbrev=False)
+    _extensions_common(extsr)
+    extsr.add_argument("--id", required=True)
+
+    extms = extsub.add_parser("mcp-search",
+                              help="Search the Smithery MCP marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extms)
+    extms.add_argument("--query", required=True)
+
+    extmi = extsub.add_parser("mcp-market-install",
+                              help="Install an MCP server from Smithery",
+                              allow_abbrev=False)
+    _extensions_common(extmi)
+    extmi.add_argument("--id", required=True)
+    extml = extsub.add_parser("plugin-market-list",
+                              help="List configured Claude plugin marketplaces",
+                              allow_abbrev=False)
+    _extensions_common(extml)
+
+    extps = extsub.add_parser("plugin-search",
+                              help="Search configured Claude plugin marketplaces",
+                              allow_abbrev=False)
+    _extensions_common(extps)
+    extps.add_argument("--query", required=True)
+
+    extma = extsub.add_parser("plugin-market-add",
+                              help="Add a Claude plugin marketplace (URL/GitHub repo)",
+                              allow_abbrev=False)
+    _extensions_common(extma)
+    extma.add_argument("--id", required=True)
+
     # --- cc-switch (Stage 8d: provider data plane, aisc.cc-switch-provider/v1) ---
     csp = sub.add_parser(
         "cc-switch", help="Manage cc-switch providers (list/add/edit/delete)",
@@ -1148,7 +1270,7 @@ def _detect_events(argv: List[str]) -> bool:
 def _detect_command(argv: List[str]) -> Optional[str]:
     known = {"version", "doctor", "build", "run", "config", "profile",
              "status", "stop", "restart", "shell", "switch", "provider",
-             "cc-switch", "network", "usage", "logs", "ps", "runtime", "session",
+             "extensions", "cc-switch", "network", "usage", "logs", "ps", "runtime", "session",
              "artifact", "data-root", "maintenance"}
     for arg in argv:
         if arg in known:
@@ -1879,6 +2001,58 @@ def _cmd_switch(
         data["provider"] = quick
         data["quick"] = True
     return data, exit_code, errors
+
+
+def _cmd_extensions(
+    args: argparse.Namespace,
+    effective_format: str,
+) -> Tuple[Dict[str, Any], int, List[Dict[str, Any]]]:
+    """Execute ``aisc extensions`` subcommands (b5 data plane)."""
+    from aisc.cli.commands import extensions as ext_cmd
+
+    sub = getattr(args, "extensions_command", None)
+    if sub == "list":
+        data = ext_cmd.cmd_extensions_list(args)
+    elif sub == "toggle":
+        data = ext_cmd.cmd_extensions_toggle(args)
+    elif sub == "delete":
+        data = ext_cmd.cmd_extensions_delete(args)
+    elif sub == "skill-install":
+        data = ext_cmd.cmd_extensions_skill_install(args)
+    elif sub == "skill-update":
+        data = ext_cmd.cmd_extensions_skill_update(args)
+    elif sub == "mcp-add":
+        data = ext_cmd.cmd_extensions_mcp_add(args)
+    elif sub == "plugin-install":
+        data = ext_cmd.cmd_extensions_plugin_install(args)
+    elif sub == "plugin-uninstall":
+        data = ext_cmd.cmd_extensions_plugin_uninstall(args)
+    elif sub == "plugin-update":
+        data = ext_cmd.cmd_extensions_plugin_update(args)
+    elif sub == "skill-search":
+        data = ext_cmd.cmd_extensions_skill_search(args)
+    elif sub == "deeplink":
+        data = ext_cmd.cmd_extensions_deeplink(args)
+    elif sub == "skill-repo-add":
+        data = ext_cmd.cmd_extensions_skill_repo_add(args)
+    elif sub == "plugin-market-list":
+        data = ext_cmd.cmd_extensions_plugin_market_list(args)
+    elif sub == "plugin-market-add":
+        data = ext_cmd.cmd_extensions_plugin_market_add(args)
+    elif sub == "plugin-search":
+        data = ext_cmd.cmd_extensions_plugin_search(args)
+    elif sub == "mcp-search":
+        data = ext_cmd.cmd_extensions_mcp_search(args)
+    elif sub == "mcp-market-install":
+        data = ext_cmd.cmd_extensions_mcp_market_install(args)
+    else:
+        raise CliError(message="unknown extensions subcommand",
+                       exit_code=2, error_code="AISC_ERR_USAGE")
+
+    if effective_format == "text":
+        ext_cmd.print_extensions_text(data)
+        return {}, 0, []
+    return data, 0, []
 
 
 def _cmd_cc_switch(
@@ -3065,6 +3239,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_switch(args, effective_format)
         elif args.command == "provider":
             data, exit_code, errors = _cmd_provider(args, effective_format)
+        elif args.command == "extensions":
+            data, exit_code, errors = _cmd_extensions(args, effective_format)
         elif args.command == "cc-switch":
             data, exit_code, errors = _cmd_cc_switch(args, effective_format)
         elif args.command == "network":

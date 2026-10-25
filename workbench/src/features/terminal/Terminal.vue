@@ -92,6 +92,8 @@ import {
   isTerminalGeneratedInput,
 } from "./scrollOwnership";
 
+import { createCodexMouseSelectionBypass } from "./codexMouseSelection";
+
 import { effectiveTheme } from "../../theme";
 
 import { findLeaf } from "../../stores/paneTree";
@@ -157,6 +159,8 @@ const leafSessionType = computed(
 const isCcSwitch = computed(() => leafSessionType.value === "cc-switch");
 
 let term: Terminal | null = null;
+
+let detachCodexMouseSelection: (() => void) | null = null;
 
 let fit: FitAddon | null = null;
 
@@ -248,6 +252,11 @@ const splitPicker = ref<{ x: number; y: number; axis: "horizontal" | "vertical" 
 
 const hasSelection = ref(false);
 
+/** b12: Codex can clear xterm selection during a redraw before right-click opens. */
+const lastSelectionText = ref("");
+
+const canCopy = computed(() => hasSelection.value || lastSelectionText.value.length > 0);
+
 /** G-06: build the Terminal from the typed settings (02 §三.4 table). Values
 
  * come from the backend; when settings are not yet loaded the xterm native
@@ -271,6 +280,10 @@ function terminalOptions(): ITerminalOptions {
     letterSpacing: s?.letter_spacing,
 
     scrollback: s?.scrollback,
+    // b9 手测 #3: 右键先选词——TUI（codex 等）接管鼠标后拖选不产生选区，
+    // 用户「选中文本右键复制」时按钮恒灰。rightClickSelectsWord 让右键
+    // 本身建立选区，随后的自定义菜单「复制」可用并写入系统剪贴板。
+    rightClickSelectsWord: true,
 
     // Stage 6 (UX-03): reduced motion zeroes the terminal smooth scroll too.
 
@@ -539,6 +552,8 @@ function rebuildTerminal() {
 
   if (!host || !term) return;
 
+  detachCodexMouseSelection?.();
+  detachCodexMouseSelection = null;
   term.dispose(); // also disposes loaded addons (webgl/fit/search)
 
   webgl = null;
@@ -563,6 +578,7 @@ function rebuildTerminal() {
   scrollOwnership = createScrollOwnership();
   altScreenDetector = createAltScreenDetector();
   attachTerminalWheelListener();
+  attachCodexMouseSelection();
 
   writeWelcomeCard();
 
@@ -1281,12 +1297,29 @@ function searchPrev() {
 
 }
 
+/** b12: Codex enables mouse tracking, which disables ordinary xterm drag
+ * selection. Convert an unmodified Codex drag into xterm's forced-selection
+ * path and preserve unmoved clicks by replaying them to the TUI. */
+function attachCodexMouseSelection(): void {
+  const host = container.value;
+  if (!host) return;
+  detachCodexMouseSelection?.();
+  detachCodexMouseSelection = createCodexMouseSelectionBypass({
+    host,
+    getTerminalElement: () => term?.element ?? null,
+    isCodexPane: () => leafSessionType.value === "codex",
+    clearSelection: () => term?.clearSelection(),
+  });
+}
+
 // --- G-11/A-G11-1 context menu ---
 
 function onSelectionChange() {
-
-  hasSelection.value = term?.hasSelection() ?? false;
-
+  const sel = term?.getSelection() ?? "";
+  hasSelection.value = sel.length > 0;
+  lastSelectionText.value = sel;
+  // b11: auto-copy selection to system clipboard (all terminals)
+  if (sel) void writeText(sel).catch(() => null);
 }
 
 function onContextMenu(e: MouseEvent) {
@@ -1371,7 +1404,7 @@ function chooseSplitAgent(agent: LaunchAgent) {
 
 async function doCopy() {
 
-  const sel = term?.getSelection();
+  const sel = term?.getSelection() || lastSelectionText.value;
 
   if (!sel) return;
 
@@ -1952,6 +1985,7 @@ onMounted(() => {
   scrollOwnership = createScrollOwnership();
   altScreenDetector = createAltScreenDetector();
   attachTerminalWheelListener();
+  attachCodexMouseSelection();
 
   writeWelcomeCard();
 
@@ -2393,6 +2427,8 @@ onBeforeUnmount(() => {
 
   window.removeEventListener("resize", onWindowResize);
   detachTerminalWheelListener();
+  detachCodexMouseSelection?.();
+  detachCodexMouseSelection = null;
 
   term?.dispose(); // disposes fit/webgl/search addons + custom key handler (03 §七)
 
@@ -2598,7 +2634,7 @@ defineExpose({
 
     >
 
-      <button :disabled="!hasSelection" @click="copySelection">{{ t("terminal.copy") }}</button>
+      <button :disabled="!canCopy" @click="copySelection">{{ t("terminal.copy") }}</button>
 
       <button :disabled="!sessionLive" @click="pasteFromClipboard">{{ t("terminal.paste") }}</button>
 

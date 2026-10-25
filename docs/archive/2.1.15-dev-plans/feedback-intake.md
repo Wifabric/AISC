@@ -86,3 +86,11 @@ issues/20261012-ssh远程电脑之后卡在CLI-bash界-Thomas/反馈.md
 
 应用记录：反馈数据仓库提交 `e597278 feedback: reply to 2026-10-12 reports`
 已于 2026-10-12 推送到 `Wifabric/aisc-issues-feedback` 的 `main` 分支。
+## 最终解决回复（2026-10-16）
+
+v2.1.15 final 发布验证后，5 条反馈均已追加最终解决回复，frontmatter
+`status` 更新为 `resolved`，`updated_at` 更新为 `2026-10-16T12:30:00+08:00`。
+反馈数据仓库提交：`6746fb2 feedback: resolve 2026-10-12 reports`。
+
+各条回复均指向 AISC Workbench v2.1.15 / CLI 0.1.8 升级路径；SSH 反馈额外说明
+远端安装与 README「远程机器」章节，并要求复发时重新提交诊断包。

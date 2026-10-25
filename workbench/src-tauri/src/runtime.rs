@@ -775,6 +775,83 @@ fn cc_switch_validate(runtime_id: &str, agent: &str) -> Result<(), WorkbenchErro
     Ok(())
 }
 
+/// b5 (2.1.16 D-1..D-4): generic extensions call — the host CLI
+/// `aisc extensions <op>` speaks aisc.extensions/v1; ops share one transport
+/// (list/toggle/delete/skill-install/mcp-add/plugin-*). MCP config rides
+/// STDIN like the provider request channel (never argv).
+#[tauri::command]
+pub async fn extensions_call(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    runtime_id: String,
+    op: String,
+    kind: Option<String>,
+    id: Option<String>,
+    agent: Option<String>,
+    on: Option<bool>,
+    spec: Option<String>,
+    apps: Option<String>,
+    config: Option<String>,
+    query: Option<String>,
+    url: Option<String>,
+) -> Result<Value, WorkbenchError> {
+    const OPS: [&str; 17] = [
+        "list", "toggle", "delete", "skill-install", "skill-update", "mcp-add",
+        "plugin-install", "plugin-uninstall", "plugin-update",
+        "skill-search", "deeplink", "skill-repo-add",
+        "plugin-market-list", "plugin-market-add", "plugin-search",
+        "mcp-search", "mcp-market-install",
+    ];
+    if !OPS.contains(&op.as_str()) {
+        return Err(WorkbenchError::usage(format!("unknown extensions op: {op}")));
+    }
+    let mut argv = vec![
+        "extensions".into(),
+        op.clone(),
+        "--runtime-id".into(),
+        runtime_id.clone(),
+        "--workspace".into(),
+        workspace.clone(),
+        "--format".into(),
+        "json".into(),
+    ];
+    if let Some(k) = &kind {
+        argv.push("--kind".into());
+        argv.push(k.clone());
+    }
+    if let Some(v) = &id {
+        argv.push("--id".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &agent {
+        argv.push("--agent".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = on {
+        argv.push(if v { "--enable".into() } else { "--disable".into() });
+    }
+    if let Some(v) = &spec {
+        argv.push("--spec".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &apps {
+        argv.push("--apps".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &query {
+        argv.push("--query".into());
+        argv.push(v.clone());
+    }
+    if let Some(v) = &url {
+        argv.push("--url".into());
+        argv.push(v.clone());
+    }
+    match config {
+        Some(text) => cc_switch_call_value(&app, &window, argv, Some(text)).await,
+        None => cc_switch_call_value(&app, &window, argv, None).await,
+    }
+}
 /// List providers for an agent (secret-free snapshot; Stage 8e).
 #[tauri::command]
 pub async fn cc_switch_providers(

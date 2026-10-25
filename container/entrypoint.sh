@@ -227,7 +227,10 @@ else
     TC="/tmp/aisc-toolchain"
     mkdir -p "$TC/bin" "$TC/npm-global" "$TC/python" "$TC/cargo" "$TC/cache"
 fi
-export PATH="$TC/bin:$TC/npm-global/bin:$TC/cargo/bin:$PATH"
+# b1 (2.1.16 反馈 #10): npm-global/cargo 移到系统路径之后——/usr/local/bin
+# wrapper 必须先于 toolchain 里的自更新 codex/claude 被解析，注入不旁路；
+# 新装二进制由 wrapper 的 toolchain 感知解析接管。$TC/bin 仍最前（显式覆盖位）。
+export PATH="$TC/bin:$PATH:$TC/npm-global/bin:$TC/cargo/bin"
 export NPM_CONFIG_PREFIX="$TC/npm-global"
 export PYTHONUSERBASE="$TC/python"
 export CARGO_HOME="$TC/cargo"
@@ -461,7 +464,7 @@ if command -v cc-switch >/dev/null 2>&1; then
         )"; then
             case "$CC_SWITCH_SKILLS_RESULT" in
                 synced)
-                    echo "✅ cc-switch 已安装 caveman、document-skills、grill-me、superpowers（Claude + Codex）"
+                    echo "✅ cc-switch 已安装 13 个 caveman 技能与 grill-me（Claude + Codex）"
                     ;;
                 current)
                     echo "ℹ️  cc-switch 内置 skills 已是最新，跳过同步。"

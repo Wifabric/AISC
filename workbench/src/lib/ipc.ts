@@ -682,6 +682,60 @@ export const cacheUsage = () => invoke<CacheUsage>("cache_usage");
 export const cacheCleanup = (minAgeHours: number) =>
   invoke<CacheCleanupResult>("cache_cleanup", { minAgeHours });
 
+// --- b5 (2.1.16): extensions unified management (skills / MCP / plugins) ---
+export interface ExtensionsItem {
+  kind: string;
+  id: string;
+  name: string;
+  description?: string;
+  repo?: string;
+  transport?: string;
+  url?: string;
+  command?: string;
+  env_keys?: string[];
+  marketplace?: string;
+  version?: string;
+  directory?: string;
+  installs?: string;
+  source?: string;
+  sources?: string[];
+  conflict?: boolean;
+  scope?: string;
+  last_updated?: string;
+  enabled_claude?: boolean;
+  enabled_codex?: boolean;
+}
+
+export interface ExtensionsCallParams {
+  workspace: string;
+  runtimeId: string;
+  op: string;
+  kind?: string;
+  id?: string;
+  agent?: string;
+  on?: boolean;
+  spec?: string;
+  apps?: string;
+  config?: string;
+  query?: string;
+  url?: string;
+}
+
+export const extensionsCall = (p: ExtensionsCallParams) =>
+  invoke<Record<string, unknown>>("extensions_call", {
+    workspace: p.workspace,
+    runtimeId: p.runtimeId,
+    op: p.op,
+    kind: p.kind ?? null,
+    id: p.id ?? null,
+    agent: p.agent ?? null,
+    on: p.on ?? null,
+    spec: p.spec ?? null,
+    apps: p.apps ?? null,
+    config: p.config ?? null,
+    query: p.query ?? null,
+    url: p.url ?? null,
+  });
 // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
 export interface CacheInspectRow {
   id: string;

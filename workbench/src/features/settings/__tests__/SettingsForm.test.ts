@@ -15,6 +15,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { i18n } from "../../../i18n";
 import { useSettingsStore } from "../../../stores/settings";
 import SettingsForm from "../SettingsForm.vue";
+import settingsFormSource from "../SettingsForm.vue?raw";
 import type { SettingsDocument } from "../../../types";
 
 const mockIpc = vi.hoisted(() => ({
@@ -79,7 +80,6 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.ui"),
       i18n.global.t("settings.group.terminal"),
       i18n.global.t("settings.group.window"),
-      i18n.global.t("settings.group.hostTools"),
       i18n.global.t("settings.group.machines"),
       i18n.global.t("settings.group.performance"),
       i18n.global.t("settings.group.disk"),
@@ -89,7 +89,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.ui"),
     ]);
     // Picking a section swaps the pane and leaves search mode.
-    await wrapper.findAll(".nav-item")[4]!.trigger("click");
+    await wrapper.findAll(".nav-item")[3]!.trigger("click");
     expect(wrapper.findAll("h3.group").map((h) => h.text())).toEqual([
       i18n.global.t("settings.group.machines"),
     ]);
@@ -122,7 +122,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
     const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
     await check.trigger("click");
     await Promise.resolve();
@@ -143,7 +143,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[7]!.trigger("click");
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
     const check = wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.check"))!;
     await check.trigger("click");
     await Promise.resolve();
@@ -161,7 +161,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
 
     // P2-5: navigate to the performance section first (single-section pane).
-    await wrapper.findAll(".nav-item")[5]!.trigger("click");
+    await wrapper.findAll(".nav-item")[4]!.trigger("click");
     const body = wrapper.text();
     expect(body).toContain(i18n.global.t("settings.perf.memory"));
     expect(body).toContain(i18n.global.t("settings.perf.cpus"));
@@ -173,7 +173,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click"); // disk section
+    await wrapper.findAll(".nav-item")[5]!.trigger("click"); // disk section
     return { store, wrapper };
   }
 
@@ -196,7 +196,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
       warnings: [],
     };
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    await wrapper.findAll(".nav-item")[5]!.trigger("click");
     const imageRows = wrapper.findAll(".manage-row");
     expect(imageRows).toHaveLength(1);
     expect(imageRows[0]!.text()).toContain("docker.1ms.run/library/node:22-slim");
@@ -246,7 +246,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     const store = useSettingsStore();
     await store.load();
     const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
-    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    await wrapper.findAll(".nav-item")[5]!.trigger("click");
     return wrapper;
   }
 
@@ -308,5 +308,82 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     expect((cleanup.element as HTMLButtonElement).disabled).toBe(false);
     expect((rebuild.element as HTMLButtonElement).disabled).toBe(false);
     wrapper.unmount();
+  });
+
+  // --- v2.1.16 b3 (feedback #9): resource cards + dedicated cache cleanup ---
+
+  it("renders the Docker summary as cards with Chinese build cache label and totals", async () => {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    const summary = wrapper.find("[data-testid='docker-resource-summary']");
+    expect(summary.exists()).toBe(true);
+    const cards = summary.findAll("[data-testid='docker-summary-card']");
+    expect(cards.length).toBeGreaterThanOrEqual(6);
+    expect(summary.text()).toContain("构建缓存");
+    expect(summary.text()).not.toContain("Build Cache");
+    // 合计卡：总条目（2+2+3+387+5）与总可回收（2GB + 9GB ≈ 11 GB）
+    expect(summary.text()).toContain("合计");
+    expect(summary.text()).toContain("11.0 GB");
+    wrapper.unmount();
+  });
+
+  it("orders action buttons with dedicated cache cleanup before the rightmost rebuild", async () => {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    const texts = wrapper.findAll("button").map((b) => b.text());
+    const scanIdx = texts.indexOf(i18n.global.t("settings.docker.scan"));
+    const cleanupIdx = texts.indexOf(i18n.global.t("settings.docker.cleanup"));
+    const cacheIdx = texts.indexOf(i18n.global.t("settings.docker.cacheCleanup"));
+    const rebuildIdx = texts.indexOf(i18n.global.t("settings.docker.rebuild"));
+    expect(cacheIdx).toBeGreaterThan(-1);
+    expect(scanIdx).toBeLessThan(cleanupIdx);
+    expect(cleanupIdx).toBeLessThan(cacheIdx);
+    expect(cacheIdx).toBeLessThan(rebuildIdx);
+    wrapper.unmount();
+  });
+
+  it("dedicated cache cleanup prunes cache only and refreshes scan data", async () => {
+    mockUnifiedScan();
+    const order: string[] = [];
+    mockIpc.cacheCleanup.mockImplementation(async () => { order.push("cache"); return { prunes: [{ kind: "builder", reclaimed: "1.5GB", error: null }], warnings: [], rows_after: [] }; });
+    mockIpc.dockerScan.mockImplementation(async () => { order.push("scan"); return scanReport; });
+    mockIpc.cacheInspect.mockClear();
+    const wrapper = await openDisk();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.scan"))!.trigger("click");
+    await flushPromises();
+    order.length = 0;
+    mockIpc.cacheCleanup.mockClear();
+    mockIpc.dockerCleanup.mockClear();
+    mockIpc.dockerScan.mockClear();
+    mockIpc.cacheInspect.mockClear();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.cacheCleanup"))!.trigger("click");
+    await flushPromises();
+    expect(mockIpc.cacheCleanup).toHaveBeenCalledWith(24);
+    expect(mockIpc.dockerCleanup).not.toHaveBeenCalled();
+    expect(order).toEqual(["cache", "scan"]);
+    expect(mockIpc.cacheInspect).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+});
+
+describe("v2.1.16 preview b1 disk output", () => {
+  it("does not render the verbose reclaim estimate disclaimer", () => {
+    expect(settingsFormSource).not.toContain("settings.disk.inspect.disclaimer");
+  });
+});
+
+
+describe("v2.1.16 preview b2 settings structure", () => {
+  it("removes the duplicate Docker preview-name rows", () => {
+    expect(settingsFormSource).not.toContain("dockerPreviewRows");
+  });
+
+  it("moves host tools out of the standalone settings group", () => {
+    expect(settingsFormSource).not.toContain('"hostTools"');
+    expect(settingsFormSource).not.toContain("group === 'hostTools'");
   });
 });
