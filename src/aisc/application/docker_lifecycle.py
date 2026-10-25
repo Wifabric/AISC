@@ -657,6 +657,19 @@ def _size_bytes(value: Any) -> Optional[int]:
     return int(num * _SIZE_UNITS[unit])
 
 
+def _format_bytes(value: int) -> str:
+    """Compact decimal Docker-style bytes for concise cleanup results."""
+    if value == 0:
+        return "0B"
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(value)
+    for unit in units:
+        if size < 1000 or unit == units[-1]:
+            return f"{size:.1f}{unit}"
+        size /= 1000
+    return f"{size:.1f}TB"
+
+
 def _container_rw_size(value: Any) -> Optional[int]:
     """`ps -s` size strings: `35.6 kB (virtual 109 MB)` → writable layer."""
     if value is None:
@@ -1158,6 +1171,23 @@ def docker_cache_cleanup(
             result["prunes"].append(entry)
 
     result["df_after"] = _system_df(executor)
+
+    # Docker 29's captured `builder prune` output can omit the human summary
+    # even when `--all` removes several GB. Derive the concise result from the
+    # df before/after delta so the UI never reports "no reclaim" for a full
+    # build-cache prune.
+    builder_entry = next(
+        (entry for entry in result["prunes"] if entry.get("kind") == "builder"),
+        None,
+    )
+    if builder_entry is not None and not builder_entry.get("reclaimed"):
+        before_size = _size_bytes((before.get("Build Cache") or {}).get("size"))
+        after_size = _size_bytes(
+            (result["df_after"].get("Build Cache") or {}).get("size")
+        )
+        if before_size is not None and after_size is not None and before_size > after_size:
+            builder_entry["reclaimed"] = _format_bytes(before_size - after_size)
+
     return result
 
 

@@ -18,7 +18,7 @@ const items = (kind: string) => [
   kind === "mcp"
     ? { kind, id: "cuse-test", name: "cuse-test", transport: "stdio", command: "echo", enabled_claude: true, enabled_codex: true }
     : kind === "skills"
-      ? { kind, id: "caveman", name: "caveman", repo: "x/y", enabled_claude: true, enabled_codex: true }
+      ? { kind, id: "caveman", name: "caveman", repo: "x/y", directory: "caveman", description: "Ultra-compressed agent communication", source: "standalone", enabled_claude: true, enabled_codex: true }
       : { kind, id: "p@m", name: "p", marketplace: "m", version: "1", enabled_claude: true },
 ];
 
@@ -33,7 +33,6 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
   it("keeps rendering after switching skills -> mcp -> plugins", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
-    // b13：同仓库技能先显示仓库组，展开后才显示子技能。
     expect(wrapper.text()).toContain("x/y");
     expect(wrapper.text()).toContain("1 个技能");
     await wrapper.find("[data-testid^=ext-skill-group-]").trigger("click");
@@ -46,6 +45,32 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("m · 1");
     expect(wrapper.find("[data-testid=ext-tab-mcp]").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("keeps a skill group open while showing and re-showing a child introduction", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const group = wrapper.find("[data-testid^=ext-skill-group-]");
+    await group.trigger("click");
+    await flushPromises();
+
+    const child = wrapper.find("[data-testid=ext-skill-child-caveman]");
+    expect(child.exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
+
+    await child.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Ultra-compressed agent communication");
+
+    await child.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Ultra-compressed agent communication");
+    expect(wrapper.text()).toContain("caveman");
+
+    await group.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
     wrapper.unmount();
   });
 });

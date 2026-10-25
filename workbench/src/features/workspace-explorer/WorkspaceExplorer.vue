@@ -903,7 +903,7 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- v2.1.7 S5c: shared top search (VSCode-style). Applies to the active
          panel: files tab = flat match list over every loaded directory;
          artifacts tab = filters every group. Hidden on the services tab. -->
-    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records'" class="explorer-search">
+    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records' && artifactFilter !== 'providers' && artifactFilter !== 'extensions'" class="explorer-search">
       <input
         v-model="panelSearch"
         type="search"

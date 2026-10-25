@@ -464,7 +464,7 @@ if command -v cc-switch >/dev/null 2>&1; then
         )"; then
             case "$CC_SWITCH_SKILLS_RESULT" in
                 synced)
-                    echo "✅ cc-switch 已安装 caveman、document-skills、grill-me、superpowers（Claude + Codex）"
+                    echo "✅ cc-switch 已安装 caveman、grill-me（Claude + Codex）"
                     ;;
                 current)
                     echo "ℹ️  cc-switch 内置 skills 已是最新，跳过同步。"

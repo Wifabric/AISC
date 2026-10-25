@@ -15,10 +15,12 @@ from pathlib import Path
 from typing import TextIO
 
 
-# b10 手测 #6（2026-10-23 用户裁定）：初始 skill 全部清空——用户通过扩展
-# 商城自行安装。保留同步机制（cc-switch skills sync），但 BUNDLED_SKILLS
-# 为空集合。
-BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = ()
+# v2.1.16 preview b1（2026-10-25 用户裁定）：安装 AISC 时通过既有 cc-switch
+# 管理链路预装 grill-me 与 caveman。其余技能仍由扩展商城按需安装。
+BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = (
+    ("caveman", "Ultra-compressed agent communication", "JuliusBrussee", "caveman"),
+    ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
+)
 REVISION_FILE = ".aisc-bundle.sha256"
 MARKER_FILE = ".aisc-bundled-skills.sha256"
 LOCK_FILE = ".aisc-bundled-skills.lock"
@@ -44,8 +46,8 @@ def _load_skill_states(db_path: Path) -> dict[str, tuple[bool, bool]]:
             """
             SELECT name, enabled_claude, enabled_codex
             FROM skills
-            WHERE name IN (?, ?, ?, ?)
-            """,
+            WHERE name IN ({placeholders})
+            """.format(placeholders=",".join("?" for _ in BUNDLED_SKILLS)),
             tuple(skill[0] for skill in BUNDLED_SKILLS),
         ).fetchall()
     finally:

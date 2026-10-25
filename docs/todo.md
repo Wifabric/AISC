@@ -259,3 +259,9 @@
 - 发布
   - [x] b1–b13 本地门禁与 develop CI 全绿；关键链路 Computer Use/真实容器/真实 Docker 预复测通过
   - [x] Workbench `v2.1.16-preview.1` 发布准备；CLI `0.1.9.dev0` TestPyPI 配对验证
+- 追加（v2.1.16 preview.1 反馈，2026-10-25；preview-fixes b1）
+  - [x] 磁盘清理输出一行化并移除估算 disclaimer
+  - [x] 扩展侧栏随宽度收缩；顶层文件搜索在 Provider/Extensions 隐藏
+  - [x] Skills/MCP/Plugins 状态与操作互相隔离；搜索清空即清结果
+  - [x] 子技能介绍与父组展开分离；安装进度稳定显示 `x/y`
+  - [x] 出厂技能改为仅 grill-me + caveman（覆盖 b10 全清裁定）

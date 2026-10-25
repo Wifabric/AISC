@@ -17,6 +17,7 @@ const mockIpc = vi.hoisted(() => ({
   resetGuiSettings: vi.fn(),
   resolveLocale: vi.fn().mockResolvedValue("zh-CN"),
   dockerScan: vi.fn(),
+  cacheInspect: vi.fn().mockResolvedValue({ warnings: [], categories: {} }),
   cacheCleanup: vi.fn().mockResolvedValue({ prunes: [], warnings: [], rows_after: [] }),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
@@ -234,8 +235,9 @@ describe("docker admin panel (2.1.12 B3)", () => {
     const s = useSettingsStore();
     await s.runDockerCleanup();
     expect(mockIpc.dockerCleanup).toHaveBeenCalledWith("uninstall");
-    expect(s.dockerLog.some((l) => l.includes("stubborn"))).toBe(true);
-    expect(s.dockerLog.some((l) => l.includes("跳过未验证"))).toBe(true);
+    expect(s.dockerLog).toEqual([
+      "清理完成：容器 1，镜像 1，失败 1，无可回收空间",
+    ]);
     expect(mockIpc.dockerScan).toHaveBeenCalledTimes(1); // the post-run re-scan
   });
 
@@ -302,5 +304,42 @@ describe("v2.1.13 remote CLI pairing", () => {
     await s.switchTarget("nas");
     await new Promise((r) => setTimeout(r, 0));
     expect(mockIpc.remoteCliInfo).toHaveBeenCalledWith("nas");
+  });
+});
+
+
+describe("v2.1.16 preview b1 Docker cleanup logging", () => {
+  it("reports cache cleanup as one concise result line", async () => {
+    mockIpc.cacheCleanup.mockResolvedValue({
+      prunes: [
+        { kind: "builder", reclaimed: "", error: null },
+        { kind: "dangling", reclaimed: "Total reclaimed space: 1.473GB", error: null },
+        { kind: "node-image", reclaimed: "Untagged: node:22-slim", error: null },
+      ],
+      warnings: [],
+    });
+    mockIpc.dockerScan.mockResolvedValue({ warnings: [] });
+    const s = useSettingsStore();
+    await s.runCacheCleanup();
+    expect(s.dockerLog).toEqual([
+      "清理完成：回收 1.473GB，Node 基础镜像标签已移除",
+    ]);
+  });
+
+  it("reports full cleanup counts and cache result in one line", async () => {
+    mockIpc.dockerCleanup.mockResolvedValue({
+      containers: { removed: ["one"], failed: [], not_found: [] },
+      images: { removed: [], failed: [], not_found: [] },
+      skippedUnverified: [],
+      warnings: [],
+    });
+    mockIpc.cacheCleanup.mockResolvedValue({
+      prunes: [{ kind: "dangling", reclaimed: "Total reclaimed space: 0B", error: null }],
+      warnings: [],
+    });
+    mockIpc.dockerScan.mockResolvedValue({ warnings: [] });
+    const s = useSettingsStore();
+    await s.runDockerCleanup();
+    expect(s.dockerLog).toEqual(["清理完成：容器 1，镜像 0，无可回收空间"]);
   });
 });

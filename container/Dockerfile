@@ -588,9 +588,19 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo 'fi' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
-# cc-switch 离线 skills：元技能说明 + 已暂存插件中的实际 skill 内容。
-# b10 手测 #6: 工厂 skills 清空（用户裁定）
-RUN mkdir -p /opt/aisc/skills /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins && echo -n '' > /opt/aisc/skills/.aisc-bundle.sha256 && echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
+# cc-switch 离线 skills：preview b1 用户裁定仅预装 grill-me 与 caveman。
+# 仍走既有 cc-switch 注册/同步管理链路；其他技能由扩展商城安装。
+COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/
+COPY container/_bundle/plugins/marketplaces/caveman/skills/caveman/ /opt/aisc/skills/caveman/
+RUN set -eux; \
+    test -f /opt/aisc/skills/caveman/SKILL.md; \
+    test -f /opt/aisc/skills/grill-me/SKILL.md; \
+    (cd /opt/aisc/skills && \
+        find . -type f -print0 | sort -z | xargs -0 sha256sum | \
+        sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
+    mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256; \
+    mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins; \
+    echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

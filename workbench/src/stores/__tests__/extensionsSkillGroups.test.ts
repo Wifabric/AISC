@@ -24,7 +24,7 @@ describe("b13 skill repository batch operations", () => {
     call.mockResolvedValue({ items: [] });
     const store = useExtensionsStore();
     store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
-    store.items = [
+    store.itemsByKind.skills = [
       installed("brainstorming", "obra/superpowers"),
       installed("debugging", "obra/superpowers"),
     ];
@@ -57,3 +57,37 @@ describe("b13 skill repository batch operations", () => {
     }));
   });
 });
+
+
+  it("advances stable progress one child at a time during group install", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const first = new Promise<Record<string, unknown>>((resolve) => {
+      releaseFirst = () => resolve({ items: [] });
+    });
+    let releaseSecond: (() => void) | undefined;
+    const second = new Promise<Record<string, unknown>>((resolve) => {
+      releaseSecond = () => resolve({ items: [] });
+    });
+    call.mockImplementation(async (p: any) =>
+      p.spec.endsWith("brainstorming") ? first : second,
+    );
+
+    const store = useExtensionsStore();
+    store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
+    store.marketSkills = [
+      { kind: "market-skill", id: "obra/superpowers:brainstorming", name: "brainstorming", repo: "obra/superpowers", directory: "brainstorming" },
+      { kind: "market-skill", id: "obra/superpowers:debugging", name: "debugging", repo: "obra/superpowers", directory: "debugging" },
+    ] as ExtensionsItem[];
+    const pending = store.installSkillGroup(store.marketSkillGroups[0]!);
+
+    expect(store.activeOperation).toMatchObject({
+      kind: "skills", action: "install", completed: 0, total: 2,
+    });
+    releaseFirst?.();
+    await vi.waitFor(() => {
+      expect(store.activeOperation?.completed).toBe(1);
+    });
+    releaseSecond?.();
+    await pending;
+    expect(store.activeOperation).toBeNull();
+  });

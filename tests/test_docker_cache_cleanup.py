@@ -12,31 +12,34 @@ from aisc.domain.models import CliError
 
 
 class FakeExecutor:
-    def __init__(self, *, df_ok=True, prune_rc=0, images=""):
+    def __init__(self, *, df_ok=True, prune_rc=0, images="", df_after=None):
         self.df_ok = df_ok
         self.prune_rc = prune_rc
         self.images = images
+        self.df_after = df_after
         self.calls = []
+        self.df_calls = 0
 
     def run_captured(self, argv, timeout=60.0, input_text=None):
         self.calls.append(list(argv))
         if argv[:2] == ["system", "df"]:
+            self.df_calls += 1
             if not self.df_ok:
                 return SimpleNamespace(exit_code=1, stdout="", stderr="docker down")
-            return SimpleNamespace(
-                exit_code=0,
-                stdout=(
-                    '{"Type":"Images","TotalCount":"5","Active":"1","Size":"8GB","Reclaimable":"1GB"}\n'
-                    '{"Type":"Build Cache","TotalCount":"120","Active":"0","Size":"6.7GB","Reclaimable":"4.1GB"}\n'
-                ),
-                stderr="",
+            stdout = (
+                '{"Type":"Images","TotalCount":"5","Active":"1","Size":"8GB","Reclaimable":"1GB"}\n'
+                '{"Type":"Build Cache","TotalCount":"120","Active":"0","Size":"6.7GB","Reclaimable":"4.1GB"}\n'
             )
+            if self.df_after is not None and self.df_calls > 1:
+                stdout = self.df_after
+            return SimpleNamespace(exit_code=0, stdout=stdout, stderr="")
         if argv[:2] == ["images", "--format"]:
             return SimpleNamespace(exit_code=0, stdout=self.images, stderr="")
         if argv[0] in ("builder", "image"):
+            stdout = "" if argv[0] == "builder" and self.df_after is not None else "Total reclaimed space: 4.1GB\n"
             return SimpleNamespace(
                 exit_code=self.prune_rc,
-                stdout="Total reclaimed space: 4.1GB\n",
+                stdout=stdout,
                 stderr="",
             )
         if argv[:2] == ["rmi", "node:22-slim"]:
@@ -95,6 +98,25 @@ def test_cleanup_runs_both_prunes_and_reports(monkeypatch, tmp_path):
     assert data["warnings"] == []
 
 
+
+
+
+
+def test_builder_reclaimed_falls_back_to_df_delta(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "aisc.adapters.maintenance_lock.docker_maintenance_lock_at_root",
+        lambda root: _NullCtx(),
+    )
+    ex = FakeExecutor(
+        df_after=(
+            '{"Type":"Images","TotalCount":"1","Active":"1","Size":"1.5GB","Reclaimable":"0B"}\n'
+            '{"Type":"Build Cache","TotalCount":"0","Active":"0","Size":"0B","Reclaimable":"0B"}\n'
+        ),
+        images="node\t22-slim\n",
+    )
+    data = docker_cache_cleanup(ex, min_age_hours=24, data_root=tmp_path)
+    builder = next(p for p in data["prunes"] if p["kind"] == "builder")
+    assert builder["reclaimed"] == "6.7GB"
 
 
 def test_cleanup_untags_node_base_image(monkeypatch, tmp_path):

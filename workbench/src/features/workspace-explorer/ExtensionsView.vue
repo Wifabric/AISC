@@ -20,6 +20,8 @@ const KIND_TABS: { key: ExtensionsKind; labelKey: string }[] = [
 
 const runtimeId = computed(() => runtime.runtimeSnapshot?.runtime_id ?? "");
 const expandedId = ref<string | null>(null);
+const expandedGroupId = ref<string | null>(null);
+const expandedChildId = ref<string | null>(null);
 const skillQuery = ref("");
 const skillLink = ref("");
 const mcpJson = ref("");
@@ -38,9 +40,21 @@ function syncContext(): void {
 }
 async function onTab(target: ExtensionsKind): Promise<void> {
   expandedId.value = null;
+  expandedGroupId.value = null;
+  expandedChildId.value = null;
   await store.load(target);
   if (target === "plugins") void store.loadPluginMarkets();
 }
+
+watch(skillQuery, (value) => {
+  if (!value.trim()) store.clearMarketResults("skills");
+});
+watch(mcpQuery, (value) => {
+  if (!value.trim()) store.clearMarketResults("mcp");
+});
+watch(pluginQuery, (value) => {
+  if (!value.trim()) store.clearMarketResults("plugins");
+});
 </script>
 
 <template>
@@ -49,15 +63,29 @@ async function onTab(target: ExtensionsKind): Promise<void> {
       <button v-for="tab in KIND_TABS" :key="tab.key" type="button" role="tab" :aria-selected="store.kind === tab.key" :class="{ active: store.kind === tab.key }" :data-testid="'ext-tab-' + tab.key" @click="onTab(tab.key)">{{ t(tab.labelKey) }}</button>
     </div>
 
+    <div
+      v-if="store.activeOperation"
+      class="operation-progress"
+      data-testid="ext-operation-progress"
+      role="status"
+    >
+      <span class="spinner" aria-hidden="true" />
+      <span class="op-action">{{ t(`extensions.op.${store.activeOperation.action}`) }}</span>
+      <span v-if="store.activeOperation.total > 1" class="op-count">
+        {{ store.activeOperation.completed }}/{{ store.activeOperation.total }}
+      </span>
+      <span class="op-target">{{ store.activeOperation.label }}</span>
+    </div>
+
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
     <p v-if="!store.canLoad" class="explorer-empty">{{ t("extensions.noRuntime") }}</p>
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>
     <p v-else-if="!store.items.length" class="explorer-empty">{{ t("extensions.empty") }}</p>
 
     <template v-else-if="store.kind === 'skills'">
-      <div v-for="group in store.installedSkillGroups" :key="group.id" class="extensions-card one-line" :data-testid="'ext-skill-group-' + group.id" @click="expandedId = expandedId === 'installed:' + group.id ? null : 'installed:' + group.id">
+      <div v-for="group in store.installedSkillGroups" :key="group.id" class="extensions-card one-line" :data-testid="'ext-skill-group-' + group.id" @click="expandedGroupId = expandedGroupId === group.id ? null : group.id; expandedChildId = null">
         <div class="ext-row">
-          <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'installed:' + group.id ? "▾" : "▸" }}</span>
+          <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === group.id ? "▾" : "▸" }}</span>
           <span v-if="group.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
           <span class="ext-name" :title="group.repo">{{ group.name }}</span>
           <span class="ext-badge">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
@@ -72,9 +100,9 @@ async function onTab(target: ExtensionsKind): Promise<void> {
             <span v-else>✕</span>
           </button>
         </div>
-        <div v-if="expandedId === 'installed:' + group.id" class="skill-children">
-          <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" @click.stop="expandedId = expandedId === 'installed-child:' + item.id ? 'installed:' + group.id : 'installed-child:' + item.id">
-            <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'installed-child:' + item.id ? "▾" : "▸" }}</span>
+        <div v-if="expandedGroupId === group.id" class="skill-children">
+          <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" :data-testid="'ext-skill-child-' + item.id" @click.stop="expandedChildId = item.id">
+            <span class="ext-chevron" aria-hidden="true">{{ expandedChildId === item.id ? "▾" : "▸" }}</span>
             <span class="ext-name" :title="item.id">{{ item.name }}</span>
             <span class="ext-badge">{{ item.source }}</span>
             <span class="ext-spacer" />
@@ -87,6 +115,10 @@ async function onTab(target: ExtensionsKind): Promise<void> {
               <span v-if="store.opBusyId === item.id" class="spinner" />
               <span v-else>✕</span>
             </button>
+            <p v-if="expandedChildId === item.id" class="mh-detail">
+              {{ item.description || item.id }}
+              <span v-if="item.sources"> · {{ item.source }}</span>
+            </p>
           </div>
         </div>
       </div>
@@ -127,8 +159,8 @@ async function onTab(target: ExtensionsKind): Promise<void> {
         <input v-model="skillQuery" type="text" :placeholder="t('extensions.marketSearch')" :aria-label="t('extensions.marketSearch')" data-testid="ext-skill-search" @keydown.enter.prevent="store.searchSkills(skillQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!skillQuery.trim() || store.marketBusy" data-testid="ext-skill-search-btn" @click="store.searchSkills(skillQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
-      <div v-for="group in store.marketSkillGroups" :key="group.id" class="market-hit" @click="expandedId = expandedId === 'market:' + group.id ? null : 'market:' + group.id">
-        <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'market:' + group.id ? "▾" : "▸" }}</span>
+      <div v-for="group in store.marketSkillGroups" :key="group.id" class="market-hit" @click="expandedGroupId = expandedGroupId === 'market:' + group.id ? null : 'market:' + group.id; expandedChildId = null">
+        <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === 'market:' + group.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="group.id">{{ group.name }}</span>
         <span class="mh-meta">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
         <span class="ext-spacer" />
@@ -136,9 +168,9 @@ async function onTab(target: ExtensionsKind): Promise<void> {
           <span v-if="store.opBusyId === 'market:' + group.id" class="spinner" />
           <span v-else>＋</span>
         </button>
-        <div v-if="expandedId === 'market:' + group.id" class="skill-children">
-          <div v-for="m in group.items" :key="m.id" class="ext-row skill-child" @click.stop="expandedId = expandedId === 'market-child:' + m.id ? 'market:' + group.id : 'market-child:' + m.id">
-            <span class="ext-chevron" aria-hidden="true">{{ expandedId === 'market-child:' + m.id ? "▾" : "▸" }}</span>
+        <div v-if="expandedGroupId === 'market:' + group.id" class="skill-children">
+          <div v-for="m in group.items" :key="m.id" class="ext-row skill-child" :data-testid="'ext-market-child-' + m.id" @click.stop="expandedChildId = 'market:' + m.id">
+            <span class="ext-chevron" aria-hidden="true">{{ expandedChildId === 'market:' + m.id ? "▾" : "▸" }}</span>
             <span class="ext-name" :title="m.id">{{ m.name }}</span>
             <span class="mh-meta">⬇ {{ m.installs }}</span>
             <span class="ext-spacer" />
@@ -146,7 +178,7 @@ async function onTab(target: ExtensionsKind): Promise<void> {
               <span v-if="store.opBusyId === m.id" class="spinner" />
               <span v-else>＋</span>
             </button>
-            <p v-if="expandedId === 'market-child:' + m.id" class="mh-detail">{{ m.id }} · {{ m.repo }}:{{ m.directory }}</p>
+            <p v-if="expandedChildId === 'market:' + m.id" class="mh-detail">{{ m.description || m.id }} · {{ m.repo }}:{{ m.directory }}</p>
           </div>
         </div>
       </div>
@@ -218,13 +250,14 @@ async function onTab(target: ExtensionsKind): Promise<void> {
 </template>
 
 <style scoped>
-.extensions-view { display: grid; gap: var(--space-2); overflow: auto; align-content: start; }
+.extensions-view { display: flex; flex-direction: column; min-width: 0; width: 100%; box-sizing: border-box; gap: var(--space-2); overflow: auto; }
 .extensions-tabs { display: flex; gap: var(--space-1); }
 .extensions-tabs button { flex: 1; padding: 4px 8px; border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
 .extensions-tabs button.active { border-color: var(--accent); color: var(--text); background: var(--surface-3); }
+.extensions-card, .market-hit { width: 100%; min-width: 0; box-sizing: border-box; }
 .extensions-card { padding: 2px var(--space-2); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface); }
 .extensions-card.one-line { padding: 2px var(--space-2); }
-.ext-row { display: flex; align-items: center; gap: 6px; min-height: 28px; cursor: pointer; }
+.ext-row { display: flex; align-items: center; gap: 6px; min-height: 28px; width: 100%; min-width: 0; box-sizing: border-box; cursor: pointer; }
 .ext-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 10px; }
 .ext-conflict { flex: 0 0 auto; color: var(--warn); font-size: 14px; }
 .ext-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -236,10 +269,14 @@ async function onTab(target: ExtensionsKind): Promise<void> {
 .skill-children { display: grid; gap: 2px; margin: 2px 0 3px 18px; }
 .skill-child { min-height: 26px; border-top: var(--border-w) solid var(--border-2); }
 .skill-child .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.extensions-market { display: grid; gap: var(--space-1); padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
+.extensions-market { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
 .market-row { display: flex; gap: var(--space-1); }
 .market-row input, .extensions-market textarea { width: 100%; box-sizing: border-box; flex: 1; min-width: 0; }
 .market-hit { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px var(--space-1); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+.operation-progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }
+.op-action { flex: 0 0 auto; font-size: var(--font-sm); font-weight: 600; }
+.op-count { flex: 0 0 auto; font-size: var(--font-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.op-target { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-xs); color: var(--text-faint); }
 .mh-name { font-size: var(--font-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mh-meta { flex: 1; font-size: var(--font-xs); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mh-detail { flex-basis: 100%; margin: 2px 0 0 14px; font-size: var(--font-xs); color: var(--text-faint); overflow-wrap: anywhere; }

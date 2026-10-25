@@ -860,7 +860,6 @@ async function reopenOnboarding() {
                   <span v-if="card.reclaimable !== null" class="ds-sub">{{ formatBytes(card.reclaimable) }}</span>
                 </div>
               </div>
-              <p class="note">{{ t("settings.disk.inspect.disclaimer") }}</p>
               <div v-for="row in dockerPreviewRows" :key="row.label" class="field disk-row">
                 <span class="label">{{ row.label }}</span>
                 <span class="val">{{ row.value }}</span>

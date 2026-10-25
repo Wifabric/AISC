@@ -15,6 +15,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { i18n } from "../../../i18n";
 import { useSettingsStore } from "../../../stores/settings";
 import SettingsForm from "../SettingsForm.vue";
+import settingsFormSource from "../SettingsForm.vue?raw";
 import type { SettingsDocument } from "../../../types";
 
 const mockIpc = vi.hoisted(() => ({
@@ -367,5 +368,11 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     expect(order).toEqual(["cache", "scan"]);
     expect(mockIpc.cacheInspect).toHaveBeenCalledTimes(1);
     wrapper.unmount();
+  });
+});
+
+describe("v2.1.16 preview b1 disk output", () => {
+  it("does not render the verbose reclaim estimate disclaimer", () => {
+    expect(settingsFormSource).not.toContain("settings.disk.inspect.disclaimer");
   });
 });
