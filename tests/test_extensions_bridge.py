@@ -13,7 +13,7 @@ from aisc.application import extensions as ext
 def fake_executor(container="ct-1"):
     calls = []
     def run_captured(argv, timeout=0.0, input_text=""):
-        calls.append({"argv": list(argv), "input": input_text})
+        calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
         return SimpleNamespace(exit_code=0, stdout=json.dumps({
             "schema": ext.PROTOCOL, "operation_id": "op", "op": argv_root(argv),
             "ok": True, "items": [],
@@ -50,6 +50,7 @@ class BridgeTests(unittest.TestCase):
         i = argv.index("/usr/local/bin/aisc-extensions-adapter")
         self.assertEqual(argv[i + 1: i + 5], ["list", "--kind", "skills"])
         self.assertEqual(data["kind"], "skills")
+        self.assertEqual(calls[0]["timeout"], 600.0)
 
     def test_mcp_add_rides_stdin_not_argv(self):
         calls, executor = fake_executor()

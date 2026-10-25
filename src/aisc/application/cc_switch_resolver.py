@@ -48,6 +48,10 @@ from aisc.domain.cc_switch_release import (
 
 
 DEFAULT_API_BASE = "https://api.github.com"
+#: ghfast.top rejects API paths with 403; gh-proxy.com has been verified to
+#: proxy GitHub's JSON API. Only supplement the default base — an explicit
+#: corporate/test base must remain the sole source of truth.
+DEFAULT_API_MIRROR_PREFIX = "https://gh-proxy.com/"
 DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_TTL_S = 600.0
 DEFAULT_PER_PAGE = 50
@@ -134,6 +138,9 @@ class CcSwitchResolver:
         self._transport = transport
         self._cache_dir = Path(cache_dir) if cache_dir is not None else None
         self._api_base = (api_base or os.environ.get("AISC_GH_API_BASE") or DEFAULT_API_BASE).rstrip("/")
+        self._api_bases = [self._api_base]
+        if self._api_base == DEFAULT_API_BASE:
+            self._api_bases.append(f"{DEFAULT_API_MIRROR_PREFIX}{DEFAULT_API_BASE}")
         self._token = token or os.environ.get("AISC_GH_API_TOKEN") or ""
         self._timeout = timeout
         self._ttl_s = ttl_s
@@ -201,9 +208,9 @@ class CcSwitchResolver:
 
     # --- GitHub API ----------------------------------------------------------
 
-    def _fetch_page(self, page: int) -> Tuple[List[Dict[str, Any]], bool]:
+    def _fetch_page(self, page: int, api_base: str) -> Tuple[List[Dict[str, Any]], bool]:
         url = (
-            f"{self._api_base}/repos/{UPSTREAM_REPO}/releases"
+            f"{api_base}/repos/{UPSTREAM_REPO}/releases"
             f"?per_page={DEFAULT_PER_PAGE}&page={page}"
         )
         headers: Dict[str, str] = {"Accept": "application/vnd.github+json"}
@@ -235,17 +242,31 @@ class CcSwitchResolver:
         return body, len(body) < DEFAULT_PER_PAGE
 
     def _fetch_releases(self) -> List[Dict[str, Any]]:
-        all_releases: List[Dict[str, Any]] = []
-        for page in range(1, DEFAULT_MAX_PAGES + 1):
-            page_releases, last = self._fetch_page(page)
-            all_releases.extend(page_releases)
-            if last or not page_releases:
-                break
-        else:
-            # Exhausted pagination without finding a terminal page; keep what
-            # we have — selection fails closed if the target isn't in range.
-            pass
-        return all_releases
+        last_error: Optional[ResolveError] = None
+        for api_base in self._api_bases:
+            try:
+                all_releases: List[Dict[str, Any]] = []
+                for page in range(1, DEFAULT_MAX_PAGES + 1):
+                    page_releases, last = self._fetch_page(page, api_base)
+                    all_releases.extend(page_releases)
+                    if last or not page_releases:
+                        break
+                else:
+                    # Exhausted pagination without finding a terminal page;
+                    # keep what we have — selection fails closed if the target
+                    # isn't in range.
+                    pass
+                return all_releases
+            except ResolveError as exc:
+                if exc.code not in (
+                    CC_SWITCH_ERROR_NETWORK,
+                    CC_SWITCH_ERROR_RATE_LIMITED,
+                ):
+                    raise
+                last_error = exc
+        raise last_error or ResolveError(
+            CC_SWITCH_ERROR_NETWORK, "github api unavailable"
+        )
 
     # --- cache ---------------------------------------------------------------
 

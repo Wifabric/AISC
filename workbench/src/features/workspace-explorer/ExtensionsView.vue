@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useExtensionsStore, type ExtensionsKind } from "../../stores/extensions";
+import { useExtensionsStore, type ExtensionAction, type ExtensionsKind } from "../../stores/extensions";
 import { useRuntimeStore } from "../../stores/runtime";
 
 const { t } = useI18n();
@@ -44,6 +44,11 @@ async function onTab(target: ExtensionsKind): Promise<void> {
   expandedChildId.value = null;
   await store.load(target);
   if (target === "plugins") void store.loadPluginMarkets();
+}
+
+function opBusy(action: ExtensionAction, id: string): boolean {
+  const operation = store.activeOperation;
+  return operation?.action === action && operation.id === id;
 }
 
 watch(skillQuery, (value) => {
@@ -97,11 +102,11 @@ watch(pluginQuery, (value) => {
           <span class="ext-spacer" />
           <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true) }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))">{{ agent === "claude" ? "C" : "X" }}</button>
           <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.updateAll')" @click.stop="store.updateSkillGroup(group)">
-            <span v-if="store.opBusyId === 'installed:' + group.id" class="spinner" />
+            <span v-if="opBusy('update', 'installed:' + group.id)" class="spinner" />
             <span v-else>⟳</span>
           </button>
           <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.removeAll')" @click.stop="store.removeSkillGroup(group)">
-            <span v-if="store.opBusyId === 'installed:' + group.id" class="spinner" />
+            <span v-if="opBusy('remove', 'installed:' + group.id)" class="spinner" />
             <span v-else>✕</span>
           </button>
         </div>
@@ -113,11 +118,11 @@ watch(pluginQuery, (value) => {
             <span class="ext-spacer" />
             <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggle(item, agent, !(agent === 'claude' ? item.enabled_claude : item.enabled_codex))">{{ agent === "claude" ? "C" : "X" }}</button>
             <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.skillUpdate')" @click.stop="store.updateSkill(item)">
-              <span v-if="store.opBusyId === item.id" class="spinner" />
+              <span v-if="opBusy('update', item.id)" class="spinner" />
               <span v-else>⟳</span>
             </button>
             <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.remove')" @click.stop="store.remove(item)">
-              <span v-if="store.opBusyId === item.id" class="spinner" />
+              <span v-if="opBusy('remove', item.id)" class="spinner" />
               <span v-else>✕</span>
             </button>
             <p v-if="expandedChildId === item.id" class="mh-detail">
@@ -143,11 +148,11 @@ watch(pluginQuery, (value) => {
             <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggle(item, agent, !(agent === 'claude' ? item.enabled_claude : item.enabled_codex))">{{ agent === "claude" ? "C" : "X" }}</button>
           </template>
           <button v-if="store.kind === 'plugins'" type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.pluginUpdate')" @click.stop="store.pluginAction('plugin-update', item.id)">
-            <span v-if="store.opBusyId === item.id" class="spinner" />
+            <span v-if="opBusy('update', item.id)" class="spinner" />
             <span v-else>⟳</span>
           </button>
           <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.remove')" @click.stop="store.remove(item)">
-            <span v-if="store.opBusyId === item.id" class="spinner" />
+            <span v-if="opBusy('remove', item.id)" class="spinner" />
             <span v-else>✕</span>
           </button>
         </div>
@@ -170,7 +175,7 @@ watch(pluginQuery, (value) => {
         <span class="mh-meta">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
         <span class="ext-spacer" />
         <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.installAll')" @click.stop="store.installSkillGroup(group)">
-          <span v-if="store.opBusyId === 'market:' + group.id" class="spinner" />
+          <span v-if="opBusy('install', 'market:' + group.id)" class="spinner" />
           <span v-else>＋</span>
         </button>
         <div v-if="expandedGroupId === 'market:' + group.id" class="skill-children">
@@ -180,7 +185,7 @@ watch(pluginQuery, (value) => {
             <span class="mh-meta">⬇ {{ m.installs }}</span>
             <span class="ext-spacer" />
             <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.installSkill(m.id)">
-              <span v-if="store.opBusyId === m.id" class="spinner" />
+              <span v-if="opBusy('install', m.id)" class="spinner" />
               <span v-else>＋</span>
             </button>
             <p v-if="expandedChildId === 'market:' + m.id" class="mh-detail">{{ m.description || m.id }} · {{ m.repo }}:{{ m.directory }}</p>
@@ -204,7 +209,7 @@ watch(pluginQuery, (value) => {
         <span class="mh-meta">{{ m.repo }} · ⬇ {{ m.installs }}</span>
         <span class="ext-spacer" />
         <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.installMcpMarket(m.id)">
-          <span v-if="store.opBusyId === m.id" class="spinner" />
+          <span v-if="opBusy('install', m.id)" class="spinner" />
           <span v-else>＋</span>
         </button>
         <p v-if="expandedId === m.id" class="mh-detail">{{ m.description }}</p>
@@ -228,7 +233,7 @@ watch(pluginQuery, (value) => {
         <span class="mh-meta">{{ m.marketplace }} · ⬇ {{ m.installs }}</span>
         <span class="ext-spacer" />
         <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.install')" @click.stop="store.pluginAction('plugin-install', m.id)">
-          <span v-if="store.opBusyId === m.id" class="spinner" />
+          <span v-if="opBusy('install', m.id)" class="spinner" />
           <span v-else>＋</span>
         </button>
         <p v-if="expandedId === m.id" class="mh-detail">{{ m.description }}{{ m.repo ? ` · ${m.repo}` : "" }}</p>
@@ -236,7 +241,7 @@ watch(pluginQuery, (value) => {
       <div class="market-row">
         <input v-model="pluginId" type="text" :placeholder="t('extensions.pluginSpec')" :aria-label="t('extensions.pluginSpec')" data-testid="ext-plugin-id" @keydown.enter.prevent="void store.pluginAction('plugin-install', pluginId.trim()).then(() => (pluginId = ''))" />
         <button type="button" class="ui-icon-button sm" :disabled="!pluginId.trim() || store.busy" :title="t('extensions.install')" @click="store.pluginAction('plugin-install', pluginId.trim()).then(() => (pluginId = ''))">
-          <span v-if="store.opBusyId === pluginId" class="spinner" />
+          <span v-if="opBusy('install', pluginId)" class="spinner" />
           <span v-else>＋</span>
         </button>
       </div>

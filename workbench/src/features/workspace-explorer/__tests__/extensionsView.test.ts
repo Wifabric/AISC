@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
+import { nextTick } from "vue";
+import { useExtensionsStore } from "../../../stores/extensions";
 import { i18n } from "../../../i18n";
 import ExtensionsView from "../ExtensionsView.vue";
 import * as ipc from "../../../lib/ipc";
@@ -72,6 +74,62 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     await group.trigger("click");
     await flushPromises();
     expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
+    wrapper.unmount();
+  });
+});
+
+describe("ExtensionsView operation button spinners (preview b3)", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    i18n.global.locale.value = "zh-CN";
+    vi.mocked(ipc.extensionsCall).mockReset();
+    vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind) }));
+  });
+
+  it("shows a group update spinner only on the update button", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const store = useExtensionsStore();
+    store.operationsByKind.skills = {
+      kind: "skills", action: "update", id: "installed:x/y", label: "x/y",
+      completed: 0, total: 1,
+    };
+    await nextTick();
+
+    expect(wrapper.find('button[title="更新全部"] .spinner').exists()).toBe(true);
+    expect(wrapper.find('button[title="卸载全部"] .spinner').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows a group remove spinner only on the remove button", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const store = useExtensionsStore();
+    store.operationsByKind.skills = {
+      kind: "skills", action: "remove", id: "installed:x/y", label: "x/y",
+      completed: 0, total: 1,
+    };
+    await nextTick();
+
+    expect(wrapper.find('button[title="更新全部"] .spinner').exists()).toBe(false);
+    expect(wrapper.find('button[title="卸载全部"] .spinner').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("shows a child update spinner only on that child update button", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    await wrapper.find("[data-testid^=ext-skill-group-]").trigger("click");
+    await flushPromises();
+    const store = useExtensionsStore();
+    store.operationsByKind.skills = {
+      kind: "skills", action: "update", id: "caveman", label: "caveman",
+      completed: 0, total: 1,
+    };
+    await nextTick();
+
+    expect(wrapper.find('button[title="更新技能"] .spinner').exists()).toBe(true);
+    expect(wrapper.find('button[title="卸载/删除"] .spinner').exists()).toBe(false);
     wrapper.unmount();
   });
 });

@@ -17,12 +17,29 @@ class PreviewFactorySkillsTests(unittest.TestCase):
         self.assertEqual(
             tuple(row[0] for row in A.BUNDLED_SKILLS),
             (
-                "caveman", "cavecrew", "caveman-commit", "caveman-compress",
-                "caveman-help", "caveman-review", "caveman-stats", "grill-me",
+                "caveman", "caveman-commit", "caveman-compress",
+                "caveman-discover", "caveman-evidence-review", "caveman-explore",
+                "caveman-help", "caveman-learn", "caveman-manage",
+                "caveman-optimize", "caveman-review", "caveman-setup",
+                "caveman-stats", "grill-me",
             ),
         )
 
-    def test_dockerfile_stages_only_the_two_ruled_skills_offline(self):
+    def test_vendored_caveman_suite_contains_exactly_thirteen_caveman_skills(self):
+        vendored = {
+            path.name for path in
+            (ROOT / "container" / "_bundle" / "plugins" / "marketplaces" / "caveman" / "skills").iterdir()
+            if path.is_dir()
+        }
+        self.assertEqual(vendored, {
+            "caveman", "caveman-commit", "caveman-compress",
+            "caveman-discover", "caveman-evidence-review", "caveman-explore",
+            "caveman-help", "caveman-learn", "caveman-manage",
+            "caveman-optimize", "caveman-review", "caveman-setup",
+            "caveman-stats",
+        })
+
+    def test_dockerfile_stages_only_the_ruled_skills_offline(self):
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn(
             "COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/",
@@ -36,10 +53,18 @@ class PreviewFactorySkillsTests(unittest.TestCase):
         self.assertNotIn(
             "COPY container/cc-switch-skills/ /opt/aisc/skills/", dockerfile
         )
+        for skill in (
+            "caveman", "caveman-commit", "caveman-compress",
+            "caveman-discover", "caveman-evidence-review", "caveman-explore",
+            "caveman-help", "caveman-learn", "caveman-manage",
+            "caveman-optimize", "caveman-review", "caveman-setup",
+            "caveman-stats",
+        ):
+            self.assertIn(f" {skill} ", dockerfile)
 
-    def test_entrypoint_reports_the_two_managed_skills(self):
+    def test_entrypoint_reports_the_managed_factory_skills(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("已安装 caveman 全部技能与 grill-me", entrypoint)
+        self.assertIn("已安装 13 个 caveman 技能与 grill-me", entrypoint)
         self.assertIn("/usr/local/bin/lib/cc_switch_skills.py", entrypoint)
         self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
 

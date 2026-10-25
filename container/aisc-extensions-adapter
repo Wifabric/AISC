@@ -298,6 +298,118 @@ def _git_mirror_env(mirror: str) -> dict[str, str]:
     }
 
 
+def _github_repo_identity(source: str) -> tuple[tuple[str, str, Optional[str]], str] | None:
+    """Normalize owner/name[@branch] or a GitHub URL for Git operations."""
+    source = source.strip()
+    branch: Optional[str] = None
+    if source.startswith("https://github.com/"):
+        path = source.removeprefix("https://github.com/").strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        if "/tree/" in path:
+            path, maybe_branch = path.split("/tree/", 1)
+            branch = maybe_branch.split("/", 1)[0] or None
+    else:
+        # Keep the historical local-path escape hatch: a relative/local path
+        # is not a GitHub repo and must never be rewritten through a mirror.
+        if "/" not in source or Path(source).exists() or source.startswith("."):
+            return None
+        if "@" in source:
+            source, maybe_branch = source.rsplit("@", 1)
+            branch = maybe_branch or None
+        path = source.strip("/")
+    path = path.split(":", 1)[0].strip("/")
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        return None
+    owner, name = parts[0], parts[1]
+    return (owner, name, branch), f"https://github.com/{owner}/{name}.git"
+
+
+def _github_git_env(source: str) -> dict[str, str]:
+    """Probe direct GitHub first, then mirrors, with short bounded timeouts.
+
+    ``cc-switch`` downloads skill archives over HTTP and does not honor Git's
+    ``insteadOf`` environment. The probe therefore selects a reachable Git
+    source for explicit staging; it never asks ``cc-switch`` to wait on an
+    unreachable direct connection first.
+    """
+    identity = _github_repo_identity(source)
+    if identity is None:
+        return {}
+    url = identity[1]
+    for mirror in (None, *_GIT_MIRRORS):
+        env = {} if mirror is None else _git_mirror_env(mirror)
+        try:
+            _run_cli(["git", "ls-remote", url, "HEAD"],
+                     timeout=8.0, env_overrides=env)
+        except AdapterError:
+            continue
+        return env
+    raise AdapterError(
+        ERR_CLI,
+        f"github unreachable after direct and mirror probes: {url}",
+    )
+
+
+def _github_branch(url: str) -> str:
+    try:
+        raw = _run_cli(["git", "ls-remote", "--symref", url, "HEAD"],
+                       timeout=8.0)
+    except AdapterError:
+        raw = ""
+    else:
+        match = re.search(r"ref: refs/heads/([^\s]+)", raw)
+        return match.group(1) if match else "main"
+    for mirror in _GIT_MIRRORS:
+        try:
+            raw = _run_cli(["git", "ls-remote", "--symref", url, "HEAD"],
+                           timeout=8.0, env_overrides=_git_mirror_env(mirror))
+        except AdapterError:
+            continue
+        match = re.search(r"ref: refs/heads/([^\s]+)", raw)
+        if match:
+            return match.group(1)
+    return "main"
+
+
+def _archive_reachable(url: str) -> bool:
+    try:
+        _run_cli([
+            "curl", "-fsSIL", "--connect-timeout", "5", "--max-time", "8", url,
+        ], timeout=10.0)
+    except AdapterError:
+        return False
+    return True
+
+
+def _github_skill_env(source: str, *, allow_direct: bool = True) -> dict[str, str]:
+    """Select direct cc-switch HTTP or a Git mirror for skill installation.
+
+    cc-switch builds GitHub archive URLs itself. A successful Git probe is not
+    sufficient (direct Git can work while GitHub's archive CDN cannot), so the
+    actual archive URL is probed with a bounded HEAD request before choosing
+    the direct path. Mirror archives use Git staging because cc-switch cannot
+    be given a rewritten archive URL.
+    """
+    identity = _github_repo_identity(source)
+    if identity is None:
+        return {}
+    (owner, name, requested_branch), url = identity
+    branch = requested_branch or _github_branch(url)
+    archive = (f"https://github.com/{owner}/{name}/archive/refs/heads/"
+               f"{branch}.zip")
+    if allow_direct and _archive_reachable(archive):
+        return {}
+    for mirror in _GIT_MIRRORS:
+        if _archive_reachable(f"{mirror}{archive}"):
+            return _git_mirror_env(mirror)
+    raise AdapterError(
+        ERR_CLI,
+        f"github skill archive unreachable after direct and mirror probes: {archive}",
+    )
+
+
 def _run_cli_git_fallback(argv: list[str], *, timeout: float,
                            input_text: str = "") -> str:
     """Direct first; only if direct fails, retry public GitHub mirrors."""
@@ -356,24 +468,114 @@ def delete(kind: str, item_id: str) -> None:
         raise AdapterError(ERR_BAD_REQUEST, f"unknown kind: {kind}")
 
 
-def _install_skill(spec: str, *, enable_both: bool) -> None:
+def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
+    path = _db_path()
+    if not path.is_file():
+        return None
+    try:
+        connection = _connect_ro(path)
+        try:
+            row = connection.execute(
+                "SELECT enabled_claude, enabled_codex FROM skills "
+                "WHERE directory = ? OR name = ? ORDER BY id LIMIT 1",
+                (directory, directory),
+            ).fetchone()
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, AdapterError):
+        return None
+    if row is None:
+        return None
+    return {"claude": bool(row[0]), "codex": bool(row[1])}
+
+
+def _stage_skill_from_git_mirror(spec: str, repo: str,
+                                 git_env: dict[str, str]) -> None:
+    """Stage a skill through Git when cc-switch's direct archive URL fails.
+
+    cc-switch 5.11 builds ``https://github.com/<owner>/<repo>/archive/...``
+    itself and ignores Git mirror configuration. A shallow Git clone through
+    the selected mirror, followed by staging into cc-switch's skills source
+    directory, lets the official ``skills install`` command complete offline
+    from its SSOT and retain normal registration/sync semantics.
+    """
+    import shutil
+    import tempfile
+
+    identity = _github_repo_identity(repo)
+    if identity is None:
+        raise AdapterError(ERR_BAD_REQUEST, f"not a GitHub skill repo: {repo}")
+    (owner, name, requested_branch), url = identity
+    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+    relative = Path(directory)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
+
+    with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
+        clone = Path(temporary) / "repo"
+        clone_argv = ["git", "clone", "--depth", "1"]
+        if requested_branch:
+            clone_argv.extend(["--branch", requested_branch])
+        clone_argv.extend([url, str(clone)])
+        _run_cli(clone_argv, timeout=120.0, env_overrides=git_env)
+        branch = _run_cli(
+            ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
+            timeout=10.0, env_overrides=git_env,
+        ).strip() or requested_branch or "main"
+        _run_cli(["cc-switch", "skills", "repos", "add",
+                  f"{owner}/{name}@{branch}"], timeout=30.0)
+
+        candidates = [clone / "skills" / relative, clone / relative]
+        source = next((candidate for candidate in candidates
+                       if (candidate / "SKILL.md").is_file()), None)
+        if source is None:
+            raise AdapterError(
+                ERR_NOT_FOUND,
+                f"SKILL.md not found for {spec} in mirrored repository",
+            )
+        destination = _db_path().parent / "skills" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(source, destination)
+
+
+def _install_skill(spec: str, *, enable_both: bool,
+                   restore_state: bool = False) -> None:
     # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
     # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
     repo = spec.split(":", 1)[0]
-    if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
+    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+    previous_state = _skill_enable_states(directory) if restore_state else None
+    git_env = _github_skill_env(repo)
+    if git_env:
+        _stage_skill_from_git_mirror(spec, repo, git_env)
+        _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+    else:
+        if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
+            try:
+                _run_cli(["cc-switch", "skills", "repos", "add", repo],
+                         timeout=120.0)
+            except AdapterError:
+                pass
         try:
-            _run_cli_git_fallback(
-                ["cc-switch", "skills", "repos", "add", repo], timeout=120.0)
+            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
         except AdapterError:
-            pass
-    _run_cli_git_fallback(
-        ["cc-switch", "skills", "install", spec], timeout=120.0)
+            # A HEAD probe can succeed while the real archive body still fails.
+            # Retry once through Git staging; this does not enable system proxy.
+            mirror_env = _github_skill_env(repo, allow_direct=False)
+            if not mirror_env:
+                raise
+            _stage_skill_from_git_mirror(spec, repo, mirror_env)
+            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     if enable_both:
-        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
         for agent in AGENTS:
             _run_cli(["cc-switch", "skills", "enable", directory, "-a", agent])
-
+    elif previous_state is not None:
+        for agent in AGENTS:
+            verb = "enable" if previous_state[agent] else "disable"
+            _run_cli(["cc-switch", "skills", verb, directory, "-a", agent])
 
 def skill_install(spec: str) -> None:
     # preview b2 用户裁定：市场安装默认 Claude + Codex 均启用。
@@ -381,8 +583,10 @@ def skill_install(spec: str) -> None:
 
 
 def skill_update(spec: str) -> None:
-    # Update must preserve the user's existing enable/disable choices.
-    _install_skill(spec, enable_both=False)
+    # Update must preserve the user's existing enable/disable choices. The
+    # official install command defaults Claude on, so restore both states after
+    # refreshing the source.
+    _install_skill(spec, enable_both=False, restore_state=True)
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
@@ -489,7 +693,8 @@ def deeplink_import(url: str) -> None:
 def skill_repo_add(source: str) -> None:
     if not source.strip():
         raise AdapterError(ERR_BAD_REQUEST, "repo source is required")
-    _run_cli_git_fallback(["cc-switch", "skills", "repos", "add", source], timeout=120.0)
+    _run_cli(["cc-switch", "skills", "repos", "add", source],
+             timeout=120.0, env_overrides=_github_git_env(source))
 
 
 def _parse_plugin_marketplaces(raw: str) -> list[dict[str, Any]]:

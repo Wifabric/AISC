@@ -99,7 +99,7 @@ def _exec_adapter(
     if url:
         argv.extend(["--url", url])
 
-    result = executor.run_captured(argv, timeout=200.0, input_text=stdin_text)
+    result = executor.run_captured(argv, timeout=600.0, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
         raise CliError(
             message=f"extensions {op} failed: {(result.stderr or '').strip()[:200]}",

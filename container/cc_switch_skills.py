@@ -19,12 +19,18 @@ from typing import TextIO
 # 管理链路预装 grill-me 与 caveman。其余技能仍由扩展商城按需安装。
 BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = (
     ("caveman", "Ultra-compressed agent communication", "JuliusBrussee", "caveman"),
-    ("cavecrew", "Caveman subagent delegation guide", "JuliusBrussee", "caveman"),
     ("caveman-commit", "Ultra-compressed commit messages", "JuliusBrussee", "caveman"),
     ("caveman-compress", "Compress memory files into caveman format", "JuliusBrussee", "caveman"),
+    ("caveman-discover", "Discover and label repository LLM workflows", "JuliusBrussee", "caveman"),
+    ("caveman-evidence-review", "Review Caveman Cloud evidence read-only", "JuliusBrussee", "caveman"),
+    ("caveman-explore", "Read-only repository explorer for localization", "JuliusBrussee", "caveman"),
     ("caveman-help", "Caveman modes quick reference", "JuliusBrussee", "caveman"),
+    ("caveman-learn", "Apply measured Caveman cost fixes", "JuliusBrussee", "caveman"),
+    ("caveman-manage", "Manage Caveman experiment lifecycle safely", "JuliusBrussee", "caveman"),
+    ("caveman-optimize", "Evaluate Caveman optimization observations", "JuliusBrussee", "caveman"),
     ("caveman-review", "Ultra-compressed code review comments", "JuliusBrussee", "caveman"),
-    ("caveman-stats", "Caveman token usage and savings report", "JuliusBrussee", "caveman"),
+    ("caveman-setup", "Wire repositories through Caveman Cloud", "JuliusBrussee", "caveman"),
+    ("caveman-stats", "Report session token usage and attribution", "JuliusBrussee", "caveman"),
     ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
 )
 REVISION_FILE = ".aisc-bundle.sha256"

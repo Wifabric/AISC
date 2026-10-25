@@ -5,8 +5,12 @@ import json
 import re
 from pathlib import Path
 
-# Extensions that are natural language and compressible
-COMPRESSIBLE_EXTENSIONS = {".md", ".txt", ".markdown", ".rst", ".typ", ".typst", ".tex"}
+# Extensions that are natural language and compressible. `.mdc` is a Cursor
+# rule: prose with YAML frontmatter, the same shape as a SKILL.md, and the
+# format caveman's own `--with-init` writes to `.cursor/rules/caveman.mdc`.
+# Content sniffing below runs only for EXTENSIONLESS files, so an extension
+# that is on neither list falls through to `unknown` and is never compressed.
+COMPRESSIBLE_EXTENSIONS = {".md", ".mdc", ".txt", ".markdown", ".rst", ".typ", ".typst", ".tex"}
 
 # Extensions that are code/config and should be skipped
 SKIP_EXTENSIONS = {
@@ -15,6 +19,17 @@ SKIP_EXTENSIONS = {
     ".sql", ".sh", ".bash", ".zsh", ".go", ".rs", ".java", ".c",
     ".cpp", ".h", ".hpp", ".rb", ".php", ".swift", ".kt", ".lua",
     ".dockerfile", ".makefile", ".csv", ".ini", ".cfg",
+}
+
+# Well-known build/config files that carry no (or a misleading) extension —
+# `Dockerfile` has no suffix so `.dockerfile` above never matches it, and
+# `CMakeLists.txt` would ride the compressible `.txt` rule. Checked by
+# basename before any extension rule.
+KNOWN_CODE_FILENAMES = {
+    "dockerfile", "containerfile", "makefile", "gnumakefile", "jenkinsfile",
+    "vagrantfile", "rakefile", "gemfile", "justfile", "procfile", "brewfile",
+    "earthfile", "fastfile", "podfile",
+    "cmakelists.txt",
 }
 
 # Patterns that indicate a line is code
@@ -67,6 +82,10 @@ def detect_file_type(filepath: Path) -> str:
     """
     ext = filepath.suffix.lower()
 
+    # Known code filenames win over any extension rule
+    if filepath.name.lower() in KNOWN_CODE_FILENAMES:
+        return "code"
+
     # Extension-based classification
     if ext in COMPRESSIBLE_EXTENSIONS:
         return "natural_language"
@@ -76,11 +95,15 @@ def detect_file_type(filepath: Path) -> str:
     # Extensionless files (like CLAUDE.md, TODO) — check content
     if not ext:
         try:
-            text = filepath.read_text(errors="ignore")
+            text = filepath.read_text(encoding="utf-8", errors="ignore")
         except (OSError, PermissionError):
             return "unknown"
 
         lines = text.splitlines()[:50]
+
+        # Shebang means executable script, never prose
+        if text.startswith("#!"):
+            return "code"
 
         if _is_json_content(text[:10000]):
             return "config"

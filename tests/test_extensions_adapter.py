@@ -283,7 +283,8 @@ class MarketTests(TempEnv):
         calls, run = self._fake()
         with mock.patch.object(A.subprocess, "run", run):
             A.skill_repo_add("https://github.com/anthropics/skills")
-        self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "repos", "add", "https://github.com/anthropics/skills"])
+        self.assertEqual(calls[0]["argv"][:3], ["git", "ls-remote", "https://github.com/anthropics/skills.git"])
+        self.assertEqual(calls[1]["argv"], ["cc-switch", "skills", "repos", "add", "https://github.com/anthropics/skills"])
 
     def test_parse_plugin_marketplaces(self):
         raw = "\n".join([
@@ -306,8 +307,10 @@ class MarketTests(TempEnv):
         calls, run = self._fake()
         with mock.patch.object(A.subprocess, "run", run):
             A.skill_install("mattpocock/skills:grilling")
-        self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "repos", "add", "mattpocock/skills"])
-        self.assertEqual(calls[1]["argv"], ["cc-switch", "skills", "install", "mattpocock/skills:grilling"])
+        self.assertEqual(calls[0]["argv"][:4], ["git", "ls-remote", "--symref", "https://github.com/mattpocock/skills.git"])
+        self.assertEqual(calls[1]["argv"][:2], ["curl", "-fsSIL"])
+        self.assertEqual(calls[2]["argv"], ["cc-switch", "skills", "repos", "add", "mattpocock/skills"])
+        self.assertEqual(calls[3]["argv"], ["cc-switch", "skills", "install", "mattpocock/skills:grilling"])
 
     def test_skill_install_plain_dir_skips_repo_add(self):
         calls, run = self._fake()
@@ -315,6 +318,49 @@ class MarketTests(TempEnv):
             A.skill_install("caveman")
         self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "install", "caveman"])
 
+    def test_skill_install_stages_mirror_clone_when_direct_archive_fails(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env"),
+                          "timeout": kwargs.get("timeout")})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "cavecrew"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    "---\nname: cavecrew\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_install("JuliusBrussee/caveman:cavecrew")
+
+        self.assertEqual(calls[0]["argv"][:3], ["git", "ls-remote", "--symref"])
+        self.assertEqual(calls[1]["argv"][-1], "https://github.com/JuliusBrussee/caveman/archive/refs/heads/master.zip")
+        self.assertEqual(calls[2]["argv"][-1], "https://ghfast.top/https://github.com/JuliusBrussee/caveman/archive/refs/heads/master.zip")
+        self.assertEqual(calls[3]["argv"][:2], ["git", "clone"])
+        self.assertIn("ghfast.top", calls[3]["env"]["GIT_CONFIG_KEY_0"])
+        self.assertEqual(calls[4]["argv"][:4], ["git", "-C", calls[3]["argv"][-1], "rev-parse"])
+        self.assertEqual(calls[5]["argv"], [
+            "cc-switch", "skills", "repos", "add", "JuliusBrussee/caveman@master"
+        ])
+        self.assertEqual(calls[6]["argv"], [
+            "cc-switch", "skills", "install", "JuliusBrussee/caveman:cavecrew"
+        ])
+        staged = self.root / "skills" / "cavecrew" / "SKILL.md"
+        self.assertTrue(staged.is_file())
+        self.assertEqual(calls[-2]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "claude"])
+        self.assertEqual(calls[-1]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "codex"])
 
     def test_mcp_market_install_uses_smithery_http_deployment_url(self):
         import urllib.request
@@ -350,8 +396,9 @@ class MarketTests(TempEnv):
     def test_skill_update_preserves_existing_enable_state(self):
         calls, run = self._fake()
         with mock.patch.object(A.subprocess, "run", run):
-            A.skill_update("obra/superpowers:using-superpowers")
-        self.assertFalse(any(call["argv"][:3] == ["cc-switch", "skills", "enable"] for call in calls))
+            A.skill_update("obra/superpowers:superpowers")
+        self.assertIn(["cc-switch", "skills", "enable", "superpowers", "-a", "claude"], [call["argv"] for call in calls])
+        self.assertIn(["cc-switch", "skills", "disable", "superpowers", "-a", "codex"], [call["argv"] for call in calls])
 
     def test_github_operations_retry_through_git_mirrors(self):
         calls = []
