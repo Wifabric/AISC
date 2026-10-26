@@ -372,6 +372,42 @@ def _skill_spec_parts(spec: str) -> tuple[str, str]:
     return repo, directory
 
 
+def _registered_repo_for_directory(directory: str) -> Optional[str]:
+    path = _db_path()
+    if not path.is_file():
+        return None
+    try:
+        connection = _connect_ro(path)
+        try:
+            row = connection.execute(
+                "SELECT repo_owner, repo_name FROM skills "
+                "WHERE lower(directory) = lower(?) "
+                "ORDER BY id LIMIT 1",
+                (directory,),
+            ).fetchone()
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, AdapterError):
+        return None
+    if not row or not row[0] or not row[1]:
+        return None
+    return f"{row[0]}/{row[1]}"
+
+
+def _canonical_skill_spec(spec: str) -> str:
+    """Align a market repo's casing with an already registered directory.
+
+    cc-switch treats repository identity case-sensitively while skills.sh can
+    return different casing. Reusing the registered owner/name avoids a false
+    SKILL_DIRECTORY_CONFLICT when refreshing an installed group.
+    """
+    repo, directory = _skill_spec_parts(spec)
+    registered = _registered_repo_for_directory(directory)
+    if registered and registered.casefold() == repo.casefold():
+        return f"{registered}:{directory}"
+    return spec
+
+
 def _github_branch(url: str) -> str:
     try:
         raw = _run_cli(["git", "ls-remote", "--symref", url, "HEAD"],
@@ -660,7 +696,7 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
     unique: list[str] = []
     seen: set[str] = set()
     for spec in specs:
-        normalized = spec.strip()
+        normalized = _canonical_skill_spec(spec.strip())
         if normalized not in seen:
             seen.add(normalized)
             unique.append(normalized)

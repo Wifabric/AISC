@@ -695,6 +695,35 @@ class MarketTests(TempEnv):
         self.assertIn(["cc-switch", "skills", "enable", "local", "-a", "claude"], argvs)
         self.assertIn(["cc-switch", "skills", "disable", "local", "-a", "codex"], argvs)
 
+    def test_skill_group_reuses_registered_repo_casing(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO skills (id,name,description,directory,repo_owner,repo_name,"
+            "repo_branch,enabled_claude,enabled_codex,enabled_gemini,enabled_grokbuild,"
+            "enabled_opencode,enabled_hermes,installed_at,content_hash,updated_at) "
+            "VALUES ('JuliusBrussee/caveman:caveman','caveman','desc','caveman',"
+            "'JuliusBrussee','caveman','main',1,1,0,0,0,0,"
+            "'2026-01-01','x','2026-01-02')"
+        )
+        connection.commit()
+        connection.close()
+        calls, run = self._fake()
+
+        with mock.patch.object(A, "_github_repo_identity", return_value=("owner", "repo", None)), \
+             mock.patch.object(A, "_github_git_env", return_value={}), \
+             mock.patch.object(A, "_stage_skills_from_git_source", return_value=[]), \
+             mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group([
+                "juliusbrussee/caveman:caveman"
+            ])
+
+        self.assertEqual(result["completed"], 1)
+        self.assertIn(
+            ["cc-switch", "skills", "install",
+             "JuliusBrussee/caveman:caveman"],
+            [call["argv"] for call in calls],
+        )
+
     def test_skill_update_group_requires_every_enable_state_before_install(self):
         states = {
             "superpowers": {"claude": True, "codex": False},

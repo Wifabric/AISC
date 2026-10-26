@@ -142,6 +142,12 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 
 
 
+## Computer Use 预测试（2026-10-26）
+
+- [x] Windows Computer UI 预测试关键路径 PASS：H1 13 子技能 UI 组安装后全部双引擎开启；H4 显式关闭 caveman Codex 后 UI 组更新仍保持 off。证据见 [PRETEST.md](PRETEST.md)。
+- [x] 预测试发现并修复 explicit CLI 被 saved pin 抢占的问题。
+- [x] 预测试发现并修复 market repo 大小写漂移导致的 cc-switch directory conflict。
+
 ## 审查修正（2026-10-26）
 
 - [x] direct / mirror 组源均执行一次全子技能 source preflight；实际 clone 体失败时按
