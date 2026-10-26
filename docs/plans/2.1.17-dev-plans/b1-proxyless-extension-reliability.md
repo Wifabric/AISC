@@ -31,8 +31,9 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - [ ] 按提交时间倒序分别撤销误触记录，不允许一个命令留下半撤销状态：
       1. `git revert --no-edit f9af814`（先撤销 b1 smoke 记录）；
       2. `git revert --no-edit 7534863`（再撤销实现）。
-      任一步冲突时立即 `git revert --abort`，整批停止并向用户报告；不得提交
-      半 revert。
+      若冲突仅由 `1d9e2b9` 已重写/改名同一阶段计划文档引起，则以当前重启版
+      README / b1 计划为准并删除旧 `b1-market-metadata-and-update-signals.md`；
+      其它冲突仍立即 `git revert --abort` 并报告，不得提交半 revert。
 - [ ] Post-revert 门：
       - `git diff --exit-code e91d1fe -- src/aisc/VERSION docs/releases/v0.1.10.dev0.md tests/fixtures/cli/envelope-version.json`
         必须无输出，证明阶段开题与 CLI 版本保留；

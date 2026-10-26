@@ -8,12 +8,6 @@
 - 用户裁定保留阶段开题与 CLI `0.1.10.dev0`，撤销误触 market-cache b1 实现，从 b1 无代理扩展完整性重新开始。
 - 同步新增裁定：自更新改为显式运行安装包；Services 注册服务补标签；caveman 安装即默认开启；发布前刷新 cc-switch / Codex / Claude / Node 等内置工具稳定最新版。
 
-# v2.1.17 b1 首片：市场缓存兜底（2026-10-26）
-
-- Extensions adapter 为 skills / MCP / plugins 搜索引入 `aisc.extensions.market-cache/v1`，远端成功写入本地 LRU cache，远端失败按 normalized query 回退上次成功结果。
-- cache 元数据贯穿 host CLI 与 Workbench store；三个市场 UI 显示“已刷新 / 缓存结果”、抓取时间与远端失败原因，且按 kind 互相隔离。
-- 验证：adapter/bridge 39、Vitest 15、全门禁 Python 1470 / Rust 365 / Vitest 647、vue-tsc、vendor 1532 全绿；sidecar 重建；实容器三市场远端搜索 20 / 10 / 1 项，断网兜底均保持结果并标记 cached。
-
 # v2.1.16 final 收口完成 / v2.1.17 开题（2026-10-26）
 
 - **Workbench final**：PR #39 经用户批准合入 `main`，tag `v2.1.16` 的 Workbench / CLI sidecar / Bundle / NSIS CI 全绿；NSIS 安装包与 SHA256 完整下载校验通过。
