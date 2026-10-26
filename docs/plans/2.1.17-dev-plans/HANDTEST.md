@@ -90,3 +90,24 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 3. 理想结果：更新进度从 `0/N` 到 `N/N`；被关闭项更新后 Codex 仍关闭、Claude
    保持原状态；其余未改动项双引擎保持开启。
 4. 异常判定：更新后覆盖用户显式关闭状态或缺少任一子项，记录为失败。
+
+
+## 2026-10-26 执行记录
+
+- **H1 UI：NOT RUN** — 未启动 Workbench 真窗口，不能声称进度文案 / toast / 子行
+  状态已手测。Workbench store/Vitest 已覆盖对应状态逻辑。
+- **H2 数据面补充：PASS** — 宿主 WinHTTP direct、用户 `ProxyEnable=0`；
+  `github.com:443=False`，`ghfast.top:443=True`，`gh-proxy.com:443=True`。
+  重建镜像 `sha256:10de26fee8dc...` 后启动真实 temporary runtime
+  `50a5b7df-55e5-426a-8756-3f3ab31fd2b0`，执行
+  `extensions skill-install-group` 安装 `caveman` + `caveman-commit`，返回
+  `total=2, completed=2`，两项 `status=installed`；列表确认两项
+  `enabled_claude=true, enabled_codex=true`。
+- **H2 UI 进度/文案：NOT RUN** — 数据面通过不代表父组按钮 `0/2→2/2` 与 toast
+  已在真窗口观察。
+- **H3：NOT RUN** — 实测 ghfast 与 gh-proxy 均可连接，不满足“直连与镜像均不可用”
+  前置；不得伪造失败诊断实网结果。
+- **H4 数据面：PASS** — 先将 `caveman` Codex 显式关闭，再执行组更新，返回
+  `total=2, completed=2`；列表确认 `caveman` 为 Claude=true / Codex=false，
+  `caveman-commit` 为 Claude=true / Codex=true，用户显式状态未被覆盖。
+- 测试容器已 stop/remove；镜像保留为 `super-claude:latest` 本地验证产物。

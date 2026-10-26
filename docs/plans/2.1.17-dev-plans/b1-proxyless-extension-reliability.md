@@ -26,37 +26,37 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - Modify: `workbench/src/features/workspace-explorer/ExtensionsView.vue`
 - Modify: tests and plan records affected by `7534863` / `f9af814`
 
-- [ ] 在 `develop` 执行 `git pull --ff-only`，确认 `git status --short` 为空；
+- [x] 在 `develop` 执行 `git pull --ff-only`，确认 `git status --short` 为空；
       从该点创建 `2.1.17-b1-proxyless-extension-reliability`。
-- [ ] 按提交时间倒序分别撤销误触记录，不允许一个命令留下半撤销状态：
+- [x] 按提交时间倒序分别撤销误触记录，不允许一个命令留下半撤销状态：
       1. `git revert --no-edit f9af814`（先撤销 b1 smoke 记录）；
       2. `git revert --no-edit 7534863`（再撤销实现）。
       若冲突仅由 `1d9e2b9` 已重写/改名同一阶段计划文档引起，则以当前重启版
       README / b1 计划为准并删除旧 `b1-market-metadata-and-update-signals.md`；
       其它冲突仍立即 `git revert --abort` 并报告，不得提交半 revert。
-- [ ] Post-revert 门：
+- [x] Post-revert 门：
       - `git diff --exit-code e91d1fe -- src/aisc/VERSION docs/releases/v0.1.10.dev0.md tests/fixtures/cli/envelope-version.json`
         必须无输出，证明阶段开题与 CLI 版本保留；
       - `git log --oneline -4` 必须显示两个独立 revert commit；
       - `git status --short` 必须为空。
-- [ ] `. scripts\dev-env.ps1` 后运行
+- [x] `. scripts\dev-env.ps1` 后运行
       `python -m pytest tests/test_extensions_adapter.py tests/test_extensions_bridge.py -q`。
-      Expected: PASS（回到误触前基线）。
+      PASS：36 passed（回到误触前基线）。
 
 ## Task 1：RED — 组安装必须预检全部子技能
 
 **Files:**
 - Modify: `tests/test_extensions_adapter.py`
 
-- [ ] 新增测试：伪造 Git clone 返回 `skills/cavecrew` 与 `skills/grill` 两个
+- [x] 新增测试：伪造 Git clone 返回 `skills/cavecrew` 与 `skills/caveman-commit` 两个
       `SKILL.md`，输入组 specs 包含两个目录；现有实现只处理传入目录/重复网络探测，
       应先失败于缺少组级 API。
-- [ ] 断言期望行为：
+- [x] 断言期望行为：
   - 每个 spec 的 source skill 都能被解析；
   - 任一子技能缺失时，不执行任何 `cc-switch skills install`；
   - 全部存在时，才按顺序 install 两个 spec。
-- [ ] 运行 `python -m pytest tests/test_extensions_adapter.py -q`。
-      Expected: FAIL，原因是 `skill_install_group` / 全量预检不存在。
+- [x] 运行 `python -m pytest tests/test_extensions_adapter.py -q`。
+      RED 已确认，原因是 `skill_install_group` / 全量预检不存在。
 
 ## Task 2：GREEN — adapter 组级安装与镜像源复用
 
@@ -64,17 +64,16 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - Modify: `container/aisc-extensions-adapter`
 - Test: `tests/test_extensions_adapter.py`
 
-- [ ] 实现最小 `skill_install_group(specs: list[str]) -> dict`：
+- [x] 实现最小 `skill_install_group(specs: list[str]) -> dict`：
   - 校验非空、去重并保留顺序；
   - 对 unique repo 只做一次 archive/Git source 选择；
   - mirror clone 后一次性枚举所有有效 skill 目录；
   - 全部预检通过后逐个执行官方 install；
   - 默认对每个目录执行 Claude/Codex enable；
   - 返回 `{total, completed, items: [{spec, status, error}]}`。
-- [ ] 保持单个 `skill_install` 行为兼容，不在本任务引入缓存。
-- [ ] 运行 `python -m pytest tests/test_extensions_adapter.py -q`。
-      Expected: PASS。
-- [ ] Commit: `feat(extensions): preflight skill group installs`.
+- [x] 保持单个 `skill_install` 行为兼容，不在本任务引入缓存。
+- [x] 运行 `python -m pytest tests/test_extensions_adapter.py -q`：34 passed。
+- [x] Commit: `feat(extensions): preflight skill group installs`（`1908dfa`）。
 
 ## Task 3：RED — Python bridge 透传组级结构化结果
 
@@ -82,13 +81,13 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - Modify: `tests/test_extensions_bridge.py`
 - Modify: `src/aisc/application/extensions.py`
 
-- [ ] 先扩展 bridge 测试：`skill-install-group` 校验 specs 数组，透传 adapter 的
+- [x] 先扩展 bridge 测试：`skill-install-group` 校验 specs 数组，透传 adapter 的
       total/completed/items，并把 adapter error 转为用户可读 technical detail。
-- [ ] 运行 `python -m pytest tests/test_extensions_bridge.py -q`。
+- [x] 运行 `python -m pytest tests/test_extensions_bridge.py -q`：RED，原因是 op 不存在。
       Expected: FAIL，原因是 op 不存在。
-- [ ] 将 op 加入 allowlist 并实现参数/result 透传。
-- [ ] 重跑 bridge 测试。Expected: PASS。
-- [ ] Commit: `feat(cli): bridge skill group install results`.
+- [x] 将 op 加入 allowlist 并实现参数/result 透传。
+- [x] 重跑 bridge 测试。Expected: PASS。
+- [x] Commit: `feat(cli): bridge skill group install results`（`3d0d8c0`）。
 
 ## Task 4：RED — Workbench 组操作展示逐项结果
 
@@ -98,15 +97,15 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - Modify: `workbench/src/features/workspace-explorer/ExtensionsView.vue`
 - Modify: i18n dictionaries and view tests as needed
 
-- [ ] 先写 Vitest：
+- [x] 先写 Vitest：
   - market group install 调用 `skill-install-group`，不是 N 个独立调用；
   - itemized failure 保留 technical detail，不折叠成“AISC CLI错误”；
   - 失败后刷新列表，已安装组显示已安装/缺失子项。
-- [ ] 运行 `npm run test -- extensions`。Expected: FAIL。
-- [ ] 实现 store 组级调用、operation progress 与错误详情。
-- [ ] UI 已安装/市场组显示 `x/y` 和可复制错误文本。
-- [ ] 重跑 targeted Vitest 与 `npx vue-tsc --noEmit`。Expected: PASS。
-- [ ] Commit: `feat(workbench): report skill group install progress`.
+- [x] 运行 `npm run test -- extensions`：RED，组调用仍被拆成多次。
+- [x] 实现 store 组级调用、operation progress 与错误详情。
+- [x] UI 已安装/市场组显示 `x/y` 和可复制错误文本。
+- [x] 重跑 targeted Vitest 与 `npx vue-tsc --noEmit`。Expected: PASS。
+- [x] Commit: `feat(workbench): report skill group install progress`（`7634d2f`）。
 
 ## Task 5：更新链路与默认开启回归
 
@@ -114,28 +113,28 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - Modify: `tests/test_extensions_adapter.py`
 - Modify: `container/aisc-extensions-adapter`
 
-- [ ] RED：先新增
+- [x] RED：先新增
       `test_skill_update_group_preflights_all_and_preserves_enable_state`，调用
       不存在的 `A.skill_update_group([...])`，并断言两个子技能先全量预检、
       按原 Claude/Codex 状态恢复、新安装默认双引擎开启。
       Run: `python -m pytest tests/test_extensions_adapter.py -k skill_update_group -q`
       Expected: FAIL，原因是 `AttributeError: module ... has no attribute
       'skill_update_group'`。
-- [ ] GREEN：实现 `skill_update_group`，复用组级 source/preflight，不复制网络
+- [x] GREEN：实现 `skill_update_group`，复用组级 source/preflight，不复制网络
       逻辑；安装与更新分别验证默认开启/保留状态。
-- [ ] 运行 adapter + bridge tests。Expected: PASS。
-- [ ] Commit: `fix(extensions): preserve skill enablement during group update`.
+- [x] 运行 adapter + bridge tests。Expected: PASS。
+- [x] Commit: `fix(extensions): preserve skill enablement during group update`（`0e7f971`）。
 
 ## Task 6：验证与手测记录
 
-- [ ] `python -m pytest tests/test_extensions_adapter.py tests/test_extensions_bridge.py -q`
-- [ ] `cd workbench && npm run test -- extensions && npx vue-tsc --noEmit`
-- [ ] `powershell -File scripts/build-cli.ps1`
-- [ ] `bash tools/vendor-verify.sh`
-- [ ] 按 [HANDTEST.md](HANDTEST.md) 的 H1–H3 执行真实容器无代理手测，逐项记录
-      实际截图/文本；任一前置条件不满足时标记 NOT RUN，不得用单元测试替代。
-- [ ] `powershell -File scripts/local-gates.ps1`
-- [ ] 更新本文件勾选、HANDTEST 结果、README 终态与 `docs/devlog.md`，再并回
-      develop。
+- [x] `python -m pytest tests/test_extensions_adapter.py tests/test_extensions_bridge.py -q`：42 passed
+- [x] `cd workbench && npm run test -- extensions && npx vue-tsc --noEmit`：21 passed + typecheck 通过
+- [x] `powershell -File scripts/build-cli.ps1`：sidecar 构建并同步成功
+- [x] `bash tools/vendor-verify.sh`：1532 checksums passed
+- [x] 按 [HANDTEST.md](HANDTEST.md) 收集真实容器结果：H2/H4 数据面 PASS；
+      H1/H2 UI 与 H3 按前置条件记录 NOT RUN，未用单元测试替代。
+- [x] `powershell -File scripts/local-gates.ps1`：ALL GREEN（Python 1473 / Rust 365 / Vitest 644 / vue-tsc）
+- [x] 更新本文件勾选、HANDTEST 结果、README 状态与 `docs/devlog.md`；并回
+      develop 前等待 Workbench UI 手测与远程 CI。
 
 

@@ -2,6 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 b1 开发验证（2026-10-26）
+
+- 撤销误触 market-cache 提交并保留阶段开题；新增 `skill-install-group` / `skill-update-group` 数据面，组操作一次预检镜像源、逐项安装/更新并返回 itemized result。
+- Workbench 市场与已安装父组改用组级调用，保留逐项错误详情与进度总数；更新后逐子技能恢复原 Claude/Codex 启用状态。
+- 验证：adapter/bridge 42、Vitest extensions 21、Rust 365、全门禁 Python 1473 / Vitest 644 / vue-tsc 全绿；sidecar 与 bundle 重建，vendor 1532 checksum 通过。
+- 真实容器：直连 GitHub 失败且 ghfast/gh-proxy 可用时，caveman 两子技能安装 2/2 并默认双引擎开启；显式关闭 caveman Codex 后组更新仍保持 off。Workbench 真窗口 UI 手测未执行，b1 不标记完成。
+
 # v2.1.17 反馈驱动重启（2026-10-26）
 
 - 读取反馈站新增 5 条：N1 无代理 skill 安装/更新 blocker、N2 已安装项更新标识、N3 统一推荐、N4 详情中文化、N5 CLI 富文本体验。N1–N4 纳入本阶段，N5 转后续专项。
