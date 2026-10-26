@@ -369,7 +369,7 @@ def _build_parser() -> _AiscArgumentParser:
                                allow_abbrev=False)
     _extensions_common(extsig)
     extsig.add_argument("--specs", required=True,
-                        help="Comma-separated owner/name:directory specs")
+                        help="JSON array of owner/name:directory specs")
 
     extma = extsub.add_parser("mcp-add",
                               help="Add MCP servers (config JSON on stdin)",
@@ -416,7 +416,7 @@ def _build_parser() -> _AiscArgumentParser:
                                allow_abbrev=False)
     _extensions_common(extsug)
     extsug.add_argument("--specs", required=True,
-                        help="Comma-separated owner/name:directory specs")
+                        help="JSON array of owner/name:directory specs")
 
     extdl = extsub.add_parser("deeplink",
                               help="Import a resource from a ccswitch:// link",

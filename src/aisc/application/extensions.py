@@ -34,6 +34,12 @@ _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
 
 
+def _group_timeout_seconds(specs: list[str]) -> float:
+    """Cover probe + up to three clones + installs/enables in the adapter."""
+    repos = len({spec.split(":", 1)[0] for spec in specs})
+    return 30.0 + 450.0 * repos + 240.0 * len(specs)
+
+
 def _validate(op: str, kind: Optional[str], agent: Optional[str]) -> None:
     if op not in _OPS:
         raise CliError(
@@ -70,6 +76,7 @@ def _exec_adapter(
     query: Optional[str] = None,
     url: Optional[str] = None,
     specs: Optional[list[str]] = None,
+    timeout: float = 600.0,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
@@ -101,9 +108,10 @@ def _exec_adapter(
     if url:
         argv.extend(["--url", url])
     if specs is not None:
-        argv.extend(["--specs", ",".join(specs)])
+        argv.extend(["--specs", json.dumps(specs, ensure_ascii=False,
+                                           separators=(",", ":"))])
 
-    result = executor.run_captured(argv, timeout=600.0, input_text=stdin_text)
+    result = executor.run_captured(argv, timeout=timeout, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
         raise CliError(
             message=f"extensions {op} failed: {(result.stderr or '').strip()[:200]}",
@@ -184,17 +192,17 @@ def extensions_skill_install_group(
     runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
 ) -> Dict[str, Any]:
     if not isinstance(specs, list) or not specs or not all(
-        isinstance(spec, str) and spec.strip() and "," not in spec for spec in specs
+        isinstance(spec, str) and spec.strip() for spec in specs
     ):
         raise CliError(
-            message="Invalid extensions skill specs: expected a non-empty comma-free array",
+            message="Invalid extensions skill specs: expected a non-empty string array",
             exit_code=RuntimeExitCode.USAGE_ERROR,
             error_code="AISC_ERR_USAGE",
         )
     _validate("skill-install-group", None, None)
     envelope = _exec_adapter(
         runtime_id, _registry_root(workspace), executor, "skill-install-group",
-        specs=specs,
+        specs=specs, timeout=_group_timeout_seconds(specs),
     )
     items = envelope.get("items") or []
     return {
@@ -219,17 +227,17 @@ def extensions_skill_update_group(
     runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
 ) -> Dict[str, Any]:
     if not isinstance(specs, list) or not specs or not all(
-        isinstance(spec, str) and spec.strip() and "," not in spec for spec in specs
+        isinstance(spec, str) and spec.strip() for spec in specs
     ):
         raise CliError(
-            message="Invalid extensions skill specs: expected a non-empty comma-free array",
+            message="Invalid extensions skill specs: expected a non-empty string array",
             exit_code=RuntimeExitCode.USAGE_ERROR,
             error_code="AISC_ERR_USAGE",
         )
     _validate("skill-update-group", None, None)
     envelope = _exec_adapter(
         runtime_id, _registry_root(workspace), executor, "skill-update-group",
-        specs=specs,
+        specs=specs, timeout=_group_timeout_seconds(specs),
     )
     items = envelope.get("items") or []
     return {

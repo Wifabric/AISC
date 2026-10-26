@@ -44,6 +44,25 @@ const RECONCILE_TIMEOUT: Duration = Duration::from_secs(90);
 /// Lease claim/heartbeat/release: tiny metadata ops.
 pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
+
+/// v2.1.17 b1: group operations may probe and clone direct + two mirrors,
+/// then run install and two enable calls per child. Keep the GUI/CLI timeout
+/// above that bounded adapter budget so it returns itemized results instead of
+/// collapsing into a 30-second transport timeout.
+fn extensions_group_timeout(specs: &[String]) -> Duration {
+    let mut repos: Vec<&str> = Vec::new();
+    for spec in specs {
+        let repo = spec.split_once(':').map_or(spec.as_str(), |(repo, _)| repo);
+        if !repos.contains(&repo) {
+            repos.push(repo);
+        }
+    }
+    let seconds = 30u64
+        .saturating_add(450u64.saturating_mul(repos.len() as u64))
+        .saturating_add(240u64.saturating_mul(specs.len() as u64));
+    Duration::from_secs(seconds)
+}
+
 /// Cancellation tokens for in-flight `start_runtime` operations, keyed by
 /// runtime_id (02 §三: every async operation has a cancellation token).
 /// IDEA-3 (3b): keyed per runtime so concurrent workspace starts never
@@ -702,6 +721,18 @@ async fn cc_switch_call_value(
     argv: Vec<String>,
     input: Option<String>,
 ) -> Result<Value, WorkbenchError> {
+    cc_switch_call_value_with_timeout(
+        app, window, argv, input, PROVIDER_TIMEOUT,
+    ).await
+}
+
+async fn cc_switch_call_value_with_timeout(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    argv: Vec<String>,
+    input: Option<String>,
+    timeout: Duration,
+) -> Result<Value, WorkbenchError> {
     let target = crate::target::resolve_target_for(app, &window).await?;
     // b13: provider/cc-switch state is workspace-runtime data. Make its drive
     // target explicit in diagnostics instead of leaving users to infer it.
@@ -717,10 +748,10 @@ async fn cc_switch_call_value(
     // Local arm flipped.
     let env = match input {
         Some(text) => crate::cli::run_control_input_target(
-            &target, argv, text, PROVIDER_TIMEOUT, CancellationToken::new(),
+            &target, argv, text, timeout, CancellationToken::new(),
         ).await?,
         None => crate::cli::run_control_target(
-            &target, argv, PROVIDER_TIMEOUT, CancellationToken::new(),
+            &target, argv, timeout, CancellationToken::new(),
         ).await?,
     };
     if let Some(env_err) = env.errors.first() {
@@ -852,12 +883,29 @@ pub async fn extensions_call(
     if let Some(values) = &specs {
         if !values.is_empty() {
             argv.push("--specs".into());
-            argv.push(values.join(","));
+            argv.push(serde_json::to_string(values).map_err(|e| {
+                WorkbenchError::usage(format!("serialize extensions specs: {e}"))
+            })?);
         }
     }
+    let timeout = if (op == "skill-install-group" || op == "skill-update-group")
+        && specs.as_ref().is_some_and(|values| !values.is_empty())
+    {
+        extensions_group_timeout(specs.as_deref().unwrap_or_default())
+    } else {
+        PROVIDER_TIMEOUT
+    };
     match config {
-        Some(text) => cc_switch_call_value(&app, &window, argv, Some(text)).await,
-        None => cc_switch_call_value(&app, &window, argv, None).await,
+        Some(text) => {
+            cc_switch_call_value_with_timeout(
+                &app, &window, argv, Some(text), timeout,
+            ).await
+        }
+        None => {
+            cc_switch_call_value_with_timeout(
+                &app, &window, argv, None, timeout,
+            ).await
+        }
     }
 }
 /// List providers for an agent (secret-free snapshot; Stage 8e).
@@ -1978,6 +2026,12 @@ async fn install_docker_desktop_bundled(
 mod tests {
     use super::*;
 
+    #[test]
+    fn extensions_group_timeout_covers_repos_and_children() {
+        let specs = vec!["owner/repo:a".into(), "owner/repo:b".into()];
+        assert_eq!(extensions_group_timeout(&specs), Duration::from_secs(960));
+    }
+
     // --- IDEA-2 (2d): subscription / usage argv builders ---
 
     #[test]
@@ -2539,5 +2593,3 @@ mod tests {
         drop(g2);
     }
 }
-
-

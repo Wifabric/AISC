@@ -19,6 +19,24 @@ def _runtime(args: argparse.Namespace):
     return args.runtime_id, args.workspace
 
 
+def _group_specs(raw: str) -> list[str]:
+    try:
+        specs = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(
+            message=f"invalid extensions specs JSON: {exc}",
+            exit_code=2,
+            error_code="AISC_ERR_USAGE",
+        ) from exc
+    if not isinstance(specs, list):
+        raise CliError(
+            message="extensions specs must be a JSON string array",
+            exit_code=2,
+            error_code="AISC_ERR_USAGE",
+        )
+    return specs
+
+
 def cmd_extensions_list(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_list
 
@@ -54,7 +72,7 @@ def cmd_extensions_skill_install_group(args: argparse.Namespace) -> Dict[str, An
     from aisc.application.extensions import extensions_skill_install_group
 
     runtime_id, workspace = _runtime(args)
-    specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
+    specs = _group_specs(args.specs)
     return extensions_skill_install_group(runtime_id, specs, workspace, None)
 
 
@@ -69,7 +87,7 @@ def cmd_extensions_skill_update_group(args: argparse.Namespace) -> Dict[str, Any
     from aisc.application.extensions import extensions_skill_update_group
 
     runtime_id, workspace = _runtime(args)
-    specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
+    specs = _group_specs(args.specs)
     return extensions_skill_update_group(runtime_id, specs, workspace, None)
 
 
@@ -112,6 +130,14 @@ def cmd_extensions_plugin_update(args: argparse.Namespace) -> Dict[str, Any]:
 
 def print_extensions_text(data: Dict[str, Any]) -> None:
     items = data.get("items")
+    if data.get("kind") == "skills" and isinstance(items, list) and items and \
+            "total" in data and "spec" in items[0]:
+        print(f"{data.get('completed', 0)}/{data.get('total', len(items))}")
+        for item in items:
+            error = str(item.get("error") or "").strip()
+            suffix = f" | {error}" if error else ""
+            print(f"{item.get('spec', '')}\t{item.get('status', '')}{suffix}")
+        return
     if items is None:
         print(json.dumps(data, ensure_ascii=False))
         return

@@ -327,29 +327,49 @@ def _github_repo_identity(source: str) -> tuple[tuple[str, str, Optional[str]], 
 
 
 def _github_git_env(source: str) -> dict[str, str]:
-    """Probe direct GitHub first, then mirrors, with short bounded timeouts.
+    """Probe direct GitHub first, then mirrors, with bounded diagnostics.
 
-    ``cc-switch`` downloads skill archives over HTTP and does not honor Git's
-    ``insteadOf`` environment. The probe therefore selects a reachable Git
-    source for explicit staging; it never asks ``cc-switch`` to wait on an
-    unreachable direct connection first.
+    Returns an empty environment for the reachable direct source. Mirror
+    environments rewrite only GitHub URLs. Every failed probe is retained so
+    group callers can report which transport failed instead of collapsing all
+    network errors to a generic CLI failure.
     """
     identity = _github_repo_identity(source)
     if identity is None:
         return {}
     url = identity[1]
+    failures: list[str] = []
     for mirror in (None, *_GIT_MIRRORS):
         env = {} if mirror is None else _git_mirror_env(mirror)
+        label = "direct" if mirror is None else mirror
         try:
             _run_cli(["git", "ls-remote", url, "HEAD"],
                      timeout=8.0, env_overrides=env)
-        except AdapterError:
+        except AdapterError as exc:
+            failures.append(f"{label}: {exc.message}")
             continue
         return env
     raise AdapterError(
         ERR_CLI,
-        f"github unreachable after direct and mirror probes: {url}",
+        f"github unreachable after direct and mirror probes: {url}; "
+        + "; ".join(failures),
     )
+
+
+def _skill_spec_parts(spec: str) -> tuple[str, str]:
+    """Parse and validate the ``repo:directory`` shape before any I/O."""
+    normalized = spec.strip()
+    if not normalized or any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    repo, separator, directory = normalized.rpartition(":")
+    if not separator:
+        repo, directory = normalized, normalized
+    if not repo or not directory or "\\" in directory:
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    parts = directory.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory!r}")
+    return repo, directory
 
 
 def _github_branch(url: str) -> str:
@@ -489,9 +509,9 @@ def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
     return {"claude": bool(row[0]), "codex": bool(row[1])}
 
 
-def _stage_skills_from_git_mirror(specs: list[str], repo: str,
+def _stage_skills_from_git_source(specs: list[str], repo: str,
                                   git_env: dict[str, str]) -> list[str]:
-    """Stage a repository's requested skills through one mirror clone.
+    """Stage a repository's requested skills through one selected Git source.
 
     cc-switch builds GitHub archive URLs itself and ignores Git mirror config.
     A group must clone its repository once, resolve every requested child, and
@@ -507,22 +527,51 @@ def _stage_skills_from_git_mirror(specs: list[str], repo: str,
     (owner, name, requested_branch), url = identity
     relatives: list[Path] = []
     for spec in specs:
-        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
-        relative = Path(directory)
-        if relative.is_absolute() or ".." in relative.parts:
-            raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
-        relatives.append(relative)
+        _, directory = _skill_spec_parts(spec)
+        relatives.append(Path(directory))
 
     with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
         clone = Path(temporary) / "repo"
-        clone_argv = ["git", "clone", "--depth", "1"]
-        if requested_branch:
-            clone_argv.extend(["--branch", requested_branch])
-        clone_argv.extend([url, str(clone)])
-        _run_cli(clone_argv, timeout=120.0, env_overrides=git_env)
+        candidate_envs: list[dict[str, str]] = []
+        for candidate in (git_env, {}, *(_git_mirror_env(mirror)
+                                          for mirror in _GIT_MIRRORS)):
+            marker = candidate.get("GIT_CONFIG_KEY_0", "")
+            if marker not in [item.get("GIT_CONFIG_KEY_0", "")
+                              for item in candidate_envs]:
+                candidate_envs.append(candidate)
+
+        clone_failures: list[str] = []
+        selected_env: dict[str, str] = {}
+        for candidate in candidate_envs:
+            label = "direct"
+            key = candidate.get("GIT_CONFIG_KEY_0", "")
+            for mirror in _GIT_MIRRORS:
+                if mirror in key:
+                    label = mirror
+                    break
+            if clone.exists():
+                shutil.rmtree(clone)
+            clone_argv = ["git", "clone", "--depth", "1"]
+            if requested_branch:
+                clone_argv.extend(["--branch", requested_branch])
+            clone_argv.extend([url, str(clone)])
+            try:
+                _run_cli(clone_argv, timeout=120.0, env_overrides=candidate)
+            except AdapterError as exc:
+                clone_failures.append(f"clone {label}: {exc.message}")
+                continue
+            selected_env = candidate
+            break
+        else:
+            raise AdapterError(
+                ERR_CLI,
+                f"github skill repository clone failed for all sources: {url}; "
+                + "; ".join(clone_failures),
+            )
+
         branch = _run_cli(
             ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
-            timeout=10.0, env_overrides=git_env,
+            timeout=10.0, env_overrides=selected_env,
         ).strip() or requested_branch or "main"
         _run_cli(["cc-switch", "skills", "repos", "add",
                   f"{owner}/{name}@{branch}"], timeout=30.0)
@@ -549,9 +598,9 @@ def _stage_skills_from_git_mirror(specs: list[str], repo: str,
     return []
 
 
-def _stage_skill_from_git_mirror(spec: str, repo: str,
-                                 git_env: dict[str, str]) -> None:
-    _stage_skills_from_git_mirror([spec], repo, git_env)
+def _stage_skill_from_git_source_one(spec: str, repo: str,
+                                     git_env: dict[str, str]) -> None:
+    _stage_skills_from_git_source([spec], repo, git_env)
 
 
 def _install_skill(spec: str, *, enable_both: bool,
@@ -559,12 +608,11 @@ def _install_skill(spec: str, *, enable_both: bool,
     # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
     # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
-    repo = spec.split(":", 1)[0]
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+    repo, directory = _skill_spec_parts(spec)
     previous_state = _skill_enable_states(directory) if restore_state else None
     git_env = _github_skill_env(repo)
     if git_env:
-        _stage_skill_from_git_mirror(spec, repo, git_env)
+        _stage_skill_from_git_source_one(spec, repo, git_env)
         _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     else:
         if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
@@ -581,7 +629,7 @@ def _install_skill(spec: str, *, enable_both: bool,
             mirror_env = _github_skill_env(repo, allow_direct=False)
             if not mirror_env:
                 raise
-            _stage_skill_from_git_mirror(spec, repo, mirror_env)
+            _stage_skill_from_git_source_one(spec, repo, mirror_env)
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     if enable_both:
         for agent in AGENTS:
@@ -619,57 +667,77 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
 
     grouped: dict[str, list[str]] = {}
     for spec in unique:
-        repo = spec.split(":", 1)[0]
+        repo, _ = _skill_spec_parts(spec)
         grouped.setdefault(repo, []).append(spec)
 
     items: list[dict[str, Any]] = [
         {"spec": spec, "status": "pending", "error": ""} for spec in unique
     ]
-    previous_states: dict[str, Optional[dict[str, bool]]] = {}
+    previous_states: dict[str, dict[str, bool]] = {}
     if update:
+        state_errors: dict[str, str] = {}
         for spec in unique:
-            directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
-            previous_states[spec] = _skill_enable_states(directory)
+            _, directory = _skill_spec_parts(spec)
+            state = _skill_enable_states(directory)
+            if state is None:
+                state_errors[spec] = "enable state unavailable in cc-switch SSOT"
+            else:
+                previous_states[spec] = state
+        if state_errors:
+            for item in items:
+                if item["spec"] in state_errors:
+                    item["status"] = "state_unavailable"
+                    item["error"] = state_errors[item["spec"]]
+                else:
+                    item["status"] = "blocked"
+                    item["error"] = "skill group enable-state preflight failed"
+            return {"total": len(items), "completed": 0, "items": items}
 
+    source_errors: dict[str, str] = {}
     missing_errors: dict[str, str] = {}
     for repo, group_specs in grouped.items():
-        git_env = _github_skill_env(repo)
-        if git_env:
-            missing = _stage_skills_from_git_mirror(group_specs, repo, git_env)
+        try:
+            if _github_repo_identity(repo) is None:
+                continue
+            git_env = _github_git_env(repo)
+            missing = _stage_skills_from_git_source(group_specs, repo, git_env)
             for spec in missing:
                 missing_errors[spec] = (
-                    f"SKILL.md not found for {spec} in mirrored repository"
+                    f"SKILL.md not found for {spec} in selected repository source"
                 )
-        elif "/" in repo and not Path(repo).exists() and not repo.startswith("."):
-            try:
-                _run_cli(["cc-switch", "skills", "repos", "add", repo],
-                         timeout=120.0)
-            except AdapterError:
-                pass
+        except AdapterError as exc:
+            for spec in group_specs:
+                source_errors[spec] = f"repo {repo}: {exc.message}"
 
-    if missing_errors:
+    if source_errors or missing_errors:
         for item in items:
-            if item["spec"] in missing_errors:
+            spec = item["spec"]
+            if spec in missing_errors:
                 item["status"] = "missing"
-                item["error"] = missing_errors[item["spec"]]
+                item["error"] = missing_errors[spec]
+            elif spec in source_errors:
+                item["status"] = "source_failed"
+                item["error"] = source_errors[spec]
             else:
                 item["status"] = "blocked"
-                item["error"] = "skill group preflight failed"
+                item["error"] = "skill group source preflight failed"
         return {"total": len(items), "completed": 0, "items": items}
 
     final_status = "updated" if update else "installed"
     for item in items:
         spec = item["spec"]
-        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+        repo, directory = _skill_spec_parts(spec)
         try:
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
             if update:
                 previous = previous_states.get(spec)
-                if previous is not None:
-                    for agent in AGENTS:
-                        verb = "enable" if previous[agent] else "disable"
-                        _run_cli(["cc-switch", "skills", verb, directory,
-                                  "-a", agent])
+                if previous is None:
+                    raise AdapterError(
+                        ERR_CLI, f"enable state lost before update: {spec}")
+                for agent in AGENTS:
+                    verb = "enable" if previous[agent] else "disable"
+                    _run_cli(["cc-switch", "skills", verb, directory,
+                              "-a", agent])
             else:
                 for agent in AGENTS:
                     _run_cli(["cc-switch", "skills", "enable", directory,
@@ -943,7 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent", choices=list(AGENTS))
     parser.add_argument("--on", choices=["true", "false"], default="true")
     parser.add_argument("--spec", help="skill-install: owner/name:directory")
-    parser.add_argument("--specs", help="skill-install-group: comma-separated specs")
+    parser.add_argument("--specs", help="group ops: JSON array of specs")
     parser.add_argument("--apps", default="claude,codex",
                         help="mcp-add: comma-separated agent list")
     args = parser.parse_args(argv)
@@ -975,7 +1043,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.op in ("skill-install-group", "skill-update-group"):
             if not args.specs:
                 raise AdapterError(ERR_BAD_REQUEST, "--specs required")
-            specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
+            try:
+                parsed_specs = json.loads(args.specs)
+            except json.JSONDecodeError as exc:
+                raise AdapterError(ERR_BAD_REQUEST, f"invalid --specs JSON: {exc}")
+            if not isinstance(parsed_specs, list) or not all(
+                isinstance(spec, str) and spec.strip() for spec in parsed_specs
+            ):
+                raise AdapterError(ERR_BAD_REQUEST, "--specs must be a JSON string array")
+            specs = parsed_specs
             if args.op == "skill-install-group":
                 result = skill_install_group(specs)
             else:

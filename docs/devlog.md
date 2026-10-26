@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 b1 审查修正（2026-10-26）
+
+- 组操作全链路改为 JSON specs 与集中路径校验；direct/mirror 均一次克隆预检全部子技能，clone 体失败跨源重试并返回逐项来源诊断。
+- 本地组安装默认双引擎开启，组更新使用预检捕获的 Claude/Codex 状态；Python/Rust 使用同公式组级超时预算，避免 Workbench 30 秒 generic timeout。
+- 当前验证：targeted Python 56 + subtests、extensions Vitest 21、vue-tsc、Rust 366、vendor 1532、sidecar/bundle 重建、真实容器 H2/H4 数据面 PASS；全门禁 Python 1486 / Rust 366 / Vitest 644 / vue-tsc 全绿。Workbench UI 手测仍待执行。
+
 # v2.1.17 b1 开发验证（2026-10-26）
 
 - 撤销误触 market-cache 提交并保留阶段开题；新增 `skill-install-group` / `skill-update-group` 数据面，组操作一次预检镜像源、逐项安装/更新并返回 itemized result。

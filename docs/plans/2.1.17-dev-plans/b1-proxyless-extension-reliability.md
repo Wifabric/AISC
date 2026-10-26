@@ -127,14 +127,33 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 
 ## Task 6：验证与手测记录
 
-- [x] `python -m pytest tests/test_extensions_adapter.py tests/test_extensions_bridge.py -q`：42 passed
+- [x] `python -m pytest tests/test_extensions_adapter.py tests/test_extensions_bridge.py tests/test_extensions_dispatch.py -q`：当前 56 passed + 10 subtests
 - [x] `cd workbench && npm run test -- extensions && npx vue-tsc --noEmit`：21 passed + typecheck 通过
 - [x] `powershell -File scripts/build-cli.ps1`：sidecar 构建并同步成功
 - [x] `bash tools/vendor-verify.sh`：1532 checksums passed
 - [x] 按 [HANDTEST.md](HANDTEST.md) 收集真实容器结果：H2/H4 数据面 PASS；
       H1/H2 UI 与 H3 按前置条件记录 NOT RUN，未用单元测试替代。
-- [x] `powershell -File scripts/local-gates.ps1`：ALL GREEN（Python 1473 / Rust 365 / Vitest 644 / vue-tsc）
+- [x] `powershell -File scripts/local-gates.ps1`：ALL GREEN（Python 1486 / Rust 366 / Vitest 644 / vue-tsc）
 - [x] 更新本文件勾选、HANDTEST 结果、README 状态与 `docs/devlog.md`；并回
       develop 前等待 Workbench UI 手测与远程 CI。
 
 
+
+
+## 审查修正（2026-10-26）
+
+- [x] direct / mirror 组源均执行一次全子技能 source preflight；实际 clone 体失败时按
+      selected → direct → ghfast → gh-proxy 重试，并保留每个来源的诊断。
+- [x] `--specs` 全链路改为 JSON 数组，避免逗号拆分 externally sourced skill id。
+- [x] repo/directory 解析集中在 subprocess 前校验；空目录、`.`、`..`、绝对/反斜杠
+      路径和控制字符拒绝。
+- [x] 组更新前逐项读取 enable state；任一不可读则整组 0/N，不执行 install。
+- [x] 本地/非 GitHub 组安装默认双引擎开启；更新使用组预检捕获的状态，不再二次读取。
+- [x] Python bridge 与 Rust Tauri 使用同公式组级超时预算
+      `30 + 450*unique_repos + 240*children` 秒，避免 30 秒 generic timeout。
+- [x] `scripts/dev-env.ps1` 将当前 checkout `src` 移到 `PYTHONPATH` 首位，隔离
+      worktree 不再误导入主 checkout。
+- [x] CLI text 输出为 `completed/total` 与逐项 `spec/status/error`。
+- 当前验证：targeted Python 56 + subtests、extensions Vitest 21、vue-tsc、Rust 366、
+  vendor 1532、sidecar/bundle 重建、真实容器 H2/H4 数据面 PASS；全门禁 ALL GREEN
+  （Python 1486 / Rust 366 / Vitest 644 / vue-tsc）。

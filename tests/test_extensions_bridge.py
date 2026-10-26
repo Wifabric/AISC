@@ -90,7 +90,7 @@ class BridgeTests(unittest.TestCase):
         argv = calls[0]["argv"]
         i = argv.index("/usr/local/bin/aisc-extensions-adapter")
         self.assertEqual(argv[i + 1:i + 3], ["skill-install-group", "--specs"])
-        self.assertEqual(argv[i + 3], "owner/repo:a,owner/repo:b")
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
         self.assertEqual(data["kind"], "skills")
         self.assertEqual(data["total"], 2)
         self.assertEqual(data["completed"], 1)
@@ -123,10 +123,57 @@ class BridgeTests(unittest.TestCase):
         argv = calls[0]["argv"]
         i = argv.index("/usr/local/bin/aisc-extensions-adapter")
         self.assertEqual(argv[i + 1:i + 3], ["skill-update-group", "--specs"])
-        self.assertEqual(argv[i + 3], "owner/repo:a,owner/repo:b")
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
         self.assertEqual(data["kind"], "skills")
         self.assertEqual(data["completed"], 2)
         self.assertEqual(data["operation_id"], "group-update")
+
+    def test_skill_group_timeout_derives_from_repos_and_children(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 2, "completed": 2, "items": [],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        specs = ["owner/repo:a", "owner/repo:b"]
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group("rid", specs, "/ws", executor)
+
+        self.assertEqual(calls[0]["timeout"], 960.0)
+
+    def test_group_specs_json_transport_preserves_commas(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 1, "completed": 1,
+                    "items": [{"spec": "owner/repo:a,b", "status": "installed", "error": ""}],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group(
+                "rid", ["owner/repo:a,b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 3], '["owner/repo:a,b"]')
 
     def test_adapter_error_maps_to_cli_error(self):
         def run_captured(argv, timeout=0.0, input_text=""):

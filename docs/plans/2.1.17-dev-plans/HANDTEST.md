@@ -41,7 +41,8 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 3. 记录市场父组标题右侧“{count} 个技能”的实际 `count = N`。
 4. 点击父组行右侧“安装全部”。
 5. 理想结果：
-   - 操作期间父组按钮显示 spinner，进度文案从 `0/N` 递增到 `N/N`；
+   - 操作期间父组按钮显示 spinner，状态为 `0/N`；当前组级 IPC 不流式发送
+     子项增量，成功返回后一次性达到 `N/N` 并清除，不承诺逐项递增；
    - 结束后 toast 文案为“安装完成：<父组名>”；
    - 已安装技能列表中同名父组的子技能数为 `N`，没有缺项；
    - 每个新安装子技能的 Claude/Codex 启用状态均为开启；
@@ -87,27 +88,30 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 
 1. 在 H1 完成后，把其中一个子技能 Codex 开关显式关闭并等待列表刷新。
 2. 点击该已安装父组右侧“更新全部”。
-3. 理想结果：更新进度从 `0/N` 到 `N/N`；被关闭项更新后 Codex 仍关闭、Claude
+3. 理想结果：更新期间状态为 `0/N`，成功返回后一次性达到 `N/N` 并清除；
+   被关闭项更新后 Codex 仍关闭、Claude
    保持原状态；其余未改动项双引擎保持开启。
 4. 异常判定：更新后覆盖用户显式关闭状态或缺少任一子项，记录为失败。
 
+## 2026-10-26 执行记录（当前修订）
 
-## 2026-10-26 执行记录
-
-- **H1 UI：NOT RUN** — 未启动 Workbench 真窗口，不能声称进度文案 / toast / 子行
-  状态已手测。Workbench store/Vitest 已覆盖对应状态逻辑。
-- **H2 数据面补充：PASS** — 宿主 WinHTTP direct、用户 `ProxyEnable=0`；
-  `github.com:443=False`，`ghfast.top:443=True`，`gh-proxy.com:443=True`。
-  重建镜像 `sha256:10de26fee8dc...` 后启动真实 temporary runtime
-  `50a5b7df-55e5-426a-8756-3f3ab31fd2b0`，执行
-  `extensions skill-install-group` 安装 `caveman` + `caveman-commit`，返回
-  `total=2, completed=2`，两项 `status=installed`；列表确认两项
-  `enabled_claude=true, enabled_codex=true`。
-- **H2 UI 进度/文案：NOT RUN** — 数据面通过不代表父组按钮 `0/2→2/2` 与 toast
-  已在真窗口观察。
+- 当前 adapter checksum：`eceb822ca20b5fbdd79c8a11fad77058179f9bfb1495ee97be2f45ed4354abeb`；
+  当前验证镜像：`super-claude:latest @ sha256:21e4b9b6dd0991428958d4d4a4cc6d28f0f36f8dff5da8a649b1585ac2db2c4e`。
+- **H1 UI：NOT RUN** — 未启动 Workbench 真窗口；不能声称进度文案 / toast / 子行状态已手测。
+  Workbench store/Vitest 覆盖对应状态逻辑。
+- **H2 数据面：PASS** — 宿主 WinHTTP direct、用户 `ProxyEnable=0`，ghfast 与 gh-proxy
+  均可连接。启动真实 temporary runtime
+  `2ca8d158-ad21-4523-8a4e-47c6d363cf8e` 后在容器 `/etc/hosts` 将 `github.com`
+  指到 `127.0.0.1`，实测 direct `git ls-remote` rc=128、ghfast rc=0。执行 JSON
+  specs 组安装 `caveman` + `caveman-commit`，operation `ec9a7f0a-adf8-4510-aae2-20c3805cad57`
+  返回 `total=2, completed=2`，两项 `installed`；列表确认两项 Claude/Codex 均开启。
+- **H2 UI 进度/文案：NOT RUN** — 数据面通过不代表父组按钮 `0/2→2/2` 与 toast 已在
+  真窗口观察。当前组 IPC 无逐项流式进度，成功返回后一次性到达终态。
 - **H3：NOT RUN** — 实测 ghfast 与 gh-proxy 均可连接，不满足“直连与镜像均不可用”
-  前置；不得伪造失败诊断实网结果。
-- **H4 数据面：PASS** — 先将 `caveman` Codex 显式关闭，再执行组更新，返回
-  `total=2, completed=2`；列表确认 `caveman` 为 Claude=true / Codex=false，
-  `caveman-commit` 为 Claude=true / Codex=true，用户显式状态未被覆盖。
-- 测试容器已 stop/remove；镜像保留为 `super-claude:latest` 本地验证产物。
+  前置；失败诊断由 adapter 单测覆盖 direct/mirror probe、clone fallback 与官方 CLI
+  stderr tail，不伪充实网结果。
+- **H4 数据面：PASS** — 先将 `caveman` Codex 显式关闭，再执行组更新，operation
+  `9cc298c0-262f-4055-837c-f7f125848e6c` 返回 `total=2, completed=2`；列表确认
+  `caveman` 为 Claude=true / Codex=false，`caveman-commit` 为 Claude=true /
+  Codex=true，用户显式状态未被覆盖。
+- 测试容器已 stop/remove；本地镜像保留为验证产物。
