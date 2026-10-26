@@ -133,33 +133,3 @@ describe("ExtensionsView operation button spinners (preview b3)", () => {
     wrapper.unmount();
   });
 });
-
-
-describe("ExtensionsView market cache status (v2.1.17 b1)", () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-    i18n.global.locale.value = "zh-CN";
-    vi.mocked(ipc.extensionsCall).mockReset();
-    vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: p.kind ? items(p.kind) : [] }));
-  });
-
-  it("shows that results came from the last successful cache and names the remote failure", async () => {
-    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
-    await flushPromises();
-    const store = useExtensionsStore();
-    store.kind = "plugins";
-    store.marketPlugins = [{ kind: "market-plugin", id: "demo@market", name: "demo" }];
-    store.marketCacheByKind.plugins = {
-      source: "cache", cached: true, query: "demo",
-      fetched_at: "2026-10-26T01:00:00Z", error: "remote down",
-    };
-    await nextTick();
-
-    const status = wrapper.find("[data-testid=ext-plugin-market-cache]");
-    expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("缓存结果");
-    expect(status.text()).toContain("2026-10-26T01:00:00Z");
-    expect(status.text()).toContain("remote down");
-    wrapper.unmount();
-  });
-});

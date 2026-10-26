@@ -235,8 +235,5 @@ def extensions_call_raw(runtime_id: str, op: str, workspace: Optional[str],
         runtime_id, _registry_root(workspace), executor, op,
         kind=kind, item_id=item_id, query=query, url=url,
     )
-    out = {"op": op, "items": envelope.get("items") or [],
-           "operation_id": envelope.get("operation_id")}
-    if isinstance(envelope.get("cache"), dict):
-        out["cache"] = envelope["cache"]
-    return out
+    return {"op": op, "items": envelope.get("items") or [],
+            "operation_id": envelope.get("operation_id")}

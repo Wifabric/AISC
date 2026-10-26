@@ -39,7 +39,6 @@ import sys
 import time
 import urllib.parse
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -63,8 +62,7 @@ class AdapterError(Exception):
 
 
 def _envelope(op: str, ok: bool, *, items: Optional[list] = None,
-              error: Optional[dict] = None, detail: Optional[str] = None,
-              cache: Optional[dict] = None) -> dict:
+              error: Optional[dict] = None, detail: Optional[str] = None) -> dict:
     out: dict[str, Any] = {
         "schema": PROTOCOL,
         "operation_id": str(uuid.uuid4()),
@@ -75,8 +73,6 @@ def _envelope(op: str, ok: bool, *, items: Optional[list] = None,
         out["items"] = items
     if detail is not None:
         out["detail"] = detail
-    if cache is not None:
-        out["cache"] = cache
     if error is not None:
         out["error"] = error
     return out
@@ -428,98 +424,6 @@ def _run_cli_git_fallback(argv: list[str], *, timeout: float,
             except AdapterError as exc:
                 last = exc
         raise last or AdapterError(ERR_CLI, "git mirror retry failed")
-
-
-MARKET_CACHE_SCHEMA = "aisc.extensions.market-cache/v1"
-MARKET_CACHE_LIMIT = 50
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _market_cache_path(kind: str) -> Path:
-    if kind not in KINDS:
-        raise AdapterError(ERR_BAD_REQUEST, f"unknown market kind: {kind}")
-    return _db_path().parent / "market-cache" / f"{kind}.json"
-
-
-def _read_market_cache(path: Path) -> dict[str, Any]:
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"schema": MARKET_CACHE_SCHEMA, "queries": {}}
-    if doc.get("schema") != MARKET_CACHE_SCHEMA or not isinstance(doc.get("queries"), dict):
-        return {"schema": MARKET_CACHE_SCHEMA, "queries": {}}
-    return doc
-
-
-def _write_market_cache(path: Path, doc: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporary.replace(path)
-    except OSError:
-        # Cache is an optimization. Remote search must never fail because the
-        # local cache cannot be persisted.
-        return
-
-
-def _market_search_with_cache(
-    kind: str, query: str, fetch: Any
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Fetch a market remotely first, persist success, and fall back on failure.
-
-    Every user-triggered search is still a refresh: the cache is used only when
-    all remote sources fail. This avoids stale-first behavior while preserving
-    the last useful result during transient network failures.
-    """
-    normalized = " ".join(query.strip().casefold().split())
-    if not normalized:
-        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    try:
-        items = fetch(query)
-    except AdapterError as exc:
-        path = _market_cache_path(kind)
-        doc = _read_market_cache(path)
-        entry = doc.get("queries", {}).get(normalized)
-        if not isinstance(entry, dict) or not isinstance(entry.get("items"), list):
-            raise
-        return entry["items"], {
-            "source": "cache",
-            "cached": True,
-            "query": query,
-            "fetched_at": str(entry.get("fetched_at") or ""),
-            "error": exc.message,
-        }
-
-    fetched_at = _utc_now_iso()
-    path = _market_cache_path(kind)
-    doc = _read_market_cache(path)
-    queries = doc.setdefault("queries", {})
-    if not isinstance(queries, dict):
-        queries = {}
-        doc["queries"] = queries
-    queries[normalized] = {
-        "query": query,
-        "fetched_at": fetched_at,
-        "items": items,
-    }
-    # Most-recent-first bounded LRU: Python dicts preserve insertion, so delete
-    # and reinsert on every successful write before trimming old entries.
-    queries[normalized] = queries.pop(normalized, {})
-    queries[normalized] = {"query": query, "fetched_at": fetched_at, "items": items}
-    if len(queries) > MARKET_CACHE_LIMIT:
-        for key in list(queries)[:-MARKET_CACHE_LIMIT]:
-            del queries[key]
-    _write_market_cache(path, doc)
-    return items, {
-        "source": "remote",
-        "cached": False,
-        "query": query,
-        "fetched_at": fetched_at,
-    }
 
 
 def _http_json(urls: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
@@ -996,10 +900,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "skill-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "skills", args.query, skill_search)
             print(json.dumps(_envelope(
-                "skill-search", True, items=items, cache=cache)))
+                "skill-search", True, items=skill_search(args.query))))
             return 0
         if args.op == "deeplink":
             if not args.url:
@@ -1026,18 +928,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "plugin-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "plugins", args.query, plugin_search)
             print(json.dumps(_envelope(
-                "plugin-search", True, items=items, cache=cache)))
+                "plugin-search", True, items=plugin_search(args.query))))
             return 0
         if args.op == "mcp-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "mcp", args.query, mcp_search)
-            print(json.dumps(_envelope(
-                "mcp-search", True, items=items, cache=cache)))
+            print(json.dumps(_envelope("mcp-search", True, items=mcp_search(args.query))))
             return 0
         if args.op == "mcp-market-install":
             if not args.id:

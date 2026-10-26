@@ -23,14 +23,6 @@ export interface ExtensionOperation {
   total: number;
 }
 
-export interface MarketCacheState {
-  source: "remote" | "cache" | string;
-  cached: boolean;
-  query?: string;
-  fetched_at?: string;
-  error?: string;
-}
-
 type KindRecord<T> = Record<ExtensionsKind, T>;
 
 function kindRecord<T>(value: T): KindRecord<T> {
@@ -60,7 +52,6 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const loadingByKind = ref(kindRecord(false));
   const busyByKind = ref(kindRecord(false));
   const searchBusyByKind = ref(kindRecord(false));
-  const marketCacheByKind = ref(kindRecord<MarketCacheState | null>(null));
   const errorsByKind = ref<KindRecord<string | null>>(kindRecord(null));
   const operationsByKind = ref<KindRecord<ExtensionOperation | null>>(
     kindRecord<ExtensionOperation | null>(null),
@@ -174,9 +165,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     searchBusyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     try {
-      const out = await call<{ items?: ExtensionsItem[]; cache?: MarketCacheState }>(op, { query });
+      const out = await call<{ items?: ExtensionsItem[] }>(op, { query });
       setter(out.items ?? []);
-      marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
       errorsByKind.value[target] = errorText(e);
     } finally {
@@ -188,7 +178,6 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (target === "skills") marketSkills.value = [];
     else if (target === "mcp") marketMcp.value = [];
     else marketPlugins.value = [];
-    marketCacheByKind.value[target] = null;
   }
 
   async function toggle(
@@ -332,7 +321,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, marketPlugins, opBusyId, marketMcp, activeOperation,
-    operationsByKind, marketCacheByKind,
+    operationsByKind,
     clearMarketResults,
     installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
