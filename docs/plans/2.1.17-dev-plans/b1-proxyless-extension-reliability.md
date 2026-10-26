@@ -134,6 +134,8 @@ Vue/Pinia + Vitest, real Docker/container smoke。
 - [x] 按 [HANDTEST.md](HANDTEST.md) 收集真实容器结果：H2/H4 数据面 PASS；
       H1/H2 UI 与 H3 按前置条件记录 NOT RUN，未用单元测试替代。
 - [x] `powershell -File scripts/local-gates.ps1`：ALL GREEN（Python 1486 / Rust 366 / Vitest 644 / vue-tsc）
+- [x] Draft PR #40 Workbench CI run `40294095282` attempt 2 success
+      （attempt 1 仅既有 Linux PTY stderr 流用例瞬时失败，failed-job 重跑通过）。
 - [x] 更新本文件勾选、HANDTEST 结果、README 状态与 `docs/devlog.md`；并回
       develop 前等待 Workbench UI 手测与远程 CI。
 
