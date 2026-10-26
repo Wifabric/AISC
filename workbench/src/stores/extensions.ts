@@ -213,13 +213,19 @@ export const useExtensionsStore = defineStore("extensions", () => {
     ]);
   }
 
-  async function installSkillGroup(group: SkillGroup): Promise<void> {
-    const specs = group.items.map((item) => item.id);
+  async function runSkillGroupOperation(
+    group: SkillGroup,
+    action: "install" | "update",
+    op: "skill-install-group" | "skill-update-group",
+    successStatus: "installed" | "updated",
+  ): Promise<void> {
+    const specs = group.items.map((item) => action === "install" ? item.id : skillUpdateSpec(item));
     if (specs.length === 0) return;
     busyByKind.value.skills = true;
     errorsByKind.value.skills = null;
     operationsByKind.value.skills = {
-      kind: "skills", action: "install", id: `market:${group.id}`,
+      kind: "skills", action,
+      id: `${action === "install" ? "market" : "installed"}:${group.id}`,
       label: group.name, completed: 0, total: specs.length,
     };
     try {
@@ -227,7 +233,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
         total?: number;
         completed?: number;
         items?: Array<{ spec: string; status: string; error?: string }>;
-      }>("skill-install-group", { specs });
+      }>(op, { specs });
       const total = result.total ?? specs.length;
       const completed = result.completed ?? total;
       operationsByKind.value.skills = {
@@ -235,14 +241,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
       };
       if (completed < total) {
         const failures = (result.items ?? [])
-          .filter((item) => item.status !== "installed")
+          .filter((item) => item.status !== successStatus)
           .map((item) => `${item.spec}: ${item.error || item.status}`);
         throw new Error(
-          `installed ${completed}/${total}; ${failures.join("; ") || "no item detail"}`,
+          `${successStatus} ${completed}/${total}; ${failures.join("; ") || "no item detail"}`,
         );
       }
       await refresh("skills", { silent: true });
-      toast.success(operationSuccess("install", group.name));
+      toast.success(operationSuccess(action, group.name));
     } catch (e) {
       const message = errorText(e);
       toast.error(operationFailure(group.name, message));
@@ -254,10 +260,16 @@ export const useExtensionsStore = defineStore("extensions", () => {
     }
   }
 
+  async function installSkillGroup(group: SkillGroup): Promise<void> {
+    await runSkillGroupOperation(
+      group, "install", "skill-install-group", "installed",
+    );
+  }
+
   async function updateSkillGroup(group: SkillGroup): Promise<void> {
-    await runOperation("skills", "update", `installed:${group.id}`, group.name,
-      group.items.map((item) => () =>
-        call("skill-update", { spec: skillUpdateSpec(item) })));
+    await runSkillGroupOperation(
+      group, "update", "skill-update-group", "updated",
+    );
   }
 
   async function removeSkillGroup(group: SkillGroup): Promise<void> {

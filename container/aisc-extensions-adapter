@@ -603,8 +603,7 @@ def skill_update(spec: str) -> None:
     _install_skill(spec, enable_both=False, restore_state=True)
 
 
-def skill_install_group(specs: list[str]) -> dict[str, Any]:
-    """Install a repository group with one source fetch and itemized results."""
+def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
     if not isinstance(specs, list) or not specs or not all(
         isinstance(spec, str) and spec.strip() for spec in specs
     ):
@@ -626,9 +625,12 @@ def skill_install_group(specs: list[str]) -> dict[str, Any]:
     items: list[dict[str, Any]] = [
         {"spec": spec, "status": "pending", "error": ""} for spec in unique
     ]
+    previous_states: dict[str, Optional[dict[str, bool]]] = {}
+    if update:
+        for spec in unique:
+            directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+            previous_states[spec] = _skill_enable_states(directory)
 
-    # Prefetch/stage every repository before the first official install. Thus a
-    # missing child cannot leave the one-child partial state reported in N1.
     missing_errors: dict[str, str] = {}
     for repo, group_specs in grouped.items():
         git_env = _github_skill_env(repo)
@@ -655,20 +657,40 @@ def skill_install_group(specs: list[str]) -> dict[str, Any]:
                 item["error"] = "skill group preflight failed"
         return {"total": len(items), "completed": 0, "items": items}
 
+    final_status = "updated" if update else "installed"
     for item in items:
         spec = item["spec"]
         directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
         try:
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
-            for agent in AGENTS:
-                _run_cli(["cc-switch", "skills", "enable", directory, "-a", agent])
-            item["status"] = "installed"
+            if update:
+                previous = previous_states.get(spec)
+                if previous is not None:
+                    for agent in AGENTS:
+                        verb = "enable" if previous[agent] else "disable"
+                        _run_cli(["cc-switch", "skills", verb, directory,
+                                  "-a", agent])
+            else:
+                for agent in AGENTS:
+                    _run_cli(["cc-switch", "skills", "enable", directory,
+                              "-a", agent])
+            item["status"] = final_status
         except AdapterError as exc:
             item["status"] = "failed"
             item["error"] = exc.message
 
-    completed = sum(item["status"] == "installed" for item in items)
+    completed = sum(item["status"] == final_status for item in items)
     return {"total": len(items), "completed": completed, "items": items}
+
+
+def skill_install_group(specs: list[str]) -> dict[str, Any]:
+    """Install a repository group with one source fetch and itemized results."""
+    return _skill_group_operation(specs, update=False)
+
+
+def skill_update_group(specs: list[str]) -> dict[str, Any]:
+    """Update a group while preserving each child's enable/disable choices."""
+    return _skill_group_operation(specs, update=True)
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
@@ -910,7 +932,7 @@ def main(argv: list[str] | None = None) -> int:
                                        "plugin-install",
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
-                                       "skill-repo-add", "skill-update",
+                                       "skill-repo-add", "skill-update", "skill-update-group",
                                        "plugin-market-list",
                                        "plugin-market-add", "plugin-search",
                                        "mcp-search", "mcp-market-install"])
@@ -950,12 +972,15 @@ def main(argv: list[str] | None = None) -> int:
             skill_install(args.spec)
             print(json.dumps(_envelope("skill-install", True)))
             return 0
-        if args.op == "skill-install-group":
+        if args.op in ("skill-install-group", "skill-update-group"):
             if not args.specs:
                 raise AdapterError(ERR_BAD_REQUEST, "--specs required")
             specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
-            result = skill_install_group(specs)
-            envelope = _envelope("skill-install-group", True)
+            if args.op == "skill-install-group":
+                result = skill_install_group(specs)
+            else:
+                result = skill_update_group(specs)
+            envelope = _envelope(args.op, True)
             envelope.update(result)
             print(json.dumps(envelope))
             return 0

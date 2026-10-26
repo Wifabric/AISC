@@ -96,6 +96,38 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(data["completed"], 1)
         self.assertEqual(data["items"], payload)
         self.assertEqual(data["operation_id"], "group-op")
+    def test_skill_update_group_builds_exec_and_parses_itemized_envelope(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "group-update",
+                    "op": "skill-update-group", "ok": True,
+                    "total": 2, "completed": 2,
+                    "items": [
+                        {"spec": "owner/repo:a", "status": "updated", "error": ""},
+                        {"spec": "owner/repo:b", "status": "updated", "error": ""},
+                    ],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_skill_update_group(
+                "rid", ["owner/repo:a", "owner/repo:b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 1:i + 3], ["skill-update-group", "--specs"])
+        self.assertEqual(argv[i + 3], "owner/repo:a,owner/repo:b")
+        self.assertEqual(data["kind"], "skills")
+        self.assertEqual(data["completed"], 2)
+        self.assertEqual(data["operation_id"], "group-update")
+
     def test_adapter_error_maps_to_cli_error(self):
         def run_captured(argv, timeout=0.0, input_text=""):
             return SimpleNamespace(

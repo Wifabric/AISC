@@ -797,9 +797,9 @@ pub async fn extensions_call(
     url: Option<String>,
     specs: Option<Vec<String>>,
 ) -> Result<Value, WorkbenchError> {
-    const OPS: [&str; 18] = [
+    const OPS: [&str; 19] = [
         "list", "toggle", "delete", "skill-install", "skill-install-group",
-        "skill-update", "mcp-add",
+        "skill-update", "skill-update-group", "mcp-add",
         "plugin-install", "plugin-uninstall", "plugin-update",
         "skill-search", "deeplink", "skill-repo-add",
         "plugin-market-list", "plugin-market-add", "plugin-search",

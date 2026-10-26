@@ -36,8 +36,15 @@ beforeEach(() => {
 });
 
 describe("v2.1.17 b1 skill repository group operations", () => {
-  it("updates every child in one repository group", async () => {
-    call.mockResolvedValue({ items: [] });
+  it("updates a repository group as one preflighted call", async () => {
+    call.mockResolvedValue({
+      items: [
+        { spec: "obra/superpowers:brainstorming", status: "updated", error: "" },
+        { spec: "obra/superpowers:debugging", status: "updated", error: "" },
+      ],
+      total: 2,
+      completed: 2,
+    });
     const store = useExtensionsStore();
     store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
     store.itemsByKind.skills = [
@@ -47,11 +54,13 @@ describe("v2.1.17 b1 skill repository group operations", () => {
     expect(store.installedSkillGroups).toHaveLength(1);
     await store.updateSkillGroup(store.installedSkillGroups[0]!);
 
+    const updateCalls = call.mock.calls.filter(
+      ([params]) => params.op === "skill-update-group",
+    );
+    expect(updateCalls).toHaveLength(1);
     expect(call).toHaveBeenCalledWith(expect.objectContaining({
-      op: "skill-update", spec: "obra/superpowers:brainstorming",
-    }));
-    expect(call).toHaveBeenCalledWith(expect.objectContaining({
-      op: "skill-update", spec: "obra/superpowers:debugging",
+      op: "skill-update-group",
+      specs: ["obra/superpowers:brainstorming", "obra/superpowers:debugging"],
     }));
   });
 
