@@ -362,6 +362,94 @@ class MarketTests(TempEnv):
         self.assertEqual(calls[-2]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "claude"])
         self.assertEqual(calls[-1]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "codex"])
 
+    def test_skill_install_group_stages_and_installs_all_children(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env")})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                for name in ("cavecrew", "caveman-commit"):
+                    skill = destination / "skills" / name
+                    skill.mkdir(parents=True)
+                    (skill / "SKILL.md").write_text(
+                        f"---\nname: {name}\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        specs = [
+            "JuliusBrussee/caveman:cavecrew",
+            "JuliusBrussee/caveman:caveman-commit",
+        ]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(specs)
+
+        clone_calls = [call for call in calls if call["argv"][:2] == ["git", "clone"]]
+        self.assertEqual(len(clone_calls), 1)
+        self.assertTrue(
+            (self.root / "skills" / "cavecrew" / "SKILL.md").is_file())
+        self.assertTrue(
+            (self.root / "skills" / "caveman-commit" / "SKILL.md").is_file())
+        self.assertEqual([
+            call["argv"] for call in calls
+            if call["argv"][:4] == ["cc-switch", "skills", "install", "JuliusBrussee/caveman:cavecrew"]
+        ], [["cc-switch", "skills", "install", "JuliusBrussee/caveman:cavecrew"]])
+        self.assertEqual([
+            call["argv"] for call in calls
+            if call["argv"][:4] == ["cc-switch", "skills", "install", "JuliusBrussee/caveman:caveman-commit"]
+        ], [["cc-switch", "skills", "install", "JuliusBrussee/caveman:caveman-commit"]])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 2)
+        self.assertEqual([item["spec"] for item in result["items"]], specs)
+        self.assertTrue(all(item["status"] == "installed" for item in result["items"]))
+    def test_skill_install_group_stops_before_install_when_child_is_missing(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv)})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "cavecrew"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    "---\nname: cavecrew\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        specs = [
+            "JuliusBrussee/caveman:cavecrew",
+            "JuliusBrussee/caveman:missing-child",
+        ]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(specs)
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(any(
+            call["argv"][:3] == ["cc-switch", "skills", "install"]
+            for call in calls
+        ))
+        self.assertEqual(result["items"][0]["status"], "blocked")
+        self.assertEqual(result["items"][1]["status"], "missing")
+        self.assertIn("SKILL.md not found", result["items"][1]["error"])
     def test_mcp_market_install_uses_smithery_http_deployment_url(self):
         import urllib.request
 

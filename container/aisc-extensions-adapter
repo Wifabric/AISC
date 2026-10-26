@@ -489,15 +489,14 @@ def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
     return {"claude": bool(row[0]), "codex": bool(row[1])}
 
 
-def _stage_skill_from_git_mirror(spec: str, repo: str,
-                                 git_env: dict[str, str]) -> None:
-    """Stage a skill through Git when cc-switch's direct archive URL fails.
+def _stage_skills_from_git_mirror(specs: list[str], repo: str,
+                                  git_env: dict[str, str]) -> list[str]:
+    """Stage a repository's requested skills through one mirror clone.
 
-    cc-switch 5.11 builds ``https://github.com/<owner>/<repo>/archive/...``
-    itself and ignores Git mirror configuration. A shallow Git clone through
-    the selected mirror, followed by staging into cc-switch's skills source
-    directory, lets the official ``skills install`` command complete offline
-    from its SSOT and retain normal registration/sync semantics.
+    cc-switch builds GitHub archive URLs itself and ignores Git mirror config.
+    A group must clone its repository once, resolve every requested child, and
+    only then copy sources; a missing child is therefore found before any skill
+    is staged or installed.
     """
     import shutil
     import tempfile
@@ -506,10 +505,13 @@ def _stage_skill_from_git_mirror(spec: str, repo: str,
     if identity is None:
         raise AdapterError(ERR_BAD_REQUEST, f"not a GitHub skill repo: {repo}")
     (owner, name, requested_branch), url = identity
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
-    relative = Path(directory)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
+    relatives: list[Path] = []
+    for spec in specs:
+        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+        relative = Path(directory)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
+        relatives.append(relative)
 
     with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
         clone = Path(temporary) / "repo"
@@ -525,19 +527,31 @@ def _stage_skill_from_git_mirror(spec: str, repo: str,
         _run_cli(["cc-switch", "skills", "repos", "add",
                   f"{owner}/{name}@{branch}"], timeout=30.0)
 
-        candidates = [clone / "skills" / relative, clone / relative]
-        source = next((candidate for candidate in candidates
-                       if (candidate / "SKILL.md").is_file()), None)
-        if source is None:
-            raise AdapterError(
-                ERR_NOT_FOUND,
-                f"SKILL.md not found for {spec} in mirrored repository",
-            )
-        destination = _db_path().parent / "skills" / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination)
+        sources: list[tuple[Path, Path]] = []
+        missing: list[str] = []
+        for spec, relative in zip(specs, relatives):
+            candidates = [clone / "skills" / relative, clone / relative]
+            source = next((candidate for candidate in candidates
+                           if (candidate / "SKILL.md").is_file()), None)
+            if source is None:
+                missing.append(spec)
+            else:
+                sources.append((source, relative))
+        if missing:
+            return missing
+
+        for source, relative in sources:
+            destination = _db_path().parent / "skills" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+    return []
+
+
+def _stage_skill_from_git_mirror(spec: str, repo: str,
+                                 git_env: dict[str, str]) -> None:
+    _stage_skills_from_git_mirror([spec], repo, git_env)
 
 
 def _install_skill(spec: str, *, enable_both: bool,
@@ -587,6 +601,74 @@ def skill_update(spec: str) -> None:
     # official install command defaults Claude on, so restore both states after
     # refreshing the source.
     _install_skill(spec, enable_both=False, restore_state=True)
+
+
+def skill_install_group(specs: list[str]) -> dict[str, Any]:
+    """Install a repository group with one source fetch and itemized results."""
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise AdapterError(ERR_BAD_REQUEST, "non-empty skill specs are required")
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for spec in specs:
+        normalized = spec.strip()
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+
+    grouped: dict[str, list[str]] = {}
+    for spec in unique:
+        repo = spec.split(":", 1)[0]
+        grouped.setdefault(repo, []).append(spec)
+
+    items: list[dict[str, Any]] = [
+        {"spec": spec, "status": "pending", "error": ""} for spec in unique
+    ]
+
+    # Prefetch/stage every repository before the first official install. Thus a
+    # missing child cannot leave the one-child partial state reported in N1.
+    missing_errors: dict[str, str] = {}
+    for repo, group_specs in grouped.items():
+        git_env = _github_skill_env(repo)
+        if git_env:
+            missing = _stage_skills_from_git_mirror(group_specs, repo, git_env)
+            for spec in missing:
+                missing_errors[spec] = (
+                    f"SKILL.md not found for {spec} in mirrored repository"
+                )
+        elif "/" in repo and not Path(repo).exists() and not repo.startswith("."):
+            try:
+                _run_cli(["cc-switch", "skills", "repos", "add", repo],
+                         timeout=120.0)
+            except AdapterError:
+                pass
+
+    if missing_errors:
+        for item in items:
+            if item["spec"] in missing_errors:
+                item["status"] = "missing"
+                item["error"] = missing_errors[item["spec"]]
+            else:
+                item["status"] = "blocked"
+                item["error"] = "skill group preflight failed"
+        return {"total": len(items), "completed": 0, "items": items}
+
+    for item in items:
+        spec = item["spec"]
+        directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+        try:
+            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+            for agent in AGENTS:
+                _run_cli(["cc-switch", "skills", "enable", directory, "-a", agent])
+            item["status"] = "installed"
+        except AdapterError as exc:
+            item["status"] = "failed"
+            item["error"] = exc.message
+
+    completed = sum(item["status"] == "installed" for item in items)
+    return {"total": len(items), "completed": completed, "items": items}
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
