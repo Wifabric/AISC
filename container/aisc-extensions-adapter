@@ -39,7 +39,6 @@ import sys
 import time
 import urllib.parse
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -63,8 +62,7 @@ class AdapterError(Exception):
 
 
 def _envelope(op: str, ok: bool, *, items: Optional[list] = None,
-              error: Optional[dict] = None, detail: Optional[str] = None,
-              cache: Optional[dict] = None) -> dict:
+              error: Optional[dict] = None, detail: Optional[str] = None) -> dict:
     out: dict[str, Any] = {
         "schema": PROTOCOL,
         "operation_id": str(uuid.uuid4()),
@@ -75,8 +73,6 @@ def _envelope(op: str, ok: bool, *, items: Optional[list] = None,
         out["items"] = items
     if detail is not None:
         out["detail"] = detail
-    if cache is not None:
-        out["cache"] = cache
     if error is not None:
         out["error"] = error
     return out
@@ -331,29 +327,85 @@ def _github_repo_identity(source: str) -> tuple[tuple[str, str, Optional[str]], 
 
 
 def _github_git_env(source: str) -> dict[str, str]:
-    """Probe direct GitHub first, then mirrors, with short bounded timeouts.
+    """Probe direct GitHub first, then mirrors, with bounded diagnostics.
 
-    ``cc-switch`` downloads skill archives over HTTP and does not honor Git's
-    ``insteadOf`` environment. The probe therefore selects a reachable Git
-    source for explicit staging; it never asks ``cc-switch`` to wait on an
-    unreachable direct connection first.
+    Returns an empty environment for the reachable direct source. Mirror
+    environments rewrite only GitHub URLs. Every failed probe is retained so
+    group callers can report which transport failed instead of collapsing all
+    network errors to a generic CLI failure.
     """
     identity = _github_repo_identity(source)
     if identity is None:
         return {}
     url = identity[1]
+    failures: list[str] = []
     for mirror in (None, *_GIT_MIRRORS):
         env = {} if mirror is None else _git_mirror_env(mirror)
+        label = "direct" if mirror is None else mirror
         try:
             _run_cli(["git", "ls-remote", url, "HEAD"],
                      timeout=8.0, env_overrides=env)
-        except AdapterError:
+        except AdapterError as exc:
+            failures.append(f"{label}: {exc.message}")
             continue
         return env
     raise AdapterError(
         ERR_CLI,
-        f"github unreachable after direct and mirror probes: {url}",
+        f"github unreachable after direct and mirror probes: {url}; "
+        + "; ".join(failures),
     )
+
+
+def _skill_spec_parts(spec: str) -> tuple[str, str]:
+    """Parse and validate the ``repo:directory`` shape before any I/O."""
+    normalized = spec.strip()
+    if not normalized or any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    repo, separator, directory = normalized.rpartition(":")
+    if not separator:
+        repo, directory = normalized, normalized
+    if not repo or not directory or "\\" in directory:
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    parts = directory.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory!r}")
+    return repo, directory
+
+
+def _registered_repo_for_directory(directory: str) -> Optional[str]:
+    path = _db_path()
+    if not path.is_file():
+        return None
+    try:
+        connection = _connect_ro(path)
+        try:
+            row = connection.execute(
+                "SELECT repo_owner, repo_name FROM skills "
+                "WHERE lower(directory) = lower(?) "
+                "ORDER BY id LIMIT 1",
+                (directory,),
+            ).fetchone()
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, AdapterError):
+        return None
+    if not row or not row[0] or not row[1]:
+        return None
+    return f"{row[0]}/{row[1]}"
+
+
+def _canonical_skill_spec(spec: str) -> str:
+    """Align a market repo's casing with an already registered directory.
+
+    cc-switch treats repository identity case-sensitively while skills.sh can
+    return different casing. Reusing the registered owner/name avoids a false
+    SKILL_DIRECTORY_CONFLICT when refreshing an installed group.
+    """
+    repo, directory = _skill_spec_parts(spec)
+    registered = _registered_repo_for_directory(directory)
+    if registered and registered.casefold() == repo.casefold():
+        return f"{registered}:{directory}"
+    return spec
 
 
 def _github_branch(url: str) -> str:
@@ -430,98 +482,6 @@ def _run_cli_git_fallback(argv: list[str], *, timeout: float,
         raise last or AdapterError(ERR_CLI, "git mirror retry failed")
 
 
-MARKET_CACHE_SCHEMA = "aisc.extensions.market-cache/v1"
-MARKET_CACHE_LIMIT = 50
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _market_cache_path(kind: str) -> Path:
-    if kind not in KINDS:
-        raise AdapterError(ERR_BAD_REQUEST, f"unknown market kind: {kind}")
-    return _db_path().parent / "market-cache" / f"{kind}.json"
-
-
-def _read_market_cache(path: Path) -> dict[str, Any]:
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"schema": MARKET_CACHE_SCHEMA, "queries": {}}
-    if doc.get("schema") != MARKET_CACHE_SCHEMA or not isinstance(doc.get("queries"), dict):
-        return {"schema": MARKET_CACHE_SCHEMA, "queries": {}}
-    return doc
-
-
-def _write_market_cache(path: Path, doc: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporary.replace(path)
-    except OSError:
-        # Cache is an optimization. Remote search must never fail because the
-        # local cache cannot be persisted.
-        return
-
-
-def _market_search_with_cache(
-    kind: str, query: str, fetch: Any
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Fetch a market remotely first, persist success, and fall back on failure.
-
-    Every user-triggered search is still a refresh: the cache is used only when
-    all remote sources fail. This avoids stale-first behavior while preserving
-    the last useful result during transient network failures.
-    """
-    normalized = " ".join(query.strip().casefold().split())
-    if not normalized:
-        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    try:
-        items = fetch(query)
-    except AdapterError as exc:
-        path = _market_cache_path(kind)
-        doc = _read_market_cache(path)
-        entry = doc.get("queries", {}).get(normalized)
-        if not isinstance(entry, dict) or not isinstance(entry.get("items"), list):
-            raise
-        return entry["items"], {
-            "source": "cache",
-            "cached": True,
-            "query": query,
-            "fetched_at": str(entry.get("fetched_at") or ""),
-            "error": exc.message,
-        }
-
-    fetched_at = _utc_now_iso()
-    path = _market_cache_path(kind)
-    doc = _read_market_cache(path)
-    queries = doc.setdefault("queries", {})
-    if not isinstance(queries, dict):
-        queries = {}
-        doc["queries"] = queries
-    queries[normalized] = {
-        "query": query,
-        "fetched_at": fetched_at,
-        "items": items,
-    }
-    # Most-recent-first bounded LRU: Python dicts preserve insertion, so delete
-    # and reinsert on every successful write before trimming old entries.
-    queries[normalized] = queries.pop(normalized, {})
-    queries[normalized] = {"query": query, "fetched_at": fetched_at, "items": items}
-    if len(queries) > MARKET_CACHE_LIMIT:
-        for key in list(queries)[:-MARKET_CACHE_LIMIT]:
-            del queries[key]
-    _write_market_cache(path, doc)
-    return items, {
-        "source": "remote",
-        "cached": False,
-        "query": query,
-        "fetched_at": fetched_at,
-    }
-
-
 def _http_json(urls: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
     import urllib.request
     last: Exception | None = None
@@ -585,15 +545,14 @@ def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
     return {"claude": bool(row[0]), "codex": bool(row[1])}
 
 
-def _stage_skill_from_git_mirror(spec: str, repo: str,
-                                 git_env: dict[str, str]) -> None:
-    """Stage a skill through Git when cc-switch's direct archive URL fails.
+def _stage_skills_from_git_source(specs: list[str], repo: str,
+                                  git_env: dict[str, str]) -> list[str]:
+    """Stage a repository's requested skills through one selected Git source.
 
-    cc-switch 5.11 builds ``https://github.com/<owner>/<repo>/archive/...``
-    itself and ignores Git mirror configuration. A shallow Git clone through
-    the selected mirror, followed by staging into cc-switch's skills source
-    directory, lets the official ``skills install`` command complete offline
-    from its SSOT and retain normal registration/sync semantics.
+    cc-switch builds GitHub archive URLs itself and ignores Git mirror config.
+    A group must clone its repository once, resolve every requested child, and
+    only then copy sources; a missing child is therefore found before any skill
+    is staged or installed.
     """
     import shutil
     import tempfile
@@ -602,38 +561,82 @@ def _stage_skill_from_git_mirror(spec: str, repo: str,
     if identity is None:
         raise AdapterError(ERR_BAD_REQUEST, f"not a GitHub skill repo: {repo}")
     (owner, name, requested_branch), url = identity
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
-    relative = Path(directory)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
+    relatives: list[Path] = []
+    for spec in specs:
+        _, directory = _skill_spec_parts(spec)
+        relatives.append(Path(directory))
 
     with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
         clone = Path(temporary) / "repo"
-        clone_argv = ["git", "clone", "--depth", "1"]
-        if requested_branch:
-            clone_argv.extend(["--branch", requested_branch])
-        clone_argv.extend([url, str(clone)])
-        _run_cli(clone_argv, timeout=120.0, env_overrides=git_env)
+        candidate_envs: list[dict[str, str]] = []
+        for candidate in (git_env, {}, *(_git_mirror_env(mirror)
+                                          for mirror in _GIT_MIRRORS)):
+            marker = candidate.get("GIT_CONFIG_KEY_0", "")
+            if marker not in [item.get("GIT_CONFIG_KEY_0", "")
+                              for item in candidate_envs]:
+                candidate_envs.append(candidate)
+
+        clone_failures: list[str] = []
+        selected_env: dict[str, str] = {}
+        for candidate in candidate_envs:
+            label = "direct"
+            key = candidate.get("GIT_CONFIG_KEY_0", "")
+            for mirror in _GIT_MIRRORS:
+                if mirror in key:
+                    label = mirror
+                    break
+            if clone.exists():
+                shutil.rmtree(clone)
+            clone_argv = ["git", "clone", "--depth", "1"]
+            if requested_branch:
+                clone_argv.extend(["--branch", requested_branch])
+            clone_argv.extend([url, str(clone)])
+            try:
+                _run_cli(clone_argv, timeout=120.0, env_overrides=candidate)
+            except AdapterError as exc:
+                clone_failures.append(f"clone {label}: {exc.message}")
+                continue
+            selected_env = candidate
+            break
+        else:
+            raise AdapterError(
+                ERR_CLI,
+                f"github skill repository clone failed for all sources: {url}; "
+                + "; ".join(clone_failures),
+            )
+
         branch = _run_cli(
             ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
-            timeout=10.0, env_overrides=git_env,
+            timeout=10.0, env_overrides=selected_env,
         ).strip() or requested_branch or "main"
         _run_cli(["cc-switch", "skills", "repos", "add",
                   f"{owner}/{name}@{branch}"], timeout=30.0)
 
-        candidates = [clone / "skills" / relative, clone / relative]
-        source = next((candidate for candidate in candidates
-                       if (candidate / "SKILL.md").is_file()), None)
-        if source is None:
-            raise AdapterError(
-                ERR_NOT_FOUND,
-                f"SKILL.md not found for {spec} in mirrored repository",
-            )
-        destination = _db_path().parent / "skills" / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination)
+        sources: list[tuple[Path, Path]] = []
+        missing: list[str] = []
+        for spec, relative in zip(specs, relatives):
+            candidates = [clone / "skills" / relative, clone / relative]
+            source = next((candidate for candidate in candidates
+                           if (candidate / "SKILL.md").is_file()), None)
+            if source is None:
+                missing.append(spec)
+            else:
+                sources.append((source, relative))
+        if missing:
+            return missing
+
+        for source, relative in sources:
+            destination = _db_path().parent / "skills" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+    return []
+
+
+def _stage_skill_from_git_source_one(spec: str, repo: str,
+                                     git_env: dict[str, str]) -> None:
+    _stage_skills_from_git_source([spec], repo, git_env)
 
 
 def _install_skill(spec: str, *, enable_both: bool,
@@ -641,12 +644,11 @@ def _install_skill(spec: str, *, enable_both: bool,
     # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
     # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
-    repo = spec.split(":", 1)[0]
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+    repo, directory = _skill_spec_parts(spec)
     previous_state = _skill_enable_states(directory) if restore_state else None
     git_env = _github_skill_env(repo)
     if git_env:
-        _stage_skill_from_git_mirror(spec, repo, git_env)
+        _stage_skill_from_git_source_one(spec, repo, git_env)
         _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     else:
         if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
@@ -663,7 +665,7 @@ def _install_skill(spec: str, *, enable_both: bool,
             mirror_env = _github_skill_env(repo, allow_direct=False)
             if not mirror_env:
                 raise
-            _stage_skill_from_git_mirror(spec, repo, mirror_env)
+            _stage_skill_from_git_source_one(spec, repo, mirror_env)
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     if enable_both:
         for agent in AGENTS:
@@ -683,6 +685,116 @@ def skill_update(spec: str) -> None:
     # official install command defaults Claude on, so restore both states after
     # refreshing the source.
     _install_skill(spec, enable_both=False, restore_state=True)
+
+
+def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise AdapterError(ERR_BAD_REQUEST, "non-empty skill specs are required")
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for spec in specs:
+        normalized = _canonical_skill_spec(spec.strip())
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+
+    grouped: dict[str, list[str]] = {}
+    for spec in unique:
+        repo, _ = _skill_spec_parts(spec)
+        grouped.setdefault(repo, []).append(spec)
+
+    items: list[dict[str, Any]] = [
+        {"spec": spec, "status": "pending", "error": ""} for spec in unique
+    ]
+    previous_states: dict[str, dict[str, bool]] = {}
+    if update:
+        state_errors: dict[str, str] = {}
+        for spec in unique:
+            _, directory = _skill_spec_parts(spec)
+            state = _skill_enable_states(directory)
+            if state is None:
+                state_errors[spec] = "enable state unavailable in cc-switch SSOT"
+            else:
+                previous_states[spec] = state
+        if state_errors:
+            for item in items:
+                if item["spec"] in state_errors:
+                    item["status"] = "state_unavailable"
+                    item["error"] = state_errors[item["spec"]]
+                else:
+                    item["status"] = "blocked"
+                    item["error"] = "skill group enable-state preflight failed"
+            return {"total": len(items), "completed": 0, "items": items}
+
+    source_errors: dict[str, str] = {}
+    missing_errors: dict[str, str] = {}
+    for repo, group_specs in grouped.items():
+        try:
+            if _github_repo_identity(repo) is None:
+                continue
+            git_env = _github_git_env(repo)
+            missing = _stage_skills_from_git_source(group_specs, repo, git_env)
+            for spec in missing:
+                missing_errors[spec] = (
+                    f"SKILL.md not found for {spec} in selected repository source"
+                )
+        except AdapterError as exc:
+            for spec in group_specs:
+                source_errors[spec] = f"repo {repo}: {exc.message}"
+
+    if source_errors or missing_errors:
+        for item in items:
+            spec = item["spec"]
+            if spec in missing_errors:
+                item["status"] = "missing"
+                item["error"] = missing_errors[spec]
+            elif spec in source_errors:
+                item["status"] = "source_failed"
+                item["error"] = source_errors[spec]
+            else:
+                item["status"] = "blocked"
+                item["error"] = "skill group source preflight failed"
+        return {"total": len(items), "completed": 0, "items": items}
+
+    final_status = "updated" if update else "installed"
+    for item in items:
+        spec = item["spec"]
+        repo, directory = _skill_spec_parts(spec)
+        try:
+            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+            if update:
+                previous = previous_states.get(spec)
+                if previous is None:
+                    raise AdapterError(
+                        ERR_CLI, f"enable state lost before update: {spec}")
+                for agent in AGENTS:
+                    verb = "enable" if previous[agent] else "disable"
+                    _run_cli(["cc-switch", "skills", verb, directory,
+                              "-a", agent])
+            else:
+                for agent in AGENTS:
+                    _run_cli(["cc-switch", "skills", "enable", directory,
+                              "-a", agent])
+            item["status"] = final_status
+        except AdapterError as exc:
+            item["status"] = "failed"
+            item["error"] = exc.message
+
+    completed = sum(item["status"] == final_status for item in items)
+    return {"total": len(items), "completed": completed, "items": items}
+
+
+def skill_install_group(specs: list[str]) -> dict[str, Any]:
+    """Install a repository group with one source fetch and itemized results."""
+    return _skill_group_operation(specs, update=False)
+
+
+def skill_update_group(specs: list[str]) -> dict[str, Any]:
+    """Update a group while preserving each child's enable/disable choices."""
+    return _skill_group_operation(specs, update=True)
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
@@ -920,10 +1032,11 @@ def mcp_market_install(market_id: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-extensions-adapter")
     parser.add_argument("op", choices=["list", "toggle", "delete", "skill-install",
-                                       "mcp-add", "plugin-install",
+                                       "skill-install-group", "mcp-add",
+                                       "plugin-install",
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
-                                       "skill-repo-add", "skill-update",
+                                       "skill-repo-add", "skill-update", "skill-update-group",
                                        "plugin-market-list",
                                        "plugin-market-add", "plugin-search",
                                        "mcp-search", "mcp-market-install"])
@@ -934,6 +1047,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent", choices=list(AGENTS))
     parser.add_argument("--on", choices=["true", "false"], default="true")
     parser.add_argument("--spec", help="skill-install: owner/name:directory")
+    parser.add_argument("--specs", help="group ops: JSON array of specs")
     parser.add_argument("--apps", default="claude,codex",
                         help="mcp-add: comma-separated agent list")
     args = parser.parse_args(argv)
@@ -961,6 +1075,26 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--spec required")
             skill_install(args.spec)
             print(json.dumps(_envelope("skill-install", True)))
+            return 0
+        if args.op in ("skill-install-group", "skill-update-group"):
+            if not args.specs:
+                raise AdapterError(ERR_BAD_REQUEST, "--specs required")
+            try:
+                parsed_specs = json.loads(args.specs)
+            except json.JSONDecodeError as exc:
+                raise AdapterError(ERR_BAD_REQUEST, f"invalid --specs JSON: {exc}")
+            if not isinstance(parsed_specs, list) or not all(
+                isinstance(spec, str) and spec.strip() for spec in parsed_specs
+            ):
+                raise AdapterError(ERR_BAD_REQUEST, "--specs must be a JSON string array")
+            specs = parsed_specs
+            if args.op == "skill-install-group":
+                result = skill_install_group(specs)
+            else:
+                result = skill_update_group(specs)
+            envelope = _envelope(args.op, True)
+            envelope.update(result)
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-add":
             config_json = sys.stdin.read().strip()
@@ -996,10 +1130,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "skill-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "skills", args.query, skill_search)
             print(json.dumps(_envelope(
-                "skill-search", True, items=items, cache=cache)))
+                "skill-search", True, items=skill_search(args.query))))
             return 0
         if args.op == "deeplink":
             if not args.url:
@@ -1026,18 +1158,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "plugin-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "plugins", args.query, plugin_search)
             print(json.dumps(_envelope(
-                "plugin-search", True, items=items, cache=cache)))
+                "plugin-search", True, items=plugin_search(args.query))))
             return 0
         if args.op == "mcp-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            items, cache = _market_search_with_cache(
-                "mcp", args.query, mcp_search)
-            print(json.dumps(_envelope(
-                "mcp-search", True, items=items, cache=cache)))
+            print(json.dumps(_envelope("mcp-search", True, items=mcp_search(args.query))))
             return 0
         if args.op == "mcp-market-install":
             if not args.id:

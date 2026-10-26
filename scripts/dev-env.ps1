@@ -1,4 +1,4 @@
-# dev-env.ps1 — 项目范围开发环境激活（Windows 裸机开发，2026-09-14 起）
+﻿# dev-env.ps1 — 项目范围开发环境激活（Windows 裸机开发，2026-09-14 起）
 #
 # 用法（dot-source，让 PATH/venv 生效在当前会话）：
 #   . scripts\dev-env.ps1
@@ -28,6 +28,13 @@ if (Test-Path (Join-Path $cargoBin 'cargo.exe')) {
     if (-not (($env:PATH -split ';') -contains $cargoBin)) { $env:PATH = "$cargoBin;$env:PATH" }
 } else {
     Write-Warning "~\.cargo\bin 缺失（rustup 未安装）：rustup-init.exe -y --no-modify-path --profile minimal --default-host x86_64-pc-windows-msvc"
+}
+
+$sourceDir = Join-Path $root 'src'
+if (Test-Path (Join-Path $sourceDir 'aisc')) {
+    $pythonPathEntries = @($env:PYTHONPATH -split ';' |
+        Where-Object { $_ -and $_ -ne $sourceDir })
+    $env:PYTHONPATH = @($sourceDir) + $pythonPathEntries -join ';'
 }
 
 $activate = Join-Path $root '.venv\Scripts\Activate.ps1'

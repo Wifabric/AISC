@@ -63,6 +63,118 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn("mcpServers", rendered)
         self.assertEqual(json.loads(calls[0]["input"]), config)
 
+    def test_skill_install_group_builds_exec_and_parses_itemized_envelope(self):
+        calls = []
+        payload = [
+            {"spec": "owner/repo:a", "status": "installed", "error": ""},
+            {"spec": "owner/repo:b", "status": "failed", "error": "cli exit 1"},
+        ]
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "group-op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 2, "completed": 1, "items": payload,
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_skill_install_group(
+                "rid", ["owner/repo:a", "owner/repo:b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 1:i + 3], ["skill-install-group", "--specs"])
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
+        self.assertEqual(data["kind"], "skills")
+        self.assertEqual(data["total"], 2)
+        self.assertEqual(data["completed"], 1)
+        self.assertEqual(data["items"], payload)
+        self.assertEqual(data["operation_id"], "group-op")
+    def test_skill_update_group_builds_exec_and_parses_itemized_envelope(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "group-update",
+                    "op": "skill-update-group", "ok": True,
+                    "total": 2, "completed": 2,
+                    "items": [
+                        {"spec": "owner/repo:a", "status": "updated", "error": ""},
+                        {"spec": "owner/repo:b", "status": "updated", "error": ""},
+                    ],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_skill_update_group(
+                "rid", ["owner/repo:a", "owner/repo:b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 1:i + 3], ["skill-update-group", "--specs"])
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
+        self.assertEqual(data["kind"], "skills")
+        self.assertEqual(data["completed"], 2)
+        self.assertEqual(data["operation_id"], "group-update")
+
+    def test_skill_group_timeout_derives_from_repos_and_children(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 2, "completed": 2, "items": [],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        specs = ["owner/repo:a", "owner/repo:b"]
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group("rid", specs, "/ws", executor)
+
+        self.assertEqual(calls[0]["timeout"], 960.0)
+
+    def test_group_specs_json_transport_preserves_commas(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 1, "completed": 1,
+                    "items": [{"spec": "owner/repo:a,b", "status": "installed", "error": ""}],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group(
+                "rid", ["owner/repo:a,b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 3], '["owner/repo:a,b"]')
+
     def test_adapter_error_maps_to_cli_error(self):
         def run_captured(argv, timeout=0.0, input_text=""):
             return SimpleNamespace(
@@ -85,21 +197,3 @@ class BridgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class MarketCacheBridgeTests(unittest.TestCase):
-    def test_extensions_call_raw_preserves_market_cache_metadata(self):
-        cache = {"source": "cache", "cached": True, "fetched_at": "2026-10-26T00:00:00Z"}
-        def run_captured(argv, timeout=0.0, input_text=""):
-            return SimpleNamespace(
-                exit_code=0,
-                stdout=json.dumps({
-                    "schema": ext.PROTOCOL, "operation_id": "op", "op": "skill-search",
-                    "ok": True, "items": [], "cache": cache,
-                }) + "\n",
-                stderr="",
-            )
-        executor = SimpleNamespace(run_captured=run_captured)
-        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
-            data = ext.extensions_call_raw("rid", "skill-search", "/ws", executor, query="demo")
-        self.assertEqual(data["cache"], cache)

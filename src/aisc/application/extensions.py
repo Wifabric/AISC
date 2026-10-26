@@ -25,12 +25,19 @@ ADAPTER_PATH = "/usr/local/bin/aisc-extensions-adapter"
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
-    "skill-search", "deeplink", "skill-repo-add",
+    "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
+    "skill-update-group",
     "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
     "mcp-search", "mcp-market-install",
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
+
+
+def _group_timeout_seconds(specs: list[str]) -> float:
+    """Cover probe + up to three clones + installs/enables in the adapter."""
+    repos = len({spec.split(":", 1)[0] for spec in specs})
+    return 30.0 + 450.0 * repos + 240.0 * len(specs)
 
 
 def _validate(op: str, kind: Optional[str], agent: Optional[str]) -> None:
@@ -68,6 +75,8 @@ def _exec_adapter(
     apps: Optional[str] = None,
     query: Optional[str] = None,
     url: Optional[str] = None,
+    specs: Optional[list[str]] = None,
+    timeout: float = 600.0,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
@@ -98,8 +107,11 @@ def _exec_adapter(
         argv.extend(["--query", query])
     if url:
         argv.extend(["--url", url])
+    if specs is not None:
+        argv.extend(["--specs", json.dumps(specs, ensure_ascii=False,
+                                           separators=(",", ":"))])
 
-    result = executor.run_captured(argv, timeout=600.0, input_text=stdin_text)
+    result = executor.run_captured(argv, timeout=timeout, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
         raise CliError(
             message=f"extensions {op} failed: {(result.stderr or '').strip()[:200]}",
@@ -176,6 +188,32 @@ def extensions_skill_install(runtime_id: str, spec: str,
     return {"kind": "skills", "spec": spec}
 
 
+def extensions_skill_install_group(
+    runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
+) -> Dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise CliError(
+            message="Invalid extensions skill specs: expected a non-empty string array",
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+            error_code="AISC_ERR_USAGE",
+        )
+    _validate("skill-install-group", None, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-install-group",
+        specs=specs, timeout=_group_timeout_seconds(specs),
+    )
+    items = envelope.get("items") or []
+    return {
+        "kind": "skills",
+        "total": envelope.get("total", len(items)),
+        "completed": envelope.get("completed", 0),
+        "items": items,
+        "operation_id": envelope.get("operation_id"),
+    }
+
+
 def extensions_skill_update(runtime_id: str, spec: str,
                              workspace: Optional[str], executor: Any) -> Dict[str, Any]:
     _validate("skill-update", None, None)
@@ -183,6 +221,32 @@ def extensions_skill_update(runtime_id: str, spec: str,
         runtime_id, _registry_root(workspace), executor, "skill-update", spec=spec
     )
     return {"kind": "skills", "spec": spec}
+
+
+def extensions_skill_update_group(
+    runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
+) -> Dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise CliError(
+            message="Invalid extensions skill specs: expected a non-empty string array",
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+            error_code="AISC_ERR_USAGE",
+        )
+    _validate("skill-update-group", None, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-update-group",
+        specs=specs, timeout=_group_timeout_seconds(specs),
+    )
+    items = envelope.get("items") or []
+    return {
+        "kind": "skills",
+        "total": envelope.get("total", len(items)),
+        "completed": envelope.get("completed", 0),
+        "items": items,
+        "operation_id": envelope.get("operation_id"),
+    }
 
 
 def extensions_mcp_add(runtime_id: str, config: Dict[str, Any], apps: str,
@@ -235,8 +299,5 @@ def extensions_call_raw(runtime_id: str, op: str, workspace: Optional[str],
         runtime_id, _registry_root(workspace), executor, op,
         kind=kind, item_id=item_id, query=query, url=url,
     )
-    out = {"op": op, "items": envelope.get("items") or [],
-           "operation_id": envelope.get("operation_id")}
-    if isinstance(envelope.get("cache"), dict):
-        out["cache"] = envelope["cache"]
-    return out
+    return {"op": op, "items": envelope.get("items") or [],
+            "operation_id": envelope.get("operation_id")}

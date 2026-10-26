@@ -23,14 +23,6 @@ export interface ExtensionOperation {
   total: number;
 }
 
-export interface MarketCacheState {
-  source: "remote" | "cache" | string;
-  cached: boolean;
-  query?: string;
-  fetched_at?: string;
-  error?: string;
-}
-
 type KindRecord<T> = Record<ExtensionsKind, T>;
 
 function kindRecord<T>(value: T): KindRecord<T> {
@@ -60,7 +52,6 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const loadingByKind = ref(kindRecord(false));
   const busyByKind = ref(kindRecord(false));
   const searchBusyByKind = ref(kindRecord(false));
-  const marketCacheByKind = ref(kindRecord<MarketCacheState | null>(null));
   const errorsByKind = ref<KindRecord<string | null>>(kindRecord(null));
   const operationsByKind = ref<KindRecord<ExtensionOperation | null>>(
     kindRecord<ExtensionOperation | null>(null),
@@ -174,9 +165,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     searchBusyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     try {
-      const out = await call<{ items?: ExtensionsItem[]; cache?: MarketCacheState }>(op, { query });
+      const out = await call<{ items?: ExtensionsItem[] }>(op, { query });
       setter(out.items ?? []);
-      marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
       errorsByKind.value[target] = errorText(e);
     } finally {
@@ -188,7 +178,6 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (target === "skills") marketSkills.value = [];
     else if (target === "mcp") marketMcp.value = [];
     else marketPlugins.value = [];
-    marketCacheByKind.value[target] = null;
   }
 
   async function toggle(
@@ -224,15 +213,63 @@ export const useExtensionsStore = defineStore("extensions", () => {
     ]);
   }
 
+  async function runSkillGroupOperation(
+    group: SkillGroup,
+    action: "install" | "update",
+    op: "skill-install-group" | "skill-update-group",
+    successStatus: "installed" | "updated",
+  ): Promise<void> {
+    const specs = group.items.map((item) => action === "install" ? item.id : skillUpdateSpec(item));
+    if (specs.length === 0) return;
+    busyByKind.value.skills = true;
+    errorsByKind.value.skills = null;
+    operationsByKind.value.skills = {
+      kind: "skills", action,
+      id: `${action === "install" ? "market" : "installed"}:${group.id}`,
+      label: group.name, completed: 0, total: specs.length,
+    };
+    try {
+      const result = await call<{
+        total?: number;
+        completed?: number;
+        items?: Array<{ spec: string; status: string; error?: string }>;
+      }>(op, { specs });
+      const total = result.total ?? specs.length;
+      const completed = result.completed ?? total;
+      operationsByKind.value.skills = {
+        ...operationsByKind.value.skills!, completed,
+      };
+      if (completed < total) {
+        const failures = (result.items ?? [])
+          .filter((item) => item.status !== successStatus)
+          .map((item) => `${item.spec}: ${item.error || item.status}`);
+        throw new Error(
+          `${successStatus} ${completed}/${total}; ${failures.join("; ") || "no item detail"}`,
+        );
+      }
+      await refresh("skills", { silent: true });
+      toast.success(operationSuccess(action, group.name));
+    } catch (e) {
+      const message = errorText(e);
+      toast.error(operationFailure(group.name, message));
+      await refresh("skills", { silent: true }).catch(() => undefined);
+      errorsByKind.value.skills = message;
+    } finally {
+      busyByKind.value.skills = false;
+      operationsByKind.value.skills = null;
+    }
+  }
+
   async function installSkillGroup(group: SkillGroup): Promise<void> {
-    await runOperation("skills", "install", `market:${group.id}`, group.name,
-      group.items.map((item) => () => call("skill-install", { spec: item.id })));
+    await runSkillGroupOperation(
+      group, "install", "skill-install-group", "installed",
+    );
   }
 
   async function updateSkillGroup(group: SkillGroup): Promise<void> {
-    await runOperation("skills", "update", `installed:${group.id}`, group.name,
-      group.items.map((item) => () =>
-        call("skill-update", { spec: skillUpdateSpec(item) })));
+    await runSkillGroupOperation(
+      group, "update", "skill-update-group", "updated",
+    );
   }
 
   async function removeSkillGroup(group: SkillGroup): Promise<void> {
@@ -332,7 +369,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, marketPlugins, opBusyId, marketMcp, activeOperation,
-    operationsByKind, marketCacheByKind,
+    operationsByKind,
     clearMarketResults,
     installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,

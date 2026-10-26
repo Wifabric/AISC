@@ -176,6 +176,61 @@ class EnvelopeTests(TempEnv):
         self.assertTrue(doc["ok"])
         self.assertEqual(doc["items"][0]["id"], "superpowers")
 
+    def test_main_skill_install_group_envelope(self):
+        result = {
+            "total": 2, "completed": 2,
+            "items": [
+                {"spec": "obra/superpowers:brainstorming", "status": "installed", "error": ""},
+                {"spec": "obra/superpowers:debugging", "status": "installed", "error": ""},
+            ],
+        }
+        with mock.patch.object(A, "skill_install_group", return_value=result) as group_mock, \
+             mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            rc = A.main([
+                "skill-install-group",
+                "--specs", '["obra/superpowers:brainstorming","obra/superpowers:debugging"]',
+            ])
+        group_mock.assert_called_once_with([
+            "obra/superpowers:brainstorming", "obra/superpowers:debugging",
+        ])
+
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["op"], "skill-install-group")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["total"], 2)
+        self.assertEqual(doc["completed"], 2)
+        self.assertEqual(
+            [item["spec"] for item in doc["items"]],
+            ["obra/superpowers:brainstorming", "obra/superpowers:debugging"],
+        )
+
+    def test_main_skill_update_group_envelope(self):
+        result = {
+            "total": 2, "completed": 2,
+            "items": [
+                {"spec": "obra/superpowers:brainstorming", "status": "updated", "error": ""},
+                {"spec": "obra/superpowers:debugging", "status": "updated", "error": ""},
+            ],
+        }
+        with mock.patch.object(A, "skill_update_group", return_value=result) as group_mock, \
+             mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            rc = A.main([
+                "skill-update-group",
+                "--specs", '["obra/superpowers:brainstorming","obra/superpowers:debugging"]',
+            ])
+        group_mock.assert_called_once_with([
+            "obra/superpowers:brainstorming", "obra/superpowers:debugging",
+        ])
+
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["op"], "skill-update-group")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["total"], 2)
+        self.assertEqual(doc["completed"], 2)
+        self.assertTrue(all(item["status"] == "updated" for item in doc["items"]))
+
     def test_main_error_envelope(self):
         with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
             rc = A.main(["list"])
@@ -362,6 +417,390 @@ class MarketTests(TempEnv):
         self.assertEqual(calls[-2]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "claude"])
         self.assertEqual(calls[-1]["argv"], ["cc-switch", "skills", "enable", "cavecrew", "-a", "codex"])
 
+    def test_skill_install_group_stages_and_installs_all_children(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env")})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                for name in ("cavecrew", "caveman-commit"):
+                    skill = destination / "skills" / name
+                    skill.mkdir(parents=True)
+                    (skill / "SKILL.md").write_text(
+                        f"---\nname: {name}\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        specs = [
+            "JuliusBrussee/caveman:cavecrew",
+            "JuliusBrussee/caveman:caveman-commit",
+        ]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(specs)
+
+        clone_calls = [call for call in calls if call["argv"][:2] == ["git", "clone"]]
+        self.assertEqual(len(clone_calls), 1)
+        self.assertTrue(
+            (self.root / "skills" / "cavecrew" / "SKILL.md").is_file())
+        self.assertTrue(
+            (self.root / "skills" / "caveman-commit" / "SKILL.md").is_file())
+        self.assertEqual([
+            call["argv"] for call in calls
+            if call["argv"][:4] == ["cc-switch", "skills", "install", "JuliusBrussee/caveman:cavecrew"]
+        ], [["cc-switch", "skills", "install", "JuliusBrussee/caveman:cavecrew"]])
+        self.assertEqual([
+            call["argv"] for call in calls
+            if call["argv"][:4] == ["cc-switch", "skills", "install", "JuliusBrussee/caveman:caveman-commit"]
+        ], [["cc-switch", "skills", "install", "JuliusBrussee/caveman:caveman-commit"]])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 2)
+        self.assertEqual([item["spec"] for item in result["items"]], specs)
+        self.assertTrue(all(item["status"] == "installed" for item in result["items"]))
+    def test_skill_install_group_stops_before_install_when_child_is_missing(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv)})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "cavecrew"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    "---\nname: cavecrew\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        specs = [
+            "JuliusBrussee/caveman:cavecrew",
+            "JuliusBrussee/caveman:missing-child",
+        ]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(specs)
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(any(
+            call["argv"][:3] == ["cc-switch", "skills", "install"]
+            for call in calls
+        ))
+        self.assertEqual(result["items"][0]["status"], "blocked")
+        self.assertEqual(result["items"][1]["status"], "missing")
+        self.assertIn("SKILL.md not found", result["items"][1]["error"])
+    def test_skill_install_group_preflights_direct_source_before_install(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env")})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/main\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                valid = destination / "skills" / "valid"
+                valid.mkdir(parents=True)
+                (valid / "SKILL.md").write_text("---\nname: valid\n---\n")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "main\n", "")
+            return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+
+        specs = ["owner/repo:valid", "owner/repo:missing"]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(specs)
+
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(any(
+            call["argv"][:3] == ["cc-switch", "skills", "install"]
+            for call in calls
+        ))
+        self.assertEqual(result["items"][0]["status"], "blocked")
+        self.assertEqual(result["items"][1]["status"], "missing")
+
+    def test_skill_install_group_itemizes_unreachable_direct_and_mirror_sources(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv)})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(argv, 1, "", "git direct down")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                return subprocess.CompletedProcess(argv, 1, "", "curl archive down")
+            return subprocess.CompletedProcess(argv, 1, "", "unexpected command")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["owner/repo:a", "owner/repo:b"])
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(any(
+            call["argv"][:3] == ["cc-switch", "skills", "install"]
+            for call in calls
+        ))
+        errors = "\n".join(item["error"] for item in result["items"])
+        self.assertIn("owner/repo", errors)
+        self.assertIn("direct", errors)
+        self.assertIn("ghfast.top", errors)
+        self.assertIn("gh-proxy.com", errors)
+        self.assertEqual(result["items"][0]["status"], "source_failed")
+        self.assertEqual(result["items"][1]["status"], "source_failed")
+
+    def test_skill_group_rejects_invalid_directories_before_subprocess(self):
+        def run(argv, **kwargs):
+            raise AssertionError(f"unexpected subprocess: {argv}")
+
+        for spec in ("owner/repo:", "owner/repo:.", "owner/repo:../x"):
+            with self.subTest(spec=spec), \
+                 mock.patch.object(A.subprocess, "run", run):
+                with self.assertRaises(A.AdapterError):
+                    A.skill_install_group([spec])
+
+    def test_skill_install_group_itemizes_official_cli_stderr_tail(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv)})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/main\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                for name in ("a", "b"):
+                    skill = destination / "skills" / name
+                    skill.mkdir(parents=True)
+                    (skill / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "main\n", "")
+            if argv[:4] == ["cc-switch", "skills", "install", "owner/repo:b"]:
+                return subprocess.CompletedProcess(argv, 1, "", "cc-switch official failure tail")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["owner/repo:a", "owner/repo:b"])
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 1)
+        self.assertEqual(result["items"][0]["status"], "installed")
+        self.assertEqual(result["items"][1]["status"], "failed")
+        self.assertIn("cc-switch official failure tail", result["items"][1]["error"])
+
+    def test_skill_install_group_retries_clone_through_mirror_after_direct_body_fails(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            env = kwargs.get("env") or {}
+            calls.append({"argv": list(argv), "env": env})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/main\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["git", "clone"]:
+                if "ghfast.top" not in env.get("GIT_CONFIG_KEY_0", ""):
+                    return subprocess.CompletedProcess(
+                        argv, 1, "", "direct clone body down")
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "a"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("---\nname: a\n---\n")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "main\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["owner/repo:a"])
+
+        clone_attempts = [call for call in calls if call["argv"][:2] == ["git", "clone"]]
+        self.assertEqual(len(clone_attempts), 2)
+        self.assertIn("ghfast.top", clone_attempts[1]["env"]["GIT_CONFIG_KEY_0"])
+        self.assertEqual(result["completed"], 1)
+
+    def test_skill_update_group_supports_local_directory(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO skills (id,name,description,directory,"
+            "enabled_claude,enabled_codex,enabled_gemini,enabled_grokbuild,"
+            "enabled_opencode,enabled_hermes,installed_at,content_hash,updated_at) "
+            "VALUES ('local','local','desc','local',1,0,0,0,0,0,"
+            "'2026-01-01','x','2026-01-02')"
+        )
+        connection.commit()
+        connection.close()
+        calls, run = self._fake()
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_update_group(["local"])
+
+        self.assertEqual(result["completed"], 1)
+        self.assertEqual(result["items"][0]["status"], "updated")
+        argvs = [call["argv"] for call in calls]
+        self.assertIn(["cc-switch", "skills", "install", "local"], argvs)
+        self.assertIn(["cc-switch", "skills", "enable", "local", "-a", "claude"], argvs)
+        self.assertIn(["cc-switch", "skills", "disable", "local", "-a", "codex"], argvs)
+
+    def test_skill_install_group_enables_both_agents_for_local_directory(self):
+        calls, run = self._fake()
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["local"])
+
+        self.assertEqual(result["completed"], 1)
+        argvs = [call["argv"] for call in calls]
+        self.assertIn(["cc-switch", "skills", "install", "local"], argvs)
+        self.assertIn(["cc-switch", "skills", "enable", "local", "-a", "claude"], argvs)
+        self.assertIn(["cc-switch", "skills", "enable", "local", "-a", "codex"], argvs)
+
+    def test_skill_update_group_uses_preflighted_state_for_local_directory(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO skills (id,name,description,directory,"
+            "enabled_claude,enabled_codex,enabled_gemini,enabled_grokbuild,"
+            "enabled_opencode,enabled_hermes,installed_at,content_hash,updated_at) "
+            "VALUES ('local','local','desc','local',1,0,0,0,0,0,"
+            "'2026-01-01','x','2026-01-02')"
+        )
+        connection.commit()
+        connection.close()
+        states = iter([
+            {"claude": True, "codex": False},
+            None,  # The old local fallback reread state here.
+        ])
+        calls, run = self._fake()
+
+        with mock.patch.object(A, "_skill_enable_states", side_effect=lambda _d: next(states)), \
+             mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_update_group(["local"])
+
+        self.assertEqual(result["completed"], 1)
+        argvs = [call["argv"] for call in calls]
+        self.assertIn(["cc-switch", "skills", "install", "local"], argvs)
+        self.assertIn(["cc-switch", "skills", "enable", "local", "-a", "claude"], argvs)
+        self.assertIn(["cc-switch", "skills", "disable", "local", "-a", "codex"], argvs)
+
+    def test_skill_group_reuses_registered_repo_casing(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO skills (id,name,description,directory,repo_owner,repo_name,"
+            "repo_branch,enabled_claude,enabled_codex,enabled_gemini,enabled_grokbuild,"
+            "enabled_opencode,enabled_hermes,installed_at,content_hash,updated_at) "
+            "VALUES ('JuliusBrussee/caveman:caveman','caveman','desc','caveman',"
+            "'JuliusBrussee','caveman','main',1,1,0,0,0,0,"
+            "'2026-01-01','x','2026-01-02')"
+        )
+        connection.commit()
+        connection.close()
+        calls, run = self._fake()
+
+        with mock.patch.object(A, "_github_repo_identity", return_value=("owner", "repo", None)), \
+             mock.patch.object(A, "_github_git_env", return_value={}), \
+             mock.patch.object(A, "_stage_skills_from_git_source", return_value=[]), \
+             mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group([
+                "juliusbrussee/caveman:caveman"
+            ])
+
+        self.assertEqual(result["completed"], 1)
+        self.assertIn(
+            ["cc-switch", "skills", "install",
+             "JuliusBrussee/caveman:caveman"],
+            [call["argv"] for call in calls],
+        )
+
+    def test_skill_update_group_requires_every_enable_state_before_install(self):
+        states = {
+            "superpowers": {"claude": True, "codex": False},
+        }
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv)})
+            return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+
+        with mock.patch.object(A, "_skill_enable_states", side_effect=states.get), \
+             mock.patch.object(A, "_github_skill_env", return_value={}), \
+             mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_update_group([
+                "obra/superpowers:superpowers",
+                "obra/superpowers:missing",
+            ])
+
+        self.assertEqual(result["completed"], 0)
+        self.assertFalse(any(
+            call["argv"][:3] == ["cc-switch", "skills", "install"]
+            for call in calls
+        ))
+        self.assertEqual(result["items"][0]["status"], "blocked")
+        self.assertEqual(result["items"][1]["status"], "state_unavailable")
+
+    def test_skill_update_group_preflights_all_and_preserves_enable_state(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO skills VALUES ('JuliusBrussee/caveman:cavecrew','cavecrew',"
+            "'desc','cavecrew','JuliusBrussee','caveman','master','',"
+            "1,0,0,0,0,0,'2026-01-01','x','2026-01-02')"
+        )
+        connection.execute(
+            "INSERT INTO skills VALUES ('JuliusBrussee/caveman:caveman-commit',"
+            "'caveman-commit','desc','caveman-commit','JuliusBrussee','caveman',"
+            "'master','',0,1,0,0,0,0,'2026-01-01','x','2026-01-02')"
+        )
+        connection.commit()
+        connection.close()
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "env": kwargs.get("env")})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/master\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                for name in ("cavecrew", "caveman-commit"):
+                    skill = destination / "skills" / name
+                    skill.mkdir(parents=True)
+                    (skill / "SKILL.md").write_text(
+                        f"---\nname: {name}\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "master\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        specs = [
+            "JuliusBrussee/caveman:cavecrew",
+            "JuliusBrussee/caveman:caveman-commit",
+        ]
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_update_group(specs)
+
+        self.assertEqual(
+            len([call for call in calls if call["argv"][:2] == ["git", "clone"]]), 1)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 2)
+        self.assertTrue(all(item["status"] == "updated" for item in result["items"]))
+        argvs = [call["argv"] for call in calls]
+        self.assertIn(["cc-switch", "skills", "enable", "cavecrew", "-a", "claude"], argvs)
+        self.assertIn(["cc-switch", "skills", "disable", "cavecrew", "-a", "codex"], argvs)
+        self.assertIn(["cc-switch", "skills", "disable", "caveman-commit", "-a", "claude"], argvs)
+        self.assertIn(["cc-switch", "skills", "enable", "caveman-commit", "-a", "codex"], argvs)
+
     def test_mcp_market_install_uses_smithery_http_deployment_url(self):
         import urllib.request
 
@@ -499,54 +938,3 @@ class MarketTests(TempEnv):
         self.assertEqual(items, [])
         self.assertEqual(len(attempts), 2)
         self.assertEqual(attempts[1], "https://api.smithery.ai/servers?q=pdf&pageSize=10")
-
-
-class MarketCacheTests(TempEnv):
-    def test_market_search_cache_writes_success_and_falls_back_on_failure(self):
-        import urllib.error
-        calls = []
-
-        class Resp:
-            def read(self):
-                return json.dumps({"skills": []}).encode()
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        def fetch(query):
-            calls.append(query)
-            if len(calls) == 1:
-                return [{"kind": "market-skill", "id": "demo/repo:skill",
-                         "name": "skill", "directory": "skill", "repo": "demo/repo"}]
-            raise urllib.error.URLError("remote down")
-
-        first, first_cache = A._market_search_with_cache("skills", "demo", fetch)
-        self.assertEqual(first[0]["id"], "demo/repo:skill")
-        self.assertFalse(first_cache["cached"])
-        cache_file = self.root / "market-cache" / "skills.json"
-        self.assertTrue(cache_file.is_file())
-
-        def failed_fetch(query):
-            raise A.AdapterError(A.ERR_CLI, "remote down")
-
-        second, second_cache = A._market_search_with_cache("skills", "demo", failed_fetch)
-        self.assertEqual(second, first)
-        self.assertTrue(second_cache["cached"])
-        self.assertEqual(second_cache["source"], "cache")
-        self.assertIn("remote down", second_cache["error"])
-
-    def test_market_cache_is_isolated_by_kind_and_normalized_query(self):
-        def fetch(query):
-            return [{"kind": "market-mcp", "id": f"{query}-server", "name": query}]
-
-        A._market_search_with_cache("mcp", " Demo ", fetch)
-        def remote_failure(query):
-            raise A.AdapterError(A.ERR_CLI, "remote down")
-
-        _, cache = A._market_search_with_cache("mcp", "demo", remote_failure)
-        self.assertTrue(cache["cached"])
-        plugins_cache = self.root / "market-cache" / "plugins.json"
-        self.assertFalse(plugins_cache.exists())

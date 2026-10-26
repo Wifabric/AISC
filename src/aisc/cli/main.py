@@ -364,6 +364,13 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extsi)
     extsi.add_argument("--spec", required=True)
 
+    extsig = extsub.add_parser("skill-install-group",
+                               help="Install a skill group with preflight and itemized results",
+                               allow_abbrev=False)
+    _extensions_common(extsig)
+    extsig.add_argument("--specs", required=True,
+                        help="JSON array of owner/name:directory specs")
+
     extma = extsub.add_parser("mcp-add",
                               help="Add MCP servers (config JSON on stdin)",
                               allow_abbrev=False)
@@ -403,6 +410,13 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extsu)
     extsu.add_argument("--spec", required=True)
+
+    extsug = extsub.add_parser("skill-update-group",
+                               help="Update a skill group while preserving enable choices",
+                               allow_abbrev=False)
+    _extensions_common(extsug)
+    extsug.add_argument("--specs", required=True,
+                        help="JSON array of owner/name:directory specs")
 
     extdl = extsub.add_parser("deeplink",
                               help="Import a resource from a ccswitch:// link",
@@ -2019,8 +2033,12 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_delete(args)
     elif sub == "skill-install":
         data = ext_cmd.cmd_extensions_skill_install(args)
+    elif sub == "skill-install-group":
+        data = ext_cmd.cmd_extensions_skill_install_group(args)
     elif sub == "skill-update":
         data = ext_cmd.cmd_extensions_skill_update(args)
+    elif sub == "skill-update-group":
+        data = ext_cmd.cmd_extensions_skill_update_group(args)
     elif sub == "mcp-add":
         data = ext_cmd.cmd_extensions_mcp_add(args)
     elif sub == "plugin-install":
