@@ -23,7 +23,7 @@ git status --short
 
 每个大阶段（以 Workbench 版本号命名，见 §8.4 双轨约定）按以下流程运转：
 
-1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（最近一阶段 = 2.1.13，已归档 `docs/archive/2.1.13-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
 2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
