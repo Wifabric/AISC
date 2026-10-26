@@ -719,6 +719,7 @@ export interface ExtensionsCallParams {
   config?: string;
   query?: string;
   url?: string;
+  specs?: string[];
 }
 
 export const extensionsCall = (p: ExtensionsCallParams) =>
@@ -735,6 +736,7 @@ export const extensionsCall = (p: ExtensionsCallParams) =>
     config: p.config ?? null,
     query: p.query ?? null,
     url: p.url ?? null,
+    ...(p.specs ? { specs: p.specs } : {}),
   });
 // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
 export interface CacheInspectRow {

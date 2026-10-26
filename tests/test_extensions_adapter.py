@@ -176,6 +176,37 @@ class EnvelopeTests(TempEnv):
         self.assertTrue(doc["ok"])
         self.assertEqual(doc["items"][0]["id"], "superpowers")
 
+    def test_main_skill_install_group_envelope(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append({"argv": list(argv), "input": kwargs.get("input", "")})
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run), \
+             mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            rc = A.main([
+                "skill-install-group",
+                "--specs", "obra/superpowers:brainstorming,obra/superpowers:debugging",
+            ])
+
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["op"], "skill-install-group")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["total"], 2)
+        self.assertEqual(doc["completed"], 2)
+        self.assertEqual(
+            [item["spec"] for item in doc["items"]],
+            ["obra/superpowers:brainstorming", "obra/superpowers:debugging"],
+        )
+        self.assertEqual([
+            call["argv"] for call in calls
+            if call["argv"][:3] == ["cc-switch", "skills", "install"]
+        ], [
+            ["cc-switch", "skills", "install", "obra/superpowers:brainstorming"],
+            ["cc-switch", "skills", "install", "obra/superpowers:debugging"],
+        ])
     def test_main_error_envelope(self):
         with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
             rc = A.main(["list"])

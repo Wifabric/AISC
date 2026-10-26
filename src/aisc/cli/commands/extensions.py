@@ -50,6 +50,14 @@ def cmd_extensions_skill_install(args: argparse.Namespace) -> Dict[str, Any]:
     return extensions_skill_install(runtime_id, args.spec, workspace, None)
 
 
+def cmd_extensions_skill_install_group(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_skill_install_group
+
+    runtime_id, workspace = _runtime(args)
+    specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
+    return extensions_skill_install_group(runtime_id, specs, workspace, None)
+
+
 def cmd_extensions_skill_update(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_skill_update
 

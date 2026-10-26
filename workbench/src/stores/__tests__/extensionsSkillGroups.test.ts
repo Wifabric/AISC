@@ -14,12 +14,28 @@ function installed(name: string, repo: string): ExtensionsItem {
   };
 }
 
+function market(name: string): ExtensionsItem {
+  return {
+    kind: "market-skill", id: `obra/superpowers:${name}`, name,
+    repo: "obra/superpowers", directory: name,
+  } as ExtensionsItem;
+}
+
+const groupResult = {
+  items: [
+    { spec: "obra/superpowers:brainstorming", status: "installed", error: "" },
+    { spec: "obra/superpowers:debugging", status: "installed", error: "" },
+  ],
+  total: 2,
+  completed: 2,
+};
+
 beforeEach(() => {
   setActivePinia(createPinia());
   call.mockReset();
 });
 
-describe("b13 skill repository batch operations", () => {
+describe("v2.1.17 b1 skill repository group operations", () => {
   it("updates every child in one repository group", async () => {
     call.mockResolvedValue({ items: [] });
     const store = useExtensionsStore();
@@ -39,55 +55,54 @@ describe("b13 skill repository batch operations", () => {
     }));
   });
 
-  it("installs a marketplace repository group with original ids", async () => {
-    call.mockResolvedValue({ items: [] });
+  it("installs a marketplace repository group as one preflighted call", async () => {
+    call.mockResolvedValue(groupResult);
     const store = useExtensionsStore();
     store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
-    store.marketSkills = [
-      { kind: "market-skill", id: "obra/superpowers:brainstorming", name: "brainstorming", repo: "obra/superpowers", directory: "brainstorming" },
-      { kind: "market-skill", id: "obra/superpowers:debugging", name: "debugging", repo: "obra/superpowers", directory: "debugging" },
-    ];
+    store.marketSkills = [market("brainstorming"), market("debugging")];
     await store.installSkillGroup(store.marketSkillGroups[0]!);
 
-    expect(call).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      op: "skill-install", spec: "obra/superpowers:brainstorming",
-    }));
-    expect(call).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      op: "skill-install", spec: "obra/superpowers:debugging",
+    const installCalls = call.mock.calls.filter(([params]) => params.op === "skill-install-group");
+    expect(installCalls).toHaveLength(1);
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({
+      op: "skill-install-group",
+      specs: ["obra/superpowers:brainstorming", "obra/superpowers:debugging"],
     }));
   });
-});
 
-
-  it("advances stable progress one child at a time during group install", async () => {
-    let releaseFirst: (() => void) | undefined;
-    const first = new Promise<Record<string, unknown>>((resolve) => {
-      releaseFirst = () => resolve({ items: [] });
+  it("surfaces itemized group failures instead of a generic CLI error", async () => {
+    call.mockResolvedValue({
+      items: [
+        { spec: "obra/superpowers:brainstorming", status: "installed", error: "" },
+        { spec: "obra/superpowers:debugging", status: "failed", error: "github unreachable after direct and mirror probes" },
+      ],
+      total: 2,
+      completed: 1,
     });
-    let releaseSecond: (() => void) | undefined;
-    const second = new Promise<Record<string, unknown>>((resolve) => {
-      releaseSecond = () => resolve({ items: [] });
-    });
-    call.mockImplementation(async (p: any) =>
-      p.spec.endsWith("brainstorming") ? first : second,
-    );
+    const store = useExtensionsStore();
+    const toast = await import("../toast").then((m) => m.useToastStore());
+    store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
+    store.marketSkills = [market("brainstorming"), market("debugging")];
+    await store.installSkillGroup(store.marketSkillGroups[0]!);
 
+    expect(store.error).toContain("obra/superpowers:debugging");
+    expect(store.error).toContain("github unreachable after direct and mirror probes");
+    expect(toast.toasts[toast.toasts.length - 1]).toMatchObject({
+      kind: "error",
+      message: expect.stringContaining("obra/superpowers:debugging"),
+    });
+  });
+  it("keeps group progress stable while the group operation runs", async () => {
+    call.mockResolvedValue(groupResult);
     const store = useExtensionsStore();
     store.setContext("e:/projects", "00000000-0000-4000-8000-000000000000");
-    store.marketSkills = [
-      { kind: "market-skill", id: "obra/superpowers:brainstorming", name: "brainstorming", repo: "obra/superpowers", directory: "brainstorming" },
-      { kind: "market-skill", id: "obra/superpowers:debugging", name: "debugging", repo: "obra/superpowers", directory: "debugging" },
-    ] as ExtensionsItem[];
+    store.marketSkills = [market("brainstorming"), market("debugging")];
     const pending = store.installSkillGroup(store.marketSkillGroups[0]!);
 
     expect(store.activeOperation).toMatchObject({
       kind: "skills", action: "install", completed: 0, total: 2,
     });
-    releaseFirst?.();
-    await vi.waitFor(() => {
-      expect(store.activeOperation?.completed).toBe(1);
-    });
-    releaseSecond?.();
     await pending;
     expect(store.activeOperation).toBeNull();
   });
+});

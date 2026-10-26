@@ -214,8 +214,44 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   async function installSkillGroup(group: SkillGroup): Promise<void> {
-    await runOperation("skills", "install", `market:${group.id}`, group.name,
-      group.items.map((item) => () => call("skill-install", { spec: item.id })));
+    const specs = group.items.map((item) => item.id);
+    if (specs.length === 0) return;
+    busyByKind.value.skills = true;
+    errorsByKind.value.skills = null;
+    operationsByKind.value.skills = {
+      kind: "skills", action: "install", id: `market:${group.id}`,
+      label: group.name, completed: 0, total: specs.length,
+    };
+    try {
+      const result = await call<{
+        total?: number;
+        completed?: number;
+        items?: Array<{ spec: string; status: string; error?: string }>;
+      }>("skill-install-group", { specs });
+      const total = result.total ?? specs.length;
+      const completed = result.completed ?? total;
+      operationsByKind.value.skills = {
+        ...operationsByKind.value.skills!, completed,
+      };
+      if (completed < total) {
+        const failures = (result.items ?? [])
+          .filter((item) => item.status !== "installed")
+          .map((item) => `${item.spec}: ${item.error || item.status}`);
+        throw new Error(
+          `installed ${completed}/${total}; ${failures.join("; ") || "no item detail"}`,
+        );
+      }
+      await refresh("skills", { silent: true });
+      toast.success(operationSuccess("install", group.name));
+    } catch (e) {
+      const message = errorText(e);
+      toast.error(operationFailure(group.name, message));
+      await refresh("skills", { silent: true }).catch(() => undefined);
+      errorsByKind.value.skills = message;
+    } finally {
+      busyByKind.value.skills = false;
+      operationsByKind.value.skills = null;
+    }
   }
 
   async function updateSkillGroup(group: SkillGroup): Promise<void> {

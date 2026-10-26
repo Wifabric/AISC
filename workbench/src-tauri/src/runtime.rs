@@ -795,9 +795,11 @@ pub async fn extensions_call(
     config: Option<String>,
     query: Option<String>,
     url: Option<String>,
+    specs: Option<Vec<String>>,
 ) -> Result<Value, WorkbenchError> {
-    const OPS: [&str; 17] = [
-        "list", "toggle", "delete", "skill-install", "skill-update", "mcp-add",
+    const OPS: [&str; 18] = [
+        "list", "toggle", "delete", "skill-install", "skill-install-group",
+        "skill-update", "mcp-add",
         "plugin-install", "plugin-uninstall", "plugin-update",
         "skill-search", "deeplink", "skill-repo-add",
         "plugin-market-list", "plugin-market-add", "plugin-search",
@@ -846,6 +848,12 @@ pub async fn extensions_call(
     if let Some(v) = &url {
         argv.push("--url".into());
         argv.push(v.clone());
+    }
+    if let Some(values) = &specs {
+        if !values.is_empty() {
+            argv.push("--specs".into());
+            argv.push(values.join(","));
+        }
     }
     match config {
         Some(text) => cc_switch_call_value(&app, &window, argv, Some(text)).await,

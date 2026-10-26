@@ -906,7 +906,8 @@ def mcp_market_install(market_id: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-extensions-adapter")
     parser.add_argument("op", choices=["list", "toggle", "delete", "skill-install",
-                                       "mcp-add", "plugin-install",
+                                       "skill-install-group", "mcp-add",
+                                       "plugin-install",
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
                                        "skill-repo-add", "skill-update",
@@ -920,6 +921,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent", choices=list(AGENTS))
     parser.add_argument("--on", choices=["true", "false"], default="true")
     parser.add_argument("--spec", help="skill-install: owner/name:directory")
+    parser.add_argument("--specs", help="skill-install-group: comma-separated specs")
     parser.add_argument("--apps", default="claude,codex",
                         help="mcp-add: comma-separated agent list")
     args = parser.parse_args(argv)
@@ -947,6 +949,15 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--spec required")
             skill_install(args.spec)
             print(json.dumps(_envelope("skill-install", True)))
+            return 0
+        if args.op == "skill-install-group":
+            if not args.specs:
+                raise AdapterError(ERR_BAD_REQUEST, "--specs required")
+            specs = [spec.strip() for spec in args.specs.split(",") if spec.strip()]
+            result = skill_install_group(specs)
+            envelope = _envelope("skill-install-group", True)
+            envelope.update(result)
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-add":
             config_json = sys.stdin.read().strip()

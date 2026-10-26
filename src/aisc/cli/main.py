@@ -364,6 +364,13 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extsi)
     extsi.add_argument("--spec", required=True)
 
+    extsig = extsub.add_parser("skill-install-group",
+                               help="Install a skill group with preflight and itemized results",
+                               allow_abbrev=False)
+    _extensions_common(extsig)
+    extsig.add_argument("--specs", required=True,
+                        help="Comma-separated owner/name:directory specs")
+
     extma = extsub.add_parser("mcp-add",
                               help="Add MCP servers (config JSON on stdin)",
                               allow_abbrev=False)
@@ -2019,6 +2026,8 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_delete(args)
     elif sub == "skill-install":
         data = ext_cmd.cmd_extensions_skill_install(args)
+    elif sub == "skill-install-group":
+        data = ext_cmd.cmd_extensions_skill_install_group(args)
     elif sub == "skill-update":
         data = ext_cmd.cmd_extensions_skill_update(args)
     elif sub == "mcp-add":
