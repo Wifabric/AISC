@@ -22,7 +22,7 @@
 
 | 批 | 内容 | 优先级 | 分支 | 终态 |
 | --- | --- | --- | --- | --- |
-| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器数据面/远端 CI 通过；Workbench UI 手测待执行 |
+| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器数据面/远端 CI/Computer Use 关键 UI 路径通过；用户统一手测待全部批次预测试后 |
 | b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 待开工 |
 | b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `2.1.17-b3-extension-operation-recovery` | 待开工 |
 | b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `2.1.17-b4-unified-extension-recommendations` | 待开工 |

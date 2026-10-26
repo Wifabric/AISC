@@ -9,6 +9,11 @@
 - 当前验证：targeted Python 56 + subtests、extensions Vitest 21、vue-tsc、Rust 366、vendor 1532、sidecar/bundle 重建、真实容器 H2/H4 数据面 PASS；全门禁 Python 1486 / Rust 366 / Vitest 644 / vue-tsc 全绿。Workbench UI 手测仍待执行。
 - Draft PR #40 Workbench CI run `40294095282` attempt 2 success；attempt 1 仅既有 Linux PTY stderr 流用例瞬时失败，failed-job 重跑通过。Workbench UI 手测仍待执行。
 
+# v2.1.17 b1 收口（2026-10-26）
+
+- Computer Use 预测试发现并修复 explicit CLI 被 saved pin 抢占、skills.sh repo 大小写漂移两类真实 UI 问题；13 子技能组安装与状态保留复测通过。
+- PR #40 合入 develop（merge `bf27d619`）；最终 Workbench CI run `40356713055` CLI/Rust/frontend 全绿。用户统一手测按新裁定延后到全部批次预测试完成后。
+
 # v2.1.17 b1 开发验证（2026-10-26）
 
 - 撤销误触 market-cache 提交并保留阶段开题；新增 `skill-install-group` / `skill-update-group` 数据面，组操作一次预检镜像源、逐项安装/更新并返回 itemized result。
