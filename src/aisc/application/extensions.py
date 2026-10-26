@@ -25,7 +25,7 @@ ADAPTER_PATH = "/usr/local/bin/aisc-extensions-adapter"
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
-    "skill-search", "deeplink", "skill-repo-add",
+    "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
     "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
     "mcp-search", "mcp-market-install",
 )
@@ -68,6 +68,7 @@ def _exec_adapter(
     apps: Optional[str] = None,
     query: Optional[str] = None,
     url: Optional[str] = None,
+    specs: Optional[list[str]] = None,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
@@ -98,6 +99,8 @@ def _exec_adapter(
         argv.extend(["--query", query])
     if url:
         argv.extend(["--url", url])
+    if specs is not None:
+        argv.extend(["--specs", ",".join(specs)])
 
     result = executor.run_captured(argv, timeout=600.0, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
@@ -174,6 +177,32 @@ def extensions_skill_install(runtime_id: str, spec: str,
         runtime_id, _registry_root(workspace), executor, "skill-install", spec=spec
     )
     return {"kind": "skills", "spec": spec}
+
+
+def extensions_skill_install_group(
+    runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
+) -> Dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() and "," not in spec for spec in specs
+    ):
+        raise CliError(
+            message="Invalid extensions skill specs: expected a non-empty comma-free array",
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+            error_code="AISC_ERR_USAGE",
+        )
+    _validate("skill-install-group", None, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-install-group",
+        specs=specs,
+    )
+    items = envelope.get("items") or []
+    return {
+        "kind": "skills",
+        "total": envelope.get("total", len(items)),
+        "completed": envelope.get("completed", 0),
+        "items": items,
+        "operation_id": envelope.get("operation_id"),
+    }
 
 
 def extensions_skill_update(runtime_id: str, spec: str,
