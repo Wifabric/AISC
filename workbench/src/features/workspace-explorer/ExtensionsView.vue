@@ -8,6 +8,7 @@ import { useI18n } from "vue-i18n";
 import { useExtensionsStore, type ExtensionAction, type ExtensionsKind } from "../../stores/extensions";
 import { useRuntimeStore } from "../../stores/runtime";
 import ExtensionOperationLog from "./ExtensionOperationLog.vue";
+import ExtensionRecommendations from "./ExtensionRecommendations.vue";
 
 const { t } = useI18n();
 const store = useExtensionsStore();
@@ -52,6 +53,15 @@ function opBusy(action: ExtensionAction, id: string): boolean {
   return operation?.action === action && operation.id === id;
 }
 
+function onRecommendationDiscover(target: ExtensionsKind, query: string): void {
+  if (target === "skills") skillQuery.value = query;
+  else if (target === "mcp") mcpQuery.value = query;
+  else pluginQuery.value = query;
+  expandedId.value = null;
+  expandedGroupId.value = null;
+  expandedChildId.value = null;
+}
+
 function updateFor(id: string) {
   return store.updateItems[id];
 }
@@ -84,6 +94,7 @@ watch(pluginQuery, (value) => {
 
 <template>
   <div class="explorer-body extensions-view" data-testid="extensions-view">
+    <ExtensionRecommendations @discover="onRecommendationDiscover" />
     <div class="extensions-tabs" role="tablist">
       <button v-for="tab in KIND_TABS" :key="tab.key" type="button" role="tab" :aria-selected="store.kind === tab.key" :class="{ active: store.kind === tab.key }" :data-testid="'ext-tab-' + tab.key" @click="onTab(tab.key)">{{ t(tab.labelKey) }}</button>
     </div>
@@ -307,6 +318,9 @@ watch(pluginQuery, (value) => {
         <input v-model="marketSrc" type="text" :placeholder="t('extensions.pluginMarketLink')" :aria-label="t('extensions.pluginMarketLink')" data-testid="ext-market-add" @keydown.enter.prevent="void store.addPluginMarket(marketSrc.trim()).then(() => (marketSrc = ''))" />
         <button type="button" class="ui-button" :disabled="!marketSrc.trim() || store.busy" data-testid="ext-market-add-btn" @click="store.addPluginMarket(marketSrc.trim()).then(() => (marketSrc = ''))">{{ t("extensions.pluginMarketAdd") }}</button>
       </div>
+      <p v-if="store.pluginMarketsError" class="explorer-error" role="alert">
+        {{ t("extensions.pluginMarkets") }}：{{ store.pluginMarketsError }}
+      </p>
       <div v-for="m in store.pluginMarkets" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
         <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
         <span class="mh-name">{{ m.name }}</span>
