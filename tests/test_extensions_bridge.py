@@ -150,6 +150,35 @@ class BridgeTests(unittest.TestCase):
 
         self.assertEqual(calls[0]["timeout"], 960.0)
 
+    def test_skill_search_cache_and_updates_check_are_transported(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "op": argv[argv.index("--") + 1]
+                          if "--" in argv else argv[0]})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-search", "ok": True,
+                    "items": [{"id": "owner/repo:skill"}],
+                    "cache": {"source": "cache", "cached": True,
+                              "query": "skill", "error": "network down"},
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            search = ext.extensions_call_raw("rid", "skill-search", "/ws", executor,
+                                             query="skill")
+            updates = ext.extensions_call_raw("rid", "updates-check", "/ws", executor)
+
+        self.assertTrue(search["cache"]["cached"])
+        self.assertIn("network down", search["cache"]["error"])
+        self.assertEqual(updates["op"], "updates-check")
+        self.assertEqual(calls[-1]["argv"][-1], "updates-check")
+
     def test_group_specs_json_transport_preserves_commas(self):
         calls = []
 

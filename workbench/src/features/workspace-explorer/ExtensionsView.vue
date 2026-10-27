@@ -51,6 +51,25 @@ function opBusy(action: ExtensionAction, id: string): boolean {
   return operation?.action === action && operation.id === id;
 }
 
+function updateFor(id: string) {
+  return store.updateItems[id];
+}
+function isUpdateAvailable(id: string): boolean {
+  return updateFor(id)?.update_available === true;
+}
+function updateCount(ids: string[]): number {
+  return ids.filter((id) => isUpdateAvailable(id)).length;
+}
+
+function formatCacheTime(value?: number | string): string {
+  if (value === undefined || value === null || value === "") return "";
+  const numeric = typeof value === "number" ? value : Number(value);
+  const date = Number.isFinite(numeric) && numeric > 0
+    ? new Date(numeric < 1_000_000_000_000 ? numeric * 1000 : numeric)
+    : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
 watch(skillQuery, (value) => {
   if (!value.trim()) store.clearMarketResults("skills");
 });
@@ -66,6 +85,21 @@ watch(pluginQuery, (value) => {
   <div class="explorer-body extensions-view" data-testid="extensions-view">
     <div class="extensions-tabs" role="tablist">
       <button v-for="tab in KIND_TABS" :key="tab.key" type="button" role="tab" :aria-selected="store.kind === tab.key" :class="{ active: store.kind === tab.key }" :data-testid="'ext-tab-' + tab.key" @click="onTab(tab.key)">{{ t(tab.labelKey) }}</button>
+    </div>
+
+    <div class="extensions-toolbar">
+      <button
+        type="button"
+        class="ui-button"
+        data-testid="ext-check-updates"
+        :disabled="!store.canLoad || store.updatesBusy"
+        @click="store.checkUpdates()"
+      >
+        {{ store.updatesBusy ? t("extensions.updatesChecking") : t("extensions.checkUpdates") }}
+      </button>
+      <span v-if="store.updatesError" class="explorer-error" role="alert">
+        {{ t("extensions.updatesCheckFailedWithDetail", { message: store.updatesError }) }}
+      </span>
     </div>
 
     <div
@@ -97,8 +131,9 @@ watch(pluginQuery, (value) => {
         <div class="ext-row">
           <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === group.id ? "▾" : "▸" }}</span>
           <span v-if="group.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
-          <span class="ext-name" :title="group.repo">{{ group.name }}</span>
+          <span class="ext-name" :class="{ 'has-update': updateCount(group.items.map((item) => item.id)) > 0 }" :title="group.repo">{{ group.name }}</span>
           <span class="ext-badge">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
+          <span v-if="updateCount(group.items.map((item) => item.id)) > 0" class="update-badge">{{ t("extensions.updateCount", { count: updateCount(group.items.map((item) => item.id)) }) }}</span>
           <span class="ext-spacer" />
           <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true) }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))">{{ agent === "claude" ? "C" : "X" }}</button>
           <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.updateAll')" @click.stop="store.updateSkillGroup(group)">
@@ -113,7 +148,9 @@ watch(pluginQuery, (value) => {
         <div v-if="expandedGroupId === group.id" class="skill-children">
           <div v-for="item in group.items" :key="item.id" class="ext-row skill-child" :data-testid="'ext-skill-child-' + item.id" @click.stop="expandedChildId = expandedChildId === item.id ? null : item.id">
             <span class="ext-chevron" aria-hidden="true">{{ expandedChildId === item.id ? "▾" : "▸" }}</span>
-            <span class="ext-name" :title="item.id">{{ item.name }}</span>
+            <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }" :title="item.id">{{ item.name }}</span>
+            <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
+            <span v-else-if="updateFor(item.id)?.status === 'unsupported'" class="unsupported-badge">{{ t("extensions.noComparableVersion") }}</span>
             <span class="ext-badge">{{ item.source }}</span>
             <span class="ext-spacer" />
             <button v-for="agent in (['claude', 'codex'] as const)" :key="agent" type="button" class="ui-icon-button sm" :class="{ on: (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true }" :disabled="store.busy" :title="t('extensions.toggle', { agent })" @click.stop="store.toggle(item, agent, !(agent === 'claude' ? item.enabled_claude : item.enabled_codex))">{{ agent === "claude" ? "C" : "X" }}</button>
@@ -139,7 +176,9 @@ watch(pluginQuery, (value) => {
         <div class="ext-row">
           <span class="ext-chevron" aria-hidden="true">{{ expandedId === item.id ? "▾" : "▸" }}</span>
           <span v-if="item.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
-          <span class="ext-name" :title="item.id">{{ item.name }}</span>
+          <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }" :title="item.id">{{ item.name }}</span>
+          <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
+          <span v-else-if="updateFor(item.id)?.status === 'unsupported'" class="unsupported-badge">{{ t("extensions.noComparableVersion") }}</span>
           <span v-if="store.kind === 'plugins'" class="ext-badge">{{ item.marketplace }} · {{ item.version }}</span>
           <span v-else-if="store.kind === 'mcp'" class="ext-badge">{{ item.transport }}</span>
           <span v-else-if="item.repo" class="ext-badge">{{ item.repo }}</span>
@@ -157,8 +196,10 @@ watch(pluginQuery, (value) => {
           </button>
         </div>
         <p v-if="expandedId === item.id" class="ext-desc">
-          {{ item.description || item.url || item.command || item.id }}
-          <span v-if="item.sources" class="ext-sources"> · {{ item.source }}</span>
+          <span class="detail-label">{{ t("extensions.detail.description") }}</span>{{ item.description || item.url || item.command || item.id }}
+          <span v-if="item.sources" class="ext-sources"> · {{ t("extensions.detail.source") }}：{{ item.source }}</span>
+          <span v-if="updateFor(item.id)?.current_version"> · {{ t("extensions.detail.currentVersion") }}：{{ updateFor(item.id)?.current_version }}</span>
+          <span v-if="updateFor(item.id)?.latest_version"> · {{ t("extensions.detail.latestVersion") }}：{{ updateFor(item.id)?.latest_version }}</span>
         </p>
       </div>
     </template>
@@ -169,6 +210,11 @@ watch(pluginQuery, (value) => {
         <input v-model="skillQuery" type="text" :placeholder="t('extensions.marketSearch')" :aria-label="t('extensions.marketSearch')" data-testid="ext-skill-search" @keydown.enter.prevent="store.searchSkills(skillQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!skillQuery.trim() || store.marketBusy" data-testid="ext-skill-search-btn" @click="store.searchSkills(skillQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
+      <p v-if="store.marketCacheByKind.skills" class="market-cache" data-testid="ext-skills-cache">
+        {{ store.marketCacheByKind.skills.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <span v-if="store.marketCacheByKind.skills.fetched_at"> · {{ t("extensions.marketCacheAt") }}{{formatCacheTime(store.marketCacheByKind.skills.fetched_at)}}</span>
+        <span v-if="store.marketCacheByKind.skills.error"> · {{ store.marketCacheByKind.skills.error }}</span>
+      </p>
       <div v-for="group in store.marketSkillGroups" :key="group.id" class="market-hit" @click="expandedGroupId = expandedGroupId === 'market:' + group.id ? null : 'market:' + group.id; expandedChildId = null">
         <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === 'market:' + group.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="group.id">{{ group.name }}</span>
@@ -188,7 +234,7 @@ watch(pluginQuery, (value) => {
               <span v-if="opBusy('install', m.id)" class="spinner" />
               <span v-else>＋</span>
             </button>
-            <p v-if="expandedChildId === 'market:' + m.id" class="mh-detail">{{ m.description || m.id }} · {{ m.repo }}:{{ m.directory }}</p>
+            <p v-if="expandedChildId === 'market:' + m.id" class="mh-detail"><span class="detail-label">{{ t("extensions.detail.description") }}</span>{{ m.description || m.id }} · {{ t("extensions.detail.marketOriginal") }}<template v-if="m.updated_at"> · {{ t("extensions.detail.updatedAt") }}：{{ m.updated_at }}</template> · {{ t("extensions.detail.installs") }}：{{ m.installs }} · {{ t("extensions.detail.repository") }}：{{ m.repo }}:{{ m.directory }}</p>
           </div>
         </div>
       </div>
@@ -203,7 +249,12 @@ watch(pluginQuery, (value) => {
         <input v-model="mcpQuery" type="text" :placeholder="t('extensions.mcpMarketSearch')" :aria-label="t('extensions.mcpMarketSearch')" data-testid="ext-mcp-search" @keydown.enter.prevent="store.searchMcp(mcpQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!mcpQuery.trim() || store.marketBusy" data-testid="ext-mcp-search-btn" @click="store.searchMcp(mcpQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
-      <div v-for="m in store.marketMcp" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
+      <p v-if="store.marketCacheByKind.mcp" class="market-cache" data-testid="ext-mcp-cache">
+        {{ store.marketCacheByKind.mcp.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <span v-if="store.marketCacheByKind.mcp.fetched_at"> · {{ t("extensions.marketCacheAt") }}{{formatCacheTime(store.marketCacheByKind.mcp.fetched_at)}}</span>
+        <span v-if="store.marketCacheByKind.mcp.error"> · {{ store.marketCacheByKind.mcp.error }}</span>
+      </p>
+      <div v-for="m in store.marketMcp" :key="m.id" class="market-hit" :data-testid="'ext-market-' + m.id" @click="expandedId = expandedId === m.id ? null : m.id">
         <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="m.id">{{ m.name }}</span>
         <span class="mh-meta">{{ m.repo }} · ⬇ {{ m.installs }}</span>
@@ -212,7 +263,7 @@ watch(pluginQuery, (value) => {
           <span v-if="opBusy('install', m.id)" class="spinner" />
           <span v-else>＋</span>
         </button>
-        <p v-if="expandedId === m.id" class="mh-detail">{{ m.description }}</p>
+        <p v-if="expandedId === m.id" class="mh-detail"><span class="detail-label">{{ t("extensions.detail.description") }}</span>{{ m.description }} · {{ t("extensions.detail.marketOriginal") }}<template v-if="m.updated_at"> · {{ t("extensions.detail.updatedAt") }}：{{ m.updated_at }}</template><template v-if="m.installs"> · {{ t("extensions.detail.installs") }}：{{ m.installs }}</template></p>
       </div>
       <div class="market-row">
         <input v-model="mcpLink" type="text" :placeholder="t('extensions.mcpLink')" :aria-label="t('extensions.mcpLink')" data-testid="ext-mcp-link" @keydown.enter.prevent="void store.importDeeplink(mcpLink.trim()).then(() => (mcpLink = ''))" />
@@ -227,7 +278,12 @@ watch(pluginQuery, (value) => {
         <input v-model="pluginQuery" type="text" :placeholder="t('extensions.pluginMarketSearch')" :aria-label="t('extensions.pluginMarketSearch')" data-testid="ext-plugin-search" @keydown.enter.prevent="store.searchPlugins(pluginQuery.trim())" />
         <button type="button" class="ui-button" :disabled="!pluginQuery.trim() || store.marketBusy" data-testid="ext-plugin-search-btn" @click="store.searchPlugins(pluginQuery.trim())">{{ t("extensions.marketSearchBtn") }}</button>
       </div>
-      <div v-for="m in store.marketPlugins" :key="m.id" class="market-hit" @click="expandedId = expandedId === m.id ? null : m.id">
+      <p v-if="store.marketCacheByKind.plugins" class="market-cache" data-testid="ext-plugins-cache">
+        {{ store.marketCacheByKind.plugins.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+        <span v-if="store.marketCacheByKind.plugins.fetched_at"> · {{ t("extensions.marketCacheAt") }}{{formatCacheTime(store.marketCacheByKind.plugins.fetched_at)}}</span>
+        <span v-if="store.marketCacheByKind.plugins.error"> · {{ store.marketCacheByKind.plugins.error }}</span>
+      </p>
+      <div v-for="m in store.marketPlugins" :key="m.id" class="market-hit" :data-testid="'ext-market-' + m.id" @click="expandedId = expandedId === m.id ? null : m.id">
         <span class="ext-chevron" aria-hidden="true">{{ expandedId === m.id ? "▾" : "▸" }}</span>
         <span class="mh-name" :title="m.id">{{ m.name }}</span>
         <span class="mh-meta">{{ m.marketplace }} · ⬇ {{ m.installs }}</span>
@@ -236,7 +292,7 @@ watch(pluginQuery, (value) => {
           <span v-if="opBusy('install', m.id)" class="spinner" />
           <span v-else>＋</span>
         </button>
-        <p v-if="expandedId === m.id" class="mh-detail">{{ m.description }}{{ m.repo ? ` · ${m.repo}` : "" }}</p>
+        <p v-if="expandedId === m.id" class="mh-detail"><span class="detail-label">{{ t("extensions.detail.description") }}</span>{{ m.description }} · {{ t("extensions.detail.marketOriginal") }}<template v-if="m.updated_at"> · {{ t("extensions.detail.updatedAt") }}：{{ m.updated_at }}</template><template v-if="m.installs"> · {{ t("extensions.detail.installs") }}：{{ m.installs }}</template><template v-if="m.repo"> · {{ t("extensions.detail.repository") }}：{{ m.repo }}</template></p>
       </div>
       <div class="market-row">
         <input v-model="pluginId" type="text" :placeholder="t('extensions.pluginSpec')" :aria-label="t('extensions.pluginSpec')" data-testid="ext-plugin-id" @keydown.enter.prevent="void store.pluginAction('plugin-install', pluginId.trim()).then(() => (pluginId = ''))" />
@@ -295,4 +351,11 @@ watch(pluginQuery, (value) => {
 .mh-detail { flex-basis: 100%; margin: 2px 0 0 14px; font-size: var(--font-xs); color: var(--text-faint); overflow-wrap: anywhere; }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.extensions-toolbar { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2); }
+.update-badge, .unsupported-badge { flex: none; font-size: var(--font-xs); border-radius: var(--radius-full); padding: 1px 6px; border: 1px solid currentColor; }
+.update-badge { color: var(--warn); font-weight: 700; }
+.unsupported-badge { color: var(--text-muted); }
+.ext-name.has-update { font-weight: 800; }
+.market-cache { margin: 0; font-size: var(--font-xs); color: var(--text-muted); }
+.detail-label { color: var(--text-muted); margin-right: 4px; }
 </style>

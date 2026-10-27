@@ -4238,3 +4238,15 @@ bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCI
 测试 CI 兼容×2。preview.2 发布后：用户装机 preview.1→preview.2（手动），
 此后应用内更新链（b12 超时+T1-1 命名清场+T1-2 /R 拉起）在下一跳全验。
 观察项：T6-4/5/6 断网模拟挂起（需窗口）；T5/T2-A/T4-1·3·4·5 随日常使用。
+
+## 2026-10-27 v2.1.17 b2 收口：市场缓存与更新信号
+
+- b2 按 TDD 交付 adapter 市场缓存、`updates-check`、CLI/Rust 透传与
+  Workbench 更新状态 UI；Plugins 使用 marketplace version/commit SHA 可靠比较，
+  Skills/MCP 因上游无可比版本明确显示“暂无可靠版本源”。
+- Computer Use 预测试发现并修复 updates-check envelope schema 覆盖、MCP
+  cache metadata 缺失；最终真实 UI 验证更新检查、Skills/MCP 市场刷新与
+  “已刷新”缓存标识通过。
+- 全量本地门禁、vendor verify、sidecar / NSIS bundle / Docker image 重建完成；
+  预测试容器已清理。用户统一手测按规则等待 b2–b7 全部预测试后集中执行。
+- b2 最终复核：Python 1498 / Rust 368 / Vitest 657 / vue-tsc 通过，vendor 1532 与 debug 构建通过；修复缓存持久化、无插件更新检查超时、上下文隔离与单项徽标失效。当前会话未暴露 Computer Use，最终补丁 UI NOT RUN，保留此前实际 UI PASS 的产物标识。

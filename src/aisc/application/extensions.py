@@ -28,7 +28,7 @@ _OPS = (
     "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
     "skill-update-group",
     "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
-    "mcp-search", "mcp-market-install",
+    "mcp-search", "mcp-market-install", "updates-check",
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
@@ -299,5 +299,8 @@ def extensions_call_raw(runtime_id: str, op: str, workspace: Optional[str],
         runtime_id, _registry_root(workspace), executor, op,
         kind=kind, item_id=item_id, query=query, url=url,
     )
-    return {"op": op, "items": envelope.get("items") or [],
-            "operation_id": envelope.get("operation_id")}
+    result = {"op": op, "items": envelope.get("items") or [],
+              "operation_id": envelope.get("operation_id")}
+    if isinstance(envelope.get("cache"), dict):
+        result["cache"] = envelope["cache"]
+    return result

@@ -205,6 +205,19 @@ class EnvelopeTests(TempEnv):
             ["obra/superpowers:brainstorming", "obra/superpowers:debugging"],
         )
 
+    def test_main_updates_check_envelope(self):
+        result = {"schema": "aisc.extensions.market-cache/v1", "total": 0, "completed": 0, "items": []}
+        with mock.patch.object(A, "updates_check", return_value=result), \
+             mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            rc = A.main(["updates-check"])
+
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(doc["schema"], "aisc.extensions/v1")
+        self.assertEqual(doc["op"], "updates-check")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["total"], 0)
+
     def test_main_skill_update_group_envelope(self):
         result = {
             "total": 2, "completed": 2,
@@ -230,6 +243,26 @@ class EnvelopeTests(TempEnv):
         self.assertEqual(doc["total"], 2)
         self.assertEqual(doc["completed"], 2)
         self.assertTrue(all(item["status"] == "updated" for item in doc["items"]))
+
+    def test_main_market_search_envelopes_include_cache(self):
+        for op, func_name in (
+            ("skill-search", "skill_search_result"),
+            ("plugin-search", "plugin_search_result"),
+            ("mcp-search", "mcp_search_result"),
+        ):
+            with self.subTest(op=op):
+                result = {"items": [], "cache": {
+                    "source": "cache", "cached": True,
+                    "query": "pdf", "error": "network down",
+                }}
+                with mock.patch.object(A, func_name, return_value=result), \
+                     mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+                    rc = A.main([op, "--query", "pdf"])
+                doc = json.loads(out.getvalue())
+                self.assertEqual(rc, 0)
+                self.assertEqual(doc["schema"], "aisc.extensions/v1")
+                self.assertTrue(doc["cache"]["cached"])
+                self.assertIn("network down", doc["cache"]["error"])
 
     def test_main_error_envelope(self):
         with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
@@ -801,6 +834,141 @@ class MarketTests(TempEnv):
         self.assertIn(["cc-switch", "skills", "disable", "caveman-commit", "-a", "claude"], argvs)
         self.assertIn(["cc-switch", "skills", "enable", "caveman-commit", "-a", "codex"], argvs)
 
+    def test_updates_check_reports_plugin_update_and_unsupported_version_sources(self):
+        connection = sqlite3.connect(self.root / "cc-switch.db")
+        connection.execute(
+            "INSERT INTO mcp_servers (id,name,server_config,description,homepage,"
+            "docs,tags,enabled_claude,enabled_codex,enabled_gemini,"
+            "enabled_grokbuild,enabled_opencode,enabled_hermes) VALUES "
+            "('pdf','pdf','{}','','','','host',1,1,0,0,0,0)"
+        )
+        connection.commit()
+        connection.close()
+        plugin_root = self.root / "claude" / "plugins"
+        plugin_root.mkdir(parents=True, exist_ok=True)
+        (plugin_root / "installed_plugins.json").write_text(json.dumps({
+            "plugins": {
+                "chart@official": [{
+                    "scope": "user", "version": "1.0.0",
+                    "gitCommitSha": "old", "installedAt": "t", "lastUpdated": "u"
+                }],
+                "local@official": [{
+                    "scope": "user", "version": "1.0.0",
+                    "gitCommitSha": "same", "installedAt": "t", "lastUpdated": "u"
+                }]
+            }
+        }), encoding="utf-8")
+        payload = {"available": [
+            {"pluginId": "chart@official", "version": "1.1.0",
+             "gitCommitSha": "new", "marketplaceName": "official"},
+            {"pluginId": "local@official", "version": "1.0.0",
+             "gitCommitSha": "same", "marketplaceName": "official"},
+        ]}
+        calls, run = self._fake(stdout=json.dumps(payload))
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.updates_check()
+
+        by_id = {item["id"]: item for item in result["items"]}
+        self.assertTrue(by_id["chart@official"]["update_available"])
+        self.assertEqual(by_id["chart@official"]["latest_version"], "1.1.0")
+        self.assertFalse(by_id["local@official"]["update_available"])
+        self.assertEqual(by_id["superpowers"]["status"], "unsupported")
+        self.assertIn("market does not expose", by_id["superpowers"]["reason"])
+        self.assertEqual(by_id["pdf"]["status"], "unsupported")
+        self.assertEqual(result["completed"], 5)
+
+    def test_updates_check_skips_plugin_marketplace_probe_without_installed_plugins(self):
+        def run(_argv, timeout=0.0, env_overrides=None, **kwargs):
+            raise AssertionError("plugin marketplace must not be probed")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.updates_check()
+
+        self.assertEqual(result["completed"], len(result["items"]))
+        self.assertTrue(result["items"])
+        self.assertTrue(all(item["status"] == "unsupported" for item in result["items"]))
+
+    def test_market_search_cache_falls_back_to_last_success(self):
+        import importlib
+
+        calls = []
+
+        def remote() -> list[dict[str, Any]]:
+            calls.append(1)
+            if len(calls) == 1:
+                return [{"kind": "market-skill", "id": "owner/repo:skill",
+                         "name": "skill", "repo": "owner/repo",
+                         "directory": "skill"}]
+            raise A.AdapterError(A.ERR_CLI, "remote refresh down")
+
+        with mock.patch.dict(A.os.environ, {"AISC_EXTENSION_CACHE_DIR": str(self.root)}), \
+             mock.patch.object(A, "_skill_search_remote", side_effect=remote):
+            first = A._market_search_with_cache("skills", "Owner SKILL", A._skill_search_remote)
+            second = A._market_search_with_cache("skills", "owner  skill", A._skill_search_remote)
+
+        self.assertEqual(first["cache"]["source"], "remote")
+        self.assertEqual(second["cache"]["source"], "cache")
+        self.assertEqual(second["cache"]["query"], "owner skill")
+        self.assertEqual([item["id"] for item in second["items"]],
+                         ["owner/repo:skill"])
+        self.assertIn("remote refresh down", second["cache"]["error"])
+
+    def test_cache_write_failure_does_not_fail_remote_search(self):
+        cache_target = self.root / "cache-root"
+        cache_target.write_text("not a directory", encoding="utf-8")
+
+        def remote() -> list[dict[str, Any]]:
+            return [{"kind": "market-skill", "id": "owner/repo:skill"}]
+
+        with mock.patch.dict(A.os.environ, {"AISC_EXTENSION_CACHE_DIR": str(cache_target)}):
+            result = A._market_search_with_cache("skills", "skill", remote)
+
+        self.assertEqual(result["cache"]["source"], "remote")
+        self.assertFalse(result["cache"]["cached"])
+        self.assertEqual(result["items"], [{"kind": "market-skill", "id": "owner/repo:skill"}])
+
+    def test_market_cache_trim_never_deletes_unrelated_json(self):
+        cache_root = self.root / "cache"
+        cache_root.mkdir()
+        unrelated = cache_root / "config.json"
+        unrelated.write_text("{}", encoding="utf-8")
+        import datetime
+        old = datetime.datetime.now() - datetime.timedelta(days=365)
+        import os
+        os.utime(unrelated, (old.timestamp(), old.timestamp()))
+
+        with mock.patch.dict(A.os.environ, {"AISC_EXTENSION_CACHE_DIR": str(cache_root)}):
+            for index in range(A.MARKET_CACHE_MAX_ENTRIES):
+                A._market_search_with_cache(
+                    "skills", f"query-{index}", lambda: []
+                )
+
+        self.assertTrue(unrelated.exists())
+        self.assertEqual(
+            len(list(cache_root.glob("skills-*.json"))),
+            A.MARKET_CACHE_MAX_ENTRIES,
+        )
+
+    def test_market_cache_is_bounded_to_recent_queries(self):
+        with mock.patch.dict(A.os.environ, {"AISC_EXTENSION_CACHE_DIR": str(self.root / "cache")}):
+            for index in range(A.MARKET_CACHE_MAX_ENTRIES + 1):
+                result = A._market_search_with_cache(
+                    "skills", f"query-{index}", lambda index=index: []
+                )
+                self.assertEqual(result["cache"]["source"], "remote")
+            files = list((self.root / "cache").glob("skills-*.json"))
+        self.assertEqual(len(files), A.MARKET_CACHE_MAX_ENTRIES)
+
+    def test_plugin_market_metadata_preserves_update_time_and_missing_source_is_unsupported(self):
+        payload = {"available": [
+            {"pluginId": "chart@official", "version": "1.1.0",
+             "gitCommitSha": "new", "lastUpdated": "2026-10-01T00:00:00Z"},
+        ]}
+        market = A._parse_plugin_available(json.dumps(payload), "chart")
+
+        self.assertEqual(market[0]["updated_at"], "2026-10-01T00:00:00Z")
+        self.assertEqual(A._plugin_available_index(json.dumps({"available": []})), {})
     def test_mcp_market_install_uses_smithery_http_deployment_url(self):
         import urllib.request
 

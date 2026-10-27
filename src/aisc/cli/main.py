@@ -418,6 +418,11 @@ def _build_parser() -> _AiscArgumentParser:
     extsug.add_argument("--specs", required=True,
                         help="JSON array of owner/name:directory specs")
 
+    extuc = extsub.add_parser("updates-check",
+                              help="Check extension updates with reliable version metadata",
+                              allow_abbrev=False)
+    _extensions_common(extuc)
+
     extdl = extsub.add_parser("deeplink",
                               help="Import a resource from a ccswitch:// link",
                               allow_abbrev=False)
@@ -2059,6 +2064,8 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_plugin_market_add(args)
     elif sub == "plugin-search":
         data = ext_cmd.cmd_extensions_plugin_search(args)
+    elif sub == "updates-check":
+        data = ext_cmd.cmd_extensions_updates_check(args)
     elif sub == "mcp-search":
         data = ext_cmd.cmd_extensions_mcp_search(args)
     elif sub == "mcp-market-install":

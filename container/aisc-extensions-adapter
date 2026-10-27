@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import sqlite3
@@ -500,6 +501,112 @@ def _http_json(urls: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
     raise AdapterError(ERR_CLI, f"remote request failed: {last}")
 
 
+MARKET_CACHE_SCHEMA = "aisc.extensions.market-cache/v1"
+MARKET_CACHE_MAX_ENTRIES = 50
+
+
+def _normalized_market_query(query: str) -> str:
+    return " ".join(query.casefold().split())
+
+
+def _market_cache_path(kind: str, query: str) -> Path:
+    root = Path(os.environ.get(
+        "AISC_EXTENSION_CACHE_DIR", str(_db_path().parent / "market-cache")
+    ))
+    digest = hashlib.sha256(
+        f"{kind}\0{_normalized_market_query(query)}".encode("utf-8")
+    ).hexdigest()
+    return root / f"{kind}-{digest}.json"
+
+
+CACHE_FILE_RE = re.compile(r"(?:skills|mcp|plugins)-[0-9a-f]{64}\.json")
+
+
+def _trim_market_cache(root: Path, limit: int = MARKET_CACHE_MAX_ENTRIES) -> None:
+    """Keep only files owned by this cache schema; never touch unrelated JSON."""
+    try:
+        files = [path for path in root.iterdir()
+                 if CACHE_FILE_RE.fullmatch(path.name) and path.is_file()]
+        files.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        for path in files[limit:]:
+            path.unlink(missing_ok=True)
+    except OSError:
+        return
+
+
+def _write_market_cache(path: Path, kind: str, query: str,
+                        items: list[dict[str, Any]]) -> int:
+    fetched_at = int(time.time())
+    document = {
+        "schema": MARKET_CACHE_SCHEMA,
+        "kind": kind,
+        "query": _normalized_market_query(query),
+        "fetched_at": fetched_at,
+        "items": items,
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+        _trim_market_cache(path.parent)
+        return fetched_at
+    except OSError:
+        # A successful remote refresh remains authoritative when persistence is
+        # unavailable (read-only root, cache path occupied, disk full, etc.).
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return fetched_at
+
+
+def _read_market_cache(path: Path, kind: str, query: str) -> dict[str, Any] | None:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (not isinstance(document, dict)
+            or document.get("schema") != MARKET_CACHE_SCHEMA
+            or document.get("kind") != kind
+            or document.get("query") != _normalized_market_query(query)
+            or not isinstance(document.get("items"), list)):
+        return None
+    return document
+
+
+def _market_search_with_cache(
+    kind: str, query: str, remote,
+) -> dict[str, Any]:
+    """Refresh first, then fall back to the last normalized-query success."""
+    try:
+        items = remote()
+        fetched_at = _write_market_cache(
+            _market_cache_path(kind, query), kind, query, items
+        )
+        return {
+            "items": items,
+            "cache": {
+                "source": "remote", "cached": False,
+                "query": _normalized_market_query(query),
+                "fetched_at": fetched_at, "error": "",
+            },
+        }
+    except AdapterError as exc:
+        cached = _read_market_cache(_market_cache_path(kind, query), kind, query)
+        if cached is None:
+            raise
+        return {
+            "items": cached.get("items") or [],
+            "cache": {
+                "source": "cache", "cached": True,
+                "query": _normalized_market_query(query),
+                "fetched_at": int(cached.get("fetched_at") or 0),
+                "error": exc.message,
+            },
+        }
+
+
 def toggle(kind: str, item_id: str, agent: str, on: bool) -> None:
     if kind not in ("skills", "mcp"):
         raise AdapterError(ERR_BAD_REQUEST, f"toggle unsupported for kind: {kind}")
@@ -867,14 +974,12 @@ def _parse_skills_api(data: dict[str, Any]) -> list[dict[str, Any]]:
             "directory": directory,
             "installs": str(item.get("installs", "")),
             "repo": source,
+            "updated_at": str(item.get("updatedAt") or item.get("updatedAtISO") or ""),
         })
     return out[:20]
 
 
-def skill_search(query: str) -> list[dict[str, Any]]:
-    import urllib.parse
-    if not query.strip():
-        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+def _skill_search_remote(query: str) -> list[dict[str, Any]]:
     try:
         raw = _run_cli(
             ["cc-switch", "skills", "market", query, "--limit", "20"], timeout=60.0
@@ -890,6 +995,88 @@ def skill_search(query: str) -> list[dict[str, Any]]:
         f"https://www.skills.sh/api/search?q={encoded}",
     ], timeout=15.0)
     return _parse_skills_api(data)
+
+
+def skill_search(query: str) -> list[dict[str, Any]]:
+    return skill_search_result(query)["items"]
+
+
+def skill_search_result(query: str) -> dict[str, Any]:
+    if not query.strip():
+        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+    return _market_search_with_cache(
+        "skills", query, lambda: _skill_search_remote(query)
+    )
+
+
+def _plugin_available_index(raw: str) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AdapterError(ERR_CLI, f"invalid plugin marketplace JSON: {exc}")
+    available = data.get("available", []) if isinstance(data, dict) else []
+    out: dict[str, dict[str, Any]] = {}
+    for item in available:
+        if isinstance(item, dict) and item.get("pluginId"):
+            out[str(item["pluginId"])] = item
+    return out
+
+
+def updates_check() -> dict[str, Any]:
+    """Check updates only where a market exposes a comparable version field."""
+    items: list[dict[str, Any]] = []
+    for item in list_items("skills") + list_items("mcp"):
+        items.append({
+            "kind": item["kind"],
+            "id": item["id"],
+            "name": item.get("name") or item["id"],
+            "status": "unsupported",
+            "update_available": False,
+            "latest_version": "",
+            "reason": "market does not expose a comparable version field",
+        })
+
+    installed = list_items("plugins")
+    available: dict[str, dict[str, Any]] = {}
+    if installed:
+        raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
+                       timeout=120.0)
+        available = _plugin_available_index(raw)
+    for item in installed:
+        market = available.get(item["id"], {})
+        latest_version = str(market.get("version") or "")
+        latest_sha = str(market.get("gitCommitSha") or "")
+        current_version = str(item.get("version") or "")
+        current_sha = str(item.get("git_commit_sha") or "")
+        comparable = bool(latest_version and current_version) or bool(
+            latest_sha and current_sha
+        )
+        changed = (
+            (bool(latest_version and current_version)
+             and latest_version != current_version)
+            or (bool(latest_sha and current_sha) and latest_sha != current_sha)
+        )
+        items.append({
+            "kind": "plugins",
+            "id": item["id"],
+            "name": item.get("name") or item["id"],
+            "status": "ok" if comparable else "unsupported",
+            "update_available": changed,
+            "current_version": current_version,
+            "current_git_commit_sha": current_sha,
+            "latest_version": latest_version,
+            "latest_git_commit_sha": latest_sha,
+            "reason": "" if comparable else (
+                "marketplace metadata unavailable" if not market else
+                "market does not expose a comparable version field"
+            ),
+        })
+    return {
+        "schema": MARKET_CACHE_SCHEMA,
+        "total": len(items),
+        "completed": len(items),
+        "items": items,
+    }
 
 
 def deeplink_import(url: str) -> None:
@@ -950,16 +1137,25 @@ def _parse_plugin_available(raw: str, query: str) -> list[dict[str, Any]]:
             "marketplace": str(item.get("marketplaceName") or item["pluginId"].partition("@")[2]),
             "repo": str(source_url),
             "installs": str(item.get("installCount", "")),
+            "updated_at": str(item.get("lastUpdated") or item.get("updatedAt") or ""),
+            "latest_version": str(item.get("version") or ""),
+            "latest_git_commit_sha": str(item.get("gitCommitSha") or ""),
         })
     return out[:20]
 
 
 def plugin_search(query: str) -> list[dict[str, Any]]:
+    return plugin_search_result(query)["items"]
+
+
+def plugin_search_result(query: str) -> dict[str, Any]:
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
-                   timeout=120.0)
-    return _parse_plugin_available(raw, query.strip())
+    def remote() -> list[dict[str, Any]]:
+        raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
+                       timeout=120.0)
+        return _parse_plugin_available(raw, query.strip())
+    return _market_search_with_cache("plugins", query, remote)
 
 
 def plugin_market_add(source: str) -> None:
@@ -970,30 +1166,39 @@ def plugin_market_add(source: str) -> None:
 
 
 def mcp_search(query: str) -> list[dict[str, Any]]:
+    return mcp_search_result(query)["items"]
+
+
+def mcp_search_result(query: str) -> dict[str, Any]:
     """Search Smithery; registry is primary and api.smithery.ai is a fallback."""
     import urllib.parse
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    encoded = urllib.parse.quote(query)
-    data = _http_json([
-        f"https://registry.smithery.ai/servers?q={encoded}&pageSize=10",
-        f"https://api.smithery.ai/servers?q={encoded}&pageSize=10",
-    ], timeout=15.0)
-    servers = data.get("servers", []) if isinstance(data, dict) else []
-    out: list[dict[str, Any]] = []
-    for s in servers:
-        if not isinstance(s, dict):
-            continue
-        out.append({
-            "kind": "market-mcp",
-            "id": s.get("qualifiedName") or s.get("name") or "",
-            "name": s.get("displayName") or s.get("name") or "",
-            "description": (s.get("description") or "")[:200],
-            "repo": s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
-            "source": "smithery",
-            "installs": str(s.get("useCount", "")),
-        })
-    return out
+    def remote() -> list[dict[str, Any]]:
+        encoded = urllib.parse.quote(query)
+        data = _http_json([
+            f"https://registry.smithery.ai/servers?q={encoded}&pageSize=10",
+            f"https://api.smithery.ai/servers?q={encoded}&pageSize=10",
+        ], timeout=15.0)
+        servers = data.get("servers", []) if isinstance(data, dict) else []
+        out: list[dict[str, Any]] = []
+        for server in servers:
+            if not isinstance(server, dict):
+                continue
+            out.append({
+                "kind": "market-mcp",
+                "id": server.get("qualifiedName") or server.get("name") or "",
+                "name": server.get("displayName") or server.get("name") or "",
+                "description": (server.get("description") or "")[:200],
+                "repo": server.get("repository", {}).get("url", "")
+                        if isinstance(server.get("repository"), dict) else "",
+                "source": "smithery",
+                "installs": str(server.get("useCount", "")),
+                "created_at": str(server.get("createdAt", "")),
+                "updated_at": str(server.get("updatedAt") or server.get("createdAt") or ""),
+            })
+        return out
+    return _market_search_with_cache("mcp", query, remote)
 
 
 def mcp_market_install(market_id: str) -> str:
@@ -1039,7 +1244,8 @@ def main(argv: list[str] | None = None) -> int:
                                        "skill-repo-add", "skill-update", "skill-update-group",
                                        "plugin-market-list",
                                        "plugin-market-add", "plugin-search",
-                                       "mcp-search", "mcp-market-install"])
+                                       "mcp-search", "mcp-market-install",
+                                       "updates-check"])
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
     parser.add_argument("--url", help="deeplink: ccswitch://… URL")
     parser.add_argument("--kind", choices=list(KINDS))
@@ -1127,11 +1333,20 @@ def main(argv: list[str] | None = None) -> int:
             skill_update(args.spec)
             print(json.dumps(_envelope("skill-update", True)))
             return 0
+        if args.op == "updates-check":
+            result = updates_check()
+            result.pop("schema", None)
+            envelope = _envelope("updates-check", True)
+            envelope.update(result)
+            print(json.dumps(envelope))
+            return 0
         if args.op == "skill-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope(
-                "skill-search", True, items=skill_search(args.query))))
+            result = skill_search_result(args.query)
+            envelope = _envelope("skill-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "deeplink":
             if not args.url:
@@ -1158,13 +1373,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "plugin-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope(
-                "plugin-search", True, items=plugin_search(args.query))))
+            result = plugin_search_result(args.query)
+            envelope = _envelope("plugin-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope("mcp-search", True, items=mcp_search(args.query))))
+            result = mcp_search_result(args.query)
+            envelope = _envelope("mcp-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-market-install":
             if not args.id:
