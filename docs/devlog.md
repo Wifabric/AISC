@@ -4250,3 +4250,8 @@ bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCI
 - 全量本地门禁、vendor verify、sidecar / NSIS bundle / Docker image 重建完成；
   预测试容器已清理。用户统一手测按规则等待 b2–b7 全部预测试后集中执行。
 - b2 最终复核：Python 1498 / Rust 368 / Vitest 657 / vue-tsc 通过，vendor 1532 与 debug 构建通过；修复缓存持久化、无插件更新检查超时、上下文隔离与单项徽标失效。当前会话未暴露 Computer Use，最终补丁 UI NOT RUN，保留此前实际 UI PASS 的产物标识。
+
+## 2026-10-27 v2.1.17 b3 操作恢复
+
+- 三类扩展操作失败保留原错误，组成功项不重复执行，失败项按原参数单独重试；结果未知先核对 SSOT。操作日志限内存 100 条、诊断 8 KiB 并脱敏，提供双语日志和复制。
+- 修复结构化中文超时误判、旧上下文 catch 污染、预检失败分类与引号凭据泄露；审查复核通过。全门禁 Python 1498 / Rust 368 / Vitest 679 / vue-tsc 通过，debug 构建通过。Computer Use/Docker 不可用导致实机 NOT RUN，已记 PRETEST；统一手测不逐批发起。

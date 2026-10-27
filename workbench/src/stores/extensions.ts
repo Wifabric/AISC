@@ -9,6 +9,7 @@ import type { ExtensionsItem } from "../lib/ipc";
 import { groupSkillItems, skillUpdateSpec, type SkillGroup } from "../features/workspace-explorer/skillGroups";
 import { useToastStore } from "./toast";
 import { i18n } from "../i18n";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 export type ExtensionsKind = "skills" | "mcp" | "plugins";
 export type ExtensionAction =
@@ -21,6 +22,21 @@ export interface ExtensionOperation {
   label: string;
   completed: number;
   total: number;
+}
+
+export interface ExtensionOperationRecord {
+  operationId: string;
+  workspace: string;
+  runtimeId: string;
+  kind: ExtensionsKind;
+  action: ExtensionAction;
+  id: string;
+  label: string;
+  attempt: number;
+  startedAt: string;
+  finishedAt: string;
+  status: "success" | "failed" | "unknown";
+  diagnostic: string;
 }
 
 export interface MarketCacheState {
@@ -91,6 +107,60 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketMcp = ref<ExtensionsItem[]>([]);
   const marketPlugins = ref<ExtensionsItem[]>([]);
   const pluginMarkets = ref<ExtensionsItem[]>([]);
+  const operationLog = ref<ExtensionOperationRecord[]>([]);
+  let logSequence = 0;
+  const retryRecipes = new Map<string, { token: string | null; run: () => Promise<unknown> }>();
+
+  function diagnosticText(value: string): string {
+    const redacted = value
+      .replace(/(Bearer\s+)[^\s,;]+/gi, "$1[redacted]")
+      .replace(/((?:token|password|secret|api[_-]?key|authorization)[\s"']*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gi, "$1[redacted]")
+      .replace(/((?:token|password|secret|api[_-]?key|authorization)[\s"']*[:=][\s"']*)[^\s,"';&]+/gi, "$1[redacted]")
+      .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@");
+    const bytes = new TextEncoder().encode(redacted);
+    return bytes.length <= 8192 ? redacted
+      : new TextDecoder().decode(bytes.slice(0, 8150)) + "\n[truncated]";
+  }
+
+  function logOperation(target: ExtensionsKind, action: ExtensionAction, id: string,
+    label: string, startedAt: string, status: ExtensionOperationRecord["status"],
+    diagnostic: string, run: () => Promise<unknown>, attempt = 1): void {
+    if (!context.value) return;
+    const operationId = String(++logSequence);
+    operationLog.value.push({ operationId, ...context.value, kind: target, action,
+      id, label, attempt, startedAt, finishedAt: new Date().toISOString(), status,
+      diagnostic: diagnosticText(diagnostic) });
+    if (status === "failed") retryRecipes.set(operationId, { token: contextToken(), run });
+    while (operationLog.value.length > 100) {
+      retryRecipes.delete(operationLog.value.shift()!.operationId);
+    }
+  }
+
+  function canRetryOperation(operationId: string): boolean {
+    const recipe = retryRecipes.get(operationId);
+    return !!recipe && isCurrentContext(recipe.token);
+  }
+
+  async function retryOperation(operationId: string): Promise<void> {
+    const record = operationLog.value.find((row) => row.operationId === operationId);
+    const recipe = retryRecipes.get(operationId);
+    if (!record || !recipe || !canRetryOperation(operationId) || busyByKind.value[record.kind]) return;
+    retryRecipes.delete(operationId);
+    await runOperation(record.kind, record.action, record.id, record.label,
+      [recipe.run], [record.id], record.attempt + 1);
+  }
+
+  async function copyOperationDiagnostic(operationId: string): Promise<void> {
+    const record = operationLog.value.find((row) => row.operationId === operationId);
+    if (!record) return;
+    try {
+      await writeText(diagnosticText(JSON.stringify(record, null, 2)));
+      toast.success(i18n.global.t("extensions.log.copied"));
+    } catch (e) {
+      toast.error(i18n.global.t("extensions.log.copyFailed", { message: errorText(e) }));
+    }
+  }
+
 
 
 
@@ -107,6 +177,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     updateItemsByKind.value = emptyUpdateItems();
     updatesError.value = null;
     updatesBusy.value = false;
+    operationLog.value = [];
+    retryRecipes.clear();
     loadingByKind.value = kindRecord(false);
     busyByKind.value = kindRecord(false);
     searchBusyByKind.value = kindRecord(false);
@@ -200,33 +272,48 @@ export const useExtensionsStore = defineStore("extensions", () => {
     label: string,
     operations: Array<() => Promise<unknown>>,
     affectedIds: string[] = [id],
+    attempt = 1,
   ): Promise<void> {
-    if (operations.length === 0) return;
+    if (!context.value || operations.length === 0 || busyByKind.value[target]) return;
     const token = contextToken();
     busyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     operationsByKind.value[target] = {
       kind: target, action, id, label, completed: 0, total: operations.length,
     };
+    const failures: string[] = [];
     try {
       for (let index = 0; index < operations.length; index += 1) {
-        await operations[index]();
         if (!isCurrentContext(token)) return;
+        const started = new Date().toISOString();
+        const run = operations[index]!;
+        const itemId = affectedIds[index] ?? id;
+        try {
+          await run();
+          if (!isCurrentContext(token)) return;
+          logOperation(target, action, itemId, label, started, "success", "", run, attempt);
+          if (action !== "toggle") clearUpdateSignals(target, [itemId]);
+        } catch (e) {
+          if (!isCurrentContext(token)) return;
+          const message = errorText(e);
+          const code = (e as { code?: string })?.code ?? "";
+          const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED"].includes(code)
+            || /timed?\s*out|timeout|non-envelope|connection.*closed|unexpected.*eof/i.test(message);
+          logOperation(target, action, itemId, label, started, unknown ? "unknown" : "failed", message, run, attempt);
+          failures.push(operations.length === 1 ? message : `${itemId}: ${message}`);
+        }
         operationsByKind.value[target] = {
-          ...operationsByKind.value[target]!,
-          completed: index + 1,
+          ...operationsByKind.value[target]!, completed: index + 1,
         };
       }
       await refresh(target, { silent: true });
       if (!isCurrentContext(token)) return;
-      if (action !== "toggle") clearUpdateSignals(target, affectedIds);
-      toast.success(operationSuccess(action, label));
-    } catch (e) {
-      if (!isCurrentContext(token)) return;
-      const message = errorText(e);
-      errorsByKind.value[target] = message;
-      toast.error(operationFailure(label, message));
-      await refresh(target, { silent: true }).catch(() => undefined);
+      if (failures.length) {
+        errorsByKind.value[target] = failures.join("; ");
+        toast.error(operationFailure(label, failures.join("; ")));
+      } else {
+        toast.success(operationSuccess(action, label));
+      }
     } finally {
       if (isCurrentContext(token)) {
         busyByKind.value[target] = false;
@@ -338,7 +425,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     successStatus: "installed" | "updated",
   ): Promise<void> {
     const specs = group.items.map((item) => action === "install" ? item.id : skillUpdateSpec(item));
-    if (specs.length === 0) return;
+    if (!context.value || specs.length === 0 || busyByKind.value.skills) return;
     const token = contextToken();
     busyByKind.value.skills = true;
     errorsByKind.value.skills = null;
@@ -347,6 +434,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
       id: `${action === "install" ? "market" : "installed"}:${group.id}`,
       label: group.name, completed: 0, total: specs.length,
     };
+    const started = new Date().toISOString();
+    let loggedResults = false;
     try {
       const result = await call<{
         total?: number;
@@ -354,6 +443,21 @@ export const useExtensionsStore = defineStore("extensions", () => {
         items?: Array<{ spec: string; status: string; error?: string }>;
       }>(op, { specs });
       if (!isCurrentContext(token)) return;
+      loggedResults = true;
+      for (const [index, spec] of specs.entries()) {
+        const identity = (value: string) => {
+          const colon = value.lastIndexOf(":");
+          return colon < 0 ? value : value.slice(0, colon).toLowerCase() + value.slice(colon);
+        };
+        const item = result.items?.find((row) => identity(row.spec) === identity(spec));
+        const status = item?.status === successStatus ? "success"
+          : ["failed", "source_failed", "missing", "state_unavailable"].includes(item?.status ?? "") ? "failed" : "unknown";
+        const itemId = group.items[index]!.id;
+        logOperation("skills", action, itemId, spec, started, status,
+          item?.error || (status === "unknown" ? `${item?.status ?? "unknown"}: refresh installed state before retry` : ""),
+          () => call(action === "install" ? "skill-install" : "skill-update", { spec }));
+        if (status === "success") clearUpdateSignals("skills", [itemId]);
+      }
       const total = result.total ?? specs.length;
       const completed = result.completed ?? total;
       operationsByKind.value.skills = {
@@ -369,13 +473,19 @@ export const useExtensionsStore = defineStore("extensions", () => {
       }
       await refresh("skills", { silent: true });
       if (!isCurrentContext(token)) return;
-      clearUpdateSignals("skills", group.items.map((item) => item.id));
       toast.success(operationSuccess(action, group.name));
     } catch (e) {
       if (!isCurrentContext(token)) return;
       const message = errorText(e);
+      if (!loggedResults) {
+        for (const [index, spec] of specs.entries()) {
+          logOperation("skills", action, group.items[index]!.id, spec, started, "unknown", message,
+            () => call(action === "install" ? "skill-install" : "skill-update", { spec }));
+        }
+      }
       toast.error(operationFailure(group.name, message));
       await refresh("skills", { silent: true }).catch(() => undefined);
+      if (!isCurrentContext(token)) return;
       errorsByKind.value.skills = message;
     } finally {
       if (isCurrentContext(token)) {
@@ -506,7 +616,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, marketPlugins, opBusyId, marketMcp, activeOperation,
-    operationsByKind,
+    operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,
     clearMarketResults, checkUpdates,
