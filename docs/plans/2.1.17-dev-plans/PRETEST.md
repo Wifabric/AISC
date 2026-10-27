@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | b1 | 已实现 | UI 关键路径 PASS | H1 安装、H4 更新状态保留已用真实 Workbench UI 执行 |
 | b2 | 已实现，待 PR | 早期 UI PASS；最终补丁 NOT RUN | 续跑工具清单无 Computer Use；自动化与 debug 构建通过 |
-| b3 | 待开工 | PENDING | 尚无可测实现 |
+| b3 | 实现及审查完成，门禁中 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
 | b4 | 待开工 | PENDING | 尚无可测实现 |
 | b5 | 待开工 | PENDING | 尚无可测实现 |
 | b6 | 待开工 | PENDING | 尚无可测实现 |
@@ -153,3 +153,11 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 先前 UI PASS 绑定上文 f7f313 镜像，保留历史证据，不用新镜像冒充已点击。最终镜像为 `sha256:3ad54ca40373bdb1f2a91d4e4c1f3d1131fdfeb7f5bf5f6c8ef5a797003eb3d2`，adapter SHA256 为 `657ddecc1881a6be5ce986199647f91766d8472fd7876760263505f058db8174`；冻结 sidecar 真实容器实测两类市场搜索、无已安装插件的更新检查立即返回 unsupported（避免不必要 marketplace 超时）。runtime `4dddf0a3-d4b7-47ac-b5f7-01f0fd448b2a` 已清理。
 
 本次门禁：Python 1498 passed / 57 skipped / 140 subtests，Rust 368 passed / 1 ignored，最终前端 Vitest 657 passed，vue-tsc 和 debug 构建通过；vendor 1532 checksums 通过。审查后补充上下文状态恢复、独立资产字典与单项徽标失效测试，均先 RED 后 GREEN。最终补丁 UI NOT RUN：当前可调用工具只有 shell、文件与子代理等，未暴露 Computer Use 或可加载它的工具发现入口。暂不请求逐批用户手测，继续后续批次；全局 settings.json 已从 b2-backup 恢复。
+
+## b3 预测试阻塞（2026-10-27）
+
+- Workbench/sidecar：本 worktree `workbench/src-tauri/target/debug/`；b3 仅前端/store 变更，沿用 b2 冻结 CLI 与镜像标识，不宣称新镜像。debug Workbench 构建成功。
+- 计划操作：扩展→组安装部分失败→操作日志→失败项单独重试→复制诊断；理想为成功项保留、仅失败项重试、复制内容脱敏。
+- 实际 UI：NOT RUN。当前 agent 未暴露 Computer Use / JavaScript 工具；Docker Desktop 启动后 docker info/ps 不响应（8 秒定时探测超时），正常关闭请求也超时，已停止此次启动进程恢复原先无引擎状态。无法创建本批真实 runtime。
+- 自动化：TDD 复现并验证三类操作恢复、部分卸载继续、中文结构化超时归为未知、上下文切换、100 条 FIFO、8 KiB 诊断、完整引号凭据脱敏、repo 大小写对齐；UI 测试覆盖日志/复制/重试与双语。具体最终门禁计数见批计划。
+- 结论：受阻项明确保留，不用单测冒充 UI PASS，不请求逐批用户手测，继续 b4。

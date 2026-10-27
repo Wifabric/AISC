@@ -7,6 +7,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useExtensionsStore, type ExtensionAction, type ExtensionsKind } from "../../stores/extensions";
 import { useRuntimeStore } from "../../stores/runtime";
+import ExtensionOperationLog from "./ExtensionOperationLog.vue";
 
 const { t } = useI18n();
 const store = useExtensionsStore();
@@ -121,6 +122,7 @@ watch(pluginQuery, (value) => {
       </span>
     </div>
 
+    <ExtensionOperationLog />
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
     <p v-if="!store.canLoad" class="explorer-empty">{{ t("extensions.noRuntime") }}</p>
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>

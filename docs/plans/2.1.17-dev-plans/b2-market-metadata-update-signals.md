@@ -38,7 +38,7 @@
 - [x] 详情区中文化与“市场原文”兜底。
 - [x] 补搜索缓存兜底测试，确保远端失败时返回 cached 元数据。
 - [x] targeted Python / Vitest / vue-tsc 与本地全门禁。
-- [ ] PR 远端 CI 通过后并回 develop。
+- [x] PR #41 远端 CLI/Rust/frontend CI 全绿，并回 develop（58aa2e0）。
 - [x] 真实容器 Computer Use 预测试：更新检查、Skills/MCP 市场刷新与缓存标识、
       installed unsupported 徽标；统一用户手测仍按阶段规则等待 b2–b7 全部预测试。
 
