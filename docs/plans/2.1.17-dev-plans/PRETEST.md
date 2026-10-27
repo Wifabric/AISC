@@ -218,4 +218,21 @@ b1 关键 CU 路径有历史 PASS；b2 早期 CU PASS、最终补丁 NOT RUN；b
 - 本机 parity 使用 `AISC_ROOT` 指向当前源码 checkout，pip 模块路径经确认位于该 worktree，冻结 CLI 使用保存的 b7 aisc.exe。PowerShell dev-env 的 PYTHONUTF8=1 只影响 pip，冻结 help 仍输出本机 ANSI；本次仅对 parity 进程设 PYTHONUTF8=0，使两轨及比较器同用宿主编码，未改生产编码或安装器。
 - Bundle Linux/macOS `40514460311`：Linux 成功；macOS 只准备 arm64 导致已跟踪 x64 yazi 被完整族替换移除，vendor verify 正确失败。三个出包 workflow 改为显式准备双架构，wrapper/Python 实现都进入 push 触发路径；5 个 workflow 合同用例先 RED。没有降低或跳过 checksum 校验。
 - 审查发现 NSIS pwsh 原生命令失败可能被后续 packaging 成功覆盖；staging 后新增立即退出守卫，独立 RED/GREEN 验证。
-- 修正仅涉及验证脚本、测试与出包 workflow，产品源码和已备 Windows 本地产物字节不变。聚焦 parity/sidecar 34 PASS，parity/workflow/staging 初轮 89 PASS；完整 Python 1682 passed / 69 skipped / 181 subtests（新增退出守卫前），守卫及远端最终结果后续追加。原失败 run 保留，不能用重跑覆盖历史结论。
+- 修正仅涉及验证脚本、测试与出包 workflow，产品源码和已备 Windows 本地产物字节不变。聚焦 parity/sidecar 34 PASS，parity/workflow/staging 初轮 89 PASS；完整 Python 1682 passed / 69 skipped / 181 subtests（新增退出守卫前），守卫及远端最终结果见下文。原失败 run 保留，不能用重跑覆盖历史结论。
+
+### b7 最终集成结果
+
+修正提交 `b0e7b734fde1d4f7dc4cc2ef313c46fbd9e1c14f`：聚焦 parity/workflow/staging 最终 **90 PASS**，文档检查 **39/0/0**，独立代码/CI 审查均 PASS。以下四个 workflow 均在该精确提交完成 SUCCESS：
+
+| 检查 | Run ID | 实际结果 |
+| --- | --- | --- |
+| Workbench CI | 40518027973 | frontend/Rust/CLI 全 SUCCESS |
+| CLI sidecar build | 40518028450 | Linux x64、Windows x64、macOS arm64 全 SUCCESS；parity/clean-room/SBOM 通过 |
+| Bundle Linux/macOS | 40518035077 | deb/dmg 全 SUCCESS；双架构 staging 与 vendor/bundle 校验通过 |
+| NSIS installer build | 40518044281 | NSIS 构建、安装/PATH/数据保留冒烟 SUCCESS；发布 job SKIPPED |
+
+最终远端 CLI Python job：**1721 passed / 27 skipped / 185 subtests**（Linux，含平台专属用例）；日志已核对。该计数与本机 Windows 的平台跳过项不同，不能混记为同一次执行。
+
+PR #47 合并 develop `1c43091566ced3050c1c186061839d07c5a59aa2`，PR #40–#47 覆盖的开发实现全部集成。管理 worktree 取该 develop 基线并补纯文档最终账本；未修改 `E:\Projects\AISC` 旧主 checkout。重复的合并触发构建不作为新的产品改动或新的 UI 证据。
+
+已核对 `src/aisc`、Workbench 前后端、container/config/vendor 的 Git tree 与本地实际构建的 `cbb6e5a` 完全一致；CI 修正不改变已准备的 exe/安装包。统一用户手测按 HANDTEST 文首启动保存产物，b5 使用专用 0.0.0 副本。真实 UI 仍为 NOT RUN，用户验收与发布尚未发生。

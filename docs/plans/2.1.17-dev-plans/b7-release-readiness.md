@@ -51,7 +51,7 @@ powershell -File scripts/local-gates.ps1
 git diff --check
 ```
 
-- [ ] 用本批 CLI 执行 `aisc build --no-cache` 并在隔离工作区运行新镜像；必须真正执行 bundle verify。全门禁要求 exit 0 / `LOCAL GATES: ALL GREEN`，重建后再测真实路径；必要远端 CI 全绿、并回 `develop` 并核对实际 commit。
+- [x] 用本批 CLI 执行 `aisc build --no-cache` 并在隔离工作区运行新镜像；必须真正执行 bundle verify。全门禁要求 exit 0 / `LOCAL GATES: ALL GREEN`，重建后再测真实路径；必要远端 CI 全绿、并回 `develop` 并核对实际 commit。
 - [ ] **CU 前置：** Windows/CU、当前构建与新镜像、隔离工作区、NSIS 测试包。**操作：** ①打开工作区→扩展执行三轮冒烟；②Services 核对分组；③设置→下载更新→取消→再确认；④诊断→复制健康报告。**理想：** 每轮安装/卸载 SSOT 对齐，无遗留 busy/旧错误、只重试失败项、显式更新顺序满足 D-2。**异常：** 崩溃、跨上下文污染、静默安装、版本与证据表不同均 FAIL。
 - [x] `PRETEST.md` 写时间、commit、Workbench/sidecar/镜像 digest、逐项理想/实际、截图/窗口树及结论。无 CU 写 `NOT RUN — b7 统一 UI 冒烟：当前 agent 无 Computer Use`；无 Docker 写 `NOT RUN — b7 新镜像三轮数据面冒烟：Docker daemon 不可用`；无 NSIS 写 `NOT RUN — b7 真实更新冒烟：缺少本批 NSIS 测试产物`；来源无法查询写 `NOT RUN — D-4 <依赖> 最新稳定版本核查：<具体 URL/错误>`。不能将这些项勾为通过或以旧产物冒充新产物。
 - [ ] 最终状态为“preview 准备就绪”或带具体阻塞的“未就绪”；阶段收尾仍由用户宣布。准备 `.devN` preview 版本/Release Notes 与配对清单，不自动合并 main、打 tag、发布或清理分支/Release；正式流程另遵循开发手册，连续批次授权不等同发布授权。
@@ -90,3 +90,5 @@ PR #46 合并 `1fd0219` 后，三平台 sidecar run 40514460514 的 parity 同�
 macOS bundle run 40514460311 另暴露发布调用缺少双架构参数：arm64 宿主默认只准备本架构，精确 family 替换移除了 Git/vendor 仍跟踪的 x64 yazi，bundle verify 正确拒绝缺文件。发布 bundle 为跨架构 Linux 镜像的资源包，三个出包 workflow 统一显式 `--all-arches --yazi`，沿用 staging 的完整族事务语义；不靠跳过 vendor 校验放行。补 workflow 合同回归及 `stage_npm.py` 的 push 路径触发，避免实现修改不重跑包构建。
 
 审查补充 NSIS pwsh 的原生命令失败传递：staging 后立即检查 `$LASTEXITCODE`，失败不能被后续成功的 packaging 覆盖；独立 RED/GREEN 合同测试覆盖该顺序。
+
+修正提交 `b0e7b73` 经两份独立审查与真实全矩阵 parity 后，Workbench CI、三平台 sidecar、Linux deb/macOS dmg、Windows NSIS（含安装/PATH/保留数据冒烟）全部成功。PR #47 合并 `1c43091`，b1–b7 的开发变更均已集成。完整 run ID 见 PRETEST；统一用户 UI 验收仍待执行，阶段与发布门保持未关闭。

@@ -23,7 +23,7 @@
 ## 发布门
 
 - [x] b7 本地门禁、sidecar/bundle verify、无缓存镜像及 Workbench/NSIS 构建完成。
-- [ ] 必要远端 CI 通过，开发批次合入 develop。
+- [x] 必要远端 CI 通过，开发批次合入 develop（PR #40–#47；b7 修正提交的 Workbench/三平台 sidecar/deb/dmg/NSIS 全通过，详见 PRETEST）。
 - [ ] 用户统一手测全部批次通过；未执行项/风险有明确裁定。
 - [ ] 用户宣布阶段收尾；按开发手册准备 preview 发布。
 - [ ] main 合并及正式发布按独立授权和发布流程执行。

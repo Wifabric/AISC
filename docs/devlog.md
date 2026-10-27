@@ -8,6 +8,7 @@
 - 最终全门禁 Python 1650 / Rust 398 / Vitest 770 通过，vue-tsc、vendor 1533、sidecar/bundle verify、无缓存镜像及 Workbench 2.1.17/NSIS 构建通过。
 - 新镜像真实三轮 Skills/MCP/Plugins 分类阶段 9/9 通过；受控夹具原始裸名称大小写冲突保留，完整身份独立重跑验证部分失败/仅失败项重试通过，不宣称原主运行 exit 0。Services 3000/5173 网关请求与 caveman 五条安装/升级路径通过。
 - 已准备一次统一手测的常规构建与 0.0.0 专用更新测试副本、隔离启动器及 hash 清单。当前 agent 无 CU，b3–b7 真 UI 保留 NOT RUN；全部批次统一手测待执行，未发布或宣布阶段收尾。
+- PR #46 合入后修正跨平台出包门禁：doctor 仅归一化不同入口的两个来源路径，继续比较配对语义；三个出包流程显式准备双 Linux 架构，NSIS 立即传递 staging 失败。PR #47 `b0e7b73` 的 Workbench CI/三平台 sidecar/deb/dmg/NSIS 全部成功，合并 develop `1c43091`；原失败记录保留。既有 Windows 手测产物与产品源码字节不变。
 
 # v2.1.17 b6 开发验证（2026-10-27）
 
