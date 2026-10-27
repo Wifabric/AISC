@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -158,6 +158,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // S2.3.a: freshness + in-flight inspect dedupe (04 §六.1, §五 dedupe).
   const freshness = ref<Freshness>("unknown");
   const inspectInFlight = ref(false);
+  /** Only explicit refreshes surface the refresh button's busy label. */
+  const userRefreshInFlight = ref(false);
 
   // S3.1: request_seq / revision anti-revert (04 §六.2). Each observation
   // request gets a monotonic seq; stale (low-seq) responses never overwrite
@@ -181,6 +183,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   const webServices = ref<RuntimeServicesResult | null>(null);
   const webServicesError = ref<WorkbenchError | null>(null);
   const webServicesInFlight = ref(false);
+  let webServicesGeneration = 0;
+  const stopServicesContext = watch(
+    () => [workspace.value, runtimeId.value] as const,
+    ([path, runtime], [oldPath, oldRuntime]) => {
+      if (runtime !== oldRuntime || !sameWorkspace(path, oldPath)) clearWebServices();
+    },
+    { flush: "sync" },
+  );
 
   // S2.4.a: workbench history (02 §九) is SHELL-owned (IDEA-3 3a): the shared
   // doc + revision + recents live in the facade; the instance keeps only its
@@ -342,6 +352,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * a workspace bounds the memory it held (buffers were never GC'd before).
    * The instance itself is dropped from the workspaces list right after. */
   function dispose(): void {
+    stopServicesContext();
+    clearWebServices();
     stopTimer();
     if (dockerRetryTimer !== null) {
       window.clearTimeout(dockerRetryTimer);
@@ -793,27 +805,29 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   /** G-05 (Step 8): only user-initiated refreshes surface the 刷新中 label -
    * background poll cycles must not flip the button every 5s (user report
    * 2026-08-10). */
-  const userRefreshInFlight = ref(false);
-
   async function refreshRuntime(userInitiated = false) {
     if (!runtimeId.value || !workspace.value.trim()) return;
     if (inspectInFlight.value) return;
     if (userInitiated) userRefreshInFlight.value = true;
     inspectInFlight.value = true;
     const seq = ++requestSeq.value;
+    const generation = webServicesGeneration;
     try {
       // PERF P1: one invocation carries both halves — the 5s poll tick used
       // to pay the ~750ms sidecar spawn twice (inspect + a fire-and-forget
       // services refresh). One observation = one seq = one observed_at; a
       // null services (server-side 3s deadline) keeps the last good payload.
       const merged = await ipc.runtimeStatus(workspace.value.trim(), runtimeId.value);
+      if (generation !== webServicesGeneration) return;
       applyRuntimeSnapshot(merged.snapshot, seq);
-      if (merged.services) applyWebServices(merged.services);
+      if (generation === webServicesGeneration && merged.services) applyWebServices(merged.services);
     } catch {
-      markStale();
+      if (generation === webServicesGeneration) markStale();
     } finally {
-      inspectInFlight.value = false;
-      if (userInitiated) userRefreshInFlight.value = false;
+      if (generation === webServicesGeneration) {
+        inspectInFlight.value = false;
+        if (userInitiated) userRefreshInFlight.value = false;
+      }
     }
   }
 
@@ -827,8 +841,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (inspectInFlight.value) return false;
     inspectInFlight.value = true;
     const seq = ++requestSeq.value;
+    const generation = webServicesGeneration;
+    const requestWorkspace = workspace.value.trim();
+    const requestRuntime = runtimeId.value;
     try {
-      const snap = await ipc.runtimePollLight(workspace.value.trim(), runtimeId.value);
+      const snap = await ipc.runtimePollLight(requestWorkspace, requestRuntime);
+      if (generation !== webServicesGeneration) return false;
       const prev = runtimeSnapshot.value;
       const merged: RuntimeSnapshot = { ...snap };
       if (merged.web_access === undefined && prev?.web_access !== undefined) {
@@ -843,18 +861,20 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       applyRuntimeSnapshot(merged, seq);
       return true;
     } catch {
+      if (generation !== webServicesGeneration) return false;
       // Light path unavailable (transport trouble): fall through to the full
       // CLI observation below (worst case = today's behavior).
       try {
-        const merged = await ipc.runtimeStatus(workspace.value.trim(), runtimeId.value);
+        const merged = await ipc.runtimeStatus(requestWorkspace, requestRuntime);
+        if (generation !== webServicesGeneration) return false;
         applyRuntimeSnapshot(merged.snapshot, seq);
-        if (merged.services) applyWebServices(merged.services);
+        if (generation === webServicesGeneration && merged.services) applyWebServices(merged.services);
       } catch {
-        markStale();
+        if (generation === webServicesGeneration) markStale();
       }
       return false;
     } finally {
-      inspectInFlight.value = false;
+      if (generation === webServicesGeneration) inspectInFlight.value = false;
     }
   }
 
@@ -920,15 +940,16 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (!runtimeId.value || !workspace.value.trim()) return;
     if (webServicesInFlight.value) return;
     webServicesInFlight.value = true;
+    const generation = webServicesGeneration;
     try {
       const result = await ipc.runtimeServices(workspace.value.trim(), runtimeId.value);
-      applyWebServices(result);
+      if (generation === webServicesGeneration) applyWebServices(result);
     } catch (e) {
       // Old CLI (no runtime services capability) or transport failure — keep
       // the last good payload; the panel gates on the capability anyway.
-      webServicesError.value = e as WorkbenchError;
+      if (generation === webServicesGeneration) webServicesError.value = e as WorkbenchError;
     } finally {
-      webServicesInFlight.value = false;
+      if (generation === webServicesGeneration) webServicesInFlight.value = false;
     }
   }
 
@@ -953,15 +974,21 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * re-resolves, validates and hands the URL to the OS opener. */
   async function openWebService(port: number): Promise<void> {
     if (!runtimeId.value || !workspace.value.trim()) return;
+    const generation = webServicesGeneration;
     try {
       await ipc.openRuntimeServiceUrl(workspace.value.trim(), runtimeId.value, port);
-      await refreshWebServices();
+      if (generation === webServicesGeneration) await refreshWebServices();
     } catch (e) {
-      webServicesError.value = e as WorkbenchError;
+      if (generation === webServicesGeneration) webServicesError.value = e as WorkbenchError;
     }
   }
 
   function clearWebServices() {
+    webServicesGeneration += 1;
+    // Invalidation releases the old poll; its generation-guarded finally
+    // cannot release a newer request that starts after this point.
+    inspectInFlight.value = false;
+    userRefreshInFlight.value = false;
     webServices.value = null;
     webServicesError.value = null;
     webServicesInFlight.value = false;
