@@ -38,3 +38,4 @@ Debian apt 工具继续从所选稳定基础镜像的 Bookworm 仓库安装；�
 - 镜像内实际输出：Node v24.22.1；codex-cli 0.164.0；Claude 2.1.311；cc-switch 5.11.3；Mihomo v1.19.33；Yazi 26.9.1。新 cc-switch 下 caveman 首装/重启/内容升级/缺行/重装五路径全部 PASS，升级显式 off 保留。
 - 三份 geodata 在最终镜像中重算 SHA256 与表中完全一致。8 份 Git 跟踪 payload 的 index 字节与下载字节完全相同。
 - Debian Bookworm 实装：curl 7.88.1-10+deb12u15，git 1:2.39.5-0+deb12u3，python3 3.11.2-1+b1，tmux 3.3a-3，neovim 0.7.2-7，ripgrep 13.0.0-4+b2，zsh 5.9-4+b15。以上为所选发行版仓库的稳定软件包版本。
+- 最终固定镜像三轮真实扩展测试 9/9 分类阶段 PASS，真实 Services 3000/5173 网关请求 PASS。受控部分失败夹具的原始失败与完整身份修正后独立 PASS 均保留；详见 smoke-evidence.md / PRETEST。cc-switch 新 schema 下安装/更新/off 保留/卸载验证通过，不把未运行的 MCP 握手或 Windows UI 算作兼容性 PASS。

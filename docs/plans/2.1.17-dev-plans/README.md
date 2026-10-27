@@ -28,7 +28,7 @@
 | b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化通过；CU/Docker 不可用，预测试 NOT RUN；PR #43 已合并；待统一手测 |
 | b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI 通过；PR #44 已合并；冻结 CLI 配对 PASS；CU 不可用，UI NOT RUN；待统一手测 |
 | b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI 通过；PR #45 已合并；CU 不可用，UI NOT RUN；待统一手测 |
-| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness` | 实施中 |
+| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness` | 实现/审查/全门禁/构建/真实镜像通过；三轮分类 9/9 PASS，夹具修正证据见 PRETEST；PR #46；CU 不可用，UI NOT RUN；进入统一手测，尚未发布 |
 
 ## 开工前账本门
 
