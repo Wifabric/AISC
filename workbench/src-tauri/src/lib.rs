@@ -33,6 +33,7 @@ pub mod serve;
 pub mod target;
 pub mod tunnel;
 pub mod update;
+pub mod update_health;
 pub mod artifact;
 pub mod storage;
 pub mod trace;
@@ -110,6 +111,7 @@ use session::{
 use cache::{cache_cleanup, cache_inspect, cache_usage, container_action, image_rm, image_tag};
 use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
 use update::{app_check_update, app_download_update, app_install_update};
+use update_health::app_update_health;
 use settings::{load_settings, reset_gui_settings, save_settings};
 use tray::{build_tray, tray_available, tray_remove};
 use window::{capture_window_geometry, restore_window_geometry};
@@ -180,6 +182,7 @@ pub fn run(cli_arg: Option<String>) {
             app_check_update,
             app_download_update,
             app_install_update,
+            app_update_health,
             cache_cleanup,
             cache_inspect,
             container_action,

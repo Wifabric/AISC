@@ -452,10 +452,13 @@ def bundle_compatible(bundle_root: Path, cli_version: str) -> Tuple[bool, str]:
     mp = bundle_root / "manifest.json"
     try:
         m = json.loads(mp.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return False, f"manifest unreadable: {exc}"
-    if m.get("schema_version") != 1:
-        return False, f"manifest schema_version={m.get('schema_version')!r}, expected 1"
+    if not isinstance(m, dict):
+        return False, "manifest must be a JSON object"
+    schema = m.get("schema_version")
+    if type(schema) is not int or schema != 1:
+        return False, f"manifest schema_version={schema!r}, expected integer 1"
     compat = m.get("compatible_cli_versions")
     if not isinstance(compat, list) or not all(isinstance(v, str) for v in compat):
         return False, "manifest compatible_cli_versions malformed"

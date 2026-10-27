@@ -17,7 +17,7 @@
 
 | 依赖 | 发布准备时的官方选择规则 |
 | --- | --- |
-| Node.js | 查 nodejs.org 当时 **Active LTS**，使用官方 `node:<lts>-slim`；同步镜像链和 digest，不把当前开发宿主 Node 22 当发布镜像选择依据 |
+| Node.js | 默认查 nodejs.org 当时 **Active LTS**；本次依 D-5 用户裁定使用最新已发布 LTS **24.22.1** 的官方 `node:24.22.1-slim`，固定镜像 digest；开发宿主仍用 Node 22 |
 | Codex CLI / Claude Code CLI | 分别查 `https://registry.npmjs.org/@openai%2Fcodex`、`https://registry.npmjs.org/@anthropic-ai%2Fclaude-code` 的 `dist-tags.latest`；不追 prerelease/beta/canary，不能以最高任意 semver 代替 latest |
 | cc-switch-cli | 查现有 resolver 的 `UPSTREAM_REPO` 所指官方 GitHub Releases，排除 draft/prerelease 后选最高稳定 semver；沿用 resolver，不信本地旧 pin 就是最新 |
 | Mihomo / geodata / yazi 等其余已声明依赖 | 逐项核实官方稳定 release 并同步刷新；geodata 必须从浮动 `latest` 改为可追溯 dated release，三份数据同一 release |
@@ -55,3 +55,9 @@ git diff --check
 - [ ] **CU 前置：** Windows/CU、当前构建与新镜像、隔离工作区、NSIS 测试包。**操作：** ①打开工作区→扩展执行三轮冒烟；②Services 核对分组；③设置→下载更新→取消→再确认；④诊断→复制健康报告。**理想：** 每轮安装/卸载 SSOT 对齐，无遗留 busy/旧错误、只重试失败项、显式更新顺序满足 D-2。**异常：** 崩溃、跨上下文污染、静默安装、版本与证据表不同均 FAIL。
 - [ ] `PRETEST.md` 写时间、commit、Workbench/sidecar/镜像 digest、逐项理想/实际、截图/窗口树及结论。无 CU 写 `NOT RUN — b7 统一 UI 冒烟：当前 agent 无 Computer Use`；无 Docker 写 `NOT RUN — b7 新镜像三轮数据面冒烟：Docker daemon 不可用`；无 NSIS 写 `NOT RUN — b7 真实更新冒烟：缺少本批 NSIS 测试产物`；来源无法查询写 `NOT RUN — D-4 <依赖> 最新稳定版本核查：<具体 URL/错误>`。不能将这些项勾为通过或以旧产物冒充新产物。
 - [ ] 最终状态为“preview 准备就绪”或带具体阻塞的“未就绪”；阶段收尾仍由用户宣布。准备 `.devN` preview 版本/Release Notes 与配对清单，不自动合并 main、打 tag、发布或清理分支/Release；正式流程另遵循开发手册，连续批次授权不等同发布授权。
+
+## 实施前版本规则细化（2026-10-27）
+
+- Node：用户已明确批准 D-5 的 LTS 24.22.1 例外；回退版本为既有 Node 22，不能先行把 10-28 才进入 LTS 的 Node 26 当作本次稳定基线。
+- geodata：上游只有可变 `latest` 发布和被 force-push 的 `release` 分支，没有 dated release tag。采用 AISC 日期快照 `20261027`，固定数据 commit `02ae05ac06e8c9287916fbabfe61ef5c8591407f`，记录上游 release ID 与三文件 SHA256；本地 vendor 持有字节，不把日期伪装成上游 tag。Docker fallback 用 commit-pinned raw URL 并验证三文件 checksum，缺失/不匹配必须失败。
+- 离线包必须按版本及目标架构精确选择；npm 主包与 native companion 同代并先验证 registry integrity，不能让残留旧包通过 glob 覆盖新 pin。遵循既有 Git 策略：native companion 仅进入分发 bundle，不纳入 Git。

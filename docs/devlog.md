@@ -2,6 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 b5 开发验证（2026-10-27）
+
+- 下载只进入 ready；用户确认退出更新后，Explorer 选中包、正常启动 NSIS、两动作成功才退出。取消/缺包/UAC 拒绝保留应用与安装包状态。
+- 更新请求/确认身份使用 generation 与 requestId 守卫；网络错误显示脱敏具体原因，未知 CLI 不能误报已最新。
+- Doctor 分开显示本机更新请求响应头观测和诊断目标 CLI/bundle 配对；精确 manifest schema/allowlist 与未知版本检查，报告脱敏、迟到响应保护。
+- 验证：Python 1528 / Rust 398 / Vitest 747 全部通过，vue-tsc、sidecar/bundle verify、Workbench 构建通过；冻结 CLI 配对 PASS。CU 不可用，真实 Explorer/NSIS UI 保留 NOT RUN，统一手测待后续批次。
+
 # v2.1.17 b2–b4 开发验证（2026-10-27）
 
 - b2 市场缓存注明来源、时间与回退原因；插件使用可靠版本/SHA 标识更新，Skills/MCP 缺少比较源时明确 unsupported。PR #41 已合并。

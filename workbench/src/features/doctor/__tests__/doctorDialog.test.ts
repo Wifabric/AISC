@@ -15,6 +15,7 @@ import DoctorDialog from "../DoctorDialog.vue";
 const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   runDoctor: vi.fn(),
+  appUpdateHealth: vi.fn(),
   opTraces: vi.fn(),
   logsTail: vi.fn(),
   diagnosticBundle: vi.fn(),
@@ -105,4 +106,23 @@ describe("DoctorDialog recent-log section (P3)", () => {
     await mounted();
     expect(mockIpc.logsTail).toHaveBeenCalledWith(100);
   });
+});
+
+
+it("shows local updater history separately and copies pairing plus network facts", async () => {
+  mockIpc.appUpdateHealth.mockResolvedValue({workbenchVersion:"2.1.17", observations:[{
+    scope:"host-update",endpoint:"https://github.com/releases.atom",route:"mirror",transport:"direct",status:"success",latencyMs:45,errorCode:null,checkedAt:1793091600000,
+  }],containerExtensions:{status:"unknown",reason:"not-probed"}});
+  const tab=await mounted();
+  const health=tab.find(".update-health");expect(health.exists()).toBe(true);
+  expect(health.text()).toContain("2.1.17");expect(health.text()).toContain("mirror");
+  expect(health.text()).toContain("未探测");
+  await tab.find(".copy-health").trigger("click");await flushPromises();
+  const payload=JSON.parse(mockClipboard.writeText.mock.calls[mockClipboard.writeText.mock.calls.length-1]?.[0]);
+  expect(payload.targetDoctor).toEqual(report);expect(payload.localUpdateHealth.observations[0].latencyMs).toBe(45);
+  tab.unmount();
+});
+it("does not imply reachable when no updater request has been observed", async () => {
+  mockIpc.appUpdateHealth.mockResolvedValue({workbenchVersion:"2.1.17",observations:[],containerExtensions:{status:"unknown",reason:"not-probed"}});
+  const tab=await mounted();expect(tab.find(".update-health").text()).toContain("尚未探测");tab.unmount();
 });

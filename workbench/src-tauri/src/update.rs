@@ -2,8 +2,9 @@
 //!
 //! check → download (sha256-verified, progress events, nothing lands on
 //! failure) → the UI collects the user's confirmation → the NSIS installer
-//! runs SILENT (/S; installer.nsi has explicit `${Silent}` branches) and
-//! the app exits so files can be replaced. The installer already chains
+//! opens normally through the Windows shell, after Explorer selects it.
+//! Only successful launches allow the app to exit so files can be replaced.
+//! The installer already chains
 //! the full upgrade semantics (PATH takeover + maintenance scan/cleanup/
 //! rebuild), so this module deliberately does NOT re-implement any of it
 //! — that was the whole argument against tauri-plugin-updater (D-8).
@@ -24,10 +25,15 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::error::WorkbenchError;
+use crate::update_health::{record_attempt, UpdateOutcome, UpdateRoute, UpdateTransport};
 
 const RELEASES_URL: &str = "https://api.github.com/repos/Wifabric/AISC/releases?per_page=30";
 const RELEASES_ATOM_URL: &str = "https://github.com/Wifabric/AISC/releases.atom";
 const UPDATE_ERROR_NETWORK: &str = "app.update/network";
+
+fn update_error(message: impl Into<String>) -> WorkbenchError {
+    WorkbenchError::usage(crate::error::redact(&message.into()))
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,13 +68,15 @@ fn client_builder(proxy: Option<&str>) -> Result<reqwest::Client, WorkbenchError
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(60));
     if let Some(proxy) = proxy {
-        if let Ok(proxy) = reqwest::Proxy::all(proxy) {
-            builder = builder.proxy(proxy);
-        }
+        let proxy = reqwest::Proxy::all(proxy)
+            .map_err(|_| update_error("app.update/proxy: invalid system proxy configuration"))?;
+        builder = builder.proxy(proxy);
+    } else {
+        builder = builder.no_proxy();
     }
     builder
         .build()
-        .map_err(|e| WorkbenchError::usage(format!("http client: {e}")))
+        .map_err(|e| update_error(format!("http client: {e}")))
 }
 
 fn client() -> Result<reqwest::Client, WorkbenchError> {
@@ -78,10 +86,13 @@ fn client() -> Result<reqwest::Client, WorkbenchError> {
 /// Network strategies in priority order. A stale/clash proxy must not make
 /// GitHub permanently unreachable; a direct connection must not be skipped in
 /// environments where the proxy is required. Try both, with bounded retries.
-fn update_clients() -> Result<Vec<reqwest::Client>, WorkbenchError> {
+fn update_clients() -> Result<Vec<(reqwest::Client, UpdateTransport)>, WorkbenchError> {
     match crate::subscription::system_http_proxy() {
-        Some(proxy) => Ok(vec![client_builder(Some(&proxy))?, client_builder(None)?]),
-        None => Ok(vec![client_builder(None)?]),
+        Some(proxy) => Ok(vec![
+            (client_builder(Some(&proxy))?, UpdateTransport::SystemProxy),
+            (client_builder(None)?, UpdateTransport::Direct),
+        ]),
+        None => Ok(vec![(client_builder(None)?, UpdateTransport::Direct)]),
     }
 }
 
@@ -116,20 +127,44 @@ async fn get_with_fallback(
 ) -> Result<reqwest::Response, WorkbenchError> {
     let clients = update_clients()?;
     let candidates = github_url_candidates(url);
+    get_candidates(&clients, &candidates, headers, record_attempt).await
+}
+
+async fn get_candidates(
+    clients: &[(reqwest::Client, UpdateTransport)],
+    candidates: &[String],
+    headers: reqwest::header::HeaderMap,
+    mut observe: impl FnMut(&str, UpdateRoute, UpdateTransport, UpdateOutcome, Duration),
+) -> Result<reqwest::Response, WorkbenchError> {
     let mut errors = Vec::new();
     let mut last_response: Option<reqwest::Response> = None;
     // Attempt-major order matters: on the first pass a reachable mirror gets
     // a chance before a flaky direct URL is retried. HTTP failures are not
     // returned immediately, so a direct 403 can still reach the API mirror.
     for attempt in 0..3 {
-        for candidate in &candidates {
-            for client in &clients {
-                match client
+        for (index, candidate) in candidates.iter().enumerate() {
+            let route = if index == 0 {
+                UpdateRoute::Direct
+            } else {
+                UpdateRoute::Mirror
+            };
+            for (client, transport) in clients {
+                let start = std::time::Instant::now();
+                let response = client
                     .get(candidate.as_str())
                     .headers(headers.clone())
                     .send()
-                    .await
-                {
+                    .await;
+                let outcome = match &response {
+                    Ok(response) if response.status().is_success() => {
+                        UpdateOutcome::HeadersReceived
+                    }
+                    Ok(response) => UpdateOutcome::HttpError(response.status().as_u16()),
+                    Err(error) if error.is_timeout() => UpdateOutcome::Timeout,
+                    Err(_) => UpdateOutcome::NetworkError,
+                };
+                observe(candidate, route, *transport, outcome, start.elapsed());
+                match response {
                     Ok(response) if response.status().is_success() => return Ok(response),
                     Ok(response) => {
                         let status = response.status();
@@ -157,8 +192,8 @@ async fn get_with_fallback(
     if let Some(response) = last_response {
         return Ok(response);
     }
-    Err(WorkbenchError::usage(format!(
-        "{UPDATE_ERROR_NETWORK}: {url}: {}",
+    Err(update_error(format!(
+        "{UPDATE_ERROR_NETWORK}: {}",
         errors.join(" | ")
     )))
 }
@@ -390,17 +425,18 @@ async fn bundled_cli_version(latest_tag: &str) -> Result<String, WorkbenchError>
         format!("https://raw.githubusercontent.com/Wifabric/AISC/v{latest_tag}/src/aisc/VERSION");
     let response = get_with_fallback(&url, gh_headers()).await?;
     if !response.status().is_success() {
-        return Err(WorkbenchError::usage(format!(
+        return Err(update_error(format!(
             "{UPDATE_ERROR_NETWORK}: bundled CLI HTTP {}",
             response.status()
         )));
     }
-    let text = response.text().await.map_err(|e| {
-        WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: bundled CLI body: {e}"))
-    })?;
+    let text = response
+        .text()
+        .await
+        .map_err(|e| update_error(format!("{UPDATE_ERROR_NETWORK}: bundled CLI body: {e}")))?;
     let version = text.trim().to_string();
     if version.is_empty() {
-        return Err(WorkbenchError::usage(format!(
+        return Err(update_error(format!(
             "{UPDATE_ERROR_NETWORK}: bundled CLI VERSION is empty"
         )));
     }
@@ -596,99 +632,94 @@ pub struct DownloadResult {
     pub size: u64,
 }
 
-/// Stream the setup.exe to a staging file, verify against the .sha256
-/// sidecar, emit `update://progress` {downloaded,total} along the way.
-/// Nothing is kept on any failure (fail-closed, D-8).
-#[tauri::command]
-pub async fn app_download_update(
-    app: AppHandle,
-    setup_url: String,
-    sha256_url: String,
-    target_version: String,
-) -> Result<DownloadResult, WorkbenchError> {
-    let sidecar = get_with_fallback(&sha256_url, gh_headers()).await?;
-    if !sidecar.status().is_success() {
-        return Err(WorkbenchError::usage(format!(
-            "{UPDATE_ERROR_NETWORK}: sha256 sidecar HTTP {}",
-            sidecar.status()
-        )));
-    }
-    let sidecar_text = sidecar
-        .text()
-        .await
-        .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: {e}")))?;
-    let expected = sidecar_text
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if expected.len() != 64 {
-        return Err(WorkbenchError::usage("sha256 sidecar malformed"));
-    }
+/// Owns just one request's temporary file. Never remove the shared destination:
+/// a concurrent request may already have published a verified installer there.
+struct UpdateStaging {
+    path: PathBuf,
+    file: Option<tokio::fs::File>,
+}
 
-    let mut resp = get_with_fallback(&setup_url, gh_headers()).await?;
-    if !resp.status().is_success() {
-        return Err(WorkbenchError::usage(format!(
-            "{UPDATE_ERROR_NETWORK}: setup download HTTP {}",
-            resp.status()
-        )));
+impl UpdateStaging {
+    async fn create(
+        dest: &std::path::Path,
+        request_id: Option<&str>,
+    ) -> Result<Self, WorkbenchError> {
+        let request: String = request_id
+            .unwrap_or("download")
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+            .take(64)
+            .collect();
+        // UUID also isolates omitted, reused, empty, or sanitized-identical IDs.
+        let path = dest.with_extension(format!("{request}.{}.part", uuid::Uuid::new_v4()));
+        let file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .await
+            .map_err(|e| update_error(format!("staging create: {e}")))?;
+        Ok(Self {
+            path,
+            file: Some(file),
+        })
     }
-    let total = resp.content_length().unwrap_or(0);
-    let dest = staging_path(&app, &target_version);
-    let tmp = dest.with_extension("part");
+}
+
+impl Drop for UpdateStaging {
+    fn drop(&mut self) {
+        // Close before unlinking on Windows, including early stream/write errors.
+        drop(self.file.take());
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+async fn stage_update_response(
+    mut resp: reqwest::Response,
+    dest: &std::path::Path,
+    expected: &str,
+    request_id: Option<&str>,
+    mut progress: impl FnMut(serde_json::Value),
+) -> Result<DownloadResult, WorkbenchError> {
     use tokio::io::AsyncWriteExt;
-    let mut file = tokio::fs::File::create(&tmp)
-        .await
-        .map_err(|e| WorkbenchError::usage(format!("staging create: {e}")))?;
+    let total = resp.content_length().unwrap_or(0);
+    let mut staging = UpdateStaging::create(dest, request_id).await?;
     let mut hasher = sha2_compatible::Hasher::new();
-    let mut downloaded: u64 = 0;
-    loop {
-        let chunk = resp
-            .chunk()
-            .await
-            .map_err(|e| WorkbenchError::usage(format!("{UPDATE_ERROR_NETWORK}: {e}")))?
-            .unwrap_or_default();
-        if chunk.is_empty() {
-            break;
-        }
+    let mut downloaded = 0_u64;
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| update_error(format!("{UPDATE_ERROR_NETWORK}: {e}")))?
+    {
         hasher.update(&chunk);
-        file.write_all(&chunk)
+        staging
+            .file
+            .as_mut()
+            .expect("staging file open")
+            .write_all(&chunk)
             .await
-            .map_err(|e| WorkbenchError::usage(format!("staging write: {e}")))?;
+            .map_err(|e| update_error(format!("staging write: {e}")))?;
         downloaded += chunk.len() as u64;
-        let _ = app.emit(
-            "update://progress",
-            serde_json::json!({ "downloaded": downloaded, "total": total }),
+        progress(
+            serde_json::json!({"downloaded": downloaded, "total": total, "requestId": request_id}),
         );
     }
-    file.flush()
+    staging
+        .file
+        .as_mut()
+        .expect("staging file open")
+        .flush()
         .await
-        .map_err(|e| WorkbenchError::usage(format!("staging flush: {e}")))?;
-    drop(file);
+        .map_err(|e| update_error(format!("staging flush: {e}")))?;
+    drop(staging.file.take());
     let actual = hasher.hex();
     if actual != expected {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(WorkbenchError::usage(format!(
+        return Err(update_error(format!(
             "sha256 mismatch: expected {expected:.16}..., got {actual:.16}... — download discarded"
         )));
     }
-    tokio::fs::rename(&tmp, &dest)
+    tokio::fs::rename(&staging.path, dest)
         .await
-        .map_err(|e| WorkbenchError::usage(format!("staging rename: {e}")))?;
-    // b1: drop stale staged installers from previous updates — they used to
-    // masquerade under the current version's name and lingered in %TEMP%.
-    if let Ok(entries) = std::fs::read_dir(update_staging_dir()) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("workbench-setup-")
-                && name.ends_with(".exe")
-                && entry.path() != dest
-            {
-                let _ = tokio::fs::remove_file(entry.path()).await;
-            }
-        }
-    }
+        .map_err(|e| update_error(format!("staging rename: {e}")))?;
     Ok(DownloadResult {
         path: dest.display().to_string(),
         sha256: actual,
@@ -696,38 +727,189 @@ pub async fn app_download_update(
     })
 }
 
-/// Run the staged installer SILENT and exit. The UI has already collected
-/// the user's confirmation; the installer owns everything from here
-/// (PATH takeover + docker lifecycle + file replacement).
+/// Stream the setup.exe to a staging file, verify against the .sha256
+/// sidecar, emit `update://progress` {downloaded,total,requestId} along the way.
+/// On failure only this request's incomplete file is removed; other verified
+/// installers and concurrent downloads are left intact.
 #[tauri::command]
-pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<(), WorkbenchError> {
-    let setup = PathBuf::from(&setup_path);
-    if !setup.is_file() {
-        return Err(WorkbenchError::usage(format!(
-            "staged setup not found: {setup_path}"
+pub async fn app_download_update(
+    app: AppHandle,
+    setup_url: String,
+    sha256_url: String,
+    target_version: String,
+    request_id: Option<String>,
+) -> Result<DownloadResult, WorkbenchError> {
+    let sidecar = get_with_fallback(&sha256_url, gh_headers()).await?;
+    if !sidecar.status().is_success() {
+        return Err(update_error(format!(
+            "{UPDATE_ERROR_NETWORK}: sha256 sidecar HTTP {}",
+            sidecar.status()
         )));
     }
-    // Detached start: cmd /c start keeps the installer alive after we exit.
-    #[cfg(windows)]
-    let spawn = {
-        use std::os::windows::process::CommandExt;
-        // b1: /R makes the silent installer relaunch the app as the
-        // ORIGINAL user (nsis_tauri_utils::RunAsUser) once the upgrade chain
-        // — PATH takeover, docker cleanup/rebuild — finishes (.onInstSuccess).
-        // No elevation is inherited: this installer runs with
-        // RequestExecutionLevel user and RunAsUser is a second guard.
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &setup_path, "/S", "/R"])
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
-            .spawn()
-    };
-    #[cfg(not(windows))]
-    let spawn = std::process::Command::new(&setup_path).arg("-S").spawn();
-    spawn.map_err(|e| WorkbenchError::usage(format!("installer spawn: {e}")))?;
-    // Give the OS a beat to detach, then exit the app (files are in use).
-    tokio::time::sleep(Duration::from_millis(600)).await;
-    app.exit(0);
+    let sidecar_text = sidecar
+        .text()
+        .await
+        .map_err(|e| update_error(format!("{UPDATE_ERROR_NETWORK}: {e}")))?;
+    let expected = sidecar_text
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(update_error("sha256 sidecar malformed"));
+    }
+
+    let resp = get_with_fallback(&setup_url, gh_headers()).await?;
+    if !resp.status().is_success() {
+        return Err(update_error(format!(
+            "{UPDATE_ERROR_NETWORK}: setup download HTTP {}",
+            resp.status()
+        )));
+    }
+    let dest = staging_path(&app, &target_version);
+    stage_update_response(resp, &dest, &expected, request_id.as_deref(), |progress| {
+        let _ = app.emit("update://progress", progress);
+    })
+    .await
+}
+
+/// Injectable launch sequence. Errors retain the app, including shell/UAC
+/// cancellation. A successful launch does not mean installation has completed.
+fn run_explicit_install(
+    windows: bool,
+    setup_path: &str,
+    check_file: impl FnOnce(&str) -> Result<(), String>,
+    explorer_select: impl FnOnce(&str) -> Result<(), String>,
+    shell_open: impl FnOnce(&str) -> Result<(), String>,
+    exit: impl FnOnce(),
+) -> Result<(), String> {
+    if !windows {
+        return Err("app.update/manual-install: this platform requires manual installation".into());
+    }
+    check_file(setup_path)?;
+    explorer_select(setup_path)?;
+    shell_open(setup_path)?;
+    exit();
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_shell_open_with(
+    file: &std::ffi::OsStr,
+    parameters: Option<&std::ffi::OsStr>,
+    execute: impl FnOnce(&mut windows_sys::Win32::UI::Shell::SHELLEXECUTEINFOW) -> (i32, u32),
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let wide = |value: &std::ffi::OsStr| -> std::io::Result<Vec<u16>> {
+        let mut value: Vec<_> = value.encode_wide().collect();
+        if value.contains(&0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "shell path contains NUL",
+            ));
+        }
+        value.push(0);
+        Ok(value)
+    };
+    let verb = wide(std::ffi::OsStr::new("open"))?;
+    let file = wide(file)?;
+    let parameters = parameters.map(wide).transpose()?;
+    // All unused handles/pointers may be null. Buffers stay alive for the
+    // synchronous shell call; NOASYNC waits for DDE/launch acknowledgement,
+    // not for the installer to finish. NO_UI suppresses shell error dialogs,
+    // while leaving normal installer UI and UAC prompts enabled.
+    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = file.as_ptr();
+    info.lpParameters = parameters.as_ref().map_or(std::ptr::null(), |p| p.as_ptr());
+    info.nShow = SW_SHOWNORMAL;
+    let (success, last_error) = execute(&mut info);
+    // ShellExecuteEx returns BOOL (not ShellExecuteW's >32 HINSTANCE).
+    // In particular ERROR_CANCELLED (1223) is failure, never a reason to exit.
+    if success == 0 {
+        Err(std::io::Error::from_raw_os_error(last_error as i32))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn windows_shell_open(
+    file: &std::ffi::OsStr,
+    parameters: Option<&std::ffi::OsStr>,
+) -> std::io::Result<()> {
+    windows_shell_open_with(file, parameters, |info| {
+        // GetLastError must be captured immediately on failure. No process
+        // handle is requested, so the shell owns the launched process.
+        let success = unsafe { windows_sys::Win32::UI::Shell::ShellExecuteExW(info) };
+        let error = if success == 0 {
+            unsafe { windows_sys::Win32::Foundation::GetLastError() }
+        } else {
+            0
+        };
+        (success, error)
+    })
+}
+
+#[cfg(windows)]
+fn explorer_select_parameters(setup: &std::ffi::OsStr) -> std::ffi::OsString {
+    let mut parameters = std::ffi::OsString::from("/select,\"");
+    parameters.push(setup);
+    parameters.push("\"");
+    parameters
+}
+
+/// The UI has already collected confirmation. Open Explorer, launch the
+/// installer exactly like a double-click (no arguments), then exit.
+#[tauri::command]
+pub async fn app_install_update(app: AppHandle, setup_path: String) -> Result<(), WorkbenchError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_explicit_install(
+            cfg!(windows),
+            &setup_path,
+            |path| {
+                if std::path::Path::new(path).is_file() {
+                    Ok(())
+                } else {
+                    Err(format!("staged setup not found: {path}"))
+                }
+            },
+            |path| {
+                #[cfg(windows)]
+                {
+                    let parameters = explorer_select_parameters(std::ffi::OsStr::new(path));
+                    windows_shell_open(std::ffi::OsStr::new("explorer.exe"), Some(&parameters))
+                        .map_err(|e| format!("Explorer select failed: {e}"))
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = path;
+                    Err("manual installation required".into())
+                }
+            },
+            |path| {
+                #[cfg(windows)]
+                {
+                    windows_shell_open(std::ffi::OsStr::new(path), None)
+                        .map_err(|e| format!("installer shell open failed: {e}"))
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = path;
+                    Err("manual installation required".into())
+                }
+            },
+            || app.exit(0),
+        )
+        .map_err(update_error)
+    })
+    .await
+    .map_err(|e| update_error(format!("installer launch task: {e}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -754,6 +936,11 @@ mod sha2_compatible {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_configured_proxy_is_rejected_instead_of_mislabeled() {
+        assert!(super::client_builder(Some("http://[")).is_err());
+    }
+
     // b12 (T1 user report): the 30s TOTAL timeout killed every 292MB in-app
     // download ~33MB in. Real-stream proof that the connect/read split keeps
     // a large asset alive past 30s to completion. #[ignore] so CI never
@@ -790,6 +977,491 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn explicit_install_has_no_silent_command_or_non_windows_execution() {
+        let source = include_str!("update.rs");
+        let install = source
+            .split("pub async fn app_install_update")
+            .nth(1)
+            .unwrap()
+            .split("// ---------------------------------------------------------------------------")
+            .next()
+            .unwrap();
+        assert!(
+            !install.contains("\"/S\""),
+            "installer must show its normal UI"
+        );
+        assert!(
+            !install.contains("\"/R\""),
+            "no automatic relaunch argument"
+        );
+        assert!(
+            !install.contains("\"-S\""),
+            "non-Windows installation is manual"
+        );
+        assert!(
+            !install.contains("Command::new(\"cmd\")"),
+            "use the Windows Shell API"
+        );
+    }
+
+    #[test]
+    fn explicit_install_checks_file_then_launches_explorer_installer_and_exit() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = run_explicit_install(
+            true,
+            r"C:\Users\用户\Downloads\安装 程序.exe",
+            |_| {
+                calls.borrow_mut().push("exists");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("explorer");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("installer");
+                Ok(())
+            },
+            || calls.borrow_mut().push("exit"),
+        );
+        assert!(result.is_ok());
+        assert_eq!(*calls.borrow(), ["exists", "explorer", "installer", "exit"]);
+    }
+
+    #[test]
+    fn explicit_install_stops_when_staged_file_is_missing() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = run_explicit_install(
+            true,
+            "missing.exe",
+            |_| {
+                calls.borrow_mut().push("exists");
+                Err("missing".to_string())
+            },
+            |_| {
+                calls.borrow_mut().push("explorer");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("installer");
+                Ok(())
+            },
+            || calls.borrow_mut().push("exit"),
+        );
+        assert_eq!(result.unwrap_err(), "missing");
+        assert_eq!(*calls.borrow(), ["exists"]);
+    }
+
+    #[test]
+    fn explicit_install_stops_when_explorer_launch_fails() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = run_explicit_install(
+            true,
+            "installer.exe",
+            |_| {
+                calls.borrow_mut().push("exists");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("explorer");
+                Err("explorer failed".to_string())
+            },
+            |_| {
+                calls.borrow_mut().push("installer");
+                Ok(())
+            },
+            || calls.borrow_mut().push("exit"),
+        );
+        assert_eq!(result.unwrap_err(), "explorer failed");
+        assert_eq!(*calls.borrow(), ["exists", "explorer"]);
+    }
+
+    #[test]
+    fn explicit_install_stops_when_shell_execute_fails_or_uac_is_cancelled() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = run_explicit_install(
+            true,
+            "installer.exe",
+            |_| {
+                calls.borrow_mut().push("exists");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("explorer");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("installer");
+                Err("shell execute failed (UAC cancelled)".to_string())
+            },
+            || calls.borrow_mut().push("exit"),
+        );
+        assert_eq!(result.unwrap_err(), "shell execute failed (UAC cancelled)");
+        assert_eq!(*calls.borrow(), ["exists", "explorer", "installer"]);
+    }
+
+    #[test]
+    fn non_windows_explicit_install_reports_manual_install_without_execution() {
+        let result = run_explicit_install(
+            false,
+            "installer.exe",
+            |_| panic!("must not check a file on unsupported platforms"),
+            |_| panic!("must not launch Explorer"),
+            |_| panic!("must not launch the installer"),
+            || panic!("must not exit"),
+        );
+        assert!(result.unwrap_err().contains("manual"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shell_execute_ex_uses_unicode_open_without_installer_arguments() {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC};
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let path = OsStr::new(r"C:\Users\用户\Downloads\安装 程序 & update.exe");
+        windows_shell_open_with(path, None, |info| {
+            let expected: Vec<_> = path.encode_wide().chain(Some(0)).collect();
+            // Pointers borrow buffers alive for this callback only.
+            unsafe {
+                assert_eq!(
+                    std::slice::from_raw_parts(info.lpFile, expected.len()),
+                    expected
+                );
+                assert_eq!(
+                    std::slice::from_raw_parts(info.lpVerb, 5),
+                    [111, 112, 101, 110, 0]
+                );
+            }
+            assert!(info.lpParameters.is_null(), "no silent or relaunch flags");
+            assert_eq!(info.nShow, SW_SHOWNORMAL);
+            assert_eq!(info.fMask, SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI);
+            (1, 1223) // TRUE succeeds even if an old last-error value is present.
+        })
+        .unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shell_execute_ex_false_returns_windows_error_including_uac_cancellation() {
+        for code in [0, 2, 5, 1223] {
+            let error =
+                windows_shell_open_with(std::ffi::OsStr::new("setup.exe"), None, |_| (0, code))
+                    .unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(code as i32));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn explorer_select_preserves_quoted_unicode_and_space_path() {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        let path = OsStr::new(r"C:\Users\用户\Downloads\安装 程序.exe");
+        let parameters = explorer_select_parameters(path);
+        assert_eq!(
+            parameters,
+            OsStr::new(r#"/select,"C:\Users\用户\Downloads\安装 程序.exe""#)
+        );
+        windows_shell_open_with(OsStr::new("explorer.exe"), Some(&parameters), |info| {
+            let expected: Vec<_> = parameters.encode_wide().chain(Some(0)).collect();
+            unsafe {
+                assert_eq!(
+                    std::slice::from_raw_parts(info.lpParameters, expected.len()),
+                    expected
+                );
+            }
+            (1, 0)
+        })
+        .unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shell_execute_rejects_nul_without_calling_windows() {
+        use std::ffi::OsStr;
+        for (path, parameters) in [
+            (OsStr::new("setup\0.exe"), None),
+            (
+                OsStr::new("explorer.exe"),
+                Some(OsStr::new("/select,\0path")),
+            ),
+        ] {
+            let error = windows_shell_open_with(path, parameters, |_| panic!("must not execute"))
+                .unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn download_command_scopes_progress_and_avoids_shared_temp_or_stale_sweeps() {
+        let source = include_str!("update.rs");
+        let download = source
+            .split("pub async fn app_download_update(")
+            .nth(1)
+            .unwrap()
+            .split("/// Injectable launch sequence.")
+            .next()
+            .unwrap();
+        assert!(
+            download.contains("request_id: Option<String>"),
+            "old clients may omit requestId"
+        );
+        assert!(
+            !download.contains("dest.with_extension(\"part\")"),
+            "downloads need unique temp files"
+        );
+        assert!(
+            !download.contains("read_dir(update_staging_dir())"),
+            "do not delete other requests' results"
+        );
+    }
+
+    async fn local_download_response(body: &[u8], content_length: usize) -> reqwest::Response {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+        )
+        .into_bytes();
+        response.extend_from_slice(body);
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0; 4096];
+            stream.read(&mut buffer).await.unwrap();
+            stream.write_all(&response).await.unwrap();
+            stream.shutdown().await.unwrap();
+        });
+        reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap()
+            .get(format!("http://{address}/setup.exe"))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    fn body_hash(body: &[u8]) -> String {
+        let mut hasher = sha2_compatible::Hasher::new();
+        hasher.update(body);
+        hasher.hex()
+    }
+
+    #[tokio::test]
+    async fn download_stages_verified_bytes_and_emits_request_id_on_every_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("setup.exe");
+        let unrelated = dir.path().join("workbench-setup-another.exe");
+        std::fs::write(&unrelated, b"other request").unwrap();
+        let body = vec![42; 131072];
+        let response = local_download_response(&body, body.len()).await;
+        let mut progress = Vec::new();
+        let result = stage_update_response(
+            response,
+            &dest,
+            &body_hash(&body),
+            Some("request A"),
+            |event| progress.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.size, body.len() as u64);
+        assert_eq!(result.sha256, body_hash(&body));
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"other request");
+        assert!(!progress.is_empty());
+        assert!(progress
+            .iter()
+            .all(|event| event["requestId"] == "request A"));
+        assert_eq!(progress.last().unwrap()["downloaded"], body.len() as u64);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[tokio::test]
+    async fn download_hash_failure_cleans_only_own_temp_and_preserves_other_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("setup.exe");
+        std::fs::write(&dest, b"newer verified result").unwrap();
+        let response = local_download_response(b"bad", 3).await;
+        let error = stage_update_response(response, &dest, &"0".repeat(64), None, |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .technical_detail
+                .as_deref()
+                .unwrap()
+                .contains("sha256 mismatch"),
+            "{error:?}"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"newer verified result");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn download_stream_failure_cleans_only_own_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("setup.exe");
+        std::fs::write(&dest, b"another result").unwrap();
+        let response = local_download_response(b"short", 99999).await;
+        let error = stage_update_response(response, &dest, &body_hash(b"short"), None, |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .technical_detail
+                .as_deref()
+                .unwrap()
+                .contains(UPDATE_ERROR_NETWORK),
+            "{error:?}"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), b"another result");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn download_rename_failure_cleans_temp_and_retains_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("setup.exe");
+        std::fs::create_dir(&dest).unwrap();
+        let response = local_download_response(b"valid", 5).await;
+        let error = stage_update_response(response, &dest, &body_hash(b"valid"), Some("a"), |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .technical_detail
+                .as_deref()
+                .unwrap()
+                .contains("staging rename"),
+            "{error:?}"
+        );
+        assert!(dest.is_dir());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn download_temps_are_unique_and_cleanup_does_not_touch_sibling_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("setup.exe");
+        let first = UpdateStaging::create(&dest, Some("../../request:中文"))
+            .await
+            .unwrap();
+        let second = UpdateStaging::create(&dest, Some("../../request:中文"))
+            .await
+            .unwrap();
+        assert_ne!(first.path, second.path);
+        assert_eq!(first.path.parent(), dest.parent());
+        assert_eq!(second.path.parent(), dest.parent());
+        let first_path = first.path.clone();
+        let second_path = second.path.clone();
+        drop(first);
+        assert!(!first_path.exists());
+        assert!(second_path.exists());
+        drop(second);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn download_staging_create_failure_is_reported_without_deleting_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("missing-parent").join("setup.exe");
+        assert!(UpdateStaging::create(&dest, None).await.is_err());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    async fn observed_endpoint(status: u16, requests: usize, delay: Duration) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for _ in 0..requests {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut request = [0; 4096];
+                    let _ = stream.read(&mut request).await;
+                    tokio::time::sleep(delay).await;
+                    let response = format!(
+                        "HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = stream.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        format!("http://{address}/asset")
+    }
+
+    #[tokio::test]
+    async fn transport_records_failed_direct_before_successful_mirror_without_extra_probe() {
+        use crate::update_health::{UpdateOutcome, UpdateTransport};
+        let direct = observed_endpoint(403, 1, Duration::ZERO).await;
+        let mirror = observed_endpoint(200, 1, Duration::ZERO).await;
+        let clients = vec![(client_builder(None).unwrap(), UpdateTransport::Direct)];
+        let mut observations = Vec::new();
+        let response = get_candidates(
+            &clients,
+            &[direct.clone(), mirror.clone()],
+            Default::default(),
+            |endpoint, route, transport, outcome, elapsed| {
+                observations.push((
+                    endpoint.to_owned(),
+                    format!("{route:?}"),
+                    format!("{transport:?}"),
+                    outcome,
+                    elapsed,
+                ));
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0].0, direct);
+        assert_eq!(observations[0].1, "Direct");
+        assert!(matches!(observations[0].3, UpdateOutcome::HttpError(403)));
+        assert_eq!(observations[1].0, mirror);
+        assert_eq!(observations[1].1, "Mirror");
+        assert_eq!(observations[1].2, "Direct");
+        assert!(matches!(observations[1].3, UpdateOutcome::HeadersReceived));
+    }
+
+    #[tokio::test]
+    async fn transport_records_timeout_and_every_exhausted_http_attempt() {
+        use crate::update_health::{UpdateOutcome, UpdateTransport};
+        let direct = observed_endpoint(200, 3, Duration::from_millis(100)).await;
+        let mirror = observed_endpoint(503, 3, Duration::ZERO).await;
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_millis(30))
+            .build()
+            .unwrap();
+        let mut observations = Vec::new();
+        let response = get_candidates(
+            &[(client, UpdateTransport::Direct)],
+            &[direct, mirror],
+            Default::default(),
+            |_, _, _, outcome, _| observations.push(outcome),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 503);
+        assert_eq!(observations.len(), 6);
+        assert!(observations
+            .iter()
+            .step_by(2)
+            .all(|outcome| matches!(outcome, UpdateOutcome::Timeout)));
+        assert!(observations
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .all(|outcome| matches!(outcome, UpdateOutcome::HttpError(503))));
+    }
+
+    #[test]
     fn github_url_candidates_add_asset_and_raw_mirrors() {
         let url = "https://github.com/Wifabric/AISC/releases/download/v2.1.16-preview.3/AISC-Workbench-2.1.16-preview.3-setup.exe";
         assert_eq!(
@@ -801,7 +1473,8 @@ mod tests {
             ]
         );
 
-        let raw = "https://raw.githubusercontent.com/Wifabric/AISC/v2.1.16-preview.3/src/aisc/VERSION";
+        let raw =
+            "https://raw.githubusercontent.com/Wifabric/AISC/v2.1.16-preview.3/src/aisc/VERSION";
         assert_eq!(
             github_url_candidates(raw),
             vec![

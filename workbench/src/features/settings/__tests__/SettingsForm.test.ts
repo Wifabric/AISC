@@ -17,6 +17,8 @@ import { useSettingsStore } from "../../../stores/settings";
 import SettingsForm from "../SettingsForm.vue";
 import settingsFormSource from "../SettingsForm.vue?raw";
 import type { SettingsDocument } from "../../../types";
+import { useUpdateStore } from "../../../stores/update";
+import { confirm } from "@tauri-apps/plugin-dialog";
 
 const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +39,7 @@ const mockIpc = vi.hoisted(() => ({
 
 vi.mock("../../../lib/ipc", () => mockIpc);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn().mockResolvedValue(true) }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 const doc: SettingsDocument = {
   schemaVersion: 1,
@@ -64,7 +67,82 @@ const doc: SettingsDocument = {
 beforeEach(() => {
   setActivePinia(createPinia());
   vi.clearAllMocks();
+  vi.mocked(confirm).mockReset().mockResolvedValue(true);
   mockIpc.loadSettings.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows NT 10.0");
+});
+
+describe("b5 explicit update confirmation", () => {
+  async function mountReady() {
+    await useSettingsStore().load();
+    mockIpc.appCheckUpdate.mockResolvedValue({ current: "2.1.16", latest: "2.1.17", updateAvailable: true, setupUrl: "s", sha256Url: "h", releaseUrl: "r", note: "" });
+    mockIpc.appDownloadUpdate.mockResolvedValue({ path: "C:\\更新\\setup.exe", sha256: "ab".repeat(32), size: 42 });
+    const update = useUpdateStore();
+    await update.check();
+    await update.download();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll(".nav-item")[6]!.trigger("click");
+    return { update, wrapper };
+  }
+  const installButton = (wrapper: ReturnType<typeof mount>) => wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.about.install"))!;
+
+  it("download waits for explicit confirmation, cancelling keeps ready", async () => {
+    vi.mocked(confirm).mockResolvedValueOnce(false);
+    const { update, wrapper } = await mountReady();
+    expect(mockIpc.appInstallUpdate).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(i18n.global.t("settings.about.ready", { sha: "ab".repeat(8) }));
+    await installButton(wrapper).trigger("click");
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(mockIpc.appInstallUpdate).not.toHaveBeenCalled();
+    expect(update.status).toBe("ready");
+    expect(installButton(wrapper).attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("confirms once and launches only the confirmed package", async () => {
+    let answer!: (ok: boolean) => void;
+    vi.mocked(confirm).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const { update, wrapper } = await mountReady();
+    await installButton(wrapper).trigger("click");
+    await flushPromises();
+    await installButton(wrapper).trigger("click");
+    await flushPromises();
+    expect(mockIpc.appInstallUpdate).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledOnce();
+    answer(true);
+    await flushPromises();
+    expect(mockIpc.appInstallUpdate).toHaveBeenCalledWith("C:\\更新\\setup.exe");
+    expect(update.status).toBe("ready");
+    wrapper.unmount();
+  });
+
+  it.each(["check", "replacement", "reopen"])("cancels a pending confirmation after %s", async (change) => {
+    let answer!: (ok: boolean) => void;
+    vi.mocked(confirm).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const { update, wrapper } = await mountReady();
+    await installButton(wrapper).trigger("click");
+    await flushPromises();
+    if (change === "check") await update.check();
+    if (change === "replacement") update.staged!.path = "B.exe";
+    if (change === "reopen") wrapper.unmount();
+    answer(true);
+    await flushPromises();
+    expect(mockIpc.appInstallUpdate).not.toHaveBeenCalled();
+    if (change !== "reopen") wrapper.unmount();
+  });
+
+  it("shows manual install guidance with no download/exit action on non-Windows", async () => {
+    const { wrapper } = await mountReady();
+    wrapper.unmount();
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("X11; Linux x86_64");
+    const manual = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await manual.findAll(".nav-item")[6]!.trigger("click");
+    expect(manual.text()).toContain(i18n.global.t("settings.about.manualInstall"));
+    expect(installButton(manual)).toBeUndefined();
+    expect(manual.findAll("button").some((b) => b.text() === i18n.global.t("settings.about.download"))).toBe(false);
+    manual.unmount();
+  });
 });
 
 describe("SettingsForm section headings (manual-test #1)", () => {
@@ -138,6 +216,7 @@ describe("SettingsForm section headings (manual-test #1)", () => {
   it("keeps the update check button available after a completed check", async () => {
     mockIpc.appCheckUpdate.mockResolvedValue({
       current: "2.1.15-preview.3", latest: "2.1.15-preview.3", updateAvailable: false,
+      cliCurrent: "0.1.10.dev0", cliLatest: "0.1.10.dev0",
       setupUrl: null, sha256Url: null, releaseUrl: null, note: "",
     });
     const store = useSettingsStore();
