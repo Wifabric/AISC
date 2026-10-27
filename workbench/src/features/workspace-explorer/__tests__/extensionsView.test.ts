@@ -133,3 +133,92 @@ describe("ExtensionsView operation button spinners (preview b3)", () => {
     wrapper.unmount();
   });
 });
+
+describe("v2.1.17 b2 update signals", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    i18n.global.locale.value = "zh-CN";
+    vi.mocked(ipc.extensionsCall).mockReset();
+    vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind) }));
+  });
+
+  it("marks reliable plugin updates and explains unsupported sources", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    await wrapper.find("[data-testid=ext-tab-plugins]").trigger("click");
+    await flushPromises();
+    const store = useExtensionsStore();
+    store.updateItemsByKind.plugins = {
+      "p@m": {
+        kind: "plugins", id: "p@m", status: "ok", update_available: true,
+        current_version: "1", latest_version: "2",
+      },
+    };
+    await nextTick();
+
+    const row = wrapper.find('[data-testid="ext-item-p@m"]');
+    expect(row.text()).toContain("可更新");
+    expect(row.find(".ext-name.has-update").exists()).toBe(true);
+    await row.trigger("click");
+    await nextTick();
+    expect(row.text()).toContain("当前版本：1");
+    expect(row.text()).toContain("最新版本：2");
+
+    store.updateItemsByKind.plugins = {
+      "p@m": {
+        kind: "plugins", id: "p@m", status: "unsupported",
+        update_available: false, reason: "market does not expose a comparable version field",
+      },
+    };
+    await nextTick();
+    expect(row.text()).toContain("暂无可靠版本源");
+    wrapper.unmount();
+  });
+
+  it("offers an explicit update check action", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const store = useExtensionsStore();
+    const check = vi.spyOn(store, "checkUpdates").mockResolvedValue();
+    await wrapper.find("[data-testid=ext-check-updates]").trigger("click");
+    expect(check).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("labels cached market provenance, original text, and update time", async () => {
+    vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => {
+      if (p.op === "plugin-search") {
+        return {
+          items: [{ kind: "market-plugin", id: "p@m", name: "p", description: "Raw market text", updated_at: "2026-10-01T00:00:00Z" }],
+          cache: { source: "cache", cached: true, fetched_at: 1760000000, error: "remote refresh down" },
+        };
+      }
+      return { items: [] };
+    });
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    await wrapper.find("[data-testid=ext-tab-plugins]").trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid=ext-plugin-search]").setValue("chart");
+    await wrapper.find("[data-testid=ext-plugin-search-btn]").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid=ext-plugins-cache]").text()).toContain("上次成功");
+    const row = wrapper.find('[data-testid="ext-market-p@m"]');
+    expect(row.exists()).toBe(true);
+    await row.trigger("click");
+    await nextTick();
+    expect(row.text()).toContain("市场原文");
+    expect(row.text()).toContain("更新时间：2026-10-01T00:00:00Z");
+    wrapper.unmount();
+  });
+
+  it("provides both locales for new market metadata labels", () => {
+    const zh = i18n.global.getLocaleMessage("zh-CN") as Record<string, string>;
+    const en = i18n.global.getLocaleMessage("en-US") as Record<string, string>;
+    expect(zh["extensions.detail.marketOriginal"]).toBeTruthy();
+    expect(en["extensions.detail.marketOriginal"]).toBeTruthy();
+    expect(zh["extensions.detail.updatedAt"]).toBeTruthy();
+    expect(en["extensions.detail.updatedAt"]).toBeTruthy();
+  });
+});

@@ -130,6 +130,17 @@ def cmd_extensions_plugin_update(args: argparse.Namespace) -> Dict[str, Any]:
 
 def print_extensions_text(data: Dict[str, Any]) -> None:
     items = data.get("items")
+    if data.get("op") == "updates-check" and isinstance(items, list):
+        print("kind\tid\tstatus\tcurrent\tlatest\tupdate\treason")
+        for item in items:
+            print(
+                f"{item.get('kind', '')}\t{item.get('id', '')}\t"
+                f"{item.get('status', '')}\t{item.get('current_version', '')}\t"
+                f"{item.get('latest_version', '')}\t"
+                f"{'YES' if item.get('update_available') else 'NO'}\t"
+                f"{item.get('reason', '')}"
+            )
+        return
     if data.get("kind") == "skills" and isinstance(items, list) and items and \
             "total" in data and "spec" in items[0]:
         print(f"{data.get('completed', 0)}/{data.get('total', len(items))}")
@@ -154,6 +165,23 @@ def print_extensions_text(data: Dict[str, Any]) -> None:
             print(f"{item.get('id', '')}\t{item.get('name', '')}\t{item.get('transport', '')}\t{flags}\t{target}")
         else:
             print(f"{item.get('id', '')}\t{item.get('version', '')}\t{item.get('scope', '')}\t{item.get('last_updated', '')}")
+    cache = data.get("cache")
+    if isinstance(cache, dict):
+        status = "cached" if cache.get("cached") else str(cache.get("source") or "remote")
+        details = [f"cache={status}"]
+        if cache.get("fetched_at"):
+            details.append(f"fetched_at={cache.get('fetched_at')}")
+        if cache.get("error"):
+            details.append(str(cache["error"]))
+        print(" · ".join(details))
+
+
+def cmd_extensions_updates_check(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "updates-check", workspace, None)
+
 
 def cmd_extensions_skill_search(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw

@@ -45,6 +45,17 @@ const RECONCILE_TIMEOUT: Duration = Duration::from_secs(90);
 pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 
+/// v2.1.17 b2: `updates-check` reports only market metadata with comparable
+/// version evidence; unsupported sources remain explicit in adapter output.
+const EXTENSIONS_OPS: [&str; 20] = [
+    "list", "toggle", "delete", "skill-install", "skill-install-group",
+    "skill-update", "skill-update-group", "mcp-add",
+    "plugin-install", "plugin-uninstall", "plugin-update",
+    "skill-search", "deeplink", "skill-repo-add",
+    "plugin-market-list", "plugin-market-add", "plugin-search",
+    "mcp-search", "mcp-market-install", "updates-check",
+];
+
 /// v2.1.17 b1: group operations may probe and clone direct + two mirrors,
 /// then run install and two enable calls per child. Keep the GUI/CLI timeout
 /// above that bounded adapter budget so it returns itemized results instead of
@@ -828,15 +839,7 @@ pub async fn extensions_call(
     url: Option<String>,
     specs: Option<Vec<String>>,
 ) -> Result<Value, WorkbenchError> {
-    const OPS: [&str; 19] = [
-        "list", "toggle", "delete", "skill-install", "skill-install-group",
-        "skill-update", "skill-update-group", "mcp-add",
-        "plugin-install", "plugin-uninstall", "plugin-update",
-        "skill-search", "deeplink", "skill-repo-add",
-        "plugin-market-list", "plugin-market-add", "plugin-search",
-        "mcp-search", "mcp-market-install",
-    ];
-    if !OPS.contains(&op.as_str()) {
+    if !EXTENSIONS_OPS.contains(&op.as_str()) {
         return Err(WorkbenchError::usage(format!("unknown extensions op: {op}")));
     }
     let mut argv = vec![
@@ -2025,6 +2028,11 @@ async fn install_docker_desktop_bundled(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extensions_ops_include_updates_check() {
+        assert!(EXTENSIONS_OPS.contains(&"updates-check"));
+    }
 
     #[test]
     fn extensions_group_timeout_covers_repos_and_children() {

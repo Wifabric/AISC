@@ -702,6 +702,10 @@ export interface ExtensionsItem {
   conflict?: boolean;
   scope?: string;
   last_updated?: string;
+  created_at?: string;
+  updated_at?: string;
+  latest_version?: string;
+  latest_git_commit_sha?: string;
   enabled_claude?: boolean;
   enabled_codex?: boolean;
 }

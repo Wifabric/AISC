@@ -23,6 +23,27 @@ export interface ExtensionOperation {
   total: number;
 }
 
+export interface MarketCacheState {
+  source: "remote" | "cache" | string;
+  cached: boolean;
+  query?: string;
+  fetched_at?: number | string;
+  error?: string;
+}
+
+export interface ExtensionUpdateItem {
+  kind: ExtensionsKind | string;
+  id: string;
+  name?: string;
+  status: string;
+  update_available: boolean;
+  latest_version?: string;
+  latest_git_commit_sha?: string;
+  current_version?: string;
+  current_git_commit_sha?: string;
+  reason?: string;
+}
+
 type KindRecord<T> = Record<ExtensionsKind, T>;
 
 function kindRecord<T>(value: T): KindRecord<T> {
@@ -43,6 +64,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const toast = useToastStore();
   const kind = ref<ExtensionsKind>("skills");
   const context = ref<{ workspace: string; runtimeId: string } | null>(null);
+  let contextGeneration = 0;
 
   // Preview b1: every asset owns its list and async state. A skill install
   // can refresh the skills list without blanking/flickering MCP or plugins.
@@ -52,6 +74,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const loadingByKind = ref(kindRecord(false));
   const busyByKind = ref(kindRecord(false));
   const searchBusyByKind = ref(kindRecord(false));
+  const marketCacheByKind = ref<KindRecord<MarketCacheState | null>>(
+    kindRecord<MarketCacheState | null>(null),
+  );
+  const updateItemsByKind = ref<KindRecord<Record<string, ExtensionUpdateItem>>>(
+    emptyUpdateItems(),
+  );
+  const updatesBusy = ref(false);
+  const updatesError = ref<string | null>(null);
   const errorsByKind = ref<KindRecord<string | null>>(kindRecord(null));
   const operationsByKind = ref<KindRecord<ExtensionOperation | null>>(
     kindRecord<ExtensionOperation | null>(null),
@@ -62,12 +92,54 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketPlugins = ref<ExtensionsItem[]>([]);
   const pluginMarkets = ref<ExtensionsItem[]>([]);
 
+
+
+  function emptyUpdateItems(): KindRecord<Record<string, ExtensionUpdateItem>> {
+    return { skills: {}, mcp: {}, plugins: {} };
+  }
+
+  function resetMarketState(): void {
+    marketSkills.value = [];
+    marketMcp.value = [];
+    marketPlugins.value = [];
+    pluginMarkets.value = [];
+    marketCacheByKind.value = kindRecord<MarketCacheState | null>(null);
+    updateItemsByKind.value = emptyUpdateItems();
+    updatesError.value = null;
+    updatesBusy.value = false;
+    loadingByKind.value = kindRecord(false);
+    busyByKind.value = kindRecord(false);
+    searchBusyByKind.value = kindRecord(false);
+    errorsByKind.value = kindRecord<string | null>(null);
+    operationsByKind.value = kindRecord<ExtensionOperation | null>(null);
+  }
+
+  function clearUpdateSignals(target: ExtensionsKind, ids: string[]): void {
+    const remaining = { ...updateItemsByKind.value[target] };
+    for (const id of ids) delete remaining[id];
+    updateItemsByKind.value = {
+      ...updateItemsByKind.value,
+      [target]: remaining,
+    };
+  }
+
+  function contextToken(): string | null {
+    if (!context.value) return null;
+    return `${contextGeneration}:${context.value.workspace}:${context.value.runtimeId}`;
+  }
+
+  function isCurrentContext(token: string | null): boolean {
+    return token !== null && token === contextToken();
+  }
+
   const canLoad = computed(() => context.value !== null);
   const items = computed(() => itemsByKind.value[kind.value]);
   const loading = computed(() => loadingByKind.value[kind.value]);
   const busy = computed(() => busyByKind.value[kind.value]);
   const marketBusy = computed(() => searchBusyByKind.value[kind.value]);
+  const marketCache = computed(() => marketCacheByKind.value[kind.value]);
   const error = computed(() => errorsByKind.value[kind.value]);
+  const updateItems = computed(() => updateItemsByKind.value[kind.value]);
   const activeOperation = computed(() => operationsByKind.value[kind.value]);
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
@@ -92,15 +164,18 @@ export const useExtensionsStore = defineStore("extensions", () => {
     options: { silent?: boolean } = {},
   ): Promise<void> {
     if (!context.value) return;
+    const token = contextToken();
     if (!options.silent) loadingByKind.value[target] = true;
     errorsByKind.value[target] = null;
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("list", { kind: target });
+      if (!isCurrentContext(token)) return;
       itemsByKind.value[target] = out.items ?? [];
     } catch (e) {
+      if (!isCurrentContext(token)) return;
       errorsByKind.value[target] = errorText(e);
     } finally {
-      if (!options.silent) loadingByKind.value[target] = false;
+      if (isCurrentContext(token) && !options.silent) loadingByKind.value[target] = false;
     }
   }
 
@@ -124,8 +199,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
     id: string,
     label: string,
     operations: Array<() => Promise<unknown>>,
+    affectedIds: string[] = [id],
   ): Promise<void> {
     if (operations.length === 0) return;
+    const token = contextToken();
     busyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     operationsByKind.value[target] = {
@@ -134,21 +211,27 @@ export const useExtensionsStore = defineStore("extensions", () => {
     try {
       for (let index = 0; index < operations.length; index += 1) {
         await operations[index]();
+        if (!isCurrentContext(token)) return;
         operationsByKind.value[target] = {
           ...operationsByKind.value[target]!,
           completed: index + 1,
         };
       }
       await refresh(target, { silent: true });
+      if (!isCurrentContext(token)) return;
+      if (action !== "toggle") clearUpdateSignals(target, affectedIds);
       toast.success(operationSuccess(action, label));
     } catch (e) {
+      if (!isCurrentContext(token)) return;
       const message = errorText(e);
       errorsByKind.value[target] = message;
       toast.error(operationFailure(label, message));
       await refresh(target, { silent: true }).catch(() => undefined);
     } finally {
-      busyByKind.value[target] = false;
-      operationsByKind.value[target] = null;
+      if (isCurrentContext(token)) {
+        busyByKind.value[target] = false;
+        operationsByKind.value[target] = null;
+      }
     }
   }
 
@@ -160,17 +243,27 @@ export const useExtensionsStore = defineStore("extensions", () => {
   ): Promise<void> {
     if (!query.trim()) {
       setter([]);
+      marketCacheByKind.value[target] = null;
       return;
     }
+    const token = contextToken();
+    setter([]);
+    marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     try {
-      const out = await call<{ items?: ExtensionsItem[] }>(op, { query });
+      const out = await call<{
+        items?: ExtensionsItem[];
+        cache?: MarketCacheState;
+      }>(op, { query });
+      if (!isCurrentContext(token)) return;
       setter(out.items ?? []);
+      marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
+      if (!isCurrentContext(token)) return;
       errorsByKind.value[target] = errorText(e);
     } finally {
-      searchBusyByKind.value[target] = false;
+      if (isCurrentContext(token)) searchBusyByKind.value[target] = false;
     }
   }
 
@@ -178,6 +271,31 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (target === "skills") marketSkills.value = [];
     else if (target === "mcp") marketMcp.value = [];
     else marketPlugins.value = [];
+    marketCacheByKind.value[target] = null;
+  }
+
+  async function checkUpdates(): Promise<void> {
+    if (!context.value) return;
+    const token = contextToken();
+    updateItemsByKind.value = emptyUpdateItems();
+    updatesBusy.value = true;
+    updatesError.value = null;
+    try {
+      const out = await call<{ items?: ExtensionUpdateItem[] }>("updates-check");
+      if (!isCurrentContext(token)) return;
+      const next = emptyUpdateItems();
+      for (const item of out.items ?? []) {
+        if (item.kind === "skills" || item.kind === "mcp" || item.kind === "plugins") {
+          next[item.kind][item.id] = item;
+        }
+      }
+      updateItemsByKind.value = next;
+    } catch (e) {
+      if (!isCurrentContext(token)) return;
+      updatesError.value = errorText(e);
+    } finally {
+      if (isCurrentContext(token)) updatesBusy.value = false;
+    }
   }
 
   async function toggle(
@@ -221,6 +339,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   ): Promise<void> {
     const specs = group.items.map((item) => action === "install" ? item.id : skillUpdateSpec(item));
     if (specs.length === 0) return;
+    const token = contextToken();
     busyByKind.value.skills = true;
     errorsByKind.value.skills = null;
     operationsByKind.value.skills = {
@@ -234,6 +353,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
         completed?: number;
         items?: Array<{ spec: string; status: string; error?: string }>;
       }>(op, { specs });
+      if (!isCurrentContext(token)) return;
       const total = result.total ?? specs.length;
       const completed = result.completed ?? total;
       operationsByKind.value.skills = {
@@ -248,15 +368,20 @@ export const useExtensionsStore = defineStore("extensions", () => {
         );
       }
       await refresh("skills", { silent: true });
+      if (!isCurrentContext(token)) return;
+      clearUpdateSignals("skills", group.items.map((item) => item.id));
       toast.success(operationSuccess(action, group.name));
     } catch (e) {
+      if (!isCurrentContext(token)) return;
       const message = errorText(e);
       toast.error(operationFailure(group.name, message));
       await refresh("skills", { silent: true }).catch(() => undefined);
       errorsByKind.value.skills = message;
     } finally {
-      busyByKind.value.skills = false;
-      operationsByKind.value.skills = null;
+      if (isCurrentContext(token)) {
+        busyByKind.value.skills = false;
+        operationsByKind.value.skills = null;
+      }
     }
   }
 
@@ -275,7 +400,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
   async function removeSkillGroup(group: SkillGroup): Promise<void> {
     await runOperation("skills", "remove", `installed:${group.id}`, group.name,
       group.items.map((item) =>
-        () => call("delete", { kind: "skills", id: item.id })));
+        () => call("delete", { kind: "skills", id: item.id })),
+      group.items.map((item) => item.id));
   }
 
   async function toggleSkillGroup(
@@ -342,15 +468,19 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   async function loadPluginMarkets(): Promise<void> {
+    if (!context.value) return;
+    const token = contextToken();
     searchBusyByKind.value.plugins = true;
     errorsByKind.value.plugins = null;
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("plugin-market-list");
+      if (!isCurrentContext(token)) return;
       pluginMarkets.value = out.items ?? [];
     } catch (e) {
+      if (!isCurrentContext(token)) return;
       errorsByKind.value.plugins = errorText(e);
     } finally {
-      searchBusyByKind.value.plugins = false;
+      if (isCurrentContext(token)) searchBusyByKind.value.plugins = false;
     }
   }
 
@@ -362,7 +492,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   function setContext(workspace: string, runtimeId: string): void {
-    context.value = workspace && runtimeId ? { workspace, runtimeId } : null;
+    const next = workspace && runtimeId ? { workspace, runtimeId } : null;
+    const changed = context.value?.workspace !== next?.workspace
+      || context.value?.runtimeId !== next?.runtimeId;
+    context.value = next;
+    if (changed) {
+      contextGeneration += 1;
+      resetMarketState();
+    }
   }
 
   return {
@@ -370,7 +507,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, marketPlugins, opBusyId, marketMcp, activeOperation,
     operationsByKind,
-    clearMarketResults,
+    marketCacheByKind, marketCache, updateItemsByKind, updateItems,
+    updatesBusy, updatesError,
+    clearMarketResults, checkUpdates,
     installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
     installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets,

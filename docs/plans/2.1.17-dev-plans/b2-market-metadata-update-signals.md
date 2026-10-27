@@ -30,12 +30,38 @@
 
 ## 任务
 
-- [ ] 先写失败测试：三资产 installed/market identity 对齐与 update available。
-- [ ] 实现市场 metadata snapshot 与更新检查 API。
-- [ ] Workbench 单项 UI 显示“可更新”徽标、名称加粗和单项更新入口；组标题
+- [x] 先写失败测试：三资产 installed/market identity 对齐与 update available。
+- [x] 实现市场 metadata snapshot 与更新检查 API。
+- [x] Workbench 单项 UI 显示“可更新”徽标、名称加粗和单项更新入口；组标题
       显示可更新数量；检查失败显示具体网络诊断。
-- [ ] Vitest 断言 zh-CN/en-US 均包含上述状态文案。
-- [ ] 详情区中文化与“市场原文”兜底。
-- [ ] 补搜索缓存兜底测试，确保远端失败时返回 cached 元数据。
-- [ ] targeted Python / Vitest / vue-tsc，全门禁后并回 develop。
-- [ ] 真实容器手测三市场搜索、详情、安装、更新标识与无代理失败诊断。
+- [x] Vitest 断言 zh-CN/en-US 均包含上述状态文案。
+- [x] 详情区中文化与“市场原文”兜底。
+- [x] 补搜索缓存兜底测试，确保远端失败时返回 cached 元数据。
+- [x] targeted Python / Vitest / vue-tsc 与本地全门禁。
+- [ ] PR 远端 CI 通过后并回 develop。
+- [x] 真实容器 Computer Use 预测试：更新检查、Skills/MCP 市场刷新与缓存标识、
+      installed unsupported 徽标；统一用户手测仍按阶段规则等待 b2–b7 全部预测试。
+
+## 2026-10-27 收口记录
+
+- 语义裁定：Plugins marketplace 提供 `version` / `gitCommitSha`，可显示可靠
+  更新信号；skills.sh 与 Smithery 当前无可比版本字段，Skills/MCP 显示
+  “暂无可靠版本源”，不伪造 current/latest 对比。
+- Adapter：市场搜索成功缓存 normalized query；远端失败时回退最近成功结果，
+  envelope 暴露 cache metadata；`updates-check` 输出可靠/unsupported 两组。
+- Host/Workbench：CLI 与 Rust runtime 白名单透传 `updates-check`；Extensions
+  store 记录缓存与更新状态，UI 提供检查更新、可更新徽标、字段中文化与
+  “已刷新 / 缓存结果”标识。
+- 验证：adapter/bridge/dispatch Python `61 passed + 11 subtests`；
+  extensions Vitest `25 passed`；Rust `368 passed`；vendor `1532` checksums
+  通过；full gates Python `1492 passed, 57 skipped`、Rust `368 passed,
+  1 ignored`、Vitest `648 passed`、vue-tsc 通过。
+
+## 最终复核（2026-10-27）
+
+- 最终 adapter SHA256：`657ddecc1881a6be5ce986199647f91766d8472fd7876760263505f058db8174`。
+- 真实镜像：`sha256:3ad54ca40373bdb1f2a91d4e4c1f3d1131fdfeb7f5bf5f6c8ef5a797003eb3d2`；冻结 sidecar 实测 Skills/MCP 搜索与无已安装插件的 updates-check 通过。
+- 审查修复：缓存写失败不影响远端成功、缓存上限 50 且不清理无关 JSON、上下文过期响应隔离、资产更新字典隔离、只清除被操作项的徽标、上下文切换重置 busy。
+- 最新门禁 Python 1498 passed / 57 skipped / 140 subtests；Rust 368 passed / 1 ignored；Vitest 657 passed；vue-tsc 通过。审查补丁后全量前端验证及 debug Workbench 构建通过。
+- vendor-verify：1532 verified，零 missing/mismatch/malformed。
+- 当前会话工具清单没有 Computer Use / JavaScript 运行时，无法重复最终补丁后的 UI 预测试；已有 UI PASS 仅对应 PRETEST 所列先前产物，最终补丁 UI 为 NOT RUN。已恢复临时修改的全局 CLI pin。
