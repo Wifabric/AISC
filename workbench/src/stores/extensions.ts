@@ -90,6 +90,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const loadingByKind = ref(kindRecord(false));
   const busyByKind = ref(kindRecord(false));
   const searchBusyByKind = ref(kindRecord(false));
+  const pluginMarketsBusy = ref(false);
+  const pluginMarketsError = ref<string | null>(null);
+  let pluginMarketsGeneration = 0;
+  const searchGeneration = kindRecord(0);
   const marketCacheByKind = ref<KindRecord<MarketCacheState | null>>(
     kindRecord<MarketCacheState | null>(null),
   );
@@ -169,6 +173,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   function resetMarketState(): void {
+    itemsByKind.value = { skills: [], mcp: [], plugins: [] };
     marketSkills.value = [];
     marketMcp.value = [];
     marketPlugins.value = [];
@@ -182,6 +187,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
     loadingByKind.value = kindRecord(false);
     busyByKind.value = kindRecord(false);
     searchBusyByKind.value = kindRecord(false);
+    pluginMarketsBusy.value = false;
+    pluginMarketsError.value = null;
+    pluginMarketsGeneration += 1;
     errorsByKind.value = kindRecord<string | null>(null);
     operationsByKind.value = kindRecord<ExtensionOperation | null>(null);
   }
@@ -208,7 +216,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const items = computed(() => itemsByKind.value[kind.value]);
   const loading = computed(() => loadingByKind.value[kind.value]);
   const busy = computed(() => busyByKind.value[kind.value]);
-  const marketBusy = computed(() => searchBusyByKind.value[kind.value]);
+  const marketBusy = computed(() => searchBusyByKind.value[kind.value]
+    || (kind.value === "plugins" && pluginMarketsBusy.value));
   const marketCache = computed(() => marketCacheByKind.value[kind.value]);
   const error = computed(() => errorsByKind.value[kind.value]);
   const updateItems = computed(() => updateItemsByKind.value[kind.value]);
@@ -328,37 +337,47 @@ export const useExtensionsStore = defineStore("extensions", () => {
     query: string,
     setter: (items: ExtensionsItem[]) => void,
   ): Promise<void> {
-    if (!query.trim()) {
-      setter([]);
-      marketCacheByKind.value[target] = null;
-      return;
-    }
+    if (!query.trim()) { clearMarketResults(target); return; }
+    if (!context.value) return;
     const token = contextToken();
+    const generation = ++searchGeneration[target];
+    const current = () => isCurrentContext(token) && generation === searchGeneration[target];
     setter([]);
     marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = true;
     errorsByKind.value[target] = null;
     try {
-      const out = await call<{
-        items?: ExtensionsItem[];
-        cache?: MarketCacheState;
-      }>(op, { query });
-      if (!isCurrentContext(token)) return;
+      const out = await call<{ items?: ExtensionsItem[]; cache?: MarketCacheState }>(op, { query });
+      if (!current()) return;
       setter(out.items ?? []);
       marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
-      if (!isCurrentContext(token)) return;
-      errorsByKind.value[target] = errorText(e);
+      if (current()) errorsByKind.value[target] = errorText(e);
     } finally {
-      if (isCurrentContext(token)) searchBusyByKind.value[target] = false;
+      if (current()) searchBusyByKind.value[target] = false;
     }
   }
 
   function clearMarketResults(target: ExtensionsKind): void {
+    searchGeneration[target] += 1;
     if (target === "skills") marketSkills.value = [];
     else if (target === "mcp") marketMcp.value = [];
     else marketPlugins.value = [];
     marketCacheByKind.value[target] = null;
+    searchBusyByKind.value[target] = false;
+    errorsByKind.value[target] = null;
+  }
+
+  async function discoverRecommendation(target: ExtensionsKind, query: string): Promise<void> {
+    kind.value = target;
+    if (!context.value) return;
+    const token = contextToken();
+    const generation = ++searchGeneration[target];
+    await refresh(target);
+    if (!isCurrentContext(token) || generation !== searchGeneration[target]) return;
+    if (target === "skills") await searchSkills(query);
+    else if (target === "mcp") await searchMcp(query);
+    else await searchPlugins(query);
   }
 
   async function checkUpdates(): Promise<void> {
@@ -580,17 +599,18 @@ export const useExtensionsStore = defineStore("extensions", () => {
   async function loadPluginMarkets(): Promise<void> {
     if (!context.value) return;
     const token = contextToken();
-    searchBusyByKind.value.plugins = true;
-    errorsByKind.value.plugins = null;
+    const generation = ++pluginMarketsGeneration;
+    const current = () => isCurrentContext(token) && generation === pluginMarketsGeneration;
+    pluginMarketsBusy.value = true;
+    pluginMarketsError.value = null;
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("plugin-market-list");
-      if (!isCurrentContext(token)) return;
+      if (!current()) return;
       pluginMarkets.value = out.items ?? [];
     } catch (e) {
-      if (!isCurrentContext(token)) return;
-      errorsByKind.value.plugins = errorText(e);
+      if (current()) pluginMarketsError.value = errorText(e);
     } finally {
-      if (isCurrentContext(token)) searchBusyByKind.value.plugins = false;
+      if (current()) pluginMarketsBusy.value = false;
     }
   }
 
@@ -615,11 +635,11 @@ export const useExtensionsStore = defineStore("extensions", () => {
   return {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
-    pluginMarkets, marketPlugins, opBusyId, marketMcp, activeOperation,
+    pluginMarkets, pluginMarketsError, marketPlugins, opBusyId, marketMcp, activeOperation,
     operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,
-    clearMarketResults, checkUpdates,
+    clearMarketResults, checkUpdates, discoverRecommendation,
     installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
     installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets,

@@ -37,3 +37,12 @@ git diff --check
 - [ ] targeted/类型/全门禁 exit 0；必要远端 CI 通过后并回 `develop`。若改 CLI/container，重建 sidecar/bundle/镜像并 vendor verify；用隔离 runtime 核实三类精选 identity 与真实安装结果。
 - [ ] **CU 前置：** Windows/CU、当前构建、隔离 ready runtime。**操作：** ①扩展→Skills 推荐→搜索→安装；②MCP、Plugins 重复；③断网重开推荐并搜索。**理想：** 三类均展示理由/来源，推荐和搜索详情指向同 identity，安装进入同一操作状态；离线精选仍可见、市场明确缓存/失败。**异常：** 某一类型缺席、推荐绕过诊断管线、离线标为已刷新均 FAIL。
 - [ ] 在 `PRETEST.md` 记时间、构建/sidecar/镜像标识、逐步理想/实际、截图/窗口树和 PASS/FAIL。不可用时写 `NOT RUN — b4 三类推荐→搜索→安装 UI：当前 agent 无 Computer Use`，或明确缺少的窗口/runtime/网络；可执行的其余验证继续。b4 不单独请求用户手测，完成后继续 b5。
+
+## 实施记录（2026-10-27）
+
+- 精选表覆盖 Skills caveman、MCP upstash/context7-mcp、Plugin superpowers@claude-plugins-official，身份去重/排序固定，理由与来源双语可见；不用虚构热度。
+- 设计细化：推荐入口只负责发现；先复用相应市场搜索，再由真实结果进入已有详情、安装和 b3 恢复流程。精选离线可读；无 runtime 搜索禁用。点击同步关键词和展开状态。
+- 搜索增加每类 generation；清空使在途请求失效；上下文变化清空已安装行。插件 marketplace 列表与搜索分别持有 busy/error/generation，避免相互覆盖。上述竞态均已 RED/GREEN。
+- UI Computer Use 和真实容器 NOT RUN：当前会话无 CU 工具且 Docker 引擎不可用，详见 PRETEST。用户统一手测继续等待全部批次。
+
+- 最终本地验证：Python 1498 passed / 57 skipped / 140 subtests；Rust 368 passed / 1 ignored；Vitest 699 passed；vue-tsc 通过。推荐跨类型搜索前刷新该类型真实已安装列表，避免沿用其他页签的空状态。

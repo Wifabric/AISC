@@ -10,7 +10,7 @@
 | b1 | 已实现 | UI 关键路径 PASS | H1 安装、H4 更新状态保留已用真实 Workbench UI 执行 |
 | b2 | 已实现，待 PR | 早期 UI PASS；最终补丁 NOT RUN | 续跑工具清单无 Computer Use；自动化与 debug 构建通过 |
 | b3 | 实现及审查完成，门禁中 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
-| b4 | 待开工 | PENDING | 尚无可测实现 |
+| b4 | 实现及验证中 | NOT RUN | 当前会话无 Computer Use，Docker 引擎不可用 |
 | b5 | 待开工 | PENDING | 尚无可测实现 |
 | b6 | 待开工 | PENDING | 尚无可测实现 |
 | b7 | 待开工 | PENDING | 尚无可测实现 |
@@ -161,3 +161,10 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 - 实际 UI：NOT RUN。当前 agent 未暴露 Computer Use / JavaScript 工具；Docker Desktop 启动后 docker info/ps 不响应（8 秒定时探测超时），正常关闭请求也超时，已停止此次启动进程恢复原先无引擎状态。无法创建本批真实 runtime。
 - 自动化：TDD 复现并验证三类操作恢复、部分卸载继续、中文结构化超时归为未知、上下文切换、100 条 FIFO、8 KiB 诊断、完整引号凭据脱敏、repo 大小写对齐；UI 测试覆盖日志/复制/重试与双语。具体最终门禁计数见批计划。
 - 结论：受阻项明确保留，不用单测冒充 UI PASS，不请求逐批用户手测，继续 b4。
+
+## b4 预测试阻塞（2026-10-27）
+
+- 测试产物：本 worktree debug Workbench（b4 前端），沿用 b2 CLI/镜像；不声明已创建本批 runtime。
+- 计划操作：扩展→三类推荐→搜索→真实结果详情/安装，离线查看精选；理想为三类始终可见、理由/来源可读、搜索框及资产类型匹配、安装沿用既有恢复管线。
+- 实际 UI/容器：NOT RUN。当前 agent 没有 Computer Use 工具，Docker 启动阻塞已记 b3；无法创建 ready runtime。不是产品通过结论。
+- 自动化：推荐模型/面板与发现 store 测试，latest-query-wins、清空搜索、工作区切换、插件列表独立错误/请求代次；最终门禁见批计划。MCP `upstash/context7-mcp` 经 Smithery 查询确认，Plugin identity 来自已打包官方 marketplace；推荐安装必须以实际市场结果为准。
