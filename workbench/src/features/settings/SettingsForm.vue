@@ -9,7 +9,7 @@
  * parent; the status strip (dirty/saved) renders here because the pane has no
  * header of its own.
  */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings";
@@ -20,6 +20,10 @@ import type { TerminalSettings, UiSettings, WindowSettings } from "../../types";
 const { t } = useI18n();
 const store = useSettingsStore();
 const update = useUpdateStore();
+const supportsInstaller = update.supportsInstaller();
+const confirmationPending = ref(false);
+let disposed = false;
+onBeforeUnmount(() => { disposed = true; });
 
 // b13: human-readable download progress.
 const fmtBytes = (n: number): string => {
@@ -473,12 +477,20 @@ async function onImageTag(id: string, name: string): Promise<void> {
   }
 }
 
-/** A7: destructive-ish (app exits) — confirm before the silent install. */
+/** Confirm this exact verified download before launching the normal installer. */
 async function onInstallUpdate() {
-  const { confirm } = await import("@tauri-apps/plugin-dialog");
-  const ok = await confirm(t("settings.about.installConfirm"));
-  if (!ok) return;
-  await update.install();
+  if (confirmationPending.value) return;
+  const target = update.captureInstallation();
+  if (!target) return;
+  confirmationPending.value = true;
+  try {
+    const ok = await confirm(t("settings.about.installConfirm"));
+    if (ok && !disposed) await update.install(target);
+  } catch (e) {
+    if (!disposed) update.error = (e as { message?: string })?.message ?? String(e);
+  } finally {
+    confirmationPending.value = false;
+  }
 }
 
 async function onReset() {
@@ -841,6 +853,7 @@ async function reopenOnboarding() {
         <!-- A7 (0.1.0, D-8 自研): about + self-update. -->
         <template v-else-if="group === 'about'">
           <p class="help">{{ t("settings.about.hint") }}</p>
+          <p v-if="!supportsInstaller" class="note">{{ t("settings.about.manualInstall") }}</p>
           <div class="field disk-row">
             <span class="label">{{ t("settings.about.workbenchCurrent") }}</span>
             <span class="val">{{ update.info?.current ?? t("settings.about.unknown") }}</span>
@@ -862,7 +875,7 @@ async function reopenOnboarding() {
             <p class="note">{{ t("settings.about.updateTogether") }}</p>
             <p v-if="update.info.note" class="note">{{ update.info.note }}</p>
             <p v-if="update.status === 'none'" class="note">{{ t("settings.about.upToDate") }}</p>
-            <template v-if="update.status === 'available' || update.status === 'downloading'">
+            <template v-if="supportsInstaller && (update.status === 'available' || update.status === 'downloading')">
               <div class="field">
                 <button class="primary" :disabled="update.status === 'downloading'" @click="update.download()">
                   {{ update.status === "downloading" ? t("settings.about.downloading") : t("settings.about.download") }}
@@ -878,15 +891,15 @@ async function reopenOnboarding() {
                   ({{ dlPercent }}%)</span>
               </div>
             </template>
-            <template v-if="update.status === 'ready'">
+            <template v-if="supportsInstaller && update.status === 'ready'">
               <p class="note">{{ t("settings.about.ready", { sha: update.staged?.sha256.slice(0, 16) ?? "" }) }}</p>
               <div class="field">
-                <button class="danger" @click="onInstallUpdate">{{ t("settings.about.install") }}</button>
+                <button class="danger" :disabled="confirmationPending || update.launchPending" @click="onInstallUpdate">{{ t("settings.about.install") }}</button>
               </div>
             </template>
           </template>
           <div class="field">
-            <button class="primary" :disabled="update.status === 'checking'" @click="update.check()">
+            <button class="primary" :disabled="update.status === 'checking' || update.launchPending" @click="update.check()">
               {{ update.status === "checking" ? t("settings.about.checking") : update.info ? t("settings.about.checkAgain") : t("settings.about.check") }}
             </button>
           </div>

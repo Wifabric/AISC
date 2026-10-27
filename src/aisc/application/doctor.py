@@ -781,6 +781,9 @@ def run_doctor(
     # the pip install form has no repo, so the aisc-root WARN above is
     # misleading there. This check names the fetch path explicitly.
     checks.append(_check_bundle_store(root))
+    from aisc.application.update_health import pairing_check
+
+    checks.append(pairing_check(root))
 
     # 6c. A8 (guide 3.5.5): channel + platform-support — multi-channel
     # installs are the #1 "upgraded but still old version" confusion.

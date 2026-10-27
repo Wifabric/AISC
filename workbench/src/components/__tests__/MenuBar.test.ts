@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createI18n } from "vue-i18n";
@@ -82,6 +82,27 @@ beforeEach(() => {
 });
 
 describe("MenuBar help actions", () => {
+  it("does not show an obsolete failure after a newer menu check succeeds", async () => {
+    let rejectOld!: (reason: unknown) => void;
+    updateState.check.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }))
+      .mockResolvedValueOnce({ current: "2.1.17", latest: "2.1.17", updateAvailable: false, note: "" });
+    const w = await mountHelpMenu();
+    await w.findAll("[role='menuitem']")[0]!.trigger("click");
+    await w.findAll(".menubar-btn")[2]!.trigger("click");
+    await w.findAll("[role='menuitem']")[0]!.trigger("click");
+    rejectOld(new Error("obsolete network failure"));
+    await flushPromises();
+    expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Up to date (2.1.17)."]);
+    w.unmount();
+  });
+
+  it.each([false, true])("reports a note-bearing network failure without a success toast (available=%s)", async (updateAvailable) => {
+    updateState.check.mockResolvedValue({ current: "2.1.16", latest: "2.1.17", updateAvailable, note: "bundled CLI check failed: offline" });
+    const w = await mountHelpMenu();
+    await w.findAll("[role='menuitem']")[0]!.trigger("click");
+    expect(useToastStore().toasts.map((t) => t.message)).toEqual(["Update check failed: bundled CLI check failed: offline"]);
+    w.unmount();
+  });
   it("opens the current AISC documentation through the OS/browser opener", async () => {
     const w = await mountHelpMenu();
     const items = w.findAll("[role='menuitem']");

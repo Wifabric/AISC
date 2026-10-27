@@ -168,3 +168,12 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 - 计划操作：扩展→三类推荐→搜索→真实结果详情/安装，离线查看精选；理想为三类始终可见、理由/来源可读、搜索框及资产类型匹配、安装沿用既有恢复管线。
 - 实际 UI/容器：NOT RUN。当前 agent 没有 Computer Use 工具，Docker 启动阻塞已记 b3；无法创建 ready runtime。不是产品通过结论。
 - 自动化：推荐模型/面板与发现 store 测试，latest-query-wins、清空搜索、工作区切换、插件列表独立错误/请求代次；最终门禁见批计划。MCP `upstash/context7-mcp` 经 Smithery 查询确认，Plugin identity 来自已打包官方 marketplace；推荐安装必须以实际市场结果为准。
+
+## b5 预测试与数据面（2026-10-27）
+
+- 基线：`b809842` 后 b5 分支；Workbench/sidecar 均为本 worktree `workbench/src-tauri/target/debug/` 构建。CLI `0.1.10.dev0`，实际 bundle 为 `workbench/src-tauri/nsis/bundle/aisc-bundle`。本批不改镜像。
+- 冻结 CLI：设置 `AISC_ROOT` 为该 bundle 后执行 `aisc.exe doctor --format json`；`cli-bundle-pairing` 为 pass，cliPath/cliEntrypoint 为实际 debug aisc.exe，bundleVersion/cliVersion 均 `0.1.10.dev0`，manifestSchema=1，compatibleCliVersions 包含运行版本，reason=`manifest-allows-running-cli`。bundle stage/verify 均 PASSED。
+- 真实 HTTP 自动化：loopback direct=403、mirror=200 保留两个按序观测；direct 超时、mirror=503 三轮共六条。`headers-received` 只确认响应头，不声称完整下载或安装成功；body 失败在更新页显示。缓存快照不联网、不刷新 checkedAt，容器链为 unknown/not-probed。
+- UI 操作：设置→检查→下载→ready→退出更新→取消→再确认；核对 Explorer 选中包、正常 NSIS 界面、Workbench 退出；缺失包/UAC 拒绝须保持应用；诊断复制与切工作区复核。理想/异常判据见 HANDTEST b5。
+- **NOT RUN — b5 Explorer/NSIS/退出顺序 UI：当前工具未提供 Computer Use，也无工具发现入口可加载；未实际点击真实安装器，不以 OS 注入测试冒充实机 PASS。** Docker 现已恢复，可继续后续数据面；无需逐批用户手测。
+- 最终自动化及构建计数见 b5 执行记录；ready/取消/失败保留、确认身份变化、requestId 和迟到响应均有回归。

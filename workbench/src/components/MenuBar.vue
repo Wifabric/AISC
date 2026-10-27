@@ -38,6 +38,7 @@ const { zoomStyle } = useTeleportedZoom();
 const toast = useToastStore();
 const aboutOpen = ref(false);
 const aboutAppVersion = ref("");
+let updateCheckGeneration = 0;
 const aboutPlatform = computed(() => navigator.userAgent);
 
 // P2-2 → W3: the global status label rides the menu bar's right end now
@@ -89,6 +90,7 @@ onMounted(() => {
   window.addEventListener("keydown", onKeydown, { capture: true });
 });
 onBeforeUnmount(() => {
+  updateCheckGeneration++;
   document.removeEventListener("mousedown", onDocMousedown);
   window.removeEventListener("keydown", onKeydown, { capture: true });
 });
@@ -225,15 +227,17 @@ async function openDocs(): Promise<void> {
  * (关于与更新). Every branch is visible — a silent menu item is
  * indistinguishable from a dead one in the field. */
 async function checkForUpdates(): Promise<void> {
+  const generation = ++updateCheckGeneration;
   closeMenu();
   const update = useUpdateStore();
   const progress = toast.push(t("menubar.update.checking"), { kind: "progress" });
   try {
     const info = await update.check();
     toast.dismiss(progress);
-    if (!info) {
+    if (generation !== updateCheckGeneration) return;
+    if (!info || info.note?.trim()) {
       toast.error(t("menubar.update.failed", {
-        reason: update.error || t("menubar.update.unknownError"),
+        reason: info?.note || update.error || t("menubar.update.unknownError"),
       }));
       return;
     }
@@ -245,6 +249,7 @@ async function checkForUpdates(): Promise<void> {
     }
   } catch (e) {
     toast.dismiss(progress);
+    if (generation !== updateCheckGeneration) return;
     toast.error(t("menubar.update.failed", {
       reason: (e as { message?: string })?.message ?? String(e),
     }));

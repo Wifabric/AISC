@@ -36,3 +36,7 @@ Node 用 nodejs.org Active LTS 官方 slim 镜像；Codex/Claude 用 npm latest
 dist-tag；cc-switch 用 GitHub 最高稳定 semver（排除 prerelease）；其余已声明依赖
 同步刷新且 geodata 改为 dated release。若稳定最新版不兼容，必须在 decisions 记录
 来源、原因、替代版本、回退版本、SHA256 与验证证据；行为取舍需用户裁定。
+
+## D-5 2026-10-27 Node LTS 时间空档裁定
+
+用户明确选择采用最新 LTS 24.22.1。Node 官方计划中 v24 在 10-20 进入 Maintenance LTS、v26 在 10-28 才进入 LTS，因此 10-27 没有 Active LTS；本批以已发布且稳定的最新 LTS 24.22.1 替代 D-4 的严格 Active LTS 条件，记录官方 schedule、镜像 digest 和 Node 22 回退路径。不提前把 Node 26 当成 LTS。

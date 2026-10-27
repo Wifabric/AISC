@@ -1015,9 +1015,26 @@ export interface UpdateDownloadResult {
 export const appCheckUpdate = () => invoke<UpdateInfo>("app_check_update");
 
 /** Progress events ride the `update://progress` Tauri event. */
-export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVersion: string) =>
-  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url, targetVersion });
+export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVersion: string, requestId?: string) =>
+  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url, targetVersion, requestId });
 
-/** Runs the staged installer SILENT and exits the app (UI confirms first). */
+/** Selects the verified installer in Explorer, opens it normally, then exits. */
 export const appInstallUpdate = (setupPath: string) =>
   invoke<void>("app_install_update", { setupPath });
+
+export interface UpdateHealthObservation {
+  scope: string;
+  endpoint: string;
+  route: "direct" | "mirror";
+  transport: "direct" | "system-proxy";
+  status: string;
+  latencyMs: number;
+  errorCode: string | null;
+  checkedAt: number;
+}
+export interface UpdateHealth {
+  workbenchVersion: string;
+  observations: UpdateHealthObservation[];
+  containerExtensions: { status: string; reason: string };
+}
+export const appUpdateHealth = () => invoke<UpdateHealth>("app_update_health");
