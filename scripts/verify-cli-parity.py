@@ -7,8 +7,8 @@ and asserts they agree on:
 
 - exit code (and, where pinned, the exact expected value),
 - stable error code (errors[0].code),
-- the JSON envelope (deep-equal after normalizing the dynamic meta.timestamp
-  and meta.run_id fields),
+- the JSON envelope (deep-equal after normalizing dynamic timestamps/run IDs
+  and doctor executable provenance that differs between pip and frozen CLIs),
 - human-readable stdout/stderr for text-mode commands.
 
 Any difference between the two CLIs, or a JSON-requested command that fails to
@@ -108,7 +108,34 @@ def _normalize(env: dict) -> dict:
     if isinstance(data, dict):
         for key in DYNAMIC_DATA_FIELDS:
             data.pop(key, None)
+        if env.get("meta", {}).get("command") == "doctor":
+            _normalize_doctor_provenance(data)
     return env
+
+
+def _normalize_doctor_provenance(data: dict) -> None:
+    """Mask only per-binary paths; keep the pairing contract and path presence."""
+    host = data.get("host")
+    checks = host.get("checks") if isinstance(host, dict) else None
+    if not isinstance(checks, list):
+        return
+    for check in checks:
+        if not isinstance(check, dict) or check.get("name") != "cli-bundle-pairing":
+            continue
+        raw = check.get("detail")
+        if not isinstance(raw, str):
+            continue
+        try:
+            detail = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(detail, dict):
+            continue
+        for field in ("cliPath", "cliEntrypoint"):
+            value = detail.get(field)
+            if isinstance(value, str) and value.strip():
+                detail[field] = "<per-binary-path>"
+        check["detail"] = json.dumps(detail, sort_keys=True)
 
 
 def _compare(cmd: str, a: subprocess.CompletedProcess, b: subprocess.CompletedProcess,

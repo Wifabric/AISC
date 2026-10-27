@@ -56,7 +56,7 @@ jobs:
       - name: Stage bundle
         # b6 (D-16 C-混合): companion tgz are NOT in git — stage them here so
         # the NSIS/deb/dmg bundles carry the full offline preset set.
-        run: bash scripts/stage-npm.sh --yazi
+        run: bash scripts/stage-npm.sh --yazi --all-arches
       - name: Stage bundle
         run: python packaging/artifact.py stage --output "${{ runner.temp }}/staging"
 

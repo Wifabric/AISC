@@ -102,6 +102,36 @@ def test_all_workflows_are_valid_yaml():
         assert "jobs" in data, f"{path.name} must define jobs"
 
 
+@pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml", "artifact.yml"])
+def test_release_staging_keeps_both_linux_architectures(name):
+    """An arm64 host must retain the x64 yazi file required by vendor checksums."""
+    data = yaml.safe_load((WORKFLOW_DIR / name).read_text(encoding="utf-8"))
+    invocations = [
+        line for job in data["jobs"].values() for step in job.get("steps", [])
+        for line in step.get("run", "").splitlines()
+        if "bash scripts/stage-npm.sh" in line and not line.lstrip().startswith("#")
+    ]
+    assert invocations, f"{name} must stage the offline resource closure"
+    for line in invocations:
+        assert "--all-arches" in line and "--yazi" in line, (name, line)
+
+
+@pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml"])
+def test_bundle_push_filters_cover_staging_implementation(name):
+    assert {"scripts/stage-npm.sh", "scripts/stage_npm.py"} <= _push_paths(name)
+
+
+def test_windows_staging_propagates_failure_before_packaging():
+    """pwsh must not let a later successful native command hide staging failure."""
+    data = yaml.safe_load((WORKFLOW_DIR / "nsis-installer.yml").read_text(encoding="utf-8"))
+    steps = data["jobs"]["nsis"]["steps"]
+    staging = next(step for step in steps if "bash scripts/stage-npm.sh" in step.get("run", ""))
+    assert staging["shell"] == "pwsh"
+    script = staging["run"]
+    between = script.split("bash scripts/stage-npm.sh", 1)[1].split("python packaging/artifact.py", 1)[0]
+    assert "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }" in between
+
+
 def test_pypi_publish_is_dispatch_only_with_oidc_gates():
     """0.1.0 A6: pypi-publish.yml must never auto-trigger (CLI-D08), must
     use Trusted Publishing (no static tokens), and must gate the real

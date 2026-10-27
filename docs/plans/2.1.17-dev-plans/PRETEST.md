@@ -210,3 +210,12 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 ### 统一用户手测入口
 
 b1 关键 CU 路径有历史 PASS；b2 早期 CU PASS、最终补丁 NOT RUN；b3–b7 因当前 agent 无 CU，UI 均 NOT RUN。b7 新镜像已补真实扩展与服务数据面，不能追记成此前窗口点击通过。所有批次已有实际预测试结果或具体阻塞，可按 HANDTEST 发起一次统一手测；用户验收、preview 发布与阶段收尾仍未完成。
+
+### 合并后跨平台出包检查与修正
+
+- PR #46 最终 head `b69d075`，Workbench CI `40513932370` 三项 SUCCESS，合并 develop `1fd0219`。合并后 Workbench CI `40514460328` SUCCESS。
+- sidecar `40514460514` 三平台均在 doctor parity 失败，编译成功；仅新报告的 cliPath/cliEntrypoint 按 pip/冻结入口不同。比较器现仅归一化此指定检查中的两个非空来源路径，保留路径缺失/空/无效类型、bundlePath、版本、schema、兼容列表、状态和原因。新增用例先 RED 后 GREEN；原三平台原始响应回放均通过，本机真实 pip/冻结 CLI 全 25 命令矩阵 PASS。
+- 本机 parity 使用 `AISC_ROOT` 指向当前源码 checkout，pip 模块路径经确认位于该 worktree，冻结 CLI 使用保存的 b7 aisc.exe。PowerShell dev-env 的 PYTHONUTF8=1 只影响 pip，冻结 help 仍输出本机 ANSI；本次仅对 parity 进程设 PYTHONUTF8=0，使两轨及比较器同用宿主编码，未改生产编码或安装器。
+- Bundle Linux/macOS `40514460311`：Linux 成功；macOS 只准备 arm64 导致已跟踪 x64 yazi 被完整族替换移除，vendor verify 正确失败。三个出包 workflow 改为显式准备双架构，wrapper/Python 实现都进入 push 触发路径；5 个 workflow 合同用例先 RED。没有降低或跳过 checksum 校验。
+- 审查发现 NSIS pwsh 原生命令失败可能被后续 packaging 成功覆盖；staging 后新增立即退出守卫，独立 RED/GREEN 验证。
+- 修正仅涉及验证脚本、测试与出包 workflow，产品源码和已备 Windows 本地产物字节不变。聚焦 parity/sidecar 34 PASS，parity/workflow/staging 初轮 89 PASS；完整 Python 1682 passed / 69 skipped / 181 subtests（新增退出守卫前），守卫及远端最终结果后续追加。原失败 run 保留，不能用重跑覆盖历史结论。
