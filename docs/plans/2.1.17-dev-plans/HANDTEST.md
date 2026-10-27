@@ -6,31 +6,30 @@
 ## 变量与前置准备
 
 ```powershell
-$Repo = "E:\Projects\AISC"
-$Aisc = "$Repo\.venv\Scripts\aisc.exe"
+$Repo = "C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC"
+$Artifacts = "$Repo\release-staging\2.1.17-b7"
+$Aisc = "$Artifacts\aisc.exe"
+$Bundle = "$Artifacts\aisc-bundle"
 $Workspace = Join-Path $env:TEMP ("AISC-217-B1-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -LiteralPath $Workspace | Out-Null
+New-Item -ItemType Directory -Path $Workspace | Out-Null
 $Query = "caveman"
 ```
 
-1. `git -C $Repo status --short` 输出为空；当前分支为本批工作分支。
+1. 使用本阶段最终集成 checkout；`git -C $Repo status --short` 输出为空。不要使用尚未同步的 `E:\Projects\AISC` 旧 checkout 或指向它的 editable CLI。
 2. `docker version --format "{{.Server.Version}}"` 输出一个非空版本号。
-3. Workbench 已关闭；随后执行 `powershell -File $Repo\scripts\build-cli.ps1`
-   成功结束，未出现文件锁错误。
+3. Workbench 已关闭；`Test-Path $Aisc` 和 `Test-Path "$Bundle\manifest.json"` 均为 True。使用本批已准备的 2.1.17 正式版本本地构建和冻结 CLI/bundle；校验记录见 `$Artifacts\artifacts.json`。该目录为本机忽略产物，不随 Git 分发；如另建 checkout，需按开发手册重建，不能沿用旧产物。
 4. 宿主无代理检查：
    - `netsh winhttp show proxy` 输出包含“直接访问”或等义“没有代理服务器”；
    - `Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" | Select-Object ProxyEnable,ProxyServer`
      显示 `ProxyEnable : 0`。
-5. 激活工具链并在无代理环境变量下启动 Workbench：
+5. 在无代理环境变量下启动已准备的 Workbench（不需要重新编译）：
 
 ```powershell
-. "$Repo\scripts\dev-env.ps1"
 $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""; $env:GH_PROXY=""
-Set-Location "$Repo\workbench"
-npm run tauri dev -- -- --aisc-cli $Aisc
+& "$Artifacts\start-handtest.ps1"
 ```
 
-6. 在 Workbench 首页选择/创建 `$Workspace`，等待运行时状态为 running。
+6. 启动器使用隔离数据根 `C:\pt\aisc-217-handtest-data`，并显式绑定同目录 CLI/bundle。在 Workbench 首页选择/创建 `$Workspace`，等待运行时状态为 running。镜像使用 `super-claude:latest`，应与 `super-claude:2.1.17-b7` 同为 `sha256:25f42e5157fd74eb7c2ae9add4d2857c6f83a46a59857b9a2b5730011a693f44`。
 7. 异常判定：上述任一步失败、Docker 未运行、sidecar 构建失败或运行时未启动，
    本轮手测停止并记录原始输出。
 
@@ -95,6 +94,8 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 
 ## 2026-10-26 执行记录（当前修订）
 
+以下是历史 b1 证据；统一手测使用文首 b7 产物，不沿用历史镜像。
+
 - 当前 adapter checksum：`eceb822ca20b5fbdd79c8a11fad77058179f9bfb1495ee97be2f45ed4354abeb`；
   当前验证镜像：`super-claude:latest @ sha256:21e4b9b6dd0991428958d4d4a4cc6d28f0f36f8dff5da8a649b1585ac2db2c4e`。
 - **H1 UI：NOT RUN** — 未启动 Workbench 真窗口；不能声称进度文案 / toast / 子行状态已手测。
@@ -127,11 +128,11 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 
 ## b3 失败恢复与日志
 
-前置：当前本版 ready runtime；使用测试技能/插件，避免对正在使用的技能做卸载。准备一个确定不可达或不存在的测试安装 identity；若需组内部分失败，用已记录的受控夹具，不能将真实成功操作当作失败证据。
+前置：当前本版 ready runtime；使用测试技能/插件，避免对正在使用的技能做卸载。单项失败使用确定不存在的 `aisc-217-intentionally-missing@claude-plugins-official`。组内部分失败的真实数据面证据见 smoke-evidence.md；官方市场无法稳定制造部分卸载故障时，该 UI 分支记 NOT RUN，不修改生产市场或用户配置来伪造。
 
-1. “扩展”→安装一个失败测试项→展开“操作日志”：看到类型、安装动作、名称、尝试次数、起止时间、失败原因；列表仍显示刷新后的实际已安装项，原错误不被刷新清空。
-2. 网络/identity 修复后点击该条“重试”：只重试该条的同一参数，产生“第 2 次尝试”结果；组内已成功项不再次安装。若结果是“结果未知”，应先刷新核对实际状态，不显示可盲目重试的按钮。
-3. 对三子项组做部分卸载失败：日志分别显示成功/失败，失败不阻止后续项；只对失败项显示恢复入口，成功卸载项不再重复删除。
+1. “扩展”→“插件”→底部插件 identity 输入框填入上述不存在项→点击右侧“＋”→展开“操作日志”：看到类型、安装动作、名称、尝试次数、起止时间、失败原因；列表仍显示刷新后的实际已安装项，原错误不被刷新清空。
+2. 点击该条“重试”：只重试该条的同一参数，产生“第 2 次尝试”结果；不存在项应再次失败，不能误报成功。组内已成功项不再次安装由真实部分失败数据面及自动化另证；此单项用例不冒充组恢复。若结果是“结果未知”，应先刷新核对实际状态，不显示可盲目重试的按钮。
+3. 条件用例：仅在隔离三子项测试组真实出现部分卸载失败时，核对日志分别显示成功/失败、失败不阻止后续项；只对失败项显示恢复入口，成功卸载项不再重复删除。若没有该环境，记录 NOT RUN，引用自动化覆盖，不将全成功卸载计作部分失败通过。
 4. “复制诊断”后粘贴到本地文本编辑器：包含身份、动作、时间和错误；token/password/Authorization 内容被遮蔽，超长诊断有截断标记。剪贴板拒绝时显示失败提示。
 5. 操作等待时切换工作区：新工作区无旧操作日志/错误，旧组剩余操作不能发送至新工作区。连续点击重试只执行一次。发现成功项重复执行、跨工作区操作或凭据残留即异常。
 
@@ -146,7 +147,11 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 
 ## b5 显式更新与健康报告
 
-前置：Windows、本版 Workbench 与配套 sidecar、可替换的测试安装目录；准备有 SHA256 的真实 NSIS 发布包。先保存工作区文件，安装器出现后可取消。非 Windows 只复核手动安装提示，不执行退出更新。
+前置：Windows、可替换的测试安装目录。先关闭常规 2.1.17 Workbench，执行以下命令启动专用更新测试副本；它由同一份源码构建，仅以临时配置把版本设为 0.0.0，使现有正式 release 可触发下载，数据根独立为 `C:\pt\aisc-217-update-flow-data`。关于页必须显示 0.0.0；否则停止并记录。普通 2.1.17 构建高于当前正式 release，不能用它验证下载按钮。先保存工作区文件，真实安装器出现后可取消，避免安装旧正式版。非 Windows 只复核手动安装提示。
+
+```powershell
+& "$Artifacts\start-handtest.ps1" -UpdateFlow
+```
 
 1. 顶部菜单“关于与更新”→“检查更新”，再打开设置→更新。检查失败时应显示错误，不能提示“已是最新”；有新版时显示 GUI/CLI 当前与目标版本。
 2. 点击“下载更新”，等待按钮变为“退出更新”。理想：Workbench 仍运行，安装器尚未启动；下载文件位于 `%TEMP%\aisc-workbench-update\workbench-setup-<目标版本>.exe`。
@@ -155,6 +160,8 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 5. 另下载一次，在确认前临时重命名测试下载包后确认。理想：显示文件缺失错误，Workbench 保持运行；恢复原文件名。若出现 UAC 拒绝或启动失败，同样必须保留应用并报错。
 6. 打开“诊断”→展开“本机更新网络观测”→复制健康报告并粘贴到本地文本编辑器。理想：没有请求时显示“尚未探测”，有请求时显示 direct/mirror、传输、状态、耗时和时间；容器扩展网络明确未探测；CLI/bundle 检查列出实际路径、版本、manifest 规则与原因，不能把 Workbench 2.x 与 CLI 0.x 直接判为版本不匹配。
 7. 在诊断进行时切工作区或关闭后重开。理想：当前诊断结果不被旧请求覆盖。静默安装、下载即退出、失败后退出、未知版本被报健康、复制出凭据或旧结果覆盖均为异常。
+
+完成后关闭更新测试副本，运行 `& "$Artifacts\start-handtest.ps1"` 返回 2.1.17，继续其余批次。需要另测本批 NSIS 安装器时使用 `$Artifacts\AISC-Workbench-2.1.17-setup.exe`；它不是更新服务当前发布的目标，不要把本地构建当作已发布版本。
 
 ## b6 注册服务分组与 caveman 默认态
 
@@ -172,3 +179,13 @@ aisc-web-expose 3000 --name "docs preview"
 3. “扩展”→已安装→展开 caveman，核对 13 个子技能 C/X 均 on。关闭 caveman 的 X、caveman-commit 的 C、caveman-compress 的 C/X，再重启工作区或升级镜像：对应状态应保持 1/0、0/1、0/0，其他项仍双开。
 4. 仅卸载测试子技能 caveman-stats 后重新安装；理想 C/X 均 on。若容器启动同步补回缺失的内置技能，同样必须双开，不能覆盖其他已有 off。
 5. 服务刷新等待时切换 A→B→A，再刷新；只显示当前 runtime 的服务，不残留旧错误或提前解除忙碌。分组缺失、顺序颠倒、空白名称、升级强制开启、重装仍关闭或跨工作区旧响应均判异常。
+
+## b7 稳定工具与三轮统一冒烟
+
+前置：已完成本文件前置准备，使用 b7 新镜像，隔离工作区 ready。仅对测试扩展执行安装/卸载。版本记录见 dependency-evidence.md 和 PRETEST b7；不将宿主 Node 22 与容器 Node 24 混淆。
+
+1. 工作区 bash 中运行 `node --version; codex --version; claude --version; cc-switch --version; mihomo -v; yazi --version`。理想依次含 24.22.1、0.164.0、2.1.311、5.11.3、1.19.33、26.9.1。设置→关于应显示 Workbench 2.1.17，诊断的 CLI/bundle 均 0.1.10.dev0 且配对 pass。
+2. 连续执行三轮：扩展→分别点击 Skills/MCP/Plugins 精选搜索→确认关键词为 caveman/context7/superpowers→从真实市场结果选择测试项安装→检查更新→卸载测试项。至少一轮安装两个 caveman 子技能。理想安装后列表与 C/X 对齐，卸载后测试项消失；Skills/MCP 更新源为 unsupported，不显示虚构“可更新”；Plugins 显示实际市场元数据判断。
+3. 按 b3 的受控失败步骤仅重试失败项，成功项保持一次；切工作区 A→B→A。理想新工作区无旧错误/日志、按钮不永久忙碌，日志最多 100 条，单项诊断最多 8 KiB，复制后敏感值遮蔽。
+4. 复核 b6 的 Services 和 caveman；显式更新按 b5 切到专用 0.0.0 副本完成 ready→取消→确认。真实安装器应显示正常界面，Explorer 选中包，Workbench 随后退出。
+5. 发现版本不同、混装旧包、跨工作区污染、成功项重复执行、升级覆盖 off 或静默安装均记 FAIL，并记录批次、实际操作与原始错误。CU NOT RUN 项需用户最终复核，不把单测/数据面通过等同 UI 通过。

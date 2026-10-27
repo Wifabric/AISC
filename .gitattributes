@@ -12,3 +12,11 @@ entrypoint.sh text eol=lf
 # vendor/checksums.txt hashes container files byte-for-byte. Keep text files
 # LF on every checkout while preserving binary files through auto detection.
 container/** text=auto eol=lf
+# Geosite protobuf can contain no NUL in Git's detection window. These
+# payloads must remain byte-identical to the upstream checksums.
+container/downloads/*.dat binary
+container/downloads/*.metadb binary
+container/downloads/*.mmdb binary
+container/downloads/*.gz binary
+container/downloads/*.tgz binary
+container/downloads/*.zip binary

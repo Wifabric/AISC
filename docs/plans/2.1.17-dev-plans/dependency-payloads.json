@@ -1,0 +1,100 @@
+{
+  "verified_utc": "2026-10-27T12:03:10.276969+00:00",
+  "files": [
+    {
+      "file": "cc-switch-cli-v5.11.3-linux-x64-musl.tar.gz",
+      "source_url": "https://github.com/SaladDay/cc-switch-cli/releases/download/v5.11.3/cc-switch-cli-v5.11.3-linux-x64-musl.tar.gz",
+      "transport_url": "https://ghfast.top/https://github.com/SaladDay/cc-switch-cli/releases/download/v5.11.3/cc-switch-cli-v5.11.3-linux-x64-musl.tar.gz",
+      "sha256": "42531873444c8b3b41ac5969a70752550ef4c307438d7ca7ee45bcddf201061c",
+      "bytes": 8919026,
+      "status": "PASS"
+    },
+    {
+      "file": "mihomo-linux-amd64-v1.19.33.gz",
+      "source_url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-amd64-v1.19.33.gz",
+      "transport_url": "https://ghfast.top/https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-amd64-v1.19.33.gz",
+      "sha256": "132f6f3edf9a65e62f04853aed3358472e0b2b7666daa8419edfa2ddf5bb6323",
+      "bytes": 22862419,
+      "status": "PASS"
+    },
+    {
+      "file": "yazi-x86_64-unknown-linux-musl.zip",
+      "source_url": "https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-unknown-linux-musl.zip",
+      "transport_url": "https://ghfast.top/https://github.com/sxyazi/yazi/releases/download/v26.9.1/yazi-x86_64-unknown-linux-musl.zip",
+      "sha256": "9b9c39decccf8cb0ff53a7d637d38f8a79d93bbd0099f4ea9c619ef6bb392f5d",
+      "bytes": 14722461,
+      "status": "PASS"
+    },
+    {
+      "file": "country.mmdb",
+      "source_url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/02ae05ac06e8c9287916fbabfe61ef5c8591407f/country.mmdb",
+      "transport_url": "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/02ae05ac06e8c9287916fbabfe61ef5c8591407f/country.mmdb",
+      "sha256": "ccec4d6fa69de3a79960a460c377ac9a23c1a90e5f9052dae3488921e56201df",
+      "bytes": 7649827,
+      "status": "PASS"
+    },
+    {
+      "file": "geoip.metadb",
+      "source_url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/02ae05ac06e8c9287916fbabfe61ef5c8591407f/geoip.metadb",
+      "transport_url": "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/02ae05ac06e8c9287916fbabfe61ef5c8591407f/geoip.metadb",
+      "sha256": "f74179989befc93862f7bad4e32ac2ef2e1073b99b5c40483ec8007387df7362",
+      "bytes": 8426776,
+      "status": "PASS"
+    },
+    {
+      "file": "geosite.dat",
+      "source_url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/02ae05ac06e8c9287916fbabfe61ef5c8591407f/geosite.dat",
+      "transport_url": "https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/raw/02ae05ac06e8c9287916fbabfe61ef5c8591407f/geosite.dat",
+      "sha256": "c57333596b44aa061e84c3c224e97a4475c759a5e3baab1fcda002e48b4dc313",
+      "bytes": 4352810,
+      "status": "PASS"
+    }
+  ],
+  "npm_verified_utc": "2026-10-27T12:34:14.570512+00:00",
+  "npm_files": [
+    {
+      "file": "claude-code-2.1.311.tgz",
+      "package": "@anthropic-ai/claude-code",
+      "version": "2.1.311",
+      "source_url": "https://registry.npmjs.org/@anthropic-ai%2Fclaude-code/2.1.311",
+      "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-2.1.311.tgz",
+      "integrity": "sha512-7SgBitii1ZscdbRJXLcub7Vv2pfvH3wo7RrCKg4vZpklIfz9HgigJFFJGIjCY6jzoPDvbQcwwugvm3A8PTejzw==",
+      "sha256": "d97fea08695f32b13b3dec072687f2acc550484caecaf5005d4ebad86c5bf199",
+      "bytes": 29085,
+      "status": "PASS"
+    },
+    {
+      "file": "claude-code-linux-x64-2.1.311.tgz",
+      "package": "@anthropic-ai/claude-code-linux-x64",
+      "version": "2.1.311",
+      "source_url": "https://registry.npmjs.org/@anthropic-ai%2Fclaude-code-linux-x64/2.1.311",
+      "tarball": "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-2.1.311.tgz",
+      "integrity": "sha512-dk1lVMt7n+NlYucKM7dLp/PfrK32pa/4oKQkacfazlSj8rG+hkH67wnDnaFG9Gs2al3OjK8PTVHgZ2WGHXoWUg==",
+      "sha256": "4353c611f9a33063c5525348a15f1212bdc0085e4a7a81b8370b790003df1b56",
+      "bytes": 132803556,
+      "status": "PASS"
+    },
+    {
+      "file": "codex-0.164.0.tgz",
+      "package": "@openai/codex",
+      "version": "0.164.0",
+      "source_url": "https://registry.npmjs.org/@openai%2Fcodex/0.164.0",
+      "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.164.0.tgz",
+      "integrity": "sha512-TWj7UGyPRe3Pj/A3ddNAxs1te3a/W/xAd+J0LHrrFTmsSfahGMOLF/vn88D3QCIgAT3B1rm1y/Z3NYE0rx6cZQ==",
+      "sha256": "afb117ec0d382744583dd13154ba0ca6b0f1980f8ed6a23bffb3aaadb6226e30",
+      "bytes": 4902,
+      "status": "PASS"
+    },
+    {
+      "file": "codex-linux-x64-0.164.0-linux-x64.tgz",
+      "package": "@openai/codex",
+      "version": "0.164.0-linux-x64",
+      "source_url": "https://registry.npmjs.org/@openai%2Fcodex/0.164.0-linux-x64",
+      "tarball": "https://registry.npmjs.org/@openai/codex/-/codex-0.164.0-linux-x64.tgz",
+      "integrity": "sha512-XLAoaWsGOT2khzl+P4FYDPTkzAr9W0VFXFaVkqlFdkM0soa1gH/4S0wSD57Ek3HHwkirAEGz2/Mwehseh+l5Mg==",
+      "sha256": "62659fefd9a8efa21a496402fde3c11c025bbeee735a582968f8ffd14cb5f79c",
+      "bytes": 165142849,
+      "status": "PASS"
+    }
+  ]
+}

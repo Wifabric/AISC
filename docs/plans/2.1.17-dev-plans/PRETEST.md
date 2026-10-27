@@ -12,8 +12,8 @@
 | b3 | PR #42 已合并 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
 | b4 | PR #43 已合并 | NOT RUN | 当前会话无 Computer Use，Docker 引擎不可用 |
 | b5 | PR #44 已合并 | 数据面 PASS / UI NOT RUN | 冻结 CLI 配对通过；CU 不可用，Explorer/NSIS 未点击 |
-| b6 | 实现/审查/本地门禁通过 | 容器 PASS / UI NOT RUN | caveman 五路径通过；CU 不可用，Services/开关 UI 未点击 |
-| b7 | 待开工 | PENDING | 尚无可测实现 |
+| b6 | PR #45 已合并 | 容器 PASS / UI NOT RUN | caveman 五路径通过；CU 不可用，Services/开关 UI 未点击 |
+| b7 | 实现/审查/本地门禁通过，产物验证中 | 进行中；UI NOT RUN | 新镜像与 caveman/Services 数据面 PASS，三轮扩展冒烟运行中；CU 不可用 |
 
 ## b1 预测试（2026-10-26）
 
@@ -185,3 +185,28 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 - **PASS**：首次安装 13 个 caveman 与 grill-me，所有 DB 行 1/1 且双端 SKILL.md 存在；官方 CLI 关闭为 1/0、0/1、0/0 后重启及 bundle revision 升级均逐字段保留，目标路径一致；marker 存在但缺行时仅补缺行 1/1；官方卸载 caveman-stats 后重装为 1/1、双端文件恢复。
 - 全门禁：Python 1540 passed / 53 skipped / 181 subtests，Rust 398 passed / 1 ignored，Vitest 770 passed，vue-tsc 通过；targeted Python 143 passed / 1 skipped / 85 subtests；文档检查 39 passed / 0 warnings / 0 failures。规范化写回、显式清缓存与 A→B→A 的旧响应/finally 均有回归。
 - **NOT RUN — Services 分组、注册服务打开/复制、caveman 开关 UI：当前工具未提供 Computer Use，也无工具发现入口。** 未点击真实窗口，不把 Docker 数据面或 Vitest 当作 UI PASS。用户步骤见 HANDTEST b6，继续 b7 后统一复核。
+
+## b7 预测试与最终产物（2026-10-27）
+
+- 新镜像 `super-claude:2.1.17-b7 @ sha256:25f42e5157fd74eb7c2ae9add4d2857c6f83a46a59857b9a2b5730011a693f44`；本批冻结 CLI/bundle 0.1.10.dev0。镜像无缓存构建成功，软件实际版本与 dependency-evidence.md 全部一致。
+- 实测完成后，本机 `super-claude:latest` 已指向同一 b7 image ID，供统一手测默认使用；旧 `3ad54ca4…` 保留为 `super-claude:2.1.17-pre-b7-rollback`。仅本地重打标签，未推送镜像。
+- 本地门禁最终：Python 1650 passed / 53 skipped / 181 subtests；Rust 398 passed / 1 ignored；Vitest 770 passed；vue-tsc 通过，LOCAL GATES: ALL GREEN。文档检查 39/0/0，vendor 1533 checksums 通过；sidecar smoke、bundle stage/verify 通过。
+- sidecar SHA256 `59a7ef15d76104915577387385832678c74de654bdd39ba54abe3cbfd7b3fb61`，12,974,618 字节；实际 doctor 的 host.checks[name=cli-bundle-pairing] 为 pass，manifest-allows-running-cli，实际 debug CLI 与本批 bundle 路径均在 worktree 内。
+- **PASS — 新镜像 caveman 数据面**：复跑 b6 五路径，全部满足 13 子技能默认双开、已有 off 保留、缺行/重装恢复双开；旧 DB schema 升级风险见依赖证据，未触碰用户真实配置。
+- **PASS — Services 真实运行态**：用本批冻结 CLI 创建 temporary/direct 隔离 runtime `465ab5f3-5766-433e-8152-d5a31c0a4dee`，注册 5173 后注册有名 3000；返回 services 端口 3000→5173、名称 docs preview/空，gateway.state=ready。通过宿主 loopback 与 Host 路由实际请求两端口，均返回测试文件。容器已停止移除；证据目录 `C:\pt\aisc-217-b7-services-6c646f1a`。首轮夹具文本换行与预期不同，改用固定 LF 字节重跑通过，不是产品失败。
+- **PASS — 三轮扩展分类阶段 9/9**：每轮实际 Skills 搜索/双子技能安装/更新保留 off/卸载，MCP 远端元数据导入/更新检查/删除，Plugins 真实安装/更新/卸载全部通过；无超时。插件首轮实际从 6.0.3 更新到 7.0.0。Skills/MCP 返回 unsupported（无可比较版本），Plugins 返回 unsupported（marketplace metadata unavailable），未冒充“已最新”。MCP 未测握手/认证，插件搜索为工厂 marketplace 的新 CLI 查询，不证明在线目录刷新。
+- **受控夹具修正后 PASS**：原主运行 exit 1 / 1815.739 秒保留，唯一失败为裸 `caveman-help` 经上游小写 repo 查找与工厂 repo 大小写冲突。完整 spec `JuliusBrussee/caveman:caveman-help` 独立实跑得到 1 成功/1 失败，仅重试无效项后成功项完整 SSOT 行不变；补充运行 exit 0 / 103.483 秒。未修复或宣称裸名称冲突消失；UI 市场使用完整身份。详细阶段表及覆盖边界见 [smoke-evidence.md](smoke-evidence.md)，原始两次结果均保留在 `C:\pt\aisc-217-b7-*-results-*`，不将合并证据写成单次 exit 0。
+- **NOT RUN — b7 全批 UI/显式更新实机点击**：当前工具未暴露 Computer Use 或发现入口。计划的三类推荐、日志复制/重试、Services 分组及 Explorer/NSIS/退出顺序需按 HANDTEST 一次统一用户复核；不以容器或注入测试冒充 UI PASS。
+
+### 本地安装与统一手测产物
+
+- 实现提交 `cbb6e5a`，PR #46；该提交远端 Workbench CI `40510587355` frontend/Rust/CLI 均 SUCCESS。最终文档提交与合并提交另由 PR 记录核对。
+- 正式版本本地构建和已验证 bundle 保存在 `release-staging/2.1.17-b7/`（Git 忽略，未发布）。源码 Workbench 版本 2.1.17，CLI/bundle 0.1.10.dev0。
+- `AISC-Workbench-2.1.17-setup.exe`：371,123,902 字节，SHA256 `3a90496d0b6b132dd861e9d9714446099681e4c2274a8f31fbbe8caee39b6d88`。生产编译成功；首次 NSIS 遇 worktree MAX_PATH，用临时 `subst P:` 短路径重打包成功，映射已移除。第二次打包提示既有 bundle marker，未影响成功生成安装器；真实安装界面仍 NOT RUN。
+- `AISC-Workbench-2.1.17.exe`：24,600,576 字节，SHA256 `5063fd8dfa68338b6108b95ebd063e2b7708431c98d52b8cfb79f7566c11e832`。
+- `AISC-UpdateFlow-Test.exe`：24,600,576 字节，SHA256 `0df41817875fb13a64f7dfa248d8f7acaee15bd4a6fdcdf37aae43c8fb90963d`。同源码临时配置版本 0.0.0/独立 productName 和 identifier；用于现有正式 release 的真实下载与退出更新测试，不是发布产物。构建后 target/release/workbench.exe 为此测试副本，统一手测必须使用保存目录内有明确名称的 exe。
+- `start-handtest.ps1` PowerShell 语法解析 PASS；常规/`-UpdateFlow` 分别绑定独立数据根和显式 CLI/bundle。未打开真实窗口，启动与关于版本显示仍由统一用户手测复核。启动命令见 HANDTEST；文件大小/hash 记录见同目录 artifacts.json。
+
+### 统一用户手测入口
+
+b1 关键 CU 路径有历史 PASS；b2 早期 CU PASS、最终补丁 NOT RUN；b3–b7 因当前 agent 无 CU，UI 均 NOT RUN。b7 新镜像已补真实扩展与服务数据面，不能追记成此前窗口点击通过。所有批次已有实际预测试结果或具体阻塞，可按 HANDTEST 发起一次统一手测；用户验收、preview 发布与阶段收尾仍未完成。
