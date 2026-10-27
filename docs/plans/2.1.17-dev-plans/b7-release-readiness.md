@@ -61,3 +61,13 @@ git diff --check
 - Node：用户已明确批准 D-5 的 LTS 24.22.1 例外；回退版本为既有 Node 22，不能先行把 10-28 才进入 LTS 的 Node 26 当作本次稳定基线。
 - geodata：上游只有可变 `latest` 发布和被 force-push 的 `release` 分支，没有 dated release tag。采用 AISC 日期快照 `20261027`，固定数据 commit `02ae05ac06e8c9287916fbabfe61ef5c8591407f`，记录上游 release ID 与三文件 SHA256；本地 vendor 持有字节，不把日期伪装成上游 tag。Docker fallback 用 commit-pinned raw URL 并验证三文件 checksum，缺失/不匹配必须失败。
 - 离线包必须按版本及目标架构精确选择；npm 主包与 native companion 同代并先验证 registry integrity，不能让残留旧包通过 glob 覆盖新 pin。遵循既有 Git 策略：native companion 仅进入分发 bundle，不纳入 Git。
+
+## 实施边界补充（2026-10-27）
+
+- 从 b6 PR #45 的 develop merge `7d2c7a2` 建 `codex/2.1.17-b7-release-readiness`。
+- bundle 验证补查未入 Git 的 npm native companions：随包文件必须与 factory 主包 optionalDependencies 的真实包名/版本相符（含 Codex npm alias），旧版本/改名旧包/损坏包均失败；缺少 companion 仍允许既有在线 pin fallback，不把 repo 的小预置误判为完整离线闭包。
+- 最新查询只接受 `latest` 指向的稳定三段版本；遇到 beta/canary/无效 metadata 返回未知，不推广预发布版。
+- Node 官方 index digest 已经由 dockerproxy.net 镜像成功拉取并匹配；docker.1ms.run 与 daocloud 在本次探测中超时，未绕过 digest。
+- cc-switch 选择器此前按发布时间排序，可能选择后发旧分支补丁；依 D-4 改为稳定 semver 数值排序并补回归，不改变 draft/prerelease/缺 digest 排除规则。
+- 本批本地 Workbench 构建标识更新为 2.1.17（`tauri.conf.json` 为 Workbench 版本源）；CLI 仍为本阶段 0.1.10.dev0。preview 发布号/发布文件另准备，未授权发布前不创建 tag 或 Release。
+- 新 geosite.dat 的 protobuf 字节被 Git 自动文本探测误判；明确将 downloads 数据库/压缩包标为 binary，避免换行归一化损坏官方 checksum，并在暂存后重新核对 index 字节。

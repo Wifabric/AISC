@@ -12,8 +12,8 @@
 | b3 | PR #42 已合并 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
 | b4 | PR #43 已合并 | NOT RUN | 当前会话无 Computer Use，Docker 引擎不可用 |
 | b5 | PR #44 已合并 | 数据面 PASS / UI NOT RUN | 冻结 CLI 配对通过；CU 不可用，Explorer/NSIS 未点击 |
-| b6 | 实现/审查/本地门禁通过 | 容器 PASS / UI NOT RUN | caveman 五路径通过；CU 不可用，Services/开关 UI 未点击 |
-| b7 | 待开工 | PENDING | 尚无可测实现 |
+| b6 | PR #45 已合并 | 容器 PASS / UI NOT RUN | caveman 五路径通过；CU 不可用，Services/开关 UI 未点击 |
+| b7 | 实现/审查/本地门禁通过，产物验证中 | 进行中；UI NOT RUN | 新镜像与 caveman/Services 数据面 PASS，三轮扩展冒烟运行中；CU 不可用 |
 
 ## b1 预测试（2026-10-26）
 
@@ -185,3 +185,13 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 - **PASS**：首次安装 13 个 caveman 与 grill-me，所有 DB 行 1/1 且双端 SKILL.md 存在；官方 CLI 关闭为 1/0、0/1、0/0 后重启及 bundle revision 升级均逐字段保留，目标路径一致；marker 存在但缺行时仅补缺行 1/1；官方卸载 caveman-stats 后重装为 1/1、双端文件恢复。
 - 全门禁：Python 1540 passed / 53 skipped / 181 subtests，Rust 398 passed / 1 ignored，Vitest 770 passed，vue-tsc 通过；targeted Python 143 passed / 1 skipped / 85 subtests；文档检查 39 passed / 0 warnings / 0 failures。规范化写回、显式清缓存与 A→B→A 的旧响应/finally 均有回归。
 - **NOT RUN — Services 分组、注册服务打开/复制、caveman 开关 UI：当前工具未提供 Computer Use，也无工具发现入口。** 未点击真实窗口，不把 Docker 数据面或 Vitest 当作 UI PASS。用户步骤见 HANDTEST b6，继续 b7 后统一复核。
+
+## b7 预测试与最终产物（2026-10-27）
+
+- 新镜像 `super-claude:2.1.17-b7 @ sha256:25f42e5157fd74eb7c2ae9add4d2857c6f83a46a59857b9a2b5730011a693f44`；本批冻结 CLI/bundle 0.1.10.dev0。镜像无缓存构建成功，软件实际版本与 dependency-evidence.md 全部一致。
+- 本地门禁最终：Python 1650 passed / 53 skipped / 181 subtests；Rust 398 passed / 1 ignored；Vitest 770 passed；vue-tsc 通过，LOCAL GATES: ALL GREEN。文档检查 39/0/0，vendor 1533 checksums 通过；sidecar smoke、bundle stage/verify 通过。
+- sidecar SHA256 `59a7ef15d76104915577387385832678c74de654bdd39ba54abe3cbfd7b3fb61`，12,974,618 字节；实际 doctor 的 host.checks[name=cli-bundle-pairing] 为 pass，manifest-allows-running-cli，实际 debug CLI 与本批 bundle 路径均在 worktree 内。
+- **PASS — 新镜像 caveman 数据面**：复跑 b6 五路径，全部满足 13 子技能默认双开、已有 off 保留、缺行/重装恢复双开；旧 DB schema 升级风险见依赖证据，未触碰用户真实配置。
+- **PASS — Services 真实运行态**：用本批冻结 CLI 创建 temporary/direct 隔离 runtime `465ab5f3-5766-433e-8152-d5a31c0a4dee`，注册 5173 后注册有名 3000；返回 services 端口 3000→5173、名称 docs preview/空，gateway.state=ready。通过宿主 loopback 与 Host 路由实际请求两端口，均返回测试文件。容器已停止移除；证据目录 `C:\pt\aisc-217-b7-services-6c646f1a`。首轮夹具文本换行与预期不同，改用固定 LF 字节重跑通过，不是产品失败。
+- 三轮扩展实际数据面运行中，结果在完成后追加。
+- **NOT RUN — b7 全批 UI/显式更新实机点击**：当前工具未暴露 Computer Use 或发现入口。计划的三类推荐、日志复制/重试、Services 分组及 Explorer/NSIS/退出顺序需按 HANDTEST 一次统一用户复核；不以容器或注入测试冒充 UI PASS。

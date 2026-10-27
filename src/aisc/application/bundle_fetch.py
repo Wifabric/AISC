@@ -23,6 +23,7 @@ Two halves:
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
 import os
 import re
@@ -35,6 +36,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -350,11 +352,79 @@ def verify_staged_bundle(bundle_root: Path) -> List[str]:
     else:
         errors.append("container/Dockerfile missing")
     errors.extend(_verify_vendor_checksums(bundle_root))
+    errors.extend(_verify_npm_presets(bundle_root))
     errors.extend(_audit_forbidden(bundle_root))
     if not (bundle_root / "container" / "_bundle" / "plugins").exists():
         errors.append("container/_bundle/plugins missing")
     if not (bundle_root / "container" / "downloads").exists():
         errors.append("container/downloads missing")
+    return errors
+
+
+def _verify_npm_presets(bundle_root: Path) -> List[str]:
+    """Check ignored native payloads too: filenames alone cannot prove pairing.
+
+    Companions may be absent (the pinned online fallback remains supported),
+    but every payload included in a bundle must match its factory main package.
+    """
+    from aisc.application.tool_versions import _parse_env_file
+
+    pins = _parse_env_file(bundle_root / "config" / "versions.env")
+    dl = bundle_root / "container" / "downloads"
+    errors: List[str] = []
+
+    def metadata(path: Path) -> dict:
+        # tarfile can stop at the tar EOF before gzip validates its trailer.
+        # Drain the compression stream so truncated/CRC-damaged companions
+        # cannot pass merely because their package.json is still readable.
+        with gzip.open(path, "rb") as compressed:
+            while compressed.read(1024 * 1024):
+                pass
+        with tarfile.open(path, "r:gz") as archive:
+            member = archive.getmember("package/package.json")
+            if not member.isfile() or member.size > 1024 * 1024:
+                raise ValueError("invalid package metadata member")
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise ValueError("missing package metadata")
+            data = json.load(stream)
+            if not isinstance(data, dict):
+                raise ValueError("package metadata must be an object")
+            return data
+
+    for prefix, name, key in (("codex", "@openai/codex", "CODEX_VERSION"),
+                              ("claude-code", "@anthropic-ai/claude-code", "CLAUDE_CODE_VERSION")):
+        payloads = list(dl.glob(f"{prefix}-*.tgz"))
+        if not payloads:
+            continue
+        version = pins.get(key, "")
+        main = dl / f"{prefix}-{version}.tgz"
+        try:
+            meta = metadata(main)
+            if (meta.get("name"), meta.get("version")) != (name, version):
+                raise ValueError("main metadata differs from factory pin")
+            allowed = {main.name: (name, version)}
+            optional = meta.get("optionalDependencies") or {}
+            for arch in ("x64", "arm64"):
+                dependency = f"{name}-linux-{arch}"
+                spec = optional.get(dependency)
+                if not isinstance(spec, str) or not spec:
+                    continue
+                if spec.startswith("npm:"):
+                    package_name, _, package_version = spec[4:].rpartition("@")
+                else:
+                    package_name, package_version = dependency, spec
+                allowed[f"{prefix}-linux-{arch}-{package_version}.tgz"] = (package_name, package_version)
+            for path in payloads:
+                expected = allowed.get(path.name)
+                if expected is None:
+                    errors.append(f"npm preset stale or unexpected: {path.name}")
+                    continue
+                actual = meta if path == main else metadata(path)
+                if (actual.get("name"), actual.get("version")) != expected:
+                    errors.append(f"npm preset metadata mismatch: {path.name}")
+        except (OSError, EOFError, zlib.error, tarfile.TarError, KeyError, ValueError, AttributeError) as exc:
+            errors.append(f"npm preset {prefix} invalid: {exc}")
     return errors
 
 

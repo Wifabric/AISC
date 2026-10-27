@@ -6,17 +6,17 @@
 ## 变量与前置准备
 
 ```powershell
-$Repo = "E:\Projects\AISC"
-$Aisc = "$Repo\.venv\Scripts\aisc.exe"
+$Repo = "C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC"
+$Aisc = "$Repo\workbench\src-tauri\target\debug\aisc.exe"
+$Bundle = "$Repo\workbench\src-tauri\nsis\bundle\aisc-bundle"
 $Workspace = Join-Path $env:TEMP ("AISC-217-B1-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -LiteralPath $Workspace | Out-Null
 $Query = "caveman"
 ```
 
-1. `git -C $Repo status --short` 输出为空；当前分支为本批工作分支。
+1. 使用本阶段最终集成 checkout；`git -C $Repo status --short` 输出为空。不要使用尚未同步的 `E:\Projects\AISC` 旧 checkout 或指向它的 editable CLI。
 2. `docker version --format "{{.Server.Version}}"` 输出一个非空版本号。
-3. Workbench 已关闭；随后执行 `powershell -File $Repo\scripts\build-cli.ps1`
-   成功结束，未出现文件锁错误。
+3. Workbench 已关闭；`Test-Path $Aisc` 和 `Test-Path "$Bundle\manifest.json"` 均为 True。使用 agent 本批已重建的冻结 CLI/bundle；如另建 checkout，先按开发手册重建 sidecar、stage/verify bundle，不能沿用旧产物。
 4. 宿主无代理检查：
    - `netsh winhttp show proxy` 输出包含“直接访问”或等义“没有代理服务器”；
    - `Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" | Select-Object ProxyEnable,ProxyServer`
@@ -26,6 +26,7 @@ $Query = "caveman"
 ```powershell
 . "$Repo\scripts\dev-env.ps1"
 $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""; $env:GH_PROXY=""
+$env:AISC_ROOT=$Bundle
 Set-Location "$Repo\workbench"
 npm run tauri dev -- -- --aisc-cli $Aisc
 ```
@@ -172,3 +173,13 @@ aisc-web-expose 3000 --name "docs preview"
 3. “扩展”→已安装→展开 caveman，核对 13 个子技能 C/X 均 on。关闭 caveman 的 X、caveman-commit 的 C、caveman-compress 的 C/X，再重启工作区或升级镜像：对应状态应保持 1/0、0/1、0/0，其他项仍双开。
 4. 仅卸载测试子技能 caveman-stats 后重新安装；理想 C/X 均 on。若容器启动同步补回缺失的内置技能，同样必须双开，不能覆盖其他已有 off。
 5. 服务刷新等待时切换 A→B→A，再刷新；只显示当前 runtime 的服务，不残留旧错误或提前解除忙碌。分组缺失、顺序颠倒、空白名称、升级强制开启、重装仍关闭或跨工作区旧响应均判异常。
+
+## b7 稳定工具与三轮统一冒烟
+
+前置：已完成本文件前置准备，使用 b7 新镜像，隔离工作区 ready。仅对测试扩展执行安装/卸载。版本记录见 dependency-evidence.md 和 PRETEST b7；不将宿主 Node 22 与容器 Node 24 混淆。
+
+1. 工作区 bash 中运行 `node --version; codex --version; claude --version; cc-switch --version; mihomo -v; yazi --version`。理想依次含 24.22.1、0.164.0、2.1.311、5.11.3、1.19.33、26.9.1。设置→关于应显示 Workbench 2.1.17，诊断的 CLI/bundle 均 0.1.10.dev0 且配对 pass。
+2. 连续执行三轮：扩展→分别点击 Skills/MCP/Plugins 精选搜索→确认关键词为 caveman/context7/superpowers→从真实市场结果选择测试项安装→检查更新→卸载测试项。至少一轮安装两个 caveman 子技能。理想安装后列表与 C/X 对齐，卸载后测试项消失；Skills/MCP 更新源为 unsupported，不显示虚构“可更新”；Plugins 显示实际市场元数据判断。
+3. 按 b3 的受控失败步骤仅重试失败项，成功项保持一次；切工作区 A→B→A。理想新工作区无旧错误/日志、按钮不永久忙碌，日志最多 100 条，单项诊断最多 8 KiB，复制后敏感值遮蔽。
+4. 复核 b6 的 Services 和 caveman；再按 b5 复核 ready→取消→确认的显式更新流程。真实安装器应显示正常界面，Explorer 选中包，Workbench 随后退出。
+5. 发现版本不同、混装旧包、跨工作区污染、成功项重复执行、升级覆盖 off 或静默安装均记 FAIL，并记录批次、实际操作与原始错误。CU NOT RUN 项需用户最终复核，不把单测/数据面通过等同 UI 通过。
