@@ -8,11 +8,11 @@
 | 批次 | 实现状态 | 预测试 | 说明 |
 | --- | --- | --- | --- |
 | b1 | 已实现 | UI 关键路径 PASS | H1 安装、H4 更新状态保留已用真实 Workbench UI 执行 |
-| b2 | 已实现，待 PR | 早期 UI PASS；最终补丁 NOT RUN | 续跑工具清单无 Computer Use；自动化与 debug 构建通过 |
-| b3 | 实现及审查完成，门禁中 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
-| b4 | 实现及验证中 | NOT RUN | 当前会话无 Computer Use，Docker 引擎不可用 |
-| b5 | 待开工 | PENDING | 尚无可测实现 |
-| b6 | 待开工 | PENDING | 尚无可测实现 |
+| b2 | PR #41 已合并 | 早期 UI PASS；最终补丁 NOT RUN | 续跑工具清单无 Computer Use；自动化与 debug 构建通过 |
+| b3 | PR #42 已合并 | NOT RUN | 本轮没有 Computer Use；Docker 引擎启动后无响应，已恢复停止态 |
+| b4 | PR #43 已合并 | NOT RUN | 当前会话无 Computer Use，Docker 引擎不可用 |
+| b5 | PR #44 已合并 | 数据面 PASS / UI NOT RUN | 冻结 CLI 配对通过；CU 不可用，Explorer/NSIS 未点击 |
+| b6 | 实现/审查/本地门禁通过 | 容器 PASS / UI NOT RUN | caveman 五路径通过；CU 不可用，Services/开关 UI 未点击 |
 | b7 | 待开工 | PENDING | 尚无可测实现 |
 
 ## b1 预测试（2026-10-26）
@@ -177,3 +177,11 @@ PASS 或记录具体阻塞后，才发起用户统一手测窗口。
 - UI 操作：设置→检查→下载→ready→退出更新→取消→再确认；核对 Explorer 选中包、正常 NSIS 界面、Workbench 退出；缺失包/UAC 拒绝须保持应用；诊断复制与切工作区复核。理想/异常判据见 HANDTEST b5。
 - **NOT RUN — b5 Explorer/NSIS/退出顺序 UI：当前工具未提供 Computer Use，也无工具发现入口可加载；未实际点击真实安装器，不以 OS 注入测试冒充实机 PASS。** Docker 现已恢复，可继续后续数据面；无需逐批用户手测。
 - 最终自动化及构建计数见 b5 执行记录；ready/取消/失败保留、确认身份变化、requestId 和迟到响应均有回归。
+
+## b6 预测试与真实安装数据面（2026-10-27）
+
+- 基线：PR #44 / develop `3c05c59` 后的 b6 分支；Workbench debug 和前端生产构建已更新；CLI 仍是 b5 `0.1.10.dev0`，本批无 CLI/容器实现变更，不宣称重建镜像。
+- 使用现有 `super-claude:latest @ sha256:3ad54ca40373bdb1f2a91d4e4c1f3d1131fdfeb7f5bf5f6c8ef5a797003eb3d2`，docker run --rm 隔离 `/tmp` HOME/config/bundle，调用真实 cc-switch 与安装 helper。无宿主用户配置写入。
+- **PASS**：首次安装 13 个 caveman 与 grill-me，所有 DB 行 1/1 且双端 SKILL.md 存在；官方 CLI 关闭为 1/0、0/1、0/0 后重启及 bundle revision 升级均逐字段保留，目标路径一致；marker 存在但缺行时仅补缺行 1/1；官方卸载 caveman-stats 后重装为 1/1、双端文件恢复。
+- 全门禁：Python 1540 passed / 53 skipped / 181 subtests，Rust 398 passed / 1 ignored，Vitest 770 passed，vue-tsc 通过；targeted Python 143 passed / 1 skipped / 85 subtests；文档检查 39 passed / 0 warnings / 0 failures。规范化写回、显式清缓存与 A→B→A 的旧响应/finally 均有回归。
+- **NOT RUN — Services 分组、注册服务打开/复制、caveman 开关 UI：当前工具未提供 Computer Use，也无工具发现入口。** 未点击真实窗口，不把 Docker 数据面或 Vitest 当作 UI PASS。用户步骤见 HANDTEST b6，继续 b7 后统一复核。

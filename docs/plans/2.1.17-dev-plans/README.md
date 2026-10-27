@@ -26,8 +26,8 @@
 | b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 代码/自动化/真实容器通过；早期 Computer Use PASS，最终补丁工具不可用 NOT RUN；PR #41 已合并；待统一手测 |
 | b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `codex/2.1.17-b3-extension-operation-recovery` | 代码/审查/全门禁通过；CU/Docker 不可用，预测试 NOT RUN；PR #42 已合并；待统一手测 |
 | b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化通过；CU/Docker 不可用，预测试 NOT RUN；PR #43 已合并；待统一手测 |
-| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁通过；冻结 CLI 配对 PASS；CU 不可用，UI NOT RUN；待远端 CI/统一手测 |
-| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `2.1.17-b6-service-caveman-defaults` | 待开工 |
+| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI 通过；PR #44 已合并；冻结 CLI 配对 PASS；CU 不可用，UI NOT RUN；待统一手测 |
+| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/全门禁/真实容器通过；待远端 CI 集成；CU 不可用，UI NOT RUN；待统一手测 |
 | b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `2.1.17-b7-release-readiness` | 待开工 |
 
 ## 开工前账本门

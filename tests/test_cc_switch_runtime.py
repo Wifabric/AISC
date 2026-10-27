@@ -118,7 +118,6 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         # reconcile 会显式 enable。
         self.assertIn("--reconcile", entrypoint)
 
-    @unittest.skip("b10: factory skills cleared (user ruling 2026-10-23)")
     def test_entrypoint_registers_factory_skills_for_claude_and_codex(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
@@ -129,7 +128,6 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
         self.assertIn("cc-switch 内置 skills 已是最新，跳过同步", entrypoint)
         self.assertIn("宿主 Skills 已存在", entrypoint)
-        # b10: BUNDLED_SKILLS is empty — sync is a no-op by design
         self.assertIn('f"aisc:{name}"', helper)
         self.assertIn('["skills", "sync-method", "copy"]', helper)
         self.assertIn('["skills", "sync"]', helper)
@@ -139,7 +137,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn("cc-switch skills import-from-apps", entrypoint)
         self.assertIn(
-            "COPY container/cc-switch-skills/ /opt/aisc/skills/",
+            "COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/",
             dockerfile,
         )
         self.assertIn(
@@ -147,10 +145,11 @@ class CcSwitchRuntimeTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("/opt/aisc/skills/.aisc-bundle.sha256", dockerfile)
-        for skill_name in ("caveman", "document-skills", "grill-me", "superpowers"):
-            self.assertTrue(
-                (ROOT / "container" / "cc-switch-skills" / skill_name / "SKILL.md").is_file()
-            )
+        for skill_name, *_ in SKILLS_HELPER.BUNDLED_SKILLS:
+            source = ROOT / "container" / "cc-switch-skills" / "grill-me"
+            if skill_name != "grill-me":
+                source = ROOT / "container" / "_bundle" / "plugins" / "marketplaces" / "caveman" / "skills" / skill_name
+            self.assertTrue((source / "SKILL.md").is_file())
 
     def test_codex_wrapper_defaults_to_full_container_permissions(self):
         wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
@@ -672,10 +671,12 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
             )
             """
         )
-        states = states or {
+        states = states if states is not None else {
             name: (True, True) for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS
         }
         for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS:
+            if name not in states:
+                continue
             enabled_claude, enabled_codex = states[name]
             db.execute(
                 """
@@ -698,7 +699,163 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         db.close()
         return config_dir, skills_home, bundle_dir
 
-    @unittest.skip("b10: factory skills cleared")
+    def _run_sync_main(self, config_dir, skills_home, bundle_dir, run_cc_switch, *, mode="auto"):
+        stdout = io.StringIO()
+        with (
+            patch.object(SKILLS_HELPER, "_try_acquire_lock", return_value=(None, True)),
+            patch.object(SKILLS_HELPER, "_run_cc_switch", side_effect=run_cc_switch),
+            patch.object(SKILLS_HELPER.sys, "stdout", stdout),
+        ):
+            result = SKILLS_HELPER.main([
+                "--config-dir", str(config_dir), "--skills-home", str(skills_home),
+                "--bundle-dir", str(bundle_dir), "--log", str(config_dir / "sync.log"),
+                "--mode", mode,
+            ])
+        return result, stdout.getvalue()
+
+    def _copy_enabled_targets(self, config_dir, skills_home):
+        def run(args, log, *, check):
+            if args != ["skills", "sync"]:
+                return
+            connection = sqlite3.connect(config_dir / "cc-switch.db")
+            rows = connection.execute("SELECT name, enabled_claude, enabled_codex FROM skills").fetchall()
+            connection.close()
+            for name, claude, codex in rows:
+                for agent, enabled in ((".claude", claude), (".codex", codex)):
+                    if enabled:
+                        shutil.copytree(
+                            config_dir / "skills" / name,
+                            skills_home / agent / "skills" / name,
+                            dirs_exist_ok=True,
+                        )
+        return run
+
+    def test_empty_database_installs_all_factory_skills_dual_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir), states={})
+            result, output = self._run_sync_main(
+                config_dir, skills_home, bundle_dir,
+                self._copy_enabled_targets(config_dir, skills_home),
+            )
+            self.assertEqual((result, output), (0, "synced\n"))
+            self.assertEqual(SKILLS_HELPER._load_skill_states(config_dir / "cc-switch.db"), {
+                name: (True, True) for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS
+            })
+            for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS:
+                for agent in (".claude", ".codex"):
+                    self.assertEqual(
+                        (skills_home / agent / "skills" / name / "SKILL.md").read_text(encoding="utf-8"),
+                        name,
+                    )
+
+    def test_uninstalled_skill_reinstalls_dual_enabled_and_preserves_another_off_choice(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            states = {name: (True, True) for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS}
+            states["caveman"] = (True, False)
+            config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir), states=states)
+            connection = sqlite3.connect(config_dir / "cc-switch.db")
+            connection.execute("DELETE FROM skills WHERE name='caveman-stats'")
+            connection.commit()
+            connection.close()
+            shutil.rmtree(config_dir / "skills" / "caveman-stats")
+            for agent in (".claude", ".codex"):
+                shutil.rmtree(skills_home / agent / "skills" / "caveman-stats")
+            result, output = self._run_sync_main(
+                config_dir, skills_home, bundle_dir,
+                self._copy_enabled_targets(config_dir, skills_home),
+            )
+            self.assertEqual((result, output), (0, "synced\n"))
+            self.assertEqual(SKILLS_HELPER._load_skill_states(config_dir / "cc-switch.db"), states)
+            for agent in (".claude", ".codex"):
+                self.assertTrue((skills_home / agent / "skills" / "caveman-stats" / "SKILL.md").is_file())
+            self.assertFalse((skills_home / ".codex" / "skills" / "caveman").exists())
+
+    def test_failed_content_sync_preserves_prior_revision_and_retries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir))
+            marker = config_dir / SKILLS_HELPER.MARKER_FILE
+            (bundle_dir / SKILLS_HELPER.REVISION_FILE).write_text("bundle-v2\n", encoding="utf-8")
+
+            def fail(args, log, *, check):
+                if args == ["skills", "sync"]:
+                    raise subprocess.CalledProcessError(1, ["cc-switch", *args])
+
+            result, output = self._run_sync_main(config_dir, skills_home, bundle_dir, fail)
+            self.assertEqual(result, 1)
+            self.assertNotIn("synced", output)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "bundle-v1\n")
+            result, output = self._run_sync_main(
+                config_dir, skills_home, bundle_dir,
+                self._copy_enabled_targets(config_dir, skills_home),
+            )
+            self.assertEqual((result, output), (0, "synced\n"))
+            self.assertEqual(marker.read_text(encoding="utf-8"), "bundle-v2\n")
+
+    def test_matching_marker_with_missing_rows_rehydrates_only_missing_defaults(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            states = {
+                name: ((True, False), (False, True), (False, False))[i % 3]
+                for i, (name, *_) in enumerate(SKILLS_HELPER.BUNDLED_SKILLS)
+            }
+            missing = ("caveman", "caveman-help", "caveman-stats")
+            for name in missing:
+                del states[name]
+            config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir), states=states)
+            required, reason = SKILLS_HELPER.sync_required(
+                config_dir=config_dir, skills_home=skills_home,
+                bundle_dir=bundle_dir, revision="bundle-v1",
+            )
+            self.assertTrue(required)
+            self.assertIn("registration missing", reason)
+            result, output = self._run_sync_main(
+                config_dir, skills_home, bundle_dir,
+                self._copy_enabled_targets(config_dir, skills_home),
+            )
+            self.assertEqual((result, output), (0, "synced\n"))
+            expected = {**states, **{name: (True, True) for name in missing}}
+            self.assertEqual(SKILLS_HELPER._load_skill_states(config_dir / "cc-switch.db"), expected)
+            for name in missing:
+                for agent in (".claude", ".codex"):
+                    self.assertTrue((skills_home / agent / "skills" / name / "SKILL.md").is_file())
+            # A restart with the matching marker must not rewrite metadata.
+            connection = sqlite3.connect(config_dir / "cc-switch.db")
+            before = connection.execute("SELECT * FROM skills ORDER BY id").fetchall()
+            connection.close()
+            with patch.object(SKILLS_HELPER, "time") as clock:
+                result, output = self._run_sync_main(
+                    config_dir, skills_home, bundle_dir,
+                    lambda *a, **k: self.fail("current install should not invoke cc-switch"),
+                )
+            self.assertEqual((result, output), (0, "current\n"))
+            clock.time.assert_not_called()
+            connection = sqlite3.connect(config_dir / "cc-switch.db")
+            self.assertEqual(connection.execute("SELECT * FROM skills ORDER BY id").fetchall(), before)
+            connection.close()
+
+    def test_content_upgrade_preserves_mixed_choices_and_updates_enabled_targets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            states = {
+                name: ((True, False), (False, True), (False, False))[i % 3]
+                for i, (name, *_) in enumerate(SKILLS_HELPER.BUNDLED_SKILLS)
+            }
+            config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir), states=states)
+            (bundle_dir / SKILLS_HELPER.REVISION_FILE).write_text("bundle-v2\n", encoding="utf-8")
+            for name in states:
+                (bundle_dir / name / "SKILL.md").write_text(f"updated {name}", encoding="utf-8")
+            result, output = self._run_sync_main(
+                config_dir, skills_home, bundle_dir,
+                self._copy_enabled_targets(config_dir, skills_home),
+            )
+            self.assertEqual((result, output), (0, "synced\n"))
+            self.assertEqual(SKILLS_HELPER._load_skill_states(config_dir / "cc-switch.db"), states)
+            for name, state in states.items():
+                for agent, enabled in zip((".claude", ".codex"), state):
+                    target = skills_home / agent / "skills" / name
+                    if enabled:
+                        self.assertEqual((target / "SKILL.md").read_text(encoding="utf-8"), f"updated {name}")
+                    else:
+                        self.assertFalse(target.exists())
+
     def test_auto_mode_skips_when_revision_registration_and_targets_are_current(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir, skills_home, bundle_dir = self._create_layout(Path(temp_dir))
@@ -713,7 +870,6 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         self.assertFalse(required)
         self.assertEqual(reason, "current")
 
-    @unittest.skip("b10: factory skills cleared")
     def test_disabled_skills_do_not_require_targets_or_get_reenabled(self):
         states = {
             name: (False, False) for name, *_ in SKILLS_HELPER.BUNDLED_SKILLS
@@ -743,7 +899,6 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
         self.assertTrue(persisted_states)
         self.assertEqual(set(persisted_states), {(0, 0)})
 
-    @unittest.skip("b10: factory skills cleared")
     def test_missing_enabled_target_requires_sync(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir, skills_home, bundle_dir = self._create_layout(
@@ -778,7 +933,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
     def test_successful_sync_writes_marker_after_cc_switch_commands(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            config_dir, _, bundle_dir = self._create_layout(root)
+            config_dir, skills_home, bundle_dir = self._create_layout(root)
             marker = config_dir / SKILLS_HELPER.MARKER_FILE
             marker.unlink()
             log_path = root / "skills.log"
@@ -810,7 +965,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
     def test_failed_cc_switch_sync_does_not_write_current_marker(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            config_dir, _, bundle_dir = self._create_layout(root)
+            config_dir, skills_home, bundle_dir = self._create_layout(root)
             marker = config_dir / SKILLS_HELPER.MARKER_FILE
             marker.unlink()
             log_path = root / "skills.log"

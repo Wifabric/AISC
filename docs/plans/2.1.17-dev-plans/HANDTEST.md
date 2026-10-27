@@ -155,3 +155,20 @@ npm run tauri dev -- -- --aisc-cli $Aisc
 5. 另下载一次，在确认前临时重命名测试下载包后确认。理想：显示文件缺失错误，Workbench 保持运行；恢复原文件名。若出现 UAC 拒绝或启动失败，同样必须保留应用并报错。
 6. 打开“诊断”→展开“本机更新网络观测”→复制健康报告并粘贴到本地文本编辑器。理想：没有请求时显示“尚未探测”，有请求时显示 direct/mirror、传输、状态、耗时和时间；容器扩展网络明确未探测；CLI/bundle 检查列出实际路径、版本、manifest 规则与原因，不能把 Workbench 2.x 与 CLI 0.x 直接判为版本不匹配。
 7. 在诊断进行时切工作区或关闭后重开。理想：当前诊断结果不被旧请求覆盖。静默安装、下载即退出、失败后退出、未知版本被报健康、复制出凭据或旧结果覆盖均为异常。
+
+## b6 注册服务分组与 caveman 默认态
+
+前置：本版 Workbench、Docker 已启动，全新隔离项目工作区进入 ready。使用工作区的 bash 标签执行以下容器命令，勿在宿主 PowerShell 执行：
+
+```bash
+python3 -m http.server 3000 --bind 0.0.0.0 >/tmp/aisc-b6-3000.log 2>&1 &
+python3 -m http.server 5173 --bind 0.0.0.0 >/tmp/aisc-b6-5173.log 2>&1 &
+aisc-web-expose 5173
+aisc-web-expose 3000 --name "docs preview"
+```
+
+1. 左侧 Services 视图：先出现“宿主工具（F2）”，随后同类标题“注册服务”；注册服务行按 3000→5173 排列，名称分别为 docs preview、端口 5173。协议/注册状态有对应中文，切英文后分组/状态为英文。
+2. 点击 3000 的“复制”并粘贴核对 URL，点击“打开”显示测试 HTTP 目录页。缺少 runtime-services capability 的旧 CLI 只显示不支持提示、仍保留宿主工具；不出现假服务行。
+3. “扩展”→已安装→展开 caveman，核对 13 个子技能 C/X 均 on。关闭 caveman 的 X、caveman-commit 的 C、caveman-compress 的 C/X，再重启工作区或升级镜像：对应状态应保持 1/0、0/1、0/0，其他项仍双开。
+4. 仅卸载测试子技能 caveman-stats 后重新安装；理想 C/X 均 on。若容器启动同步补回缺失的内置技能，同样必须双开，不能覆盖其他已有 off。
+5. 服务刷新等待时切换 A→B→A，再刷新；只显示当前 runtime 的服务，不残留旧错误或提前解除忙碌。分组缺失、顺序颠倒、空白名称、升级强制开启、重装仍关闭或跨工作区旧响应均判异常。

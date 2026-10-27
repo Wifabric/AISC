@@ -216,6 +216,7 @@ function dirOf(p: string): string {
 // --- svc-4+: Web services tab (parallel to files/artifacts) ---
 
 const servicesSupported = computed(() => runtime.capability?.runtime_services ?? false);
+const registeredServices = computed(() => [...(runtime.webServices?.services ?? [])].sort((a, b) => a.port - b.port));
 
 /** P2-3 手测 r2: the header titles itself with the ACTIVE view's name. */
 const TITLE_KEY: Record<string, string> = {
@@ -240,7 +241,7 @@ const gatewayReasonText = computed(() => {
 });
 
 function serviceLabel(port: number, name: string): string {
-  return name || t("sidebar.servicePort", { port });
+  return name.trim() || t("sidebar.servicePort", { port });
 }
 
 /** Copy the canonical service URL (A-G11-3: same clipboard plugin everywhere). */
@@ -1142,59 +1143,64 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- svc-4+: Web services panel (gateway state + registered services) -->
     <div v-else-if="artifactFilter === 'services'" key="services" class="explorer-body services-panel">
       <HostToolsServicePanel />
-      <p v-if="!servicesSupported" class="explorer-empty">{{ t("sidebar.webServicesUnsupported") }}</p>
-      <template v-else-if="runtime.webServices">
-        <p v-if="runtime.webServices.gateway.state !== 'ready'" class="explorer-empty">
-          {{ gatewayReasonText ?? t("sidebar.webReason.runtime_not_running") }}
-        </p>
-        <p
-          v-else-if="runtime.webServices.services.length === 0"
-          class="explorer-empty"
-        >
-          {{ t("sidebar.webServicesNone") }}
-        </p>
-        <template v-else>
-          <div class="services-gateway">{{ t("sidebar.webGatewayReady") }} <span class="mono">:{{ runtime.webServices.gateway.host_port }}</span></div>
-          <div
-            v-for="s in runtime.webServices.services"
-            :key="s.port"
-            class="explorer-row service-row"
-            :title="t('sidebar.serviceCopyUrl', { url: s.url })"
+      <section class="registered-services">
+        <h3>{{ t("sidebar.registeredServices") }}</h3>
+        <p v-if="!servicesSupported" class="explorer-empty">{{ t("sidebar.webServicesUnsupported") }}</p>
+        <template v-else-if="runtime.webServices">
+          <p v-if="runtime.webServices.gateway.state !== 'ready'" class="explorer-empty">
+            {{ gatewayReasonText ?? t("sidebar.webReason.runtime_not_running") }}
+          </p>
+          <p
+            v-else-if="registeredServices.length === 0"
+            class="explorer-empty"
           >
-            <span class="explorer-name">{{ serviceLabel(s.port, s.name) }}</span>
-            <span class="service-port mono">{{ s.port }}</span>
-            <span class="service-actions">
-              <button
-                class="ui-icon-button sm"
-                type="button"
-                :aria-label="t('sidebar.copy')"
-                :title="t('sidebar.copy')"
-                @click="copyServiceUrl(s.url)"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-                  <path d="M10.5 3.5h-7a1 1 0 0 0-1 1v7" />
-                </svg>
-              </button>
-              <button
-                class="ui-icon-button sm"
-                type="button"
-                :aria-label="t('sidebar.serviceOpen')"
-                :title="t('sidebar.serviceOpen')"
-                @click="runtime.openWebService(s.port)"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                  <path d="M6.5 9.5 13 3" />
-                  <path d="M9 3h4v4" />
-                  <path d="M13 9.5v3a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-8A1.5 1.5 0 0 1 3.5 3h3" />
-                </svg>
-              </button>
-            </span>
-          </div>
+            {{ t("sidebar.webServicesNone") }}
+          </p>
+          <template v-else>
+            <div class="services-gateway">{{ t("sidebar.webGatewayReady") }} <span class="mono">:{{ runtime.webServices.gateway.host_port }}</span></div>
+            <div
+              v-for="s in registeredServices"
+              :key="s.port"
+              class="explorer-row service-row"
+              :title="t('sidebar.serviceCopyUrl', { url: s.url })"
+            >
+              <span class="explorer-name">{{ serviceLabel(s.port, s.name) }}</span>
+              <span class="service-port mono">{{ s.port }}</span>
+              <span class="service-protocol" :title="t('sidebar.serviceProtocolLabel')">{{ t(`sidebar.serviceProtocol.${s.protocol}`) }}</span>
+              <span class="service-state" :title="t('sidebar.serviceStateLabel')">{{ t(`sidebar.serviceState.${s.state}`) }}</span>
+              <span class="service-actions">
+                <button
+                  class="ui-icon-button sm"
+                  type="button"
+                  :aria-label="t('sidebar.copy')"
+                  :title="t('sidebar.copy')"
+                  @click="copyServiceUrl(s.url)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                    <path d="M10.5 3.5h-7a1 1 0 0 0-1 1v7" />
+                  </svg>
+                </button>
+                <button
+                  class="ui-icon-button sm"
+                  type="button"
+                  :aria-label="t('sidebar.serviceOpen')"
+                  :title="t('sidebar.serviceOpen')"
+                  @click="runtime.openWebService(s.port)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                    <path d="M6.5 9.5 13 3" />
+                    <path d="M9 3h4v4" />
+                    <path d="M13 9.5v3a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-8A1.5 1.5 0 0 1 3.5 3h3" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+          </template>
+          <p v-if="runtime.webServicesError" class="explorer-error">{{ runtime.webServicesError.message }}</p>
         </template>
-        <p v-if="runtime.webServicesError" class="explorer-error">{{ runtime.webServicesError.message }}</p>
-      </template>
-      <p v-else class="explorer-empty">{{ t("explorer.loading") }}</p>
+        <p v-else class="explorer-empty">{{ t("explorer.loading") }}</p>
+      </section>
     </div>
     </Transition>
 
@@ -1481,6 +1487,8 @@ function onTreeKeydown(e: KeyboardEvent) {
   padding: var(--space-1) var(--space-2);
 }
 /* svc-4+: web services panel */
+.registered-services { display: grid; gap: var(--space-2); min-width: 0; padding-top: var(--space-3); border-top: var(--border-w) solid var(--border); }
+.registered-services h3 { margin: 0; font-size: var(--font-md); color: var(--text); }
 .services-gateway {
   padding: var(--space-1) var(--space-2);
   color: var(--text-muted);
@@ -1488,6 +1496,8 @@ function onTreeKeydown(e: KeyboardEvent) {
 }
 .services-gateway .mono { font-family: var(--font-mono); color: var(--info); }
 .service-row .service-port { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); }
+.service-row .service-protocol,
+.service-row .service-state { font-size: var(--font-xs); color: var(--text-muted); flex-shrink: 0; }
 .service-row .service-actions { margin-left: auto; display: inline-flex; gap: 2px; opacity: 0; transition: opacity var(--duration-normal) var(--ease); }
 .service-row:hover .service-actions, .service-row:focus-within .service-actions { opacity: 1; }
 .explorer-menu-backdrop {
