@@ -80,3 +80,13 @@ git diff --check
 三轮真实分类冒烟 9/9 PASS；部分失败夹具使用完整身份独立重跑 PASS，原裸名称冲突 FAIL/exit 1 原样保留，详见 smoke-evidence.md。真实 Services 网关与 caveman 五路径 PASS。没有 CU，UI/Explorer/NSIS 点击 NOT RUN；因此上方高频冒烟完整验收、CU 和最终就绪项仍未勾选，不能把数据面通过视作 UI 验收。
 
 开发与本地构建材料已完成，可发起一次统一用户手测。当前发布验收状态：未就绪（待 HANDTEST 全批用户验收及用户宣布收尾）；不创建 tag/Release，不合并 main。
+
+## 合并后 sidecar 门禁修正计划
+
+PR #46 合并 `1fd0219` 后，三平台 sidecar run 40514460514 的 parity 同样失败：b5 新增 doctor 配对 detail 中的 cliPath/cliEntrypoint 如实分别指向 pip 解释器/console script 与冻结 exe，旧比较器把预期的每二进制来源差异视作协议差异。编译成功，失败集中于 doctor 比较；不删除产品诊断路径。
+
+本修正属于本批既定 sidecar 构建/配对验证范围。先在 `codex/2.1.17-b7-ci-readiness` 补 RED：允许 doctor 指定配对检查中的两个非空路径值按来源差异归一化，同时证明 bundlePath、版本、manifest/兼容列表、状态、原因及缺失/空路径仍能触发差异；其他命令或检查不受影响。再最小修改 `scripts/verify-cli-parity.py`，执行聚焦测试与本机 pip/冻结 CLI 全矩阵真实 parity，审查后经分支/PR 合入 develop；重跑三平台 sidecar，保留原失败历史。不改生产 CLI，因此现有冻结产物无需重建。
+
+macOS bundle run 40514460311 另暴露发布调用缺少双架构参数：arm64 宿主默认只准备本架构，精确 family 替换移除了 Git/vendor 仍跟踪的 x64 yazi，bundle verify 正确拒绝缺文件。发布 bundle 为跨架构 Linux 镜像的资源包，三个出包 workflow 统一显式 `--all-arches --yazi`，沿用 staging 的完整族事务语义；不靠跳过 vendor 校验放行。补 workflow 合同回归及 `stage_npm.py` 的 push 路径触发，避免实现修改不重跑包构建。
+
+审查补充 NSIS pwsh 的原生命令失败传递：staging 后立即检查 `$LASTEXITCODE`，失败不能被后续成功的 packaging 覆盖；独立 RED/GREEN 合同测试覆盖该顺序。
