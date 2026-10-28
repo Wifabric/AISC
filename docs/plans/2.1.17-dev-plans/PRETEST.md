@@ -236,3 +236,63 @@ b1 关键 CU 路径有历史 PASS；b2 早期 CU PASS、最终补丁 NOT RUN；b
 PR #47 合并 develop `1c43091566ced3050c1c186061839d07c5a59aa2`，PR #40–#47 覆盖的开发实现全部集成。管理 worktree 取该 develop 基线并补纯文档最终账本；未修改 `E:\Projects\AISC` 旧主 checkout。重复的合并触发构建不作为新的产品改动或新的 UI 证据。
 
 已核对 `src/aisc`、Workbench 前后端、container/config/vendor 的 Git tree 与本地实际构建的 `cbb6e5a` 完全一致；CI 修正不改变已准备的 exe/安装包。统一用户手测按 HANDTEST 文首启动保存产物，b5 使用专用 0.0.0 副本。真实 UI 仍为 NOT RUN，用户验收与发布尚未发生。
+
+## 全批 Computer Use 补测（2026-10-28，尚未完成）
+
+本节追加最终集成产物的真实窗口观察；上文各批工具不可用结论保留为历史，不能视为本次已全量通过。源码基线 `cb19fb4`，使用保存的 `AISC-Workbench-2.1.17.exe` 与冻结 CLI/bundle 0.1.10.dev0、b7 镜像 `25f42e51…`，未修改旧主 checkout。测试工作区为 `C:\pt\aisc-217-cu-20261027\workspace-a`，容器 `3e8098c18e20 / aisc-wb-aef55f54`；其他已有容器未操作。
+
+| 项目 | 真实操作与观察 | 本次结论 |
+| --- | --- | --- |
+| 前置 / b4 | 首页选择 A、只读预检通过、启动至“就绪”；扩展显示 caveman / Context7 / superpowers 三类卡片，中文理由、身份及来源可读 | 此路径 PASS；离线与英文分支待测 |
+| H1 / b2 / b4 | 点击 caveman 推荐“搜索市场”，Skills 输入变为 caveman，结果 `juliusbrussee/caveman · 13 个技能`，显示“已刷新 / 上次成功：2026/10/28 00:13:50”；点击安装全部，截图见 `安装中 0/13` 和 spinner | 搜索及开始进度 PASS；安装终态、toast、13 子行状态未观察，H1 整体未完成 |
+| H2 / H3 | 前轮宿主 WinHTTP direct、ProxyEnable=0，github / ghfast / gh-proxy 的 443 均可连接 | NOT RUN：不满足真实故障网络前置，未改系统网络伪造 |
+| b6 Services | 仅在 A 容器启动 HTTP 3000/5173，先注册 5173，再注册 `3000 --name "docs preview"`；UI 先显示“宿主工具（F2）”、再显示“注册服务”，3000→5173、docs preview / 端口 5173、HTTP / 已注册、网关就绪 `:47001` | 分组、名称、顺序和状态 PASS |
+| b6 服务读取恢复 | 组安装执行期间首次服务读取显示 `AISC CLI 响应超时`，随后自动恢复正确列表；当时容器仍有 skill-install-group 与官方安装子进程 | 保留瞬时超时证据；因果尚未证实，不能称已修复 |
+| b6 复制 / 打开 | 点击复制尚未完成本地编辑器粘贴验证；点击打开后窗口清单出现 Chrome `Directory listing for /`，绑定浏览器时被工具终止 | 复制内容与网页正文 NOT RUN；仅窗口标题不作 HTTP 内容 PASS |
+| b7 版本 | 设置→关于与更新→检查后显示 GUI 2.1.17、内置 CLI 0.1.10.dev0，远端 GUI 2.1.16 / CLI 0.1.9；仅通过 shell 核对 A 容器的 Node 24.22.1、Codex 0.164.0、Claude 2.1.311、cc-switch 5.11.3、Mihomo 1.19.33、yazi 26.9.1 | 关于页版本 PASS；容器版本是数据面证据，不冒充终端 UI |
+
+前轮 Computer Use 原始停止原因：`could not determine the current browser URL on Windows with enough confidence to enforce policy`。收到停止指令后终止本轮，没有重置工具绕过。
+
+### 13:24 CST 恢复检查
+
+用户要求重试后，Computer Use 已能枚举应用及浏览器（当前无 Chrome 窗口），正常测试副本重新启动，窗口 `2425736`，首页 AX 可读取最近工作区 A。点击 A 时返回 `GetCursorPos failed: 拒绝访问。 (0x80070005)`；重新枚举、绑定窗口后截图全黑，未再发送输入。可能涉及锁屏或远程会话断开，尚未确定具体原因；已请用户确认桌面解锁及会话连接。没有更改安全/隐私/远程桌面设置。
+
+本次全批补测仍未完成：H1 终态/H4、b2 剩余市场与缓存、b3 日志/重试/复制、b4 其余推荐/隔离/英文、b5 专用副本的显式更新/诊断、b6 开关/重装/隔离、b7 三轮真实 UI 冒烟均待继续。不得用历史数据面或自动化结果补记 UI PASS；尚未发起最终用户验收或发布。
+
+### 用户确认解锁后的重试
+
+用户明确回复“已解锁，可以重试”。重新枚举并绑定同一测试窗口，AX 仍正常，截图仍全黑；点击最近工作区 A 再次返回 `GetCursorPos failed: 拒绝访问。 (0x80070005)`。随后执行一次 `cua_repl.js_reset`，在全新 JS 会话重新枚举、绑定并重试一次，仍为同一错误；停止继续发送输入。不能再把锁屏当作已确定原因，也不能声称工具已恢复。当前阻塞位于 Computer Use 的桌面输入访问，尚未到达 Workbench 控件事件；没有新增 UI PASS，没有更改安全设置或改用其他注入方式。
+
+### 16:46 CST 输入通道诊断与 H1 数据面终态
+
+- 同一会话内 `app.click`、`setValue`、`pressKey` 均在发送前失败：`GetCursorPos failed: 拒绝访问。 (0x80070005)`。只读诊断显示 Workbench 与 `codex-computer-use` 均在用户 `wangyu` 的 Active RDP session 2，helper 为 Medium 完整性；重建 JS 与 helper 进程后仍复现。该错误发生在输入层，未到达 Workbench 控件事件，不能记产品 FAIL。
+- 上轮 UI 发起的 caveman 组安装最终在数据面完成：A 容器 `skills` 表 13 行 `aisc:caveman*` 全部 `enabled_claude=1 / enabled_codex=1`，且 `/root/.claude/skills` 与 `/root/.codex/skills` 各存在同名 13 个 `SKILL.md`（合计 26 个）。
+- 因未能在真实窗口观察安装完成 toast、列表刷新与 13 个子行开关，H1 仍不能记 UI PASS；以上仅补充终态数据面证据。待用户在 AISC 窗口内完成一次物理点击以恢复交互桌面后，继续 CU 测试。
+
+## 2026-10-29 全批 CU 补测最新账本
+
+本节是当前权威状态；上文“输入通道阻塞 / 尚未完成”保留为历史过程。继续使用保存的最终产物、冻结 CLI/bundle 0.1.10.dev0 与隔离数据根。期间发现本机镜像漂移：`super-claude:latest` 曾被 Node 22 镜像 `628502412e88` 覆盖且 b7 标签丢失。已把覆盖镜像保留为 `super-claude:cu-overwrite-628502`，按 b7 bundle `--no-cache` 重建并重指 `super-claude:2.1.17-b7` 与 `latest`，新 ID `sha256:610cd7ebfa39e4ef9a9273041d9c123c8fc304cc21195eeb5463ddee77f82053`。该 ID 与原 `25f42e51…` 不同；镜像内 Node 24.22.1、Codex 0.164.0、Claude 2.1.311、cc-switch 5.11.3、Mihomo 1.19.33、yazi 26.9.1 已逐项实测。保存的 Workbench/CLI 字节不变。
+
+| 批次 | 真实 UI / 容器内核对 | 当前结论 |
+| --- | --- | --- |
+| H1 | caveman 市场搜索返回 13 项并显示刷新时间；UI 点击“安装全部”出现 `安装中 0/13`；随后真实列表刷新为 `JuliusBrussee/caveman · 13 个技能`，容器 SSOT 与 Claude/Codex 双端文件均为 13 项且默认双开 | 进度与终态 PASS；完成 toast 未捕获，H1 不能记完整 PASS |
+| H4 | UI 将 `caveman`、`caveman-commit` Codex 显式关闭并多次重启；真实 UI 点击组“更新全部”显示 `更新中 0/13`，完成后按钮恢复；原路径 SQLite/WAL 终态两项仍 1/0，其余 11 项 1/1 | PASS |
+| b2 | Skills `caveman`、MCP `pdf`、Plugins `superpowers` 均真实搜索成功；Plugin 详情显示中文简介、安装量、仓库与“市场原文”；关于页版本分开比较 | 搜索/详情 PASS；断网缓存、清空与工作区隔离 NOT RUN |
+| b3 | 不存在插件安装超时后展开操作日志，显示 identity、动作、第 1 次尝试、起止时间、`AISC CLI 响应超时`；未显示盲目重试按钮；“复制诊断”剪贴板 JSON 含身份/动作/时间/错误 | 超时未知与防盲目重试、复制诊断 PASS；第 2 次可重试失败 NOT RUN |
+| b4 | 三类推荐中文与英文界面均显示完整理由、身份、来源与 `Search market`；推荐搜索路由到对应资产页 | PASS；未启动 runtime 的禁用按钮 NOT RUN |
+| b5 | 0.0.0 关于页正确；下载 279.5MB 并校验通过；退出更新取消后应用保持运行；重命名包确认后显示 `staged setup not found` 并保持运行；最终确认后 Workbench 退出、Explorer 打开目录并选中 1 个 279MB `workbench-setup-2.1.16.exe`，NSIS 显示欢迎界面，进程命令行无 `/S`，随后在欢迎页取消且未安装 | 显式更新主路径 PASS；诊断竞态 NOT RUN；诊断健康报告在常规副本复制 PASS |
+| b5 诊断 | 真实诊断显示 0 fail / 1 warning / 1 skip / 15 pass；CLI/bundle pairing pass 且实际路径/版本/manifest reason 完整；更新网络“尚未探测”、容器扩展网络未探测；“复制健康报告”剪贴板 JSON 完整 | PASS；请求竞态与重开覆盖 NOT RUN |
+| b6 Services | 中文/英文均显示 `宿主工具（F2）` 与 `Registered services`；3000→5173、docs preview、HTTP、Registered、Gateway ready；复制按钮剪贴板为 `http://p3000.localhost:47001/`，打开出现 `Directory listing for /`，curl 直连返回 HTML | PASS |
+| b6 caveman | 13 默认双开；显式 off 多次重启保留；UI 子项卸载使列表减少并记录成功日志，`caveman-stats` 重装后列表回到 13 且 stats/setup 均 1/1，既有 off 未被覆盖 | PASS；A→B→A 服务隔离 NOT RUN |
+| b7 | 关于页 GUI 2.1.17 / CLI 0.1.10.dev0；重建镜像六项工具版本逐项匹配；H4 组更新真实 UI PASS | 版本与关键更新 PASS；三轮完整 UI 冒烟 NOT RUN |
+
+### 真实边界与测试工具干扰
+
+- 早期从宿主直接打开挂载中的 `cc-switch.db` 后，容器内下一次写入可能报 `unable to open database file`；重启容器内 cc-switch daemon 后恢复。该行为由测试工具干扰 Docker Desktop 文件共享/WAL 引起，未作为产品 FAIL，后续核对均改在容器内原路径或官方 CLI 执行。
+- 只复制 SQLite 主文件会漏掉 WAL 最新状态，曾误判更新覆盖 off。以原路径 `mode=rw` 只读查询或 `cc-switch skills info` 为准。
+- Chrome 绑定曾因工具无法确定 URL 被强制停止；后续仅用窗口标题和 curl 验证打开结果，不再绑定该 Chrome 窗口。
+- b6 UI 卸载坐标实际移除了 `caveman-stats` 与相邻 `caveman-setup`，两个测试项均已被重装并恢复默认双开；操作日志保留两次卸载与 stats 添加成功记录。
+
+### 仍需用户统一手测或后续 CU 补测
+
+H2/H3 真实故障网络、b2 缓存回退/清空/隔离竞态、b3 第二次可重试失败、b4 未启动禁用态、b5 诊断请求竞态、b6 A→B→A、b7 三轮完整 UI 冒烟。不要把上表局部 PASS 记为全批 PASS；发布和阶段收尾仍未发生。

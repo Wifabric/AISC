@@ -22,13 +22,13 @@
 
 | 批 | 内容 | 优先级 | 分支 | 终态 |
 | --- | --- | --- | --- | --- |
-| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器数据面/远端 CI/Computer Use 关键 UI 路径通过；用户统一手测待全部批次预测试后 |
-| b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 代码/自动化/真实容器通过；早期 Computer Use PASS，最终补丁工具不可用 NOT RUN；PR #41 已合并；待统一手测 |
-| b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `codex/2.1.17-b3-extension-operation-recovery` | 代码/审查/全门禁通过；b7 已补真实部分失败/仅失败项重试数据面；CU 不可用，UI NOT RUN；PR #42 已合并；待统一手测 |
-| b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化通过；b7 已补三类真实搜索/安装数据面；CU 不可用，推荐 UI NOT RUN；PR #43 已合并；待统一手测 |
-| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI 通过；PR #44 已合并；冻结 CLI 配对 PASS；CU 不可用，UI NOT RUN；待统一手测 |
-| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI 通过；PR #45 已合并；CU 不可用，UI NOT RUN；待统一手测 |
-| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮分类 9/9 PASS，夹具修正证据见 PRETEST；PR #46/#47 已合并；CU 不可用，UI NOT RUN；进入统一手测，尚未发布 |
+| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器/远端 CI/CU 关键 UI 路径通过；H1 toast 与故障网络分支待用户统一手测 |
+| b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 代码/自动化/真实容器通过；CU 三类市场搜索与详情 PASS，断网缓存/隔离分支 NOT RUN；PR #41 已合并；待统一手测 |
+| b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `codex/2.1.17-b3-extension-operation-recovery` | 代码/审查/全门禁/b7 数据面通过；CU 超时日志与复制诊断 PASS，第二次可重试失败 NOT RUN；PR #42 已合并；待统一手测 |
+| b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化/b7 数据面通过；CU 中英文推荐与搜索路由 PASS，离线禁用态 NOT RUN；PR #43 已合并；待统一手测 |
+| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI/冻结 CLI 配对通过；CU 显式更新主路径与健康报告 PASS，诊断竞态 NOT RUN；PR #44 已合并；待统一手测 |
+| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI/CU Services 与默认态 PASS；A→B→A 隔离 NOT RUN；PR #45 已合并；待统一手测 |
+| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮数据面 9/9，CU 版本/H4/关键路径 PASS，完整三轮 UI 冒烟 NOT RUN；PR #46/#47 已合并；进入统一手测，尚未发布 |
 
 ## 开工前账本门
 

@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 Computer Use 补测（2026-10-29，部分完成）
+
+- 最终产物真实 UI 补测取得关键路径：Skills/MCP/Plugins 三类真实搜索、caveman 组安装进度与 13 项终态、H4 组更新保留显式 off、Services 中英文分组/顺序/复制/打开、b6 开关重启保留与重装默认双开、诊断健康报告，以及 b5 0.0.0 副本下载→取消→缺文件失败→确认后 Explorer 选中安装包并打开正常 NSIS（无 `/S`）后取消。
+- 本轮发现本机 `super-claude:latest` 曾被 Node 22 镜像覆盖且 b7 标签丢失；已保留覆盖镜像 `super-claude:cu-overwrite-628502`，用 b7 bundle 无缓存重建并重指 `latest` / `2.1.17-b7`。新镜像 ID `610cd7ebfa39…` 与原始 `25f42e51…` 不同，但六项工具版本逐项实测匹配。保存的 Workbench/CLI 产物未变。
+- 仍有真实 NOT RUN：故障网络 H2/H3、b2 断网缓存回退与清空竞态、b3 可重试失败的第二attempt、b4 离线禁用、b5 诊断竞态、b6 A→B→A 隔离、b7 三轮完整 UI 冒烟。不能声称全批 CU PASS；统一用户手测仍需按 HANDTEST 复核。
+
 # v2.1.17 b7 开发验证（2026-10-27）
 
 - 刷新 Node 24.22.1（D-5）、Codex 0.164.0、Claude Code 2.1.311、cc-switch 5.11.3、Mihomo 1.19.33、yazi 26.9.1；geodata 固定 commit/日期快照与 checksum。Node digest 真正用于构建，npm 主包/伴生包精确配对、官方完整性验证、失败回滚，损坏包验证失败关闭。
