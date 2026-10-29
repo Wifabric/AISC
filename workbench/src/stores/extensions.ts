@@ -92,6 +92,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const searchBusyByKind = ref(kindRecord(false));
   const pluginMarketsBusy = ref(false);
   const pluginMarketsError = ref<string | null>(null);
+  const skillRepos = ref<ExtensionsItem[]>([]);
+  const skillReposBusy = ref(false);
+  const skillReposError = ref<string | null>(null);
+  let skillReposGeneration = 0;
   let pluginMarketsGeneration = 0;
   const searchGeneration = kindRecord(0);
   const marketCacheByKind = ref<KindRecord<MarketCacheState | null>>(
@@ -178,6 +182,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
     marketMcp.value = [];
     marketPlugins.value = [];
     pluginMarkets.value = [];
+    skillRepos.value = [];
+    skillReposError.value = null;
+    skillReposBusy.value = false;
+    skillReposGeneration += 1;
     marketCacheByKind.value = kindRecord<MarketCacheState | null>(null);
     updateItemsByKind.value = emptyUpdateItems();
     updatesError.value = null;
@@ -584,6 +592,31 @@ export const useExtensionsStore = defineStore("extensions", () => {
     ]);
   }
 
+  async function loadSkillRepos(): Promise<void> {
+    if (!context.value) return;
+    const token = contextToken();
+    const generation = ++skillReposGeneration;
+    const current = () => isCurrentContext(token) && generation === skillReposGeneration;
+    skillReposBusy.value = true;
+    skillReposError.value = null;
+    try {
+      const out = await call<{ items?: ExtensionsItem[] }>("skill-repos-list");
+      if (!current()) return;
+      skillRepos.value = out.items ?? [];
+    } catch (e) {
+      if (current()) skillReposError.value = errorText(e);
+    } finally {
+      if (current()) skillReposBusy.value = false;
+    }
+  }
+
+  async function removeSkillRepo(id: string): Promise<void> {
+    await runOperation("skills", "remove", `repo:${id}`, id, [
+      () => call("skill-repo-remove", { id }),
+    ]);
+    await loadSkillRepos();
+  }
+
   async function searchMcp(query: string): Promise<void> {
     await runSearch("mcp", "mcp-search", query, (items) => {
       marketMcp.value = items;
@@ -621,6 +654,13 @@ export const useExtensionsStore = defineStore("extensions", () => {
     await loadPluginMarkets();
   }
 
+  async function removePluginMarket(id: string): Promise<void> {
+    await runOperation("plugins", "remove", `market:${id}`, id, [
+      () => call("plugin-market-remove", { id }),
+    ]);
+    await loadPluginMarkets();
+  }
+
   function setContext(workspace: string, runtimeId: string): void {
     const next = workspace && runtimeId ? { workspace, runtimeId } : null;
     const changed = context.value?.workspace !== next?.workspace
@@ -635,15 +675,17 @@ export const useExtensionsStore = defineStore("extensions", () => {
   return {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
-    pluginMarkets, pluginMarketsError, marketPlugins, opBusyId, marketMcp, activeOperation,
+    pluginMarkets, pluginMarketsError, skillRepos, skillReposBusy,
+    skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
     operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,
     clearMarketResults, checkUpdates, discoverRecommendation,
     installSkillGroup, updateSkill, updateSkillGroup, removeSkillGroup,
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
-    installMcpMarket, importDeeplink, addSkillRepo, loadPluginMarkets,
-    addPluginMarket, load, toggle, remove, installSkill, addMcp,
+    installMcpMarket, importDeeplink, addSkillRepo, loadSkillRepos,
+    removeSkillRepo, loadPluginMarkets, addPluginMarket, removePluginMarket,
+    load, toggle, remove, installSkill, addMcp,
     pluginAction, setContext,
   };
 });

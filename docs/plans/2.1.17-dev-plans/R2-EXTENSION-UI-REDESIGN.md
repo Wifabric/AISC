@@ -223,10 +223,10 @@ removePluginMarket(id: string): Promise<void>;
 - Context switch clears both source states.
 - Remove actions use the normal operation/bus/toast path and refresh source lists after success.
 
-- [ ] RED: IPC op assertions, busy/error state, context reset, successful list refresh.
-- [ ] Implement.
+- [x] RED: IPC op assertions, busy/error state, context reset, successful list refresh.
+- [x] Implement.
 - [ ] GREEN.
-- [ ] Commit: `feat(workbench): manage extension sources in store`.
+- [x] Commit: `feat(workbench): manage extension sources in store`.
 
 ### Task 5: Extension detail panel
 
