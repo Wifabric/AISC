@@ -34,7 +34,7 @@ describe("ExtensionDetailPanel", () => {
     expect(wrapper.get("[data-testid='extension-detail-original']").text()).toContain(
       "English market description",
     );
-    expect(wrapper.get("[data-testid='panel-action']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='panel-action']").exists()).toBe(true);
     expect(wrapper.get("a").attributes("href")).toBe("https://github.com/mattpocock/skills");
   });
 
