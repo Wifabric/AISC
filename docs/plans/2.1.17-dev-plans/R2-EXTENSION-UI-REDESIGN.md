@@ -166,10 +166,10 @@ export function extensionSummary(
 ): { summary: string; marketOriginal?: string; source: "first-party" | "fallback" };
 ```
 
-- [ ] RED: known recommendation identity returns its first-party Chinese summary; all 13 caveman children return distinct non-empty Chinese summaries; unknown item returns a useful local fallback plus original description; English locale returns English first-party/fallback copy.
-- [ ] Implement alias matching by full market ID, directory/name, and repo/name.
+- [x] RED: known recommendation identity returns its first-party Chinese summary; all 13 caveman children return distinct non-empty Chinese summaries; unknown item returns a useful local fallback plus original description; English locale returns English first-party/fallback copy.
+- [x] Implement alias matching by full market ID, directory/name, and repo/name.
 - [ ] GREEN.
-- [ ] Commit: `feat(workbench): add local extension detail summaries`.
+- [x] Commit: `feat(workbench): add local extension detail summaries`.
 
 ### Task 3: Source maintenance data plane
 
