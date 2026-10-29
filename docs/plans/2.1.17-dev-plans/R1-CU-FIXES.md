@@ -77,6 +77,11 @@ R1 在 Rust 路由层为两个长扩展组操作建立独立传输通道：
 - 独立代码审查首轮发现 Remote direct `run_id` 与 Remote `--events` 语义问题；上述
   target-aware 路由、`AISC_RUN_ID` 前缀与回归测试已补齐。复审确认 Critical/Important
   均为 0；剩余“未直接执行 async dispatch 分支”的测试加固机会不阻塞合并。
+- PR #48 已合并 develop `157473d1349d71e8620890d3ac1f26a694da2c21`。PR head 的
+  frontend/rust/cli checks 全部 SUCCESS；develop 触发的 Workbench CI
+  `40810806036`、Bundle Linux/macOS `40810806024`、NSIS `40810806048` 最终均为
+  SUCCESS。Bundle 首轮 macOS job 因上游 npm registry HTTP 403 rate limit 失败，仅重跑
+  该 failed job 后通过；Linux 首轮与 NSIS 均直接通过，未改源码。
 
 ## 非目标
 

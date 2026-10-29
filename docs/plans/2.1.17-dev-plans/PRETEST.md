@@ -305,4 +305,4 @@ H2/H3 真实故障网络、b2 缓存回退/清空/隔离竞态、b3 第二次可
 
 组安装 exit 0，耗时 131297ms；容器内官方 CLI 逐项核对 13 个 caveman 子技能，Claude/Codex 均默认开启。完成后 Services 仍显示两分组与两服务。默认宽度下市场组安装按钮被裁剪，CU 临时把 UI 字号缩放调为 0.8 以完成点击，复测后已恢复 1.0；该测试适配不判产品 FAIL。
 
-**结论：R1 Local 核心场景 PASS。** 审查后补齐 target-aware 路由与 Remote direct `AISC_RUN_ID` 前缀回归，最终生产副本 SHA256 `c74d1d1d0572f745fed0f5c089903e24953616643be07730c670ec9452885546`。Remote direct 真实 SSH UI 仍为 NOT RUN；本结果不替代用户统一手测，也不改变 H2/H3 等既有 NOT RUN 边界。
+**结论：R1 Local 核心场景 PASS。** 审查后补齐 target-aware 路由与 Remote direct `AISC_RUN_ID` 前缀回归，最终生产副本 SHA256 `c74d1d1d0572f745fed0f5c089903e24953616643be07730c670ec9452885546`。Remote direct 真实 SSH UI 仍为 NOT RUN；本结果不替代用户统一手测，也不改变 H2/H3 等既有 NOT RUN 边界。PR #48 已合并 develop，Workbench CI / Bundle / NSIS 最终全绿；Bundle macOS 首次 job 因上游 npm registry HTTP 403 rate limit 失败，单独重跑后通过。
