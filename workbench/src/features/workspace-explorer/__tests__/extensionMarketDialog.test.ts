@@ -23,6 +23,7 @@ function makeStore() {
     installSkill: vi.fn(async () => {}), installMcpMarket: vi.fn(async () => {}),
     pluginAction: vi.fn(async () => {}),
     marketSkills: [] as ExtensionsItem[], marketMcp: [] as ExtensionsItem[], marketPlugins: [] as ExtensionsItem[],
+    marketCacheByKind: { skills: null, mcp: null, plugins: null } as any,
     skillRepos: [], pluginMarkets: [],
   });
 }
@@ -110,6 +111,40 @@ describe("ExtensionMarketDialog", () => {
     expect(wrapper.find("[data-testid='stub-source-manager']").exists()).toBe(true);
     expect(store.loadSkillRepos).toHaveBeenCalled();
     expect(store.loadPluginMarkets).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("localizes category labels and recommendation copy in English", async () => {
+    i18n.global.locale.value = "en-US";
+    const wrapper = mountDialog();
+    expect(wrapper.get("[data-testid='recommendation-category']:nth-child(2)").text()).toBe("Education");
+    await wrapper.get("[data-testid='recommendation-category']:nth-child(2)").trigger("click");
+    expect(wrapper.get("[data-testid='recommendation-card']").text()).toContain(
+      EXTENSION_RECOMMENDATIONS_BY_CATEGORY.education[0]!.summaryEn,
+    );
+    wrapper.unmount();
+  });
+
+  it("labels observed heat sources in the UI instead of leaking raw enum values", () => {
+    const wrapper = mountDialog();
+    const card = wrapper.get("[data-testid='recommendation-card']");
+    expect(card.text()).toContain("skills.sh");
+    expect(card.text()).not.toContain("heatSource");
+    wrapper.unmount();
+  });
+
+  it("keeps market cache provenance visible in the search pane", async () => {
+    store.kind = "plugins";
+    store.marketCacheByKind = {
+      skills: null,
+      mcp: null,
+      plugins: { source: "cache", cached: true, query: "chart", fetched_at: 1760000000, error: "remote refresh down" },
+    } as any;
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-plugins']").trigger("click");
+    const cache = wrapper.get("[data-testid='market-cache']");
+    expect(cache.text()).toContain("缓存结果");
+    expect(cache.text()).toContain("remote refresh down");
     wrapper.unmount();
   });
 

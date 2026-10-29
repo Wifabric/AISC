@@ -806,6 +806,8 @@ export const zhCN = {
   "extensions.market.tabSources": "来源管理",
   "extensions.market.categories": "推荐分类",
   "extensions.market.officialDirectory": "官方目录",
+  "extensions.market.skillsHeatSource": "skills.sh 热榜",
+  "extensions.market.smitheryHeatSource": "Smithery 热榜",
   "extensions.market.searchRecommendations": "搜索推荐",
   "extensions.market.searchSkills": "搜索技能市场",
   "extensions.market.searchAction": "搜索市场",

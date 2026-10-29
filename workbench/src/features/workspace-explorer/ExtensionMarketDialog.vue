@@ -71,6 +71,33 @@ const detailItem = computed<ExtensionsItem | null>(() =>
     ...(selectedRecommendation.value.heat ? { installs: selectedRecommendation.value.heat } : {}),
   } : null),
 );
+const locale = computed(() => (useI18n().locale.value === "en-US" ? "en-US" : "zh-CN") as "en-US" | "zh-CN");
+const marketCache = computed(() => {
+  if (activeTab.value === "skills") return store.marketCacheByKind.skills;
+  if (activeTab.value === "mcp") return store.marketCacheByKind.mcp;
+  if (activeTab.value === "plugins") return store.marketCacheByKind.plugins;
+  return null;
+});
+function categoryLabel(category: { labelZh: string; labelEn: string }): string {
+  return locale.value === "en-US" ? category.labelEn : category.labelZh;
+}
+function recommendationSummary(entry: { summaryZh: string; summaryEn: string }): string {
+  return locale.value === "en-US" ? entry.summaryEn : entry.summaryZh;
+}
+function heatSourceLabel(source: "skills.sh" | "smithery" | "official-directory"): string {
+  if (source === "skills.sh") return t("extensions.market.skillsHeatSource");
+  if (source === "smithery") return t("extensions.market.smitheryHeatSource");
+  return t("extensions.market.officialDirectory");
+}
+function formatCacheTime(value?: number | string): string {
+  if (value === undefined || value === null || value === "") return "";
+  const numeric = typeof value === "number" ? value : Number(value);
+  const date = Number.isFinite(numeric) && numeric > 0
+    ? new Date(numeric < 1_000_000_000_000 ? numeric * 1000 : numeric)
+    : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
 const searchPlaceholder = computed(() => {
   if (activeTab.value === "skills") return t("extensions.market.searchSkills");
   if (activeTab.value === "mcp") return t("extensions.mcpMarketSearch");
@@ -195,7 +222,7 @@ onMounted(async () => {
                 :class="{ active: activeCategory === category.id }"
                 data-testid="recommendation-category"
                 @click="activeCategory = category.id; selectedRecommendation = null"
-              >{{ category.labelZh }}</button>
+              >{{ categoryLabel(category) }}</button>
             </div>
             <div class="recommendation-list">
               <article
@@ -213,10 +240,10 @@ onMounted(async () => {
                   <strong>{{ entry.name }}</strong>
                   <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
                 </header>
-                <p>{{ entry.summaryZh }}</p>
+                <p>{{ recommendationSummary(entry) }}</p>
                 <footer>
                   <span>{{ entry.heat ?? t("extensions.market.officialDirectory") }}</span>
-                  <span>{{ entry.heatSource }}</span>
+                  <span>{{ heatSourceLabel(entry.heatSource) }}</span>
                 </footer>
               </article>
             </div>
@@ -229,6 +256,16 @@ onMounted(async () => {
                 {{ t("extensions.marketSearchBtn") }}
               </button>
             </form>
+            <p
+              v-if="marketCache"
+              class="market-cache"
+              data-testid="market-cache"
+            >
+              {{ marketCache.cached ? t("extensions.marketCache") : t("extensions.marketRefreshed") }}
+              <span v-if="marketCache.fetched_at"> · {{ t("extensions.marketCacheAt") }}{{ formatCacheTime(marketCache.fetched_at) }}</span>
+              <span v-if="marketCache.error"> · {{ marketCache.error }}</span>
+            </p>
+
             <div class="market-results">
               <button
                 v-for="item in marketItems"
@@ -366,6 +403,7 @@ onMounted(async () => {
 .market-result strong { color: var(--text); }
 .market-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .market-empty { margin: var(--space-3); color: var(--text-muted); }
+.market-cache { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .market-detail { overflow: auto; }
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }

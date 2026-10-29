@@ -806,6 +806,8 @@ export const enUS: Record<string, string> = {
   "extensions.market.tabSources": "Sources",
   "extensions.market.categories": "Recommendation categories",
   "extensions.market.officialDirectory": "Official directory",
+  "extensions.market.skillsHeatSource": "skills.sh rankings",
+  "extensions.market.smitheryHeatSource": "Smithery rankings",
   "extensions.market.searchRecommendations": "Search recommendations",
   "extensions.market.searchSkills": "Search skills marketplace",
   "extensions.market.searchAction": "Search market",

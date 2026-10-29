@@ -337,10 +337,10 @@ removePluginMarket(id: string): Promise<void>;
 - Hover/focus states reveal row actions; keyboard users can reach every action.
 - Empty/search/error states keep their frame.
 
-- [ ] RED structural CSS/DOM tests.
-- [ ] Implement with existing tokens only.
-- [ ] GREEN.
-- [ ] Commit: `style(workbench): refine extension experience`.
+- [x] RED structural CSS/DOM tests.
+- [x] Implement with existing tokens only.
+- [x] GREEN.
+- [x] Commit: `style(workbench): refine extension experience`.
 
 ### Task 10: Full verification and Computer Use pretest
 
