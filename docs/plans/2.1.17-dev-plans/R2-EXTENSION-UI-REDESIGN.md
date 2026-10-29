@@ -143,11 +143,11 @@ export interface CategorizedRecommendation {
 }
 ```
 
-- [ ] RED: assert six category IDs, exactly ten entries per category, unique `(kind, identity)` globally, every name/query/source/summary non-empty, and every category has at least two asset kinds where the selected catalog above provides them.
-- [ ] Run `npm test -- recommendationCatalog` and confirm the module missing failure.
-- [ ] Implement the six-category catalog exactly as documented above.
-- [ ] GREEN: rerun focused test.
-- [ ] Commit: `feat(workbench): categorize extension recommendations`.
+- [x] RED: assert six category IDs, exactly ten entries per category, unique `(kind, identity)` globally, every name/query/source/summary non-empty, and every category has at least two asset kinds where the selected catalog above provides them.
+- [x] Run `npm test -- recommendationCatalog` and confirm the module missing failure.
+- [x] Implement the six-category catalog exactly as documented above.
+- [x] GREEN: rerun focused test.
+- [x] Commit: `feat(workbench): categorize extension recommendations`.
 
 ### Task 2: Local detail summaries and fallback
 
