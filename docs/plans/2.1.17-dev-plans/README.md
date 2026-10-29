@@ -28,6 +28,7 @@
 | b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化/b7 数据面通过；CU 中英文推荐与搜索路由 PASS，离线禁用态 NOT RUN；PR #43 已合并；待统一手测 |
 | b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI/冻结 CLI 配对通过；CU 显式更新主路径与健康报告 PASS，诊断竞态 NOT RUN；PR #44 已合并；待统一手测 |
 | b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI/CU Services 与默认态 PASS；A→B→A 隔离 NOT RUN；PR #45 已合并；待统一手测 |
+| R1 | CU 预手测修复轮：长扩展组操作独立传输 | P0 | `codex/2.1.17-r1-long-op-concurrency` | 代码/TDD/Rust 门禁/生产构建通过；Local CU 组安装期间 Services 读取 PASS；Remote direct UI 路径 NOT RUN；待 PR/CI/统一手测，详见 [R1-CU-FIXES.md](R1-CU-FIXES.md) |
 | b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮数据面 9/9，CU 版本/H4/关键路径 PASS，完整三轮 UI 冒烟 NOT RUN；PR #46/#47 已合并；进入统一手测，尚未发布 |
 
 ## 开工前账本门

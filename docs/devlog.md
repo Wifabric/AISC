@@ -2,6 +2,11 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 R1 修复验证（2026-10-29）
+
+- 根因确认 Python resident serve 串行执行长扩展组操作，阻塞 Services 控制面。Rust 路由层让 `skill-install-group` / `skill-update-group` Local 与 Remote 均走 per-op direct transport，普通短请求保留 pooled serve；TDD、Rust lib 399/1 ignored、Vitest 770 与文档检查 39/0/0 通过。
+- R1 专用 Workbench 生产构建通过。真实 UI 13 项组安装期间 direct 子进程可见，Services 立即显示宿主工具/注册服务与 3000/5173，runtime services 轮询 250–297ms，无 30 秒超时；安装 exit 0，13 项默认双开。Remote UI 路径未复测，统一用户手测仍未发生。
+
 # v2.1.17 Computer Use 补测（2026-10-29，部分完成）
 
 - 最终产物真实 UI 补测取得关键路径：Skills/MCP/Plugins 三类真实搜索、caveman 组安装进度与 13 项终态、H4 组更新保留显式 off、Services 中英文分组/顺序/复制/打开、b6 开关重启保留与重装默认双开、诊断健康报告，以及 b5 0.0.0 副本下载→取消→缺文件失败→确认后 Explorer 选中安装包并打开正常 NSIS（无 `/S`）后取消。

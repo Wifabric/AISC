@@ -664,11 +664,29 @@ pub async fn run_control(
     run_control_target(&CliTarget::Local(executable.to_path_buf()), argv, timeout, cancel).await
 }
 
-/// `run_control_target`: the transport-aware form (2.1.10 R1) — Local is the
-/// legacy behavior bit-for-bit; Remote (D-10) rides the pooled serve
-/// connection via the generic `cli` op (per-op ssh survives only for serve
-/// bootstrap and the build stream). Shared phase/run_id/trace/log plumbing
-/// for both.
+/// R1 (2026-10-29): long extension group ops must bypass the pooled serve.
+///
+/// The Python serve loop is intentionally serial, while a 13-skill group can
+/// run for minutes. Keeping such an op on the sole resident session blocks
+/// short UI control-plane calls (notably `runtime services`) until their
+/// 30s timeout. Direct per-op transport trades one process/SSH startup for
+/// isolation; every ordinary op keeps the resident pooled path.
+fn is_long_extension_group_op(argv: &[String]) -> bool {
+    argv.first().map(String::as_str) == Some("extensions")
+        && matches!(
+            argv.get(1).map(String::as_str),
+            Some("skill-install-group") | Some("skill-update-group")
+        )
+}
+
+fn uses_pooled_control_transport(argv: &[String]) -> bool {
+    !argv.iter().any(|a| a == "--events") && !is_long_extension_group_op(argv)
+}
+
+/// `run_control_target`: the transport-aware form (2.1.10 R1). Ordinary Local
+/// and Remote calls ride the pooled serve connection via the generic `cli`
+/// op; direct exceptions are classified once below. Shared
+/// phase/run_id/trace/log plumbing applies to both transports.
 pub async fn run_control_target(
     target: &CliTarget,
     argv: Vec<String>,
@@ -683,21 +701,20 @@ pub async fn run_control_target(
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_op = std::time::Instant::now();
     let result = crate::trace::timed("cli", &phase, async {
-        match target {
-            CliTarget::Remote(t) => {
-                crate::serve::cli_op(t, &argv, None, timeout, &cancel, &run_id).await
-            }
-            CliTarget::Local(_) => {
-                // 2.1.11 step2: local rides the POOLED resident serve too —
-                // one code path on both sides of the machine toggle. The
-                // exe-mtime guard in pooled_local_session evicts+respawns on
-                // sidecar rebuilds. `--events` argv (streaming commands, e.g.
-                // the build stream's own runner) must NOT ride the cli op
-                // (the serve gate rejects them) — those keep the per-op spawn.
-                if argv.iter().any(|a| a == "--events") {
-                    run_control_inner(target, argv, None, timeout, cancel, &run_id).await
-                } else {
-                    crate::serve::cli_op_target(target, &argv, None, timeout, &cancel, &run_id).await
+        if !uses_pooled_control_transport(&argv) {
+            run_control_inner(target, argv, None, timeout, cancel, &run_id).await
+        } else {
+            match target {
+                CliTarget::Remote(t) => {
+                    crate::serve::cli_op(t, &argv, None, timeout, &cancel, &run_id).await
+                }
+                CliTarget::Local(_) => {
+                    // 2.1.11 step2: ordinary local ops ride the POOLED resident
+                    // serve. `--events` stays direct because the serve gate rejects
+                    // streaming commands; long extension groups stay direct so they
+                    // cannot monopolize the serial Python dispatch loop.
+                    crate::serve::cli_op_target(target, &argv, None, timeout, &cancel, &run_id)
+                        .await
                 }
             }
         }
@@ -721,10 +738,10 @@ pub async fn run_control_input(
         .await
 }
 
-/// Transport-aware form of `run_control_input`. Both sides (D-10 remote;
-/// 2.1.11 step2 local) ride the pooled serve connection — the stdin payload
-/// travels as the `cli` op's `stdin` field (argv, disk and logs never see a
-/// secret, including on the local pipe).
+/// Transport-aware form of `run_control_input`. Ordinary operations on both
+/// sides ride the pooled serve connection — the stdin payload travels as the
+/// `cli` op's `stdin` field (argv, disk and logs never see a secret, including
+/// on the local pipe). Direct exceptions mirror `run_control_target`.
 pub async fn run_control_input_target(
     target: &CliTarget,
     argv: Vec<String>,
@@ -736,17 +753,18 @@ pub async fn run_control_input_target(
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_op = std::time::Instant::now();
     let result = crate::trace::timed("cli", &phase, async {
-        match target {
-            CliTarget::Remote(t) => {
-                crate::serve::cli_op(t, &argv, Some(input), timeout, &cancel, &run_id).await
-            }
-            CliTarget::Local(_) => {
-                if argv.iter().any(|a| a == "--events") {
-                    run_control_inner(target, argv, Some(input), timeout, cancel, &run_id).await
-                } else {
-                    crate::serve::cli_op_target(target, &argv, Some(input), timeout, &cancel, &run_id).await
-                }
-            }
+        if !uses_pooled_control_transport(&argv) {
+            run_control_inner(target, argv, Some(input), timeout, cancel, &run_id).await
+        } else {
+            crate::serve::cli_op_target(
+                target,
+                &argv,
+                Some(input),
+                timeout,
+                &cancel,
+                &run_id,
+            )
+            .await
         }
     })
     .await;
@@ -755,9 +773,9 @@ pub async fn run_control_input_target(
 }
 
 /// 2.1.11 r6→step2: the step-1 special-case provider entry (`run_serve_op_target`)
-/// was FOLDED AWAY — `run_control_target` / `run_control_input_target` now route
-/// BOTH arms over the pooled serve transport, so every caller gets the resident
-/// serve with zero call-site changes.
+/// was FOLDED AWAY — ordinary calls now get the resident serve with zero
+/// call-site changes. R1 adds a narrow direct path for streaming and long
+/// extension group operations so neither can monopolize serial serve dispatch.
 
 /// lifecycle-logging P1: the app-side line for one CLI call — best-effort,
 /// allowlisted fields only (phase/duration/outcome/error_code; never argv
@@ -1367,6 +1385,53 @@ mod tests {
                 "ps", "--format", "json",
             ]
         );
+    }
+
+    #[test]
+    fn long_extension_group_ops_bypass_the_pooled_serve() {
+        // R1: Python serve dispatch is intentionally serial. A multi-minute
+        // group operation must not occupy the only resident control-plane
+        // session until the UI's short services/list request times out.
+        assert!(!uses_pooled_control_transport(&[
+            "extensions".into(),
+            "skill-install-group".into(),
+            "--specs".into(),
+            "[\"a:b\"]".into(),
+        ]));
+        assert!(!uses_pooled_control_transport(&[
+            "extensions".into(),
+            "skill-update-group".into(),
+            "--specs".into(),
+            "[\"a:b\"]".into(),
+        ]));
+
+        // Ordinary short control-plane ops keep the resident serve path.
+        assert!(uses_pooled_control_transport(&[
+            "version".into(),
+            "--format".into(),
+            "json".into(),
+        ]));
+        assert!(uses_pooled_control_transport(&[
+            "ps".into(),
+            "--format".into(),
+            "json".into(),
+        ]));
+        assert!(!uses_pooled_control_transport(&[
+            "build".into(),
+            "--events".into(),
+        ]));
+        assert!(uses_pooled_control_transport(&[
+            "runtime".into(),
+            "services".into(),
+            "--format".into(),
+            "json".into(),
+        ]));
+        assert!(uses_pooled_control_transport(&[
+            "extensions".into(),
+            "list".into(),
+            "--kind".into(),
+            "skills".into(),
+        ]));
     }
 
     #[test]
