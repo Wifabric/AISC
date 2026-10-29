@@ -82,8 +82,10 @@ describe("v2.1.17 R2 extension source maintenance", () => {
     expect(store.skillReposError).toContain("database is locked");
   });
 
-  it("removes a plugin marketplace and refreshes marketplace state", async () => {
+  it("removes a plugin marketplace and refreshes its uninstalled plugins and sources", async () => {
+    const retained = { kind: "plugins", id: "keep@official", name: "keep" } as ExtensionsItem;
     call.mockImplementation(async (params: any) => {
+      if (params.op === "list" && params.kind === "plugins") return { items: [retained] };
       if (params.op === "plugin-market-list") {
         return { items: [{ kind: "marketplace", id: "official", name: "official" }] };
       }
@@ -96,6 +98,9 @@ describe("v2.1.17 R2 extension source maintenance", () => {
       { kind: "marketplace", id: "old", name: "old" },
       { kind: "marketplace", id: "official", name: "official" },
     ] as ExtensionsItem[];
+    store.itemsByKind.plugins = [
+      { kind: "plugins", id: "removed@old", name: "removed" }, retained,
+    ];
     await store.removePluginMarket("old");
 
     expect(call).toHaveBeenCalledWith(expect.objectContaining({
@@ -107,6 +112,8 @@ describe("v2.1.17 R2 extension source maintenance", () => {
     expect(store.pluginMarkets).toEqual([
       { kind: "marketplace", id: "official", name: "official" },
     ]);
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ op: "list", kind: "plugins" }));
+    expect(store.itemsByKind.plugins).toEqual([retained]);
   });
 
   it("clears source state when the runtime context changes", () => {

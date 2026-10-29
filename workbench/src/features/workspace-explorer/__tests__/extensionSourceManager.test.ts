@@ -71,14 +71,24 @@ describe("ExtensionSourceManager", () => {
     expect(store.removeSkillRepo).toHaveBeenCalledWith("owner/repo");
   });
 
-  it("confirms plugin marketplace deletion and explains discovery impact", async () => {
+  it.each([
+    ["zh-CN", "同时卸载来自该市场的已安装插件"],
+    ["en-US", "also uninstalls plugins installed from this marketplace"],
+  ] as const)("warns about plugin uninstallation before marketplace removal (%s)", async (locale, warning) => {
+    i18n.global.locale.value = locale;
     const wrapper = mountManager();
     const row = wrapper.findAll("[data-testid^='plugin-source-row-']")[1]!;
     await row.get("[data-testid='plugin-market-remove']").trigger("click");
     expect(store.removePluginMarket).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("已安装插件不会被自动卸载");
+    expect(wrapper.get("[role='alertdialog']").text()).toContain(warning);
+    await wrapper.get("[role='alertdialog'] button").trigger("click");
+    expect(store.removePluginMarket).not.toHaveBeenCalled();
+    expect(wrapper.find("[role='alertdialog']").exists()).toBe(false);
+    await row.get("[data-testid='plugin-market-remove']").trigger("click");
     await wrapper.get("[data-testid='confirm-source-remove']").trigger("click");
     expect(store.removePluginMarket).toHaveBeenCalledWith("disposable");
+    expect(store.removePluginMarket).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
   });
 
   it("uses aggregate source busy state across skill and plugin kinds", async () => {

@@ -826,7 +826,7 @@ export const enUS: Record<string, string> = {
   "extensions.sources.mcpNote": "Smithery is a built-in MCP search source and cannot be deleted as a local repository; manage imported servers from the installed MCP list.",
   "extensions.sources.confirmTitle": "Confirm source deletion",
   "extensions.sources.skillRemoveWarning": "Remove skill repository {id}? This only unregisters the source; installed skills remain installed.",
-  "extensions.sources.pluginRemoveWarning": "Remove plugin marketplace {id}? It will no longer be discovered later; installed plugins are not automatically uninstalled.",
+  "extensions.sources.pluginRemoveWarning": "Remove plugin marketplace {id}? This also uninstalls plugins installed from this marketplace. Continue?",
   "extensions.sources.confirmRemove": "Delete",
   "extensions.mcpAdd": "Add MCP",
   "extensions.mcpPlaceholder": "MCP config JSON (mcpServers object; sent via stdin)",

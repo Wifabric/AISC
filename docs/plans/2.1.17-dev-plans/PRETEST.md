@@ -313,7 +313,7 @@ H2/H3 真实故障网络、b2 缓存回退/清空/隔离竞态、b3 第二次可
 使用 R2 Workbench `AISC-Workbench-2.1.17-R2-CU.exe`、当前源码冻结 CLI
 `aisc-r2-cli.exe`（SHA256 `84df81eaf89e42d3041b6a33bca6d3d1d858e387fd46c04fddd682507c120079`）、
 b7 bundle 与派生 CU 镜像 `super-claude:2.1.17-r2-cu @ c0472956…`。该镜像仅在 b7 镜像上替换当前
-`aisc-extensions-adapter`，用于验证新增数据面 op；完整镜像构建仍需远端 CI。
+`aisc-extensions-adapter`，用于验证新增数据面 op；未做 R2 从头全镜像构建；远端 sidecar/bundle/NSIS CI 只验证出包，不构建 Docker 镜像。
 
 | 项目 | 真实 UI 观察 | 结论 |
 | --- | --- | --- |
@@ -347,3 +347,20 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 `5d9ee44a020f219691920eb72e67682919a5b47efbdd0bd943ea723fd42572f9` 仅以 Vitest/Rust/build
 验证，未再做 CU。Arrow 键、焦点恢复、旧 runtime unsupported 横幅、实际来源 add→delete、
 <720px 与 NSIS 形态仍未 CU，不以自动化冒充。
+
+## 2026-10-30 最终产物准备与当前 CU 环境边界
+
+- 最终 GUI/CLI 沿用上段 SHA256；新 bundle `release-staging/2.1.17-r2/handtest-stage/aisc-bundle` 独立校验 PASS，adapter SHA256 为 `97464109c7aec00d1721fb06716b9ce513b61c5fe97e669637a60f969a7e2c5f`。
+- 派生最终镜像 `super-claude:2.1.17-r2-final @ sha256:2f54fad6d86c15468f0cf968535fc377c7ff11e9362f94dcb5f29e2ee6121556`：b7 加最终 adapter，镜像内 hash 与源码一致、语法检查 PASS。没有进行 R2 从头全镜像构建。
+- `start-handtest.ps1` 已准备并通过 PowerShell 语法检查，绑定冻结 CLI/current bundle；不复用用户 R1 数据根，也不覆盖 `super-claude:latest`。
+- 当前可调用工具中缺少 `node_repl`；已读取 Computer Use 的 SKILL/guidance/confirmations，无法初始化要求的 `@oai/sky`。本轮没有新增真实 UI 操作；实际来源 add→delete、<720px、键盘/焦点与旧 runtime 横幅保持 **NOT RUN（工具不可用）**。
+- HANDTEST 已同步 R2 UI：搜索与推荐进入独立扩展市场、错误恢复使用最近失败区；历史日志/旧手动 identity 输入框不再是当前验收步骤。
+
+### 最终来源数据面 smoke 与警告修复
+
+- 冻结 CLI `52ee1f…d93`、final adapter `97464109…e2c5f`、派生镜像 `2f54fad6…`，一次性 runtime `1fc3fe95-05b4-4e2c-9134-65df1f336223`，项目 `C:\pt\aisc-217-r2-final-project`。使用 direct CLI，未启动 GUI。
+- 技能仓库：初始 4 条；添加 `wshobson/agents` 后 5 条、branch main/enabled true；删除后恢复原 4 条，PASS。
+- 插件市场：初始 2 条；本地 fixture `aisc-r2-handtest` 添加后 3 条，安装 `aisc-r2-demo@aisc-r2-handtest` 后插件列表 1 条；删除市场后来源回到 2 条、插件回到 0 条。官方 CLI 数据面 PASS，旧“不会自动卸载插件”确认文案判 FAIL。
+- 修复：先改 R2 规格，再修改中英卸载警告；两语确认/取消与列表刷新 targeted 16/16、全前端 803 tests、vue-tsc/Vite/Tauri direct release PASS。独立增量审查 Critical=0/Important=0。未做新 GUI CU，警告视觉与来源按钮完整链路仍 NOT RUN。
+- 修正后的 GUI：`AISC-Workbench-2.1.17-R2-ACCEPTANCE.exe`，SHA256 `9ae03cc2234f3ce9ea41c618c51c188f5271d9db2fda29c50e1321f6db1fbda5`。启动器及 artifacts.json 已指向此文件；旧 FINAL 只作历史证据。
+- 数据 smoke runtime 已停止；用户 R1 容器 `4ac8ca6c9a97` 与 `latest @ 610cd7ebfa39` 保持原状。其他市场插件保留仅有 store mock 回归，不冒充真实交叉市场验收。

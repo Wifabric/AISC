@@ -289,7 +289,7 @@ removePluginMarket(id: string): Promise<void>;
 - Rows show source, branch/name, and enabled state where available.
 - Delete uses explicit confirm text:
   - skill repo delete explains it does not uninstall installed skills;
-  - plugin marketplace delete explains installed plugins remain installed but future discovery from that market disappears.
+  - plugin marketplace delete explicitly warns that the official Claude CLI also uninstalls plugins from that market; confirmation is required before the call, and installed plugins are refreshed afterward.
 - MCP section explains Smithery is built in and installed MCP servers are managed from the MCP installed list.
 - Busy/error rows are honest; no delete button before identity is loaded.
 
@@ -407,7 +407,8 @@ removePluginMarket(id: string): Promise<void>;
     `84df81eaf89e42d3041b6a33bca6d3d1d858e387fd46c04fddd682507c120079`.
   - Derived CU image `super-claude:2.1.17-r2-cu`
     `sha256:c04729568df1d510c381494fc6c8e5a25aab4421d3f19efa646879b45207ed1b`
-    (b7 base plus only the modified adapter); full image rebuild remains a CI gate.
+    (b7 base plus only the modified adapter); a full image rebuild has not been run for R2.
+    The sidecar/bundle/NSIS workflows verify packaging, not Docker image construction.
 - CU PASS:
   - Main view has no embedded recommendation or operation-history block.
   - Main view shows installed skill groups plus `检查更新` / `扩展市场`.
@@ -442,9 +443,8 @@ removePluginMarket(id: string): Promise<void>;
     returned Smithery results; selecting Hugging Face switched the detail to Chinese fallback,
     `市场原文`, and “安装” without inheriting catalog evidence or the search action.
   - Third-review finalization rebuilt the direct release as
-
-`release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-FINAL.exe` SHA256
-    5d9ee44a020f219691920eb72e67682919a5b47efbdd0bd943ea723fd42572f9.
+    `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-FINAL.exe` SHA256
+    `5d9ee44a020f219691920eb72e67682919a5b47efbdd0bd943ea723fd42572f9`.
     The row-level sibling/native-header fix and source-op envelope guard are covered by the
     802-test frontend suite, 404-test Rust suite, and production build; they were not re-run
     through CU after the reviewer finding.
@@ -482,3 +482,25 @@ removePluginMarket(id: string): Promise<void>;
 - No arbitrary third-party summary fabrication.
 - No change to extension install/update transport semantics from R1.
 - No release/tag/phase closeout.
+
+## Integration follow-up (2026-10-30)
+
+- Fourth independent review: Critical=0 / Important=0, ready to merge for the reviewed implementation; review fixes committed as `e3609e6`, verification ledger as `bc2e3b0`.
+- PR [#49](https://github.com/Wifabric/AISC/pull/49) targets `develop`; product head `bc2e3b027fd51eb21a873c0a80d8f1ef04eedc2c`.
+- Workbench CI [40918164812](https://github.com/Wifabric/AISC/actions/runs/40918164812): SUCCESS.
+- CLI sidecar [40919496197](https://github.com/Wifabric/AISC/actions/runs/40919496197): SUCCESS on Windows/Linux/macOS.
+- Linux/macOS bundle [40919500745](https://github.com/Wifabric/AISC/actions/runs/40919500745) and NSIS [40919505823](https://github.com/Wifabric/AISC/actions/runs/40919505823): dispatched against the same reviewed product head; results recorded below once complete.
+- A fresh user-handtest bundle is staged in `release-staging/2.1.17-r2/handtest-stage/aisc-bundle`. The local full-test run had generated ignored Python bytecode inside the vendored plugin tree; the verifier rejected it. Only the staged copy's generated `.pyc` files and now-empty cache directories were removed; independent `artifact.py verify` then passed. Source files and vendor checksums were unchanged.
+- The final adapter is pinned in derived image `super-claude:2.1.17-r2-final`, ID `sha256:2f54fad6d86c15468f0cf968535fc377c7ff11e9362f94dcb5f29e2ee6121556`. The in-image SHA256 matches the staged/current adapter (`97464109…e2c5f`), and Python syntax verification passed. This is a b7-derived image, not a clean full-image rebuild.
+- Local `start-handtest.ps1` verifies GUI/CLI/adapter hashes, uses an independent R2 handtest data root, and delegates `-UpdateFlow` only to the existing b7 0.0.0 update-flow test. `HANDTEST.md` now points to R2 artifacts and current UI routes.
+- Current-session CU blocker: the available tool list has no `node_repl`, which the Computer Use skill requires for `@oai/sky`. No alternate UI automation was substituted. Remaining UI cases stay NOT RUN; user acceptance is unchecked.
+
+### Source-removal contract correction before implementation (2026-10-30)
+
+Final frozen-CLI/container smoke disproved the earlier agent-authored plugin-retention assumption: add local `aisc-r2-handtest`, install `aisc-r2-demo@aisc-r2-handtest`, then `plugin-market-remove` returned success and installed plugins changed from one to zero. Evidence: `release-staging/2.1.17-r2/final-data-smoke.jsonl`, runtime `1fc3fe95-05b4-4e2c-9134-65df1f336223`. This is a product FAIL in the confirmation copy; it is not a CU result. Skill repositories correctly changed 4→5→4.
+
+The user's requirement is source maintenance/deletion; retaining installed plugins was a plan assumption. Preserve the official Claude CLI behavior and explicitly warn in both languages that deleting a marketplace also uninstalls its installed plugins. Cancel must issue no remove call. Keep skill-repository retention copy. Do not modify Claude's registry behind the official CLI. Add regression coverage for warning/confirmation in both languages and installed-list refresh after marketplace deletion, then rebuild and review the new GUI before merge. Previously saved FINAL binary and CI runs describe the pre-correction product head and do not cover this warning fix.
+
+- Warning correction verification: targeted 16/16, full Vitest **803/803**, vue-tsc/Vite/Tauri direct release PASS; independent incremental review **Critical=0 / Important=0, Ready to merge Yes**.
+- Superseding direct user-handtest executable: `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-ACCEPTANCE.exe`, SHA256 `9ae03cc2234f3ce9ea41c618c51c188f5271d9db2fda29c50e1321f6db1fbda5`. Launcher and manifest pin it; the earlier FINAL is retained only as historical evidence. No CU was performed on this new executable.
+- Initial sidecar/bundle/NSIS runs above all completed SUCCESS. The final UI-warning change requires fresh Workbench and installer verification; no adapter/CLI/Rust bytes changed in the correction.

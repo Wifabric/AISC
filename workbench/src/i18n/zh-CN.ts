@@ -826,7 +826,7 @@ export const zhCN = {
   "extensions.sources.mcpNote": "Smithery 是内置 MCP 搜索源，不支持作为本地仓库删除；导入后的服务请从已安装 MCP 列表维护。",
   "extensions.sources.confirmTitle": "确认删除来源",
   "extensions.sources.skillRemoveWarning": "将删除技能仓库 {id}。这只会解除来源登记，不会卸载已安装技能。",
-  "extensions.sources.pluginRemoveWarning": "将删除插件市场 {id}。该市场不再参与后续发现，已安装插件不会被自动卸载。",
+  "extensions.sources.pluginRemoveWarning": "将删除插件市场 {id}，同时卸载来自该市场的已安装插件。确认继续？",
   "extensions.sources.confirmRemove": "确认删除",
   "extensions.mcpAdd": "新增 MCP",
   "extensions.mcpPlaceholder": "MCP 配置 JSON（mcpServers 对象，经 stdin 安全传入）",
