@@ -577,9 +577,28 @@ impl SshTarget {
     /// string the target's login shell re-parses (R4 hand-test #7 — `?` in
     /// the F2 host-mcp URL made zsh die with "no matches found").
     pub fn spawn_argv(&self, cli_args: &[String]) -> Vec<String> {
+        self.spawn_argv_with_optional_run_id(cli_args, None)
+    }
+
+    /// R1 remote direct transport: prefix the command with a shell-safe
+    /// environment assignment. OpenSSH does not reliably forward arbitrary
+    /// local environment variables, while the pooled serve protocol carries
+    /// `run_id` explicitly. This preserves cross-process correlation.
+    pub fn spawn_argv_with_run_id(&self, cli_args: &[String], run_id: &str) -> Vec<String> {
+        self.spawn_argv_with_optional_run_id(cli_args, Some(run_id))
+    }
+
+    fn spawn_argv_with_optional_run_id(
+        &self,
+        cli_args: &[String],
+        run_id: Option<&str>,
+    ) -> Vec<String> {
         let mut out = vec!["ssh".to_string()];
         out.extend(self.client_args());
         out.push(self.host.clone());
+        if let Some(id) = run_id {
+            out.push(format!("AISC_RUN_ID={}", shell_quote(id)));
+        }
         out.push("aisc".into());
         out.extend(cli_args.iter().map(|a| shell_quote(a)));
         out
@@ -627,6 +646,14 @@ impl CliTarget {
     /// The (program, args) pair to spawn — everything downstream (env
     /// injection, pipes, timeouts) is transport-agnostic.
     pub(crate) fn spawn_pieces(&self, cli_args: &[String]) -> (std::ffi::OsString, Vec<String>) {
+        self.spawn_pieces_with_run_id(cli_args, None)
+    }
+
+    pub(crate) fn spawn_pieces_with_run_id(
+        &self,
+        cli_args: &[String],
+        run_id: Option<&str>,
+    ) -> (std::ffi::OsString, Vec<String>) {
         match self {
             CliTarget::Local(exe) => (exe.clone().into(), cli_args.to_vec()),
             CliTarget::Remote(t) => {
@@ -647,7 +674,10 @@ impl CliTarget {
                 // Single construction site: spawn_argv owns the remote
                 // command shape (incl. shell quoting); drop its leading
                 // "ssh" — `program` above is the executable we spawn.
-                let mut args = t.spawn_argv(cli_args);
+                let mut args = match run_id {
+                    Some(id) => t.spawn_argv_with_run_id(cli_args, id),
+                    None => t.spawn_argv(cli_args),
+                };
                 args.remove(0);
                 (program, args)
             }
@@ -664,11 +694,43 @@ pub async fn run_control(
     run_control_target(&CliTarget::Local(executable.to_path_buf()), argv, timeout, cancel).await
 }
 
-/// `run_control_target`: the transport-aware form (2.1.10 R1) — Local is the
-/// legacy behavior bit-for-bit; Remote (D-10) rides the pooled serve
-/// connection via the generic `cli` op (per-op ssh survives only for serve
-/// bootstrap and the build stream). Shared phase/run_id/trace/log plumbing
-/// for both.
+/// R1 (2026-10-29): long extension group ops must bypass the pooled serve.
+///
+/// The Python serve loop is intentionally serial, while a 13-skill group can
+/// run for minutes. Keeping such an op on the sole resident session blocks
+/// short UI control-plane calls (notably `runtime services`) until their
+/// 30s timeout. Direct per-op transport trades one process/SSH startup for
+/// isolation; every ordinary op keeps the resident pooled path.
+fn is_long_extension_group_op(argv: &[String]) -> bool {
+    argv.first().map(String::as_str) == Some("extensions")
+        && matches!(
+            argv.get(1).map(String::as_str),
+            Some("skill-install-group") | Some("skill-update-group")
+        )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlTransport {
+    Pooled,
+    Direct,
+}
+
+fn control_transport_for(target: &CliTarget, argv: &[String]) -> ControlTransport {
+    if is_long_extension_group_op(argv) {
+        ControlTransport::Direct
+    } else if matches!(target, CliTarget::Local(_)) && argv.iter().any(|a| a == "--events") {
+        // Preserve the pre-R1 exception: Local streaming argv bypassed the
+        // serve gate, while Remote control calls remained pooled.
+        ControlTransport::Direct
+    } else {
+        ControlTransport::Pooled
+    }
+}
+
+/// `run_control_target`: the transport-aware form (2.1.10 R1). Ordinary Local
+/// and Remote calls ride the pooled serve connection via the generic `cli`
+/// op; direct exceptions are classified once below. Shared
+/// phase/run_id/trace/log plumbing applies to both transports.
 pub async fn run_control_target(
     target: &CliTarget,
     argv: Vec<String>,
@@ -676,30 +738,28 @@ pub async fn run_control_target(
     cancel: CancellationToken,
 ) -> Result<Envelope, WorkbenchError> {
     let phase = argv.first().map(|s| s.as_str()).unwrap_or("cli").to_owned();
-    // lifecycle-logging P1: one run_id per call — injected into the child
-    // (env AISC_RUN_ID), reused by the envelope and the CLI's cli_exit log
-    // line, and carried by this app-side op line: one id threads the call
-    // across both process boundaries.
+    // lifecycle-logging P1: one run_id per call — injected into a Local child
+    // environment or a Remote command prefix, reused by the envelope and the
+    // CLI's cli_exit log line, and carried by this app-side op line.
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_op = std::time::Instant::now();
     let result = crate::trace::timed("cli", &phase, async {
-        match target {
-            CliTarget::Remote(t) => {
-                crate::serve::cli_op(t, &argv, None, timeout, &cancel, &run_id).await
+        match control_transport_for(target, &argv) {
+            ControlTransport::Direct => {
+                run_control_inner(target, argv, None, timeout, cancel, &run_id).await
             }
-            CliTarget::Local(_) => {
-                // 2.1.11 step2: local rides the POOLED resident serve too —
-                // one code path on both sides of the machine toggle. The
-                // exe-mtime guard in pooled_local_session evicts+respawns on
-                // sidecar rebuilds. `--events` argv (streaming commands, e.g.
-                // the build stream's own runner) must NOT ride the cli op
-                // (the serve gate rejects them) — those keep the per-op spawn.
-                if argv.iter().any(|a| a == "--events") {
-                    run_control_inner(target, argv, None, timeout, cancel, &run_id).await
-                } else {
-                    crate::serve::cli_op_target(target, &argv, None, timeout, &cancel, &run_id).await
+            ControlTransport::Pooled => match target {
+                CliTarget::Remote(t) => {
+                    crate::serve::cli_op(t, &argv, None, timeout, &cancel, &run_id).await
                 }
-            }
+                CliTarget::Local(_) => {
+                    // 2.1.11 step2: ordinary local ops ride the POOLED resident
+                    // serve. Local `--events` and long extension groups were
+                    // classified Direct above and cannot monopolize dispatch.
+                    crate::serve::cli_op_target(target, &argv, None, timeout, &cancel, &run_id)
+                        .await
+                }
+            },
         }
     })
     .await;
@@ -721,10 +781,10 @@ pub async fn run_control_input(
         .await
 }
 
-/// Transport-aware form of `run_control_input`. Both sides (D-10 remote;
-/// 2.1.11 step2 local) ride the pooled serve connection — the stdin payload
-/// travels as the `cli` op's `stdin` field (argv, disk and logs never see a
-/// secret, including on the local pipe).
+/// Transport-aware form of `run_control_input`. Ordinary operations on both
+/// sides ride the pooled serve connection — the stdin payload travels as the
+/// `cli` op's `stdin` field (argv, disk and logs never see a secret, including
+/// on the local pipe). Direct exceptions mirror `run_control_target`.
 pub async fn run_control_input_target(
     target: &CliTarget,
     argv: Vec<String>,
@@ -736,17 +796,19 @@ pub async fn run_control_input_target(
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_op = std::time::Instant::now();
     let result = crate::trace::timed("cli", &phase, async {
-        match target {
-            CliTarget::Remote(t) => {
-                crate::serve::cli_op(t, &argv, Some(input), timeout, &cancel, &run_id).await
+        match control_transport_for(target, &argv) {
+            ControlTransport::Direct => {
+                run_control_inner(target, argv, Some(input), timeout, cancel, &run_id).await
             }
-            CliTarget::Local(_) => {
-                if argv.iter().any(|a| a == "--events") {
-                    run_control_inner(target, argv, Some(input), timeout, cancel, &run_id).await
-                } else {
-                    crate::serve::cli_op_target(target, &argv, Some(input), timeout, &cancel, &run_id).await
-                }
-            }
+            ControlTransport::Pooled => crate::serve::cli_op_target(
+                target,
+                &argv,
+                Some(input),
+                timeout,
+                &cancel,
+                &run_id,
+            )
+            .await,
         }
     })
     .await;
@@ -755,9 +817,9 @@ pub async fn run_control_input_target(
 }
 
 /// 2.1.11 r6→step2: the step-1 special-case provider entry (`run_serve_op_target`)
-/// was FOLDED AWAY — `run_control_target` / `run_control_input_target` now route
-/// BOTH arms over the pooled serve transport, so every caller gets the resident
-/// serve with zero call-site changes.
+/// was FOLDED AWAY — ordinary calls now get the resident serve with zero
+/// call-site changes. R1 adds a narrow direct path for streaming and long
+/// extension group operations so neither can monopolize serial serve dispatch.
 
 /// lifecycle-logging P1: the app-side line for one CLI call — best-effort,
 /// allowlisted fields only (phase/duration/outcome/error_code; never argv
@@ -808,7 +870,8 @@ async fn run_control_inner(
     timeout: Duration,
     cancel: CancellationToken,
     run_id: &str,
-) -> Result<Envelope, WorkbenchError> {    let (program, spawn_args) = target.spawn_pieces(&argv);
+) -> Result<Envelope, WorkbenchError> {
+    let (program, spawn_args) = target.spawn_pieces_with_run_id(&argv, Some(run_id));
     let mut cmd = Command::new(&program);
     cmd.args(&spawn_args);
     cmd.env("AISC_RUN_ID", run_id);
@@ -1367,6 +1430,118 @@ mod tests {
                 "ps", "--format", "json",
             ]
         );
+    }
+
+    #[test]
+    fn long_extension_group_ops_bypass_the_pooled_serve() {
+        // R1: Python serve dispatch is intentionally serial. A multi-minute
+        // group operation must not occupy the only resident control-plane
+        // session until the UI's short services/list request times out.
+        let local = CliTarget::Local(PathBuf::from("aisc.exe"));
+        for command in ["skill-install-group", "skill-update-group"] {
+            assert_eq!(
+                control_transport_for(
+                    &local,
+                    &[
+                        "extensions".into(),
+                        command.into(),
+                        "--specs".into(),
+                        "[\"a:b\"]".into(),
+                    ]
+                ),
+                ControlTransport::Direct
+            );
+        }
+
+        // Ordinary short control-plane ops keep the resident serve path.
+        for argv in [
+            vec!["version".into(), "--format".into(), "json".into()],
+            vec!["ps".into(), "--format".into(), "json".into()],
+            vec![
+                "runtime".into(),
+                "services".into(),
+                "--format".into(),
+                "json".into(),
+            ],
+            vec![
+                "extensions".into(),
+                "list".into(),
+                "--kind".into(),
+                "skills".into(),
+            ],
+        ] {
+            assert_eq!(
+                control_transport_for(&local, &argv),
+                ControlTransport::Pooled
+            );
+        }
+    }
+
+    #[test]
+    fn control_transport_is_target_aware_and_remote_direct_ops_carry_run_id() {
+        let remote = CliTarget::Remote(SshTarget {
+            host: "nas-alias".into(),
+            port: None,
+            key_path: None,
+            extra_args: vec![],
+        });
+        let local = CliTarget::Local(PathBuf::from("aisc.exe"));
+
+        // Long group operations bypass serial serve on both targets.
+        let install = vec![
+            "extensions".into(),
+            "skill-install-group".into(),
+            "--specs".into(),
+            "[\"a:b\"]".into(),
+        ];
+        assert_eq!(
+            control_transport_for(&local, &install),
+            ControlTransport::Direct
+        );
+        assert_eq!(
+            control_transport_for(&remote, &install),
+            ControlTransport::Direct
+        );
+
+        // Preserve the pre-R1 behavior: --events was direct only for Local.
+        let events = vec!["build".into(), "--events".into()];
+        assert_eq!(
+            control_transport_for(&local, &events),
+            ControlTransport::Direct
+        );
+        assert_eq!(
+            control_transport_for(&remote, &events),
+            ControlTransport::Pooled
+        );
+
+        // Ordinary short control-plane calls remain pooled on both targets.
+        let services = vec![
+            "runtime".into(),
+            "services".into(),
+            "--format".into(),
+            "json".into(),
+        ];
+        assert_eq!(
+            control_transport_for(&local, &services),
+            ControlTransport::Pooled
+        );
+        assert_eq!(
+            control_transport_for(&remote, &services),
+            ControlTransport::Pooled
+        );
+
+        let target = SshTarget {
+            host: "nas-alias".into(),
+            port: None,
+            key_path: None,
+            extra_args: vec![],
+        };
+        let argv = target.spawn_argv_with_run_id(
+            &["ps".into(), "--format".into(), "json".into()],
+            "01234567-89ab-cdef-0123-456789abcdef",
+        );
+        assert_eq!(argv[6], "AISC_RUN_ID=01234567-89ab-cdef-0123-456789abcdef");
+        assert_eq!(argv[7], "aisc");
     }
 
     #[test]

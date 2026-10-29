@@ -296,3 +296,13 @@ PR #47 合并 develop `1c43091566ced3050c1c186061839d07c5a59aa2`，PR #40–#47 
 ### 仍需用户统一手测或后续 CU 补测
 
 H2/H3 真实故障网络、b2 缓存回退/清空/隔离竞态、b3 第二次可重试失败、b4 未启动禁用态、b5 诊断请求竞态、b6 A→B→A、b7 三轮完整 UI 冒烟。不要把上表局部 PASS 记为全批 PASS；发布和阶段收尾仍未发生。
+
+## 2026-10-29 R1 CU 修复复测
+
+使用 R1 专用 Workbench `release-staging/2.1.17-r1/AISC-Workbench-2.1.17-R1.exe`（SHA256 `046fea420ff1756684bbfe7f8bbbabaa29aba4f1004ff25ced78da68731f7ea3`），显式复用 b7 CLI/bundle `0.1.10.dev0` 与镜像 `610cd7ebfa39…`。隔离项目为 `C:\pt\aisc-217-r1-cu-project`，隔离数据根为 `C:\pt\aisc-217-r1-cu-data`；未覆盖 b7 保存产物。
+
+真实 UI 从市场结果发起 13 项 caveman 组安装，出现 `安装中 0/13`。宿主进程观测到 pinned CLI direct 执行 `extensions skill-install-group`（父子同 argv 为 bootstrap 形态，不是重复操作）。安装期间通过命令面板真实切入 Services：`宿主工具（F2）` 与 `注册服务` 立即可见，网关 `:47000`、`docs preview :3000`、端口 `5173`、HTTP/已注册均正确；未出现 `AISC CLI 响应超时`。同一时段 CLI 日志中 runtime services 约每 5 秒成功返回，单次 250–297ms。
+
+组安装 exit 0，耗时 131297ms；容器内官方 CLI 逐项核对 13 个 caveman 子技能，Claude/Codex 均默认开启。完成后 Services 仍显示两分组与两服务。默认宽度下市场组安装按钮被裁剪，CU 临时把 UI 字号缩放调为 0.8 以完成点击，复测后已恢复 1.0；该测试适配不判产品 FAIL。
+
+**结论：R1 Local 核心场景 PASS。** 审查后补齐 target-aware 路由与 Remote direct `AISC_RUN_ID` 前缀回归，最终生产副本 SHA256 `c74d1d1d0572f745fed0f5c089903e24953616643be07730c670ec9452885546`。Remote direct 真实 SSH UI 仍为 NOT RUN；本结果不替代用户统一手测，也不改变 H2/H3 等既有 NOT RUN 边界。
