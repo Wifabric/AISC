@@ -675,7 +675,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
   return {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
-    pluginMarkets, pluginMarketsError, skillRepos, skillReposBusy,
+    pluginMarkets, pluginMarketsBusy, pluginMarketsError,
+    skillRepos, skillReposBusy,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
     operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,

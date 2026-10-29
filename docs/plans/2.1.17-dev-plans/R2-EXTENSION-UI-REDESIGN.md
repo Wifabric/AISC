@@ -268,10 +268,10 @@ removePluginMarket(id: string): Promise<void>;
 - Source management renders Task 7 component.
 - Dialog state is local; closing does not erase main installed lists.
 
-- [ ] RED tests for dialog shell, category counts, cards, details, close/focus basics.
-- [ ] Implement.
-- [ ] GREEN.
-- [ ] Commit: `feat(workbench): add categorized extension market dialog`.
+- [x] RED tests for dialog shell, category counts, cards, details, close/focus basics.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add categorized extension market dialog`.
 
 ### Task 7: Source manager UI
 
@@ -291,10 +291,10 @@ removePluginMarket(id: string): Promise<void>;
 - MCP section explains Smithery is built in and installed MCP servers are managed from the MCP installed list.
 - Busy/error rows are honest; no delete button before identity is loaded.
 
-- [ ] RED test list/add/remove and confirmation text.
-- [ ] Implement.
-- [ ] GREEN.
-- [ ] Commit: `feat(workbench): add extension source manager`.
+- [x] RED test list/add/remove and confirmation text.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add extension source manager`.
 
 ### Task 8: Main view cleanup and failure surface
 
