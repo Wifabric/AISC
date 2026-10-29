@@ -363,4 +363,6 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 - 插件市场：初始 2 条；本地 fixture `aisc-r2-handtest` 添加后 3 条，安装 `aisc-r2-demo@aisc-r2-handtest` 后插件列表 1 条；删除市场后来源回到 2 条、插件回到 0 条。官方 CLI 数据面 PASS，旧“不会自动卸载插件”确认文案判 FAIL。
 - 修复：先改 R2 规格，再修改中英卸载警告；两语确认/取消与列表刷新 targeted 16/16、全前端 803 tests、vue-tsc/Vite/Tauri direct release PASS。独立增量审查 Critical=0/Important=0。未做新 GUI CU，警告视觉与来源按钮完整链路仍 NOT RUN。
 - 修正后的 GUI：`AISC-Workbench-2.1.17-R2-ACCEPTANCE.exe`，SHA256 `9ae03cc2234f3ce9ea41c618c51c188f5271d9db2fda29c50e1321f6db1fbda5`。启动器及 artifacts.json 已指向此文件；旧 FINAL 只作历史证据。
-- 数据 smoke runtime 已停止；用户 R1 容器 `4ac8ca6c9a97` 与 `latest @ 610cd7ebfa39` 保持原状。其他市场插件保留仅有 store mock 回归，不冒充真实交叉市场验收。
+- 数据 smoke runtime 已停止；用户 R1 容器 `4ac8ca6c9a97` 与 `latest @ 610cd7ebfa39` 保持原状。后续真实交叉市场补验：两个本地市场各安装一个测试插件，删除 aisc-r2-handtest 后插件数 2→1，保留 aisc-r2-other-plugin@aisc-r2-other 及其来源；PASS，证据 cross-market-smoke.jsonl。两个一次性容器均已停止/删除。
+
+最终集成：PR #49 → develop `6133eef`；合入后的 Workbench `40927944987`、三平台 sidecar `40927944984`、Bundle `40927944792`、NSIS `40927944887` 最终全部 SUCCESS。Bundle macOS attempt 1 依赖 staging HTTP 403 限流，单独重跑后通过；不隐去首轮失败。本段为远端自动化证据，未改变 GUI NOT RUN 或用户验收状态。

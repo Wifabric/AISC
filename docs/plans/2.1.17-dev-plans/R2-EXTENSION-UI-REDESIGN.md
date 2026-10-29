@@ -489,7 +489,7 @@ removePluginMarket(id: string): Promise<void>;
 - PR [#49](https://github.com/Wifabric/AISC/pull/49) targets `develop`; product head `bc2e3b027fd51eb21a873c0a80d8f1ef04eedc2c`.
 - Workbench CI [40918164812](https://github.com/Wifabric/AISC/actions/runs/40918164812): SUCCESS.
 - CLI sidecar [40919496197](https://github.com/Wifabric/AISC/actions/runs/40919496197): SUCCESS on Windows/Linux/macOS.
-- Linux/macOS bundle [40919500745](https://github.com/Wifabric/AISC/actions/runs/40919500745) and NSIS [40919505823](https://github.com/Wifabric/AISC/actions/runs/40919505823): dispatched against the same reviewed product head; results recorded below once complete.
+- Linux/macOS bundle [40919500745](https://github.com/Wifabric/AISC/actions/runs/40919500745) and NSIS [40919505823](https://github.com/Wifabric/AISC/actions/runs/40919505823): SUCCESS against the same reviewed pre-warning product head.
 - A fresh user-handtest bundle is staged in `release-staging/2.1.17-r2/handtest-stage/aisc-bundle`. The local full-test run had generated ignored Python bytecode inside the vendored plugin tree; the verifier rejected it. Only the staged copy's generated `.pyc` files and now-empty cache directories were removed; independent `artifact.py verify` then passed. Source files and vendor checksums were unchanged.
 - The final adapter is pinned in derived image `super-claude:2.1.17-r2-final`, ID `sha256:2f54fad6d86c15468f0cf968535fc377c7ff11e9362f94dcb5f29e2ee6121556`. The in-image SHA256 matches the staged/current adapter (`97464109…e2c5f`), and Python syntax verification passed. This is a b7-derived image, not a clean full-image rebuild.
 - Local `start-handtest.ps1` verifies GUI/CLI/adapter hashes, uses an independent R2 handtest data root, and delegates `-UpdateFlow` only to the existing b7 0.0.0 update-flow test. `HANDTEST.md` now points to R2 artifacts and current UI routes.
@@ -504,3 +504,30 @@ The user's requirement is source maintenance/deletion; retaining installed plugi
 - Warning correction verification: targeted 16/16, full Vitest **803/803**, vue-tsc/Vite/Tauri direct release PASS; independent incremental review **Critical=0 / Important=0, Ready to merge Yes**.
 - Superseding direct user-handtest executable: `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-ACCEPTANCE.exe`, SHA256 `9ae03cc2234f3ce9ea41c618c51c188f5271d9db2fda29c50e1321f6db1fbda5`. Launcher and manifest pin it; the earlier FINAL is retained only as historical evidence. No CU was performed on this new executable.
 - Initial sidecar/bundle/NSIS runs above all completed SUCCESS. The final UI-warning change requires fresh Workbench and installer verification; no adapter/CLI/Rust bytes changed in the correction.
+
+## Final PR integration (2026-10-30)
+
+- Warning-fix product head: `2e921f0dcd343028772db9e8a4c01a3f10dc9660`.
+- Final Workbench CI [40923743766](https://github.com/Wifabric/AISC/actions/runs/40923743766): SUCCESS (CLI/Rust/frontend).
+- Final Linux/macOS bundle [40923908547](https://github.com/Wifabric/AISC/actions/runs/40923908547): SUCCESS (deb/dmg).
+- Final NSIS [40923914879](https://github.com/Wifabric/AISC/actions/runs/40923914879): SUCCESS, including installed-app PATH, upgrade/uninstall retention smoke. Release job skipped because this is a development branch.
+- Sidecar implementation unchanged by the final warning correction; Windows/Linux/macOS sidecar run [40919496197](https://github.com/Wifabric/AISC/actions/runs/40919496197) remains valid for those bytes.
+- PR [#49](https://github.com/Wifabric/AISC/pull/49) merged into `develop`: `6133eef9686fb04142263bf35ccf161e0eec70e6`. All final PR checks were complete/success (release skipped) before merge. Automatic develop-push integration runs are tracked separately from these completed feature/PR checks.
+- Additional real-container cross-market smoke: install one fixture plugin each from A/B; deleting A changes installed count 2→1, retains B's marketplace/plugin, and removes A's marketplace/plugin. PASS; `release-staging/2.1.17-r2/cross-market-smoke.jsonl`.
+- User acceptance remains unchecked. No main merge, tag, publication, or phase closeout.
+
+- Final CI NSIS downloaded locally as `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-setup.exe` (675469546 bytes), SHA256 `7d1c3981d16f9aa25704e4030f51fd756426a61449b2f8df35a37c4516187831`. The archive matched GitHub artifact digest `a3772f98510f5379e2f9da70e7932bc610eca7ddde44e252ffb2d21ef72ef399` before extraction. It has not been installed on the user's host; CI smoke passed, GUI NSIS CU remains NOT RUN.
+- Develop integration follow-up: Workbench [40927944987](https://github.com/Wifabric/AISC/actions/runs/40927944987) and sidecar [40927944984](https://github.com/Wifabric/AISC/actions/runs/40927944984) SUCCESS. Bundle [40927944792](https://github.com/Wifabric/AISC/actions/runs/40927944792) attempt 1: Linux SUCCESS, macOS dependency staging failed with `HTTP Error 403: rate limit exceeded`; only the failed job was rerun. The original failure evidence is retained. No source/CI change was made for the upstream limit.
+
+### Develop CI final result
+
+All merge-head `6133eef` integration workflows completed SUCCESS:
+
+| Workflow | Run | Result |
+| --- | --- | --- |
+| Workbench CLI/Rust/frontend | [40927944987](https://github.com/Wifabric/AISC/actions/runs/40927944987) | SUCCESS |
+| CLI sidecar Windows/Linux/macOS | [40927944984](https://github.com/Wifabric/AISC/actions/runs/40927944984) | SUCCESS |
+| Bundle deb/dmg | [40927944792](https://github.com/Wifabric/AISC/actions/runs/40927944792) | SUCCESS attempt 2; macOS dependency HTTP 403 on attempt 1 retained |
+| NSIS installed-app smoke | [40927944887](https://github.com/Wifabric/AISC/actions/runs/40927944887) | SUCCESS; release job skipped |
+
+Final documentation consistency check: 39 passed / 0 warnings / 0 failures; diff check clean. The follow-up integration ledger is documentation only. R2 user acceptance remains open, and remaining GUI CU cases retain their tool-blocked NOT RUN status.

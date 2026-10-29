@@ -11,7 +11,7 @@ $Artifacts = "$Repo\release-staging\2.1.17-r2"
 $LegacyArtifacts = "$Repo\release-staging\2.1.17-b7" # 仅 b5 的 0.0.0 更新副本/旧 NSIS
 $Aisc = "$Artifacts\review-dist-2\aisc.exe"
 $Bundle = "$Artifacts\handtest-stage\aisc-bundle"
-$Workspace = Join-Path $env:TEMP ("AISC-217-B1-" + [guid]::NewGuid().ToString("N"))
+$Workspace = Join-Path $env:TEMP ("AISC-217-R2-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $Workspace | Out-Null
 $Query = "caveman"
 ```
@@ -162,7 +162,7 @@ $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""; $env:GH_PROXY=""
 6. 打开“诊断”→展开“本机更新网络观测”→复制健康报告并粘贴到本地文本编辑器。理想：没有请求时显示“尚未探测”，有请求时显示 direct/mirror、传输、状态、耗时和时间；容器扩展网络明确未探测；CLI/bundle 检查列出实际路径、版本、manifest 规则与原因，不能把 Workbench 2.x 与 CLI 0.x 直接判为版本不匹配。
 7. 在诊断进行时切工作区或关闭后重开。理想：当前诊断结果不被旧请求覆盖。静默安装、下载即退出、失败后退出、未知版本被报健康、复制出凭据或旧结果覆盖均为异常。
 
-完成后关闭更新测试副本，运行 `& "$Artifacts\start-handtest.ps1"` 返回 2.1.17，继续其余批次。需要另测本批 NSIS 安装器时使用 `$LegacyArtifacts\AISC-Workbench-2.1.17-setup.exe`；该文件是 b7 历史安装器，只验证更新交互，不代表 R2；R2 NSIS 形态以 PR #49 的 NSIS CI 资产为准。两者均不是更新服务当前发布目标。
+完成后关闭更新测试副本，运行 `& "$Artifacts\start-handtest.ps1"` 返回 2.1.17，继续其余批次。需要另测本批 NSIS 安装器时使用 `$Artifacts\AISC-Workbench-2.1.17-R2-setup.exe`；它来自最终 PR NSIS CI `40923914879`，SHA256 为 `7d1c3981d16f9aa25704e4030f51fd756426a61449b2f8df35a37c4516187831`，已核对下载压缩包与 GitHub artifact digest。它是未发布的 R2 安装器，不是更新服务当前发布目标。
 
 ## b6 注册服务分组与 caveman 默认态
 

@@ -5,7 +5,7 @@
 # v2.1.17 R2 集成验证与来源删除修正（2026-10-30）
 
 - PR #49 四轮独立审查通过，Workbench CI、三平台 CLI sidecar、Linux/macOS 安装包与 NSIS 安装/升级/卸载 smoke 初轮全部成功。
-- 使用最终冻结 CLI/adapter 在隔离真实容器验证：技能仓库 4→5→4；本地插件市场 2→3→2。发现官方 CLI 删除市场会同时卸载来源插件，推翻了此前 agent 方案的保留假设。按开发手册先修正规格，再将中英确认文案明确为级联卸载；增加两语取消/确认和安装列表刷新回归，Vitest 803、vue-tsc/Vite/Tauri release 通过，增量审查/最终 CI 继续执行。
+- 使用最终冻结 CLI/adapter 在隔离真实容器验证：技能仓库 4→5→4；本地插件市场 2→3→2。发现官方 CLI 删除市场会同时卸载来源插件，推翻了此前 agent 方案的保留假设。按开发手册先修正规格，再将中英确认文案明确为级联卸载；增加两语取消/确认和安装列表刷新回归，Vitest 803、vue-tsc/Vite/Tauri release 及增量独立审查通过。修正版 PR Workbench CI、deb/dmg、NSIS 安装/升级/卸载 smoke 均成功；PR #49 已合入 develop `6133eef`，合入后的 Workbench/三平台 sidecar/deb/dmg/NSIS CI 最终全绿；macOS 首轮依赖 staging 遇 HTTP 403 限流，单独重跑失败 job 后成功，源码未改。真实交叉市场测试另确认删除市场 A 后只卸载 A 的插件，B 市场和插件保留。
 - 同步统一手测到 R2 的独立市场与最近失败 UI，准备校验 hash 的隔离启动器、当前 bundle 及派生最终镜像。全镜像重建未执行；当前会话缺 `node_repl`，没有新增 CU 操作，来源 add→delete/窄屏/键盘焦点等 UI 仍 NOT RUN，用户统一验收保持未完成。
 
 # v2.1.17 R2 扩展 UI 重设计（2026-10-29）
