@@ -193,12 +193,12 @@ export function extensionSummary(
 - `skill-repo-remove <owner/name-or-URL>`: call `cc-switch skills repos remove <id>`; it only unregisters the source and does not uninstall installed skills.
 - `plugin-market-remove <name>`: call `claude-real plugin marketplace remove <name>`, then the UI refreshes marketplace list.
 
-- [ ] RED adapter: seeded SQLite repo list shape; remove argv; plugin remove argv; malformed IDs fail closed; main envelope choices.
-- [ ] Implement adapter.
-- [ ] RED bridge/dispatch/Rust allowlist: argv and op pass-through.
-- [ ] Implement bridge/CLI/Rust allowlist.
-- [ ] Run focused Python and Rust tests.
-- [ ] Commit: `feat(extensions): maintain skill and plugin sources`.
+- [x] RED adapter: seeded SQLite repo list shape; remove argv; plugin remove argv; malformed IDs fail closed; main envelope choices.
+- [x] Implement adapter.
+- [x] RED bridge/dispatch/Rust allowlist: argv and op pass-through.
+- [x] Implement bridge/CLI/Rust allowlist.
+- [x] Run focused Python and Rust tests.
+- [x] Commit: `feat(extensions): maintain skill and plugin sources`.
 
 ### Task 4: Store source state and operations
 

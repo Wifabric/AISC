@@ -47,13 +47,14 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 20] = [
+const EXTENSIONS_OPS: [&str; 23] = [
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
     "skill-search", "deeplink", "skill-repo-add",
-    "plugin-market-list", "plugin-market-add", "plugin-search",
-    "mcp-search", "mcp-market-install", "updates-check",
+    "skill-repos-list", "skill-repo-remove",
+    "plugin-market-list", "plugin-market-add", "plugin-market-remove",
+    "plugin-search", "mcp-search", "mcp-market-install", "updates-check",
 ];
 
 /// v2.1.17 b1: group operations may probe and clone direct + two mirrors,
@@ -2032,6 +2033,13 @@ mod tests {
     #[test]
     fn extensions_ops_include_updates_check() {
         assert!(EXTENSIONS_OPS.contains(&"updates-check"));
+    }
+
+    #[test]
+    fn extensions_ops_include_r2_source_maintenance() {
+        assert!(EXTENSIONS_OPS.contains(&"skill-repos-list"));
+        assert!(EXTENSIONS_OPS.contains(&"skill-repo-remove"));
+        assert!(EXTENSIONS_OPS.contains(&"plugin-market-remove"));
     }
 
     #[test]

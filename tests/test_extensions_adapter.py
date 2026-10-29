@@ -374,6 +374,46 @@ class MarketTests(TempEnv):
         self.assertEqual(calls[0]["argv"][:3], ["git", "ls-remote", "https://github.com/anthropics/skills.git"])
         self.assertEqual(calls[1]["argv"], ["cc-switch", "skills", "repos", "add", "https://github.com/anthropics/skills"])
 
+    def test_skill_repos_list_reads_ssot(self):
+        conn = sqlite3.connect(self.root / "cc-switch.db")
+        conn.execute(
+            "CREATE TABLE skill_repos (owner TEXT NOT NULL, name TEXT NOT NULL, "
+            "branch TEXT NOT NULL DEFAULT 'main', enabled BOOLEAN NOT NULL DEFAULT 1, "
+            "PRIMARY KEY (owner, name))"
+        )
+        conn.execute("INSERT INTO skill_repos VALUES ('owner','repo','develop',1)")
+        conn.execute("INSERT INTO skill_repos VALUES ('disabled','old','main',0)")
+        conn.commit()
+        conn.close()
+        items = A.skill_repos_list()
+        self.assertEqual(items, [
+            {"kind": "skill-repo", "id": "disabled/old", "name": "disabled/old",
+             "repo": "disabled/old", "branch": "main", "enabled": False},
+            {"kind": "skill-repo", "id": "owner/repo", "name": "owner/repo",
+             "repo": "owner/repo", "branch": "develop", "enabled": True},
+        ])
+
+    def test_skill_repo_remove_normalizes_github_url_and_uses_official_cli(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.skill_repo_remove("https://github.com/owner/repo.git")
+        self.assertEqual(calls[0]["argv"], [
+            "cc-switch", "skills", "repos", "remove", "owner/repo",
+        ])
+
+    def test_skill_repo_remove_rejects_malformed_source(self):
+        with self.assertRaises(A.AdapterError):
+            A.skill_repo_remove("../not-a-repo")
+
+    def test_plugin_market_remove_uses_official_cli(self):
+        calls, run = self._fake()
+        with mock.patch.object(A.subprocess, "run", run):
+            A.plugin_market_remove("claude-plugins-official")
+        self.assertEqual(calls[0]["argv"], [
+            "claude-real", "plugin", "marketplace", "remove",
+            "claude-plugins-official",
+        ])
+
     def test_parse_plugin_marketplaces(self):
         raw = "\n".join([
             "Configured marketplaces:",

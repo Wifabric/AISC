@@ -207,6 +207,21 @@ def cmd_extensions_skill_repo_add(args: argparse.Namespace) -> Dict[str, Any]:
                                item_id=args.id)
 
 
+def cmd_extensions_skill_repos_list(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-repos-list", workspace, None)
+
+
+def cmd_extensions_skill_repo_remove(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-repo-remove", workspace, None,
+                               item_id=args.id)
+
+
 def cmd_extensions_plugin_market_list(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw
 
@@ -219,6 +234,14 @@ def cmd_extensions_plugin_market_add(args: argparse.Namespace) -> Dict[str, Any]
 
     runtime_id, workspace = _runtime(args)
     return extensions_call_raw(runtime_id, "plugin-market-add", workspace, None,
+                               item_id=args.id)
+
+
+def cmd_extensions_plugin_market_remove(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "plugin-market-remove", workspace, None,
                                item_id=args.id)
 
 

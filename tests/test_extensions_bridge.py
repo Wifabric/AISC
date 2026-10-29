@@ -224,5 +224,35 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(ctx.exception.error_code, "AISC_ERR_EXTENSIONS_CLI_ERROR")
 
 
+    def test_r2_source_maintenance_ops_are_transportable(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op", "op": "ok",
+                    "ok": True, "items": [],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            listed = ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
+            ext.extensions_call_raw("rid", "skill-repo-remove", "/ws", executor,
+                                    item_id="owner/repo")
+            ext.extensions_call_raw("rid", "plugin-market-remove", "/ws", executor,
+                                    item_id="market")
+
+        self.assertEqual(listed["op"], "skill-repos-list")
+        adapter_args = [argv[argv.index("/usr/local/bin/aisc-extensions-adapter") + 1:]
+                        for argv in [call["argv"] for call in calls]]
+        self.assertIn(["skill-repos-list"], adapter_args)
+        self.assertIn(["skill-repo-remove", "--id", "owner/repo"], adapter_args)
+        self.assertIn(["plugin-market-remove", "--id", "market"], adapter_args)
+
+
 if __name__ == "__main__":
     unittest.main()

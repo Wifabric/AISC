@@ -1092,6 +1092,51 @@ def skill_repo_add(source: str) -> None:
              timeout=120.0, env_overrides=_github_git_env(source))
 
 
+def skill_repos_list() -> list[dict[str, Any]]:
+    path = _db_path()
+    if not path.is_file():
+        return []
+    conn = _connect_ro(path)
+    try:
+        rows = conn.execute(
+            "SELECT owner, name, branch, enabled FROM skill_repos "
+            "ORDER BY owner COLLATE NOCASE ASC, name COLLATE NOCASE ASC"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "kind": "skill-repo",
+            "id": f"{owner}/{name}",
+            "name": f"{owner}/{name}",
+            "repo": f"{owner}/{name}",
+            "branch": branch,
+            "enabled": bool(enabled),
+        }
+        for owner, name, branch, enabled in rows
+    ]
+
+
+def _skill_repo_identity(source: str) -> str:
+    value = source.strip()
+    if "://" in value:
+        parsed = urllib.parse.urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise AdapterError(ERR_BAD_REQUEST, f"invalid repository URL: {source}")
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 2:
+            raise AdapterError(ERR_BAD_REQUEST, f"repository URL has no owner/name: {source}")
+        value = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid repository identity: {source}")
+    return value
+
+
+def skill_repo_remove(source: str) -> None:
+    identity = _skill_repo_identity(source)
+    _run_cli(["cc-switch", "skills", "repos", "remove", identity], timeout=60.0)
+
+
 def _parse_plugin_marketplaces(raw: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     name = ""
@@ -1163,6 +1208,13 @@ def plugin_market_add(source: str) -> None:
         raise AdapterError(ERR_BAD_REQUEST, "marketplace source is required")
     _run_cli_git_fallback(["claude-real", "plugin", "marketplace", "add", source],
              timeout=180.0)
+
+
+def plugin_market_remove(name: str) -> None:
+    value = name.strip()
+    if not value or any(ch.isspace() for ch in value):
+        raise AdapterError(ERR_BAD_REQUEST, "marketplace name is required")
+    _run_cli(["claude-real", "plugin", "marketplace", "remove", value], timeout=60.0)
 
 
 def mcp_search(query: str) -> list[dict[str, Any]]:
@@ -1242,8 +1294,10 @@ def main(argv: list[str] | None = None) -> int:
                                        "plugin-uninstall", "plugin-update",
                                        "skill-search", "deeplink",
                                        "skill-repo-add", "skill-update", "skill-update-group",
+                                       "skill-repos-list", "skill-repo-remove",
                                        "plugin-market-list",
-                                       "plugin-market-add", "plugin-search",
+                                       "plugin-market-add", "plugin-market-remove",
+                                       "plugin-search",
                                        "mcp-search", "mcp-market-install",
                                        "updates-check"])
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
@@ -1360,6 +1414,16 @@ def main(argv: list[str] | None = None) -> int:
             skill_repo_add(args.id)
             print(json.dumps(_envelope("skill-repo-add", True)))
             return 0
+        if args.op == "skill-repos-list":
+            print(json.dumps(_envelope(
+                "skill-repos-list", True, items=skill_repos_list())))
+            return 0
+        if args.op == "skill-repo-remove":
+            if not args.id:
+                raise AdapterError(ERR_BAD_REQUEST, "--id required")
+            skill_repo_remove(args.id)
+            print(json.dumps(_envelope("skill-repo-remove", True)))
+            return 0
         if args.op == "plugin-market-list":
             print(json.dumps(_envelope(
                 "plugin-market-list", True, items=plugin_market_list())))
@@ -1369,6 +1433,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--id required")
             plugin_market_add(args.id)
             print(json.dumps(_envelope("plugin-market-add", True)))
+            return 0
+        if args.op == "plugin-market-remove":
+            if not args.id:
+                raise AdapterError(ERR_BAD_REQUEST, "--id required")
+            plugin_market_remove(args.id)
+            print(json.dumps(_envelope("plugin-market-remove", True)))
             return 0
         if args.op == "plugin-search":
             if not args.query:

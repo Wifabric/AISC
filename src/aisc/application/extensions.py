@@ -26,8 +26,9 @@ _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
     "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
-    "skill-update-group",
-    "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
+    "skill-repos-list", "skill-repo-remove", "skill-update-group",
+    "skill-update", "plugin-market-list", "plugin-market-add",
+    "plugin-market-remove", "plugin-search",
     "mcp-search", "mcp-market-install", "updates-check",
 )
 _KINDS = ("skills", "mcp", "plugins")
