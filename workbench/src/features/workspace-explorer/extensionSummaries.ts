@@ -120,13 +120,14 @@ function fallbackSummary(
   locale: ExtensionSummaryLocale,
 ): ExtensionSummaryResult {
   const name = item.name.trim() || item.id.trim();
-  const source = item.repo?.trim() || (item.kind === "mcp" ? "Smithery" : "market");
+  const kind = item.kind.replace(/^market-/, "");
+  const source = item.repo?.trim() || (kind === "mcp" ? "Smithery" : "market");
   const marketOriginal = item.description?.trim();
   return {
     source: "fallback",
     summary: locale === "zh-CN"
-      ? `这是一个来自 ${source} 的${item.kind === "mcp" ? " MCP 服务" : item.kind === "plugins" ? "插件" : "技能"} ${name}；安装前请核对市场原文、仓库说明和权限需求。`
-      : `${name} is a ${item.kind === "mcp" ? "MCP server" : item.kind === "plugins" ? "plugin" : "skill"} from ${source}; verify the market text, repository, and permissions before installing.`,
+      ? `这是一个来自 ${source} 的${kind === "mcp" ? " MCP 服务" : kind === "plugins" ? "插件" : "技能"} ${name}；安装前请核对市场原文、仓库说明和权限需求。`
+      : `${name} is a ${kind === "mcp" ? "MCP server" : kind === "plugins" ? "plugin" : "skill"} from ${source}; verify the market text, repository, and permissions before installing.`,
     ...(marketOriginal ? { marketOriginal } : {}),
   };
 }

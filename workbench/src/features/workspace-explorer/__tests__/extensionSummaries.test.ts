@@ -73,6 +73,15 @@ describe("extension summaries", () => {
     expect(result.source).toBe("first-party");
   });
 
+  it("labels marketplace result kinds without turning MCP into a skill", () => {
+    const result = extensionSummary(
+      { kind: "market-mcp", id: "unknown/server", name: "Unknown Server", description: "" },
+      "zh-CN",
+    );
+    expect(result.summary).toContain("MCP 服务");
+    expect(result.summary).not.toContain("技能 Unknown Server");
+  });
+
   it("uses a transparent local fallback and preserves the market original for unknown items", () => {
     const result = extensionSummary(
       {

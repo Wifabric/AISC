@@ -20,9 +20,10 @@ function makeStore() {
     load: vi.fn(async () => {}), searchSkills: vi.fn(async () => {}),
     searchMcp: vi.fn(async () => {}), searchPlugins: vi.fn(async () => {}),
     loadPluginMarkets: vi.fn(async () => {}), loadSkillRepos: vi.fn(async () => {}),
-    installSkill: vi.fn(async () => {}), installMcpMarket: vi.fn(async () => {}),
+    installSkill: vi.fn(async () => {}), installSkillGroup: vi.fn(async (_group: any) => {}), installMcpMarket: vi.fn(async () => {}),
     pluginAction: vi.fn(async () => {}),
     marketSkills: [] as ExtensionsItem[], marketMcp: [] as ExtensionsItem[], marketPlugins: [] as ExtensionsItem[],
+    marketSkillGroups: [] as any[],
     marketCacheByKind: { skills: null, mcp: null, plugins: null } as any,
     skillRepos: [], pluginMarkets: [],
   });
@@ -95,6 +96,10 @@ describe("ExtensionMarketDialog", () => {
       kind: "market-skill", id: "owner/repo:demo", name: "demo",
       repo: "owner/repo", directory: "demo", description: "Original copy",
     }];
+    store.marketSkillGroups = [{
+      id: "owner/repo", name: "owner/repo", repo: "owner/repo",
+      conflict: false, expanded: true, items: store.marketSkills,
+    }];
     const wrapper = mountDialog();
     await wrapper.get("[data-testid='market-tab-skills']").trigger("click");
     await wrapper.get("[data-testid^='market-result-']").trigger("click");
@@ -104,11 +109,34 @@ describe("ExtensionMarketDialog", () => {
     wrapper.unmount();
   });
 
+  it("keeps repository-group installation available for multi-skill market results", async () => {
+    store.marketSkills = [
+      { kind: "market-skill", id: "owner/repo:a", name: "a", repo: "owner/repo", directory: "a" },
+      { kind: "market-skill", id: "owner/repo:b", name: "b", repo: "owner/repo", directory: "b" },
+    ];
+    store.marketSkillGroups = [{
+      id: "owner/repo", name: "owner/repo", repo: "owner/repo",
+      conflict: false, expanded: true, items: store.marketSkills,
+    }];
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-skills']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid^='market-group-']").trigger("click");
+    await wrapper.get("[data-testid='market-group-install']").trigger("click");
+    expect(store.installSkillGroup).toHaveBeenCalledTimes(1);
+    const group = store.installSkillGroup.mock.calls[0]![0] as { items: ExtensionsItem[] };
+    expect(group.items.map((item: ExtensionsItem) => item.id)).toEqual([
+      "owner/repo:a", "owner/repo:b",
+    ]);
+    wrapper.unmount();
+  });
+
   it("renders source management in its own tab", async () => {
     const wrapper = mountDialog();
     expect(wrapper.find("[data-testid='stub-source-manager']").exists()).toBe(false);
     await wrapper.get("[data-testid='market-tab-sources']").trigger("click");
     expect(wrapper.find("[data-testid='stub-source-manager']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
     expect(store.loadSkillRepos).toHaveBeenCalled();
     expect(store.loadPluginMarkets).toHaveBeenCalled();
     wrapper.unmount();
@@ -125,11 +153,16 @@ describe("ExtensionMarketDialog", () => {
     wrapper.unmount();
   });
 
-  it("labels observed heat sources in the UI instead of leaking raw enum values", () => {
+  it("labels each heat source once without duplicating official-directory copy", async () => {
     const wrapper = mountDialog();
-    const card = wrapper.get("[data-testid='recommendation-card']");
-    expect(card.text()).toContain("skills.sh");
-    expect(card.text()).not.toContain("heatSource");
+    const observed = wrapper.get("[data-testid='recommendation-card']");
+    expect(observed.text()).toContain("skills.sh 热榜");
+    expect(observed.text().match(/skills\.sh 热榜/g)).toHaveLength(1);
+    await wrapper.get("[data-testid='recommendation-category']:nth-child(2)").trigger("click");
+    const officialCounts = wrapper.findAll("[data-testid='recommendation-card']")
+      .map((card) => card.text().match(/官方目录/g)?.length ?? 0);
+    expect(officialCounts.some((count) => count > 0)).toBe(true);
+    expect(Math.max(...officialCounts)).toBe(1);
     wrapper.unmount();
   });
 

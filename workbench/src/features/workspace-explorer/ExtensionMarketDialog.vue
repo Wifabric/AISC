@@ -36,6 +36,7 @@ const closeRef = ref<HTMLButtonElement | null>(null);
 const recommendations = computed(() =>
   EXTENSION_RECOMMENDATIONS_BY_CATEGORY[activeCategory.value],
 );
+const marketSkillGroups = computed(() => store.marketSkillGroups);
 const marketItems = computed<ExtensionsItem[]>(() => {
   if (activeTab.value === "skills") return store.marketSkills;
   if (activeTab.value === "mcp") return store.marketMcp;
@@ -84,6 +85,15 @@ function categoryLabel(category: { labelZh: string; labelEn: string }): string {
 function recommendationSummary(entry: { summaryZh: string; summaryEn: string }): string {
   return locale.value === "en-US" ? entry.summaryEn : entry.summaryZh;
 }
+function heatLabel(entry: {
+  heat?: string;
+  heatSource: "skills.sh" | "smithery" | "official-directory";
+}): string {
+  return entry.heat
+    ? `${entry.heat} · ${heatSourceLabel(entry.heatSource)}`
+    : heatSourceLabel(entry.heatSource);
+}
+
 function heatSourceLabel(source: "skills.sh" | "smithery" | "official-directory"): string {
   if (source === "skills.sh") return t("extensions.market.skillsHeatSource");
   if (source === "smithery") return t("extensions.market.smitheryHeatSource");
@@ -242,8 +252,7 @@ onMounted(async () => {
                 </header>
                 <p>{{ recommendationSummary(entry) }}</p>
                 <footer>
-                  <span>{{ entry.heat ?? t("extensions.market.officialDirectory") }}</span>
-                  <span>{{ heatSourceLabel(entry.heatSource) }}</span>
+                  <span>{{ heatLabel(entry) }}</span>
                 </footer>
               </article>
             </div>
@@ -267,26 +276,64 @@ onMounted(async () => {
             </p>
 
             <div class="market-results">
-              <button
-                v-for="item in marketItems"
-                :key="item.id"
-                type="button"
-                class="market-result"
-                :data-testid="'market-result-' + item.id"
-                @click="selectedMarketItem = item"
-              >
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.repo || item.marketplace || item.id }}</span>
-                <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
-              </button>
-              <p v-if="!marketItems.length" class="market-empty">{{ t("extensions.market.noResults") }}</p>
+              <template v-if="activeTab === 'skills'">
+                <section
+                  v-for="group in marketSkillGroups"
+                  :key="group.id"
+                  class="market-group"
+                  :data-testid="'market-group-' + group.id"
+                >
+                  <div class="market-group-head">
+                    <button type="button" class="market-result group-parent" @click="selectedMarketItem = group.items[0] ?? null">
+                      <strong>{{ group.name }}</strong>
+                      <span>{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="group-install"
+                      data-testid="market-group-install"
+                      :disabled="store.busy"
+                      @click.stop="store.installSkillGroup(group)"
+                    >{{ t("extensions.installAll") }}</button>
+                  </div>
+                  <button
+                    v-for="item in group.items"
+                    :key="item.id"
+                    type="button"
+                    class="market-result"
+                    :data-testid="'market-result-' + item.id"
+                    @click="selectedMarketItem = item"
+                  >
+                    <strong>{{ item.name }}</strong>
+                    <span>{{ item.repo || item.id }}</span>
+                    <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
+                  </button>
+                </section>
+              </template>
+              <template v-else>
+                <button
+                  v-for="item in marketItems"
+                  :key="item.id"
+                  type="button"
+                  class="market-result"
+                  :data-testid="'market-result-' + item.id"
+                  @click="selectedMarketItem = item"
+                >
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.repo || item.marketplace || item.id }}</span>
+                  <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
+                </button>
+              </template>
+              <p v-if="!marketItems.length && (activeTab !== 'skills' || !marketSkillGroups.length)" class="market-empty">
+                {{ t("extensions.market.noResults") }}
+              </p>
             </div>
           </div>
 
           <ExtensionSourceManager v-else />
 
           <ExtensionDetailPanel
-            v-if="detailItem"
+            v-if="detailItem && activeTab !== 'sources'"
             class="market-detail"
             :item="detailItem"
             :recommendation="detailRecommendation"
@@ -400,6 +447,10 @@ onMounted(async () => {
 .market-search input { flex: 1; min-width: 0; }
 .market-results { display: grid; gap: var(--space-1); overflow: auto; }
 .market-result { display: flex; min-height: var(--control-h-md); align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
+.market-group { display: grid; min-width: 0; gap: var(--space-1); padding: var(--space-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
+.market-group-head { display: flex; align-items: center; gap: var(--space-2); }
+.market-group-head .group-parent { flex: 1; }
+.group-install { min-height: var(--control-h-sm); padding: 0 var(--space-3); border: var(--border-w) solid var(--accent); background: var(--accent-soft); color: var(--text); cursor: pointer; }
 .market-result strong { color: var(--text); }
 .market-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .market-empty { margin: var(--space-3); color: var(--text-muted); }
