@@ -297,5 +297,6 @@
 - 发布
   - [x] b7：镜像内置 cc-switch / Codex / Claude / Node 稳定最新版刷新（Node 24.22.1 依 D-5；构建/校验/真实镜像/跨平台出包验证通过，PR #46/#47 已集成）
   - [ ] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/审查复审通过/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；待统一手测）
+  - [ ] R2：扩展 UI 重设计——删除主视图操作日志、分类扩展市场（六类各 10 条）、中文详情、整体布局优化与技能仓库/插件市场维护（计划见 `docs/plans/2.1.17-dev-plans/R2-EXTENSION-UI-REDESIGN.md`）
   - [ ] 高频链路自动化冒烟与 v2.1.17 preview 准备（三轮数据面 9/9、构建/材料与 CU 关键路径已完成；完整三轮 UI 冒烟、统一用户手测与发布门仍待通过）
   - [ ] CLI 开发版本 `0.1.10.dev0` 已启动；final 版本与发布时机按实际范围裁定
