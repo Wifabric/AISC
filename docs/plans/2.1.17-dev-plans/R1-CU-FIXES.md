@@ -48,17 +48,23 @@ R1 在 Rust 路由层为两个长扩展组操作建立独立传输通道：
 
 - TDD 先红后绿：`long_extension_group_ops_bypass_the_pooled_serve` 锁定
   `skill-install-group` / `skill-update-group` direct、`version` / `runtime services` /
-  普通 `extensions list` pooled；实现 `is_long_extension_group_op` 与
-  `uses_pooled_control_transport`。
-- `run_control_target` 与 `run_control_input_target` 共用同一分类；Local 与 Remote 的
-  长组操作均走既有 per-op transport，`--events` 保持原 direct 例外，普通短请求不变。
-- 本地门禁：Rust lib **399 passed / 1 ignored**、Workbench Vitest **770 passed**、
-  文档检查 **39 passed / 0 warnings / 0 failures**；生产
+  普通 `extensions list` pooled；实现 `is_long_extension_group_op`，并由
+  `control_transport_for` 做 target-aware 路由。
+- `run_control_target` 与 `run_control_input_target` 共用 target-aware
+  `control_transport_for`：Local 与 Remote 的长组操作均走既有 per-op transport；
+  Local `--events` 保持 direct，Remote `--events` 保持 pooled（与 R1 前一致）；
+  普通短请求不变。
+- Remote direct 命令前缀 shell-safe 的 `AISC_RUN_ID=<run_id>`，避免 OpenSSH 不转发
+  环境变量时丢失 Workbench app log、CLI envelope 与 `cli_exit` 的同一 run_id。
+- 本地门禁：Rust lib **400 passed / 1 ignored**、Workbench Vitest **770 passed**、
+  文档检查 **39 passed / 0 warnings / 0 failures**；审查后最终生产
   `npm run tauri build -- --no-bundle` 通过。
-- R1 测试 Workbench：
+- CU 复测 Workbench：
   `release-staging/2.1.17-r1/AISC-Workbench-2.1.17-R1.exe`，
   SHA256 `046fea420ff1756684bbfe7f8bbbabaa29aba4f1004ff25ced78da68731f7ea3`；
-  显式复用 b7 CLI/bundle，镜像 `610cd7ebfa39…`。
+  显式复用 b7 CLI/bundle，镜像 `610cd7ebfa39…`。审查修复后最终生产副本为
+  `AISC-Workbench-2.1.17-R1-final.exe`，SHA256
+  `c74d1d1d0572f745fed0f5c089903e24953616643be07730c670ec9452885546`。
 - Local CU 复测 PASS：真实 UI 发起 13 项 caveman 组安装后，宿主进程可见 direct
   `extensions skill-install-group`（父子两个 pinned CLI 进程是 bootstrap 形态，不是两次
   操作）。安装期间用真实命令面板切入 Services，`宿主工具（F2）`、`注册服务`、
@@ -68,6 +74,9 @@ R1 在 Rust 路由层为两个长扩展组操作建立独立传输通道：
 - 测试工具边界：默认宽度下市场组“安装全部”按钮被面板裁剪，CU 仅临时把 UI 字号缩放
   调至 0.8 并在复测后恢复为 1.0；这是测试操作适配，不判产品 FAIL。Remote direct 路径
   未做真实 SSH UI 复测，不能写成 PASS。
+- 独立代码审查首轮发现 Remote direct `run_id` 与 Remote `--events` 语义问题；上述
+  target-aware 路由、`AISC_RUN_ID` 前缀与回归测试已补齐。复审确认 Critical/Important
+  均为 0；剩余“未直接执行 async dispatch 分支”的测试加固机会不阻塞合并。
 
 ## 非目标
 

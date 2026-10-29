@@ -296,6 +296,6 @@
   - [x] b6：Services 注册服务标签补齐；caveman 安装即默认开启（实现/自动化/真实容器/CI/CU Services 与默认态通过；A→B→A 待统一手测）
 - 发布
   - [x] b7：镜像内置 cc-switch / Codex / Claude / Node 稳定最新版刷新（Node 24.22.1 依 D-5；构建/校验/真实镜像/跨平台出包验证通过，PR #46/#47 已集成）
-  - [ ] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote UI 路径 NOT RUN；待 PR/CI/统一手测）
+  - [ ] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/审查复审通过/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote 真实 SSH UI NOT RUN；待 PR/CI/统一手测）
   - [ ] 高频链路自动化冒烟与 v2.1.17 preview 准备（三轮数据面 9/9、构建/材料与 CU 关键路径已完成；完整三轮 UI 冒烟、统一用户手测与发布门仍待通过）
   - [ ] CLI 开发版本 `0.1.10.dev0` 已启动；final 版本与发布时机按实际范围裁定

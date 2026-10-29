@@ -4,8 +4,8 @@
 
 # v2.1.17 R1 修复验证（2026-10-29）
 
-- 根因确认 Python resident serve 串行执行长扩展组操作，阻塞 Services 控制面。Rust 路由层让 `skill-install-group` / `skill-update-group` Local 与 Remote 均走 per-op direct transport，普通短请求保留 pooled serve；TDD、Rust lib 399/1 ignored、Vitest 770 与文档检查 39/0/0 通过。
-- R1 专用 Workbench 生产构建通过。真实 UI 13 项组安装期间 direct 子进程可见，Services 立即显示宿主工具/注册服务与 3000/5173，runtime services 轮询 250–297ms，无 30 秒超时；安装 exit 0，13 项默认双开。Remote UI 路径未复测，统一用户手测仍未发生。
+- 根因确认 Python resident serve 串行执行长扩展组操作，阻塞 Services 控制面。Rust 路由层让 `skill-install-group` / `skill-update-group` Local 与 Remote 均走 per-op direct transport，普通短请求保留 pooled serve，Local `--events` 保持 direct、Remote `--events` 保持 pooled，并在 Remote direct 命令前缀传播 `AISC_RUN_ID`；TDD、Rust lib 400/1 ignored、Vitest 770 与文档检查 39/0/0 通过。
+- R1 专用 Workbench 生产构建通过。真实 UI 13 项组安装期间 direct 子进程可见，Services 立即显示宿主工具/注册服务与 3000/5173，runtime services 轮询 250–297ms，无 30 秒超时；安装 exit 0，13 项默认双开。独立审查复审 Critical/Important 均为 0；Remote 真实 SSH UI 未复测，统一用户手测仍未发生。
 
 # v2.1.17 Computer Use 补测（2026-10-29，部分完成）
 
