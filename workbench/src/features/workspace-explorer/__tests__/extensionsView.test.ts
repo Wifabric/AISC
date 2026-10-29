@@ -50,7 +50,7 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     wrapper.unmount();
   });
 
-  it("keeps a skill group open while showing and re-showing a child introduction", async () => {
+  it("keeps a group open while opening and closing a child detail panel", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
     const group = wrapper.find("[data-testid^=ext-skill-group-]");
@@ -59,21 +59,17 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
 
     const child = wrapper.find("[data-testid=ext-skill-child-caveman]");
     expect(child.exists()).toBe(true);
-    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
 
     await child.trigger("click");
     await flushPromises();
-    expect(wrapper.text()).toContain("Ultra-compressed agent communication");
-    expect(wrapper.text()).toContain("caveman");
+    expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("极简");
+    expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("caveman");
 
     await child.trigger("click");
     await flushPromises();
-    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
     expect(wrapper.text()).toContain("caveman");
-
-    await group.trigger("click");
-    await flushPromises();
-    expect(wrapper.text()).not.toContain("Ultra-compressed agent communication");
     wrapper.unmount();
   });
 });
@@ -161,8 +157,11 @@ describe("v2.1.17 b2 update signals", () => {
     expect(row.find(".ext-name.has-update").exists()).toBe(true);
     await row.trigger("click");
     await nextTick();
-    expect(row.text()).toContain("当前版本：1");
-    expect(row.text()).toContain("最新版本：2");
+    const detail = wrapper.get("[data-testid='extension-detail-panel']");
+    expect(detail.text()).toContain("当前版本");
+    expect(detail.text()).toContain("1");
+    expect(detail.text()).toContain("最新版本");
+    expect(detail.text()).toContain("2");
 
     store.updateItemsByKind.plugins = {
       "p@m": {
@@ -171,7 +170,7 @@ describe("v2.1.17 b2 update signals", () => {
       },
     };
     await nextTick();
-    expect(row.text()).toContain("暂无可靠版本源");
+    expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("暂无可靠版本源");
     wrapper.unmount();
   });
 
@@ -185,31 +184,25 @@ describe("v2.1.17 b2 update signals", () => {
     wrapper.unmount();
   });
 
-  it("labels cached market provenance, original text, and update time", async () => {
-    vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => {
-      if (p.op === "plugin-search") {
-        return {
-          items: [{ kind: "market-plugin", id: "p@m", name: "p", description: "Raw market text", updated_at: "2026-10-01T00:00:00Z" }],
-          cache: { source: "cache", cached: true, fetched_at: 1760000000, error: "remote refresh down" },
-        };
-      }
-      return { items: [] };
+  it("keeps recommendations, discovery, and operation history out of the main view", async () => {
+    const wrapper = mount(ExtensionsView, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          ExtensionMarketDialog: { template: "<div data-testid='stub-market-dialog' />" },
+        },
+      },
     });
-    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
-    await wrapper.find("[data-testid=ext-tab-plugins]").trigger("click");
-    await flushPromises();
-    await wrapper.find("[data-testid=ext-plugin-search]").setValue("chart");
-    await wrapper.find("[data-testid=ext-plugin-search-btn]").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.find("[data-testid=ext-plugins-cache]").text()).toContain("上次成功");
-    const row = wrapper.find('[data-testid="ext-market-p@m"]');
-    expect(row.exists()).toBe(true);
-    await row.trigger("click");
-    await nextTick();
-    expect(row.text()).toContain("市场原文");
-    expect(row.text()).toContain("更新时间：2026-10-01T00:00:00Z");
+    expect(wrapper.find(".extension-recommendations").exists()).toBe(false);
+    expect(wrapper.find(".extension-operation-log").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='ext-skill-search']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='ext-mcp-search']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='ext-plugin-search']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='ext-market-add']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='stub-market-dialog']").exists()).toBe(false);
+    await wrapper.get("[data-testid='open-extension-market']").trigger("click");
+    expect(wrapper.find("[data-testid='stub-market-dialog']").exists()).toBe(true);
     wrapper.unmount();
   });
 

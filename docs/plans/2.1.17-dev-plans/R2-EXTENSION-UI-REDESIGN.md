@@ -315,10 +315,10 @@ removePluginMarket(id: string): Promise<void>;
 - Market/search forms are removed from the main view; all discovery lives in dialog.
 - Empty state offers `打开扩展市场`.
 
-- [ ] RED tests assert removed nodes, header actions, detail opening, failure copy/retry behavior.
-- [ ] Implement.
-- [ ] GREEN.
-- [ ] Commit: `refactor(workbench): focus extensions view on installed assets`.
+- [x] RED tests assert removed nodes, header actions, detail opening, failure copy/retry behavior.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `refactor(workbench): focus extensions view on installed assets`.
 
 ### Task 9: Visual refinement and responsive contracts
 

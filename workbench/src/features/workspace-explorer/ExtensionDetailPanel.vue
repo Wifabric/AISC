@@ -79,6 +79,12 @@ function i18nLocaleValue(): string {
       {{ summary.summary }}
     </p>
 
+    <p
+      v-if="update?.status === 'unsupported'"
+      class="detail-unsupported"
+      data-testid="extension-detail-unsupported"
+    >{{ t("extensions.noComparableVersion") }}</p>
+
     <dl class="detail-metadata" data-testid="extension-detail-metadata">
       <div>
         <dt>{{ t("extensions.detail.kind") }}</dt>
@@ -148,6 +154,7 @@ h3 { margin: 0; color: var(--text); font-size: var(--font-lg); line-height: var(
 .detail-source-link { color: var(--info); font-size: var(--font-xs); text-decoration: none; flex: 0 0 auto; }
 .detail-source-link:hover, .detail-source-link:focus-visible { text-decoration: underline; }
 .detail-summary { margin: 0; color: var(--text-2); font-size: var(--font-md); line-height: var(--leading-relaxed); }
+.detail-unsupported { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .detail-metadata {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
