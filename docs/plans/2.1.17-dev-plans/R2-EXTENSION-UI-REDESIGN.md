@@ -244,10 +244,10 @@ removePluginMarket(id: string): Promise<void>;
 - Actions are supplied by parent so installed and market contexts reuse one component.
 - Escape closes only when the panel owns focus; parent dialog remains open.
 
-- [ ] RED test content/actions/accessibility.
-- [ ] Implement.
-- [ ] GREEN.
-- [ ] Commit: `feat(workbench): add extension detail panel`.
+- [x] RED test content/actions/accessibility.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add extension detail panel`.
 
 ### Task 6: Extension Market dialog
 
