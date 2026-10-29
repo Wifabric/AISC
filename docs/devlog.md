@@ -2,6 +2,19 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 R2 集成验证与来源删除修正（2026-10-30）
+
+- PR #49 四轮独立审查通过，Workbench CI、三平台 CLI sidecar、Linux/macOS 安装包与 NSIS 安装/升级/卸载 smoke 初轮全部成功。
+- 使用最终冻结 CLI/adapter 在隔离真实容器验证：技能仓库 4→5→4；本地插件市场 2→3→2。发现官方 CLI 删除市场会同时卸载来源插件，推翻了此前 agent 方案的保留假设。按开发手册先修正规格，再将中英确认文案明确为级联卸载；增加两语取消/确认和安装列表刷新回归，Vitest 803、vue-tsc/Vite/Tauri release 通过，增量审查/最终 CI 继续执行。
+- 同步统一手测到 R2 的独立市场与最近失败 UI，准备校验 hash 的隔离启动器、当前 bundle 及派生最终镜像。全镜像重建未执行；当前会话缺 `node_repl`，没有新增 CU 操作，来源 add→delete/窄屏/键盘焦点等 UI 仍 NOT RUN，用户统一验收保持未完成。
+
+# v2.1.17 R2 扩展 UI 重设计（2026-10-29）
+
+- 扩展主视图收敛为已安装资产管理：内嵌精选推荐、市场表单与操作日志移除；当前进度与最近失败恢复保留在紧凑状态区。
+- 新扩展市场弹窗提供六类各 10 条推荐、技能/MCP/插件搜索、详情面板与来源管理；60 条目录基于 skills.sh/Smithery 热榜与官方插件目录选取，不伪造插件热度。
+- 详情优先显示本地中文简介并保留市场原文；技能仓库与插件市场新增 list/remove 数据面和确认式维护 UI，MCP 明确 Smithery 内置、已安装 MCP 从列表维护。
+- 验证：Vitest 802、Python 1691/69/186 subtests、Rust 404/1 ignored、vue-tsc/Vite/Tauri release、vendor 1533 checksums 与文档检查通过；真实 CU 覆盖主视图、六类目录、推荐/搜索详情、来源列表与删除确认。独立审查三轮问题已补测试修复，最终行级 native identity/sibling 修复以自动化与 direct build 验证，复审修复 direct binary 另复测 native 组头、推荐→市场结果状态切换与中文/市场证据，Arrow 键与焦点恢复仍留自动化及用户手测边界。
+
 # v2.1.17 R1 修复验证（2026-10-29）
 
 - 根因确认 Python resident serve 串行执行长扩展组操作，阻塞 Services 控制面。Rust 路由层让 `skill-install-group` / `skill-update-group` Local 与 Remote 均走 per-op direct transport，普通短请求保留 pooled serve，Local `--events` 保持 direct、Remote `--events` 保持 pooled，并在 Remote direct 命令前缀传播 `AISC_RUN_ID`；TDD、Rust lib 400/1 ignored、Vitest 770 与文档检查 39/0/0 通过。

@@ -21,13 +21,15 @@ from aisc.application.cc_switch_provider import _SCOPE_WRAPPER
 
 PROTOCOL = "aisc.extensions/v1"
 ADAPTER_PATH = "/usr/local/bin/aisc-extensions-adapter"
+UNSUPPORTED_OP = "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP"
 
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
     "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
-    "skill-update-group",
-    "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
+    "skill-repos-list", "skill-repo-remove", "skill-update-group",
+    "skill-update", "plugin-market-list", "plugin-market-add",
+    "plugin-market-remove", "plugin-search",
     "mcp-search", "mcp-market-install", "updates-check",
 )
 _KINDS = ("skills", "mcp", "plugins")
@@ -134,10 +136,27 @@ def _exec_adapter(
         )
     if not envelope.get("ok"):
         error = envelope.get("error") or {}
+        code = str(error.get("code") or "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+        message = str(error.get("message") or f"extensions {op} failed")
+        # R2 source maintenance must distinguish an old runtime from transient
+        # database/network failures. Legacy adapters have no dedicated code, so
+        # classify only their exact unknown-op and stale-schema responses.
+        legacy_unsupported = (
+            op in ("skill-repos-list", "skill-repo-remove",
+                   "plugin-market-list", "plugin-market-add",
+                   "plugin-market-remove")
+            and code == "AISC_ERR_USAGE"
+            and message == f"unhandled op: {op}"
+        )
+        stale_schema = (
+            op == "skill-repos-list"
+            and code == "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED"
+            and message == "skill repository table is unavailable; upgrade the runtime image"
+        )
         raise CliError(
-            message=str(error.get("message") or f"extensions {op} failed"),
+            message=message,
             exit_code=1,
-            error_code=str(error.get("code") or "AISC_ERR_EXTENSIONS_EXEC_FAILED"),
+            error_code=UNSUPPORTED_OP if legacy_unsupported or stale_schema else code,
         )
     return envelope
 

@@ -702,6 +702,8 @@ export interface ExtensionsItem {
   conflict?: boolean;
   scope?: string;
   last_updated?: string;
+  branch?: string;
+  enabled?: boolean;
   created_at?: string;
   updated_at?: string;
   latest_version?: string;

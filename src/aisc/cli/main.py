@@ -435,6 +435,17 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extsr)
     extsr.add_argument("--id", required=True)
 
+    extsrl = extsub.add_parser("skill-repos-list",
+                               help="List configured skill repositories",
+                               allow_abbrev=False)
+    _extensions_common(extsrl)
+
+    extsrr = extsub.add_parser("skill-repo-remove",
+                               help="Remove a configured skill repository",
+                               allow_abbrev=False)
+    _extensions_common(extsrr)
+    extsrr.add_argument("--id", required=True)
+
     extms = extsub.add_parser("mcp-search",
                               help="Search the Smithery MCP marketplace",
                               allow_abbrev=False)
@@ -462,6 +473,12 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extma)
     extma.add_argument("--id", required=True)
+
+    extmr = extsub.add_parser("plugin-market-remove",
+                              help="Remove a configured Claude plugin marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extmr)
+    extmr.add_argument("--id", required=True)
 
     # --- cc-switch (Stage 8d: provider data plane, aisc.cc-switch-provider/v1) ---
     csp = sub.add_parser(
@@ -2060,8 +2077,14 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_skill_repo_add(args)
     elif sub == "plugin-market-list":
         data = ext_cmd.cmd_extensions_plugin_market_list(args)
+    elif sub == "skill-repos-list":
+        data = ext_cmd.cmd_extensions_skill_repos_list(args)
+    elif sub == "skill-repo-remove":
+        data = ext_cmd.cmd_extensions_skill_repo_remove(args)
     elif sub == "plugin-market-add":
         data = ext_cmd.cmd_extensions_plugin_market_add(args)
+    elif sub == "plugin-market-remove":
+        data = ext_cmd.cmd_extensions_plugin_market_remove(args)
     elif sub == "plugin-search":
         data = ext_cmd.cmd_extensions_plugin_search(args)
     elif sub == "updates-check":

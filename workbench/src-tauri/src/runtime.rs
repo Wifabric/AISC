@@ -47,19 +47,55 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 20] = [
+const EXTENSIONS_OPS: [&str; 23] = [
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
     "skill-search", "deeplink", "skill-repo-add",
-    "plugin-market-list", "plugin-market-add", "plugin-search",
-    "mcp-search", "mcp-market-install", "updates-check",
+    "skill-repos-list", "skill-repo-remove",
+    "plugin-market-list", "plugin-market-add", "plugin-market-remove",
+    "plugin-search", "mcp-search", "mcp-market-install", "updates-check",
 ];
 
 /// v2.1.17 b1: group operations may probe and clone direct + two mirrors,
 /// then run install and two enable calls per child. Keep the GUI/CLI timeout
 /// above that bounded adapter budget so it returns itemized results instead of
 /// collapsing into a 30-second transport timeout.
+const SOURCE_MAINTENANCE_OPS: [&str; 5] = [
+    "skill-repos-list", "skill-repo-remove",
+    "plugin-market-list", "plugin-market-add", "plugin-market-remove",
+];
+
+/// A pre-R2 host CLI emits argparse stderr instead of a JSON envelope. Classify
+/// only that exact invalid-choice boundary; transient protocol failures remain
+/// protocol errors so users can diagnose or retry them.
+fn is_source_maintenance_envelope_unsupported(
+    op: Option<&str>,
+    code: &str,
+) -> bool {
+    code == "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP"
+        && op.is_some_and(|op| SOURCE_MAINTENANCE_OPS.contains(&op))
+}
+
+fn map_old_cli_source_unsupported(
+    op: Option<&str>,
+    error: WorkbenchError,
+) -> WorkbenchError {
+    let Some(op) = op.filter(|op| SOURCE_MAINTENANCE_OPS.contains(op)) else {
+        return error;
+    };
+    let detail = error.technical_detail.as_deref().unwrap_or_default();
+    let old_cli = error.code == "WB_ERR_CLI_PROTOCOL"
+        && detail.contains("invalid choice")
+        && detail.contains(&format!("'{op}'"));
+    if old_cli {
+        WorkbenchError::extensions_unsupported_op(op)
+            .with_detail(format!("old host CLI rejected {op}: {detail}"))
+    } else {
+        error
+    }
+}
+
 fn extensions_group_timeout(specs: &[String]) -> Duration {
     let mut repos: Vec<&str> = Vec::new();
     for spec in specs {
@@ -757,15 +793,25 @@ async fn cc_switch_call_value_with_timeout(
     // GENERIC input path (both Local and Remote arms) — the r7 step-1
     // special-case entry (run_serve_op_target) was folded away when the
     // Local arm flipped.
+    let command_op = argv.get(1).cloned();
     let env = match input {
         Some(text) => crate::cli::run_control_input_target(
             &target, argv, text, timeout, CancellationToken::new(),
-        ).await?,
+        ).await.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?,
         None => crate::cli::run_control_target(
             &target, argv, timeout, CancellationToken::new(),
-        ).await?,
+        ).await.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?,
     };
     if let Some(env_err) = env.errors.first() {
+        if is_source_maintenance_envelope_unsupported(
+            command_op.as_deref(),
+            &env_err.code,
+        ) {
+            return Err(WorkbenchError::extensions_unsupported_op(
+                command_op.as_deref().unwrap_or("unknown"),
+            )
+            .with_detail(env_err.message.clone()));
+        }
         // Stage 8e: the adapter's stable AISC_ERR_CC_SWITCH_PROVIDER_* codes
         // are unknown to map_aisc's curated table — surface the adapter's own
         // message (e.g. "provider id already exists: deepseek") instead of
@@ -2035,9 +2081,45 @@ mod tests {
     }
 
     #[test]
+    fn extensions_ops_include_r2_source_maintenance() {
+        assert!(EXTENSIONS_OPS.contains(&"skill-repos-list"));
+        assert!(EXTENSIONS_OPS.contains(&"skill-repo-remove"));
+        assert!(EXTENSIONS_OPS.contains(&"plugin-market-remove"));
+    }
+
+    #[test]
     fn extensions_group_timeout_covers_repos_and_children() {
         let specs = vec!["owner/repo:a".into(), "owner/repo:b".into()];
         assert_eq!(extensions_group_timeout(&specs), Duration::from_secs(960));
+    }
+
+    #[test]
+    fn old_cli_invalid_source_op_maps_to_stable_unsupported_code() {
+        let mut err = WorkbenchError::cli_protocol().with_detail(
+            "stderr: usage: aisc extensions: invalid choice: 'skill-repos-list'",
+        );
+        err = map_old_cli_source_unsupported(Some("skill-repos-list"), err);
+        assert_eq!(err.code, "WB_ERR_EXTENSIONS_UNSUPPORTED_OP");
+    }
+
+    #[test]
+    fn unsupported_envelope_code_maps_only_for_source_ops() {
+        assert!(is_source_maintenance_envelope_unsupported(
+            Some("skill-repos-list"),
+            "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP",
+        ));
+        assert!(!is_source_maintenance_envelope_unsupported(
+            Some("updates-check"),
+            "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP",
+        ));
+    }
+
+    #[test]
+    fn unrelated_cli_protocol_failure_remains_protocol_error() {
+        let err = WorkbenchError::cli_protocol()
+            .with_detail("stderr: connection closed while fetching repositories");
+        let mapped = map_old_cli_source_unsupported(Some("skill-repos-list"), err.clone());
+        assert_eq!(mapped.code, "WB_ERR_CLI_PROTOCOL");
     }
 
     // --- IDEA-2 (2d): subscription / usage argv builders ---
