@@ -10,6 +10,7 @@ const props = defineProps<{
   item: ExtensionsItem;
   recommendation?: CategorizedRecommendation;
   update?: ExtensionUpdateItem;
+  evidenceLabel?: string;
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -113,7 +114,7 @@ function i18nLocaleValue(): string {
     </dl>
 
     <div v-if="summary.marketOriginal || item.description" class="detail-original">
-      <span>{{ t("extensions.detail.marketOriginal") }}</span>
+      <span>{{ evidenceLabel ?? t("extensions.detail.marketOriginal") }}</span>
       <p data-testid="extension-detail-original">{{ summary.marketOriginal || item.description }}</p>
     </div>
 

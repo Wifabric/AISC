@@ -393,6 +393,12 @@ class MarketTests(TempEnv):
              "repo": "owner/repo", "branch": "develop", "enabled": True},
         ])
 
+    def test_skill_repos_list_missing_table_is_stable_adapter_failure(self):
+        with self.assertRaises(A.AdapterError) as ctx:
+            A.skill_repos_list()
+        self.assertEqual(ctx.exception.code, A.ERR_SNAPSHOT)
+        self.assertIn("skill repository table", ctx.exception.message)
+
     def test_skill_repo_remove_normalizes_github_url_and_uses_official_cli(self):
         calls, run = self._fake()
         with mock.patch.object(A.subprocess, "run", run):

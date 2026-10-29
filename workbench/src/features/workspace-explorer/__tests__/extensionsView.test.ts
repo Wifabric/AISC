@@ -37,7 +37,7 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("x/y");
     expect(wrapper.text()).toContain("1 个技能");
-    await wrapper.find("[data-testid^=ext-skill-group-]").trigger("click");
+    await wrapper.find("[data-testid^=ext-skill-header-]").trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("caveman");
     await wrapper.find("[data-testid=ext-tab-mcp]").trigger("click");
@@ -54,19 +54,19 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
     const group = wrapper.find("[data-testid^=ext-skill-group-]");
-    await group.trigger("click");
+    await group.get("[data-testid^=ext-skill-header-]").trigger("click");
     await flushPromises();
 
     const child = wrapper.find("[data-testid=ext-skill-child-caveman]");
     expect(child.exists()).toBe(true);
     expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
 
-    await child.trigger("click");
+    await child.get("[data-testid=ext-skill-child-header-caveman]").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("极简");
     expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("caveman");
 
-    await child.trigger("click");
+    await child.get("[data-testid=ext-skill-child-header-caveman]").trigger("click");
     await flushPromises();
     expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
     expect(wrapper.text()).toContain("caveman");
@@ -115,7 +115,7 @@ describe("ExtensionsView operation button spinners (preview b3)", () => {
   it("shows a child update spinner only on that child update button", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();
-    await wrapper.find("[data-testid^=ext-skill-group-]").trigger("click");
+    await wrapper.find("[data-testid^=ext-skill-header-]").trigger("click");
     await flushPromises();
     const store = useExtensionsStore();
     store.operationsByKind.skills = {
@@ -155,7 +155,7 @@ describe("v2.1.17 b2 update signals", () => {
     const row = wrapper.find('[data-testid="ext-item-p@m"]');
     expect(row.text()).toContain("可更新");
     expect(row.find(".ext-name.has-update").exists()).toBe(true);
-    await row.trigger("click");
+    await row.get("[data-testid='ext-item-header-p@m']").trigger("click");
     await nextTick();
     const detail = wrapper.get("[data-testid='extension-detail-panel']");
     expect(detail.text()).toContain("当前版本");
@@ -181,6 +181,103 @@ describe("v2.1.17 b2 update signals", () => {
     const check = vi.spyOn(store, "checkUpdates").mockResolvedValue();
     await wrapper.find("[data-testid=ext-check-updates]").trigger("click");
     expect(check).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("uses native row headers and preserves real keyboard actions", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const store = useExtensionsStore();
+    const groupSpy = vi.spyOn(store, "updateSkillGroup").mockResolvedValue();
+    const group = wrapper.find("[data-testid^=ext-skill-group-]");
+    const header = group.get("[data-testid^=ext-skill-header-]");
+    expect(header.element.tagName).toBe("BUTTON");
+    expect(header.attributes("aria-expanded")).toBe("false");
+    expect(header.attributes("aria-controls")).toBe("ext-skill-children-x/y");
+    await header.trigger("click");
+    await flushPromises();
+    expect(header.attributes("aria-expanded")).toBe("true");
+
+    const child = wrapper.get("[data-testid=ext-skill-child-caveman]");
+    expect(child.attributes("role")).toBeUndefined();
+    expect(child.attributes("tabindex")).toBeUndefined();
+    const childHeader = child.get("[data-testid=ext-skill-child-header-caveman]");
+    expect(childHeader.element.tagName).toBe("BUTTON");
+    await childHeader.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(true);
+
+    const update = group.get("button[title='更新全部']");
+    await update.trigger("keydown", { key: "Space" });
+    await flushPromises();
+    expect(groupSpy).toHaveBeenCalledOnce();
+    expect(header.attributes("aria-expanded")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("keeps one-line row actions siblings of a native identity button", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    await wrapper.find("[data-testid=ext-tab-plugins]").trigger("click");
+    await flushPromises();
+    const store = useExtensionsStore();
+    const update = vi.spyOn(store, "pluginAction").mockResolvedValue();
+    const row = wrapper.get("[data-testid='ext-item-p@m']");
+    expect(row.attributes("role")).toBeUndefined();
+    const identity = row.get("[data-testid='ext-item-header-p@m']");
+    expect(identity.element.tagName).toBe("BUTTON");
+    const action = row.get("button[title='更新插件']");
+    await action.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    expect(update).toHaveBeenCalledWith("plugin-update", "p@m");
+    expect(update).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("returns focus to the toolbar button that opened the market", async () => {
+    const wrapper = mount(ExtensionsView, {
+      attachTo: document.body,
+      global: {
+        plugins: [i18n],
+        stubs: {
+          ExtensionMarketDialog: {
+            emits: ["close"],
+            template: `<button type="button" data-testid="stub-market-close" @click="$emit('close')">close</button>`,
+          },
+        },
+      },
+    });
+    await flushPromises();
+    const opener = wrapper.get("[data-testid='open-extension-market']");
+    (opener.element as HTMLElement).focus();
+    await opener.trigger("click");
+    await wrapper.get("[data-testid='stub-market-close']").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(opener.element);
+    wrapper.unmount();
+  });
+
+  it("returns focus to the empty-state button that opened the market", async () => {
+    vi.mocked(ipc.extensionsCall).mockResolvedValue({ items: [] });
+    const wrapper = mount(ExtensionsView, {
+      attachTo: document.body,
+      global: {
+        plugins: [i18n],
+        stubs: {
+          ExtensionMarketDialog: {
+            emits: ["close"],
+            template: `<button type="button" data-testid="stub-market-close" @click="$emit('close')">close</button>`,
+          },
+        },
+      },
+    });
+    await flushPromises();
+    const opener = wrapper.get("[data-testid=open-extension-market-empty]");
+    (opener.element as HTMLElement).focus();
+    await opener.trigger("click");
+    await wrapper.get("[data-testid='stub-market-close']").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(opener.element);
     wrapper.unmount();
   });
 

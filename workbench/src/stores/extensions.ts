@@ -95,6 +95,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const skillRepos = ref<ExtensionsItem[]>([]);
   const skillReposBusy = ref(false);
   const skillReposError = ref<string | null>(null);
+  const skillReposUnsupported = ref(false);
   let skillReposGeneration = 0;
   let pluginMarketsGeneration = 0;
   const searchGeneration = kindRecord(0);
@@ -184,6 +185,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     pluginMarkets.value = [];
     skillRepos.value = [];
     skillReposError.value = null;
+    skillReposUnsupported.value = false;
     skillReposBusy.value = false;
     skillReposGeneration += 1;
     marketCacheByKind.value = kindRecord<MarketCacheState | null>(null);
@@ -230,6 +232,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const error = computed(() => errorsByKind.value[kind.value]);
   const updateItems = computed(() => updateItemsByKind.value[kind.value]);
   const activeOperation = computed(() => operationsByKind.value[kind.value]);
+  const sourceMaintenanceBusy = computed(() =>
+    busyByKind.value.skills || busyByKind.value.plugins,
+  );
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
   const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value));
@@ -599,12 +604,17 @@ export const useExtensionsStore = defineStore("extensions", () => {
     const current = () => isCurrentContext(token) && generation === skillReposGeneration;
     skillReposBusy.value = true;
     skillReposError.value = null;
+    skillReposUnsupported.value = false;
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("skill-repos-list");
       if (!current()) return;
       skillRepos.value = out.items ?? [];
     } catch (e) {
-      if (current()) skillReposError.value = errorText(e);
+      if (current()) {
+        skillReposError.value = errorText(e);
+        skillReposUnsupported.value =
+          (e as { code?: unknown })?.code === "WB_ERR_EXTENSIONS_UNSUPPORTED_OP";
+      }
     } finally {
       if (current()) skillReposBusy.value = false;
     }
@@ -675,8 +685,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
   return {
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
-    pluginMarkets, pluginMarketsBusy, pluginMarketsError,
-    skillRepos, skillReposBusy,
+    pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
+    skillRepos, skillReposBusy, skillReposUnsupported,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
     operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,

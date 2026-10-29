@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useExtensionsStore } from "../../stores/extensions";
 
@@ -8,10 +8,14 @@ const store = useExtensionsStore();
 const skillSource = ref("");
 const marketSource = ref("");
 const pending = ref<null | { type: "skill" | "plugin"; id: string }>(null);
+const sourceUnavailable = computed(() => store.skillReposUnsupported);
+const sourceBusy = computed(
+  () => store.sourceMaintenanceBusy || store.busy || sourceUnavailable.value,
+);
 
 async function addSkillRepo(): Promise<void> {
   const value = skillSource.value.trim();
-  if (!value || store.busy) return;
+  if (!value || sourceBusy.value) return;
   await store.addSkillRepo(value);
   skillSource.value = "";
   await store.loadSkillRepos();
@@ -19,7 +23,7 @@ async function addSkillRepo(): Promise<void> {
 
 async function addPluginMarket(): Promise<void> {
   const value = marketSource.value.trim();
-  if (!value || store.busy) return;
+  if (!value || sourceBusy.value) return;
   await store.addPluginMarket(value);
   marketSource.value = "";
   await store.loadPluginMarkets();
@@ -27,7 +31,7 @@ async function addPluginMarket(): Promise<void> {
 
 async function confirmRemove(): Promise<void> {
   const target = pending.value;
-  if (!target || store.busy) return;
+  if (!target || sourceBusy.value) return;
   pending.value = null;
   if (target.type === "skill") await store.removeSkillRepo(target.id);
   else await store.removePluginMarket(target.id);
@@ -36,6 +40,16 @@ async function confirmRemove(): Promise<void> {
 
 <template>
   <div class="extension-source-manager" data-testid="extension-source-manager">
+    <div
+      v-if="sourceUnavailable"
+      class="source-unavailable"
+      data-testid="source-maintenance-unavailable"
+      role="alert"
+    >
+      {{ t("extensions.sources.unavailable") }}
+      <span>{{ store.skillReposError }}</span>
+    </div>
+
     <section>
       <header>
         <h3>{{ t("extensions.sources.skillRepos") }}</h3>
@@ -52,17 +66,17 @@ async function confirmRemove(): Promise<void> {
           :placeholder="t('extensions.skillLink')"
           :aria-label="t('extensions.skillLink')"
           data-testid="skill-repo-add"
-          :disabled="store.busy"
+          :disabled="sourceBusy"
         >
         <button
           type="button"
           data-testid="skill-repo-add-btn"
-          :disabled="!skillSource.trim() || store.busy || store.skillReposBusy"
+          :disabled="!skillSource.trim() || sourceBusy || store.skillReposBusy"
           @click="addSkillRepo"
         >{{ t("extensions.sources.add") }}</button>
       </form>
 
-      <p v-if="store.skillReposError" class="source-error" role="alert">{{ store.skillReposError }}</p>
+      <p v-if="store.skillReposError && !sourceUnavailable" class="source-error" role="alert">{{ store.skillReposError }}</p>
       <div class="source-list" data-testid="skill-source-list">
         <div
           v-for="repo in store.skillRepos"
@@ -80,7 +94,7 @@ async function confirmRemove(): Promise<void> {
           <button
             type="button"
             data-testid="skill-repo-remove"
-            :disabled="store.busy"
+            :disabled="sourceBusy"
             @click="pending = { type: 'skill', id: repo.id }"
           >{{ t("extensions.sources.remove") }}</button>
         </div>
@@ -104,12 +118,12 @@ async function confirmRemove(): Promise<void> {
           :placeholder="t('extensions.pluginMarketLink')"
           :aria-label="t('extensions.pluginMarketLink')"
           data-testid="plugin-market-add"
-          :disabled="store.busy"
+          :disabled="sourceBusy"
         >
         <button
           type="button"
           data-testid="plugin-market-add-btn"
-          :disabled="!marketSource.trim() || store.busy || store.pluginMarketsBusy"
+          :disabled="!marketSource.trim() || sourceBusy || store.pluginMarketsBusy"
           @click="addPluginMarket"
         >{{ t("extensions.sources.add") }}</button>
       </form>
@@ -129,7 +143,7 @@ async function confirmRemove(): Promise<void> {
           <button
             type="button"
             data-testid="plugin-market-remove"
-            :disabled="store.busy"
+            :disabled="sourceBusy"
             @click="pending = { type: 'plugin', id: market.id }"
           >{{ t("extensions.sources.remove") }}</button>
         </div>
@@ -147,7 +161,7 @@ async function confirmRemove(): Promise<void> {
       <p v-else>{{ t("extensions.sources.pluginRemoveWarning", { id: pending.id }) }}</p>
       <footer>
         <button type="button" @click="pending = null">{{ t("common.cancel") }}</button>
-        <button type="button" data-testid="confirm-source-remove" :disabled="store.busy" @click="confirmRemove">
+        <button type="button" data-testid="confirm-source-remove" :disabled="sourceBusy" @click="confirmRemove">
           {{ t("extensions.sources.confirmRemove") }}
         </button>
       </footer>
@@ -190,6 +204,8 @@ h3 { margin: 0; color: var(--text); font-size: var(--font-md); }
 .source-copy span, .source-state, .source-empty { color: var(--text-muted); font-size: var(--font-xs); }
 .source-state[data-enabled="true"] { color: var(--success); }
 .source-error { margin: var(--space-2) 0 0; color: var(--error); font-size: var(--font-xs); }
+.source-unavailable { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: var(--border-w) solid var(--warn-border); border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-fg); font-size: var(--font-xs); line-height: var(--leading-normal); }
+.source-unavailable span { overflow-wrap: anywhere; }
 .mcp-note { background: transparent; border-style: dashed; }
 .mcp-note p { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--font-xs); line-height: var(--leading-normal); }
 .source-confirm {

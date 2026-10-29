@@ -68,7 +68,7 @@ const detailItem = computed<ExtensionsItem | null>(() =>
     name: selectedRecommendation.value.name,
     repo: selectedRecommendation.value.identity.split(":", 1)[0],
     directory: selectedRecommendation.value.identity.split(":")[1] ?? "",
-    description: "",
+    description: selectedRecommendation.value.summaryEn,
     ...(selectedRecommendation.value.heat ? { installs: selectedRecommendation.value.heat } : {}),
   } : null),
 );
@@ -105,7 +105,7 @@ function formatCacheTime(value?: number | string): string {
   const date = Number.isFinite(numeric) && numeric > 0
     ? new Date(numeric < 1_000_000_000_000 ? numeric * 1000 : numeric)
     : new Date(String(value));
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(locale.value);
 }
 
 const searchPlaceholder = computed(() => {
@@ -114,6 +114,15 @@ const searchPlaceholder = computed(() => {
   if (activeTab.value === "plugins") return t("extensions.pluginMarketSearch");
   return t("extensions.market.searchRecommendations");
 });
+
+function onTabArrow(direction: 1 | -1): void {
+  const buttons = [...panelRef.value?.querySelectorAll<HTMLElement>("[data-testid^='market-tab-']") ?? []];
+  if (buttons.length === 0) return;
+  const current = buttons.findIndex((button) => button === document.activeElement);
+  const next = buttons[(current === -1 ? 0 : current + direction + buttons.length) % buttons.length];
+  next?.focus();
+  next?.click();
+}
 
 async function selectTab(target: MarketTab): Promise<void> {
   activeTab.value = target;
@@ -130,6 +139,11 @@ async function selectTab(target: MarketTab): Promise<void> {
 function selectRecommendation(entry: CategorizedRecommendation): void {
   selectedRecommendation.value = entry;
   selectedMarketItem.value = null;
+}
+
+function selectMarketItem(item: ExtensionsItem | null): void {
+  selectedRecommendation.value = null;
+  selectedMarketItem.value = item;
 }
 
 async function searchSelectedRecommendation(): Promise<void> {
@@ -209,7 +223,13 @@ onMounted(async () => {
           </button>
         </header>
 
-        <div class="market-tabs" role="tablist" :aria-label="t('extensions.market.title')">
+        <div
+          class="market-tabs"
+          role="tablist"
+          :aria-label="t('extensions.market.title')"
+          @keydown.left.prevent="onTabArrow(-1)"
+          @keydown.right.prevent="onTabArrow(1)"
+        >
           <button
             v-for="tab in tabs"
             :key="tab.key"
@@ -217,12 +237,19 @@ onMounted(async () => {
             role="tab"
             :aria-selected="activeTab === tab.key"
             :class="{ active: activeTab === tab.key }"
+            :id="'market-tab-' + tab.key"
+            :aria-controls="'market-panel-' + tab.key"
             :data-testid="'market-tab-' + tab.key"
             @click="selectTab(tab.key)"
           >{{ t(tab.labelKey) }}</button>
         </div>
 
-        <div class="market-body">
+        <div
+          :id="'market-panel-' + activeTab"
+          class="market-body"
+          role="tabpanel"
+          :aria-labelledby="'market-tab-' + activeTab"
+        >
           <div v-if="activeTab === 'recommendations'" class="recommendation-pane">
             <div class="category-chips" role="group" :aria-label="t('extensions.market.categories')">
               <button
@@ -231,6 +258,7 @@ onMounted(async () => {
                 type="button"
                 :class="{ active: activeCategory === category.id }"
                 data-testid="recommendation-category"
+                :aria-pressed="activeCategory === category.id"
                 @click="activeCategory = category.id; selectedRecommendation = null"
               >{{ categoryLabel(category) }}</button>
             </div>
@@ -275,6 +303,13 @@ onMounted(async () => {
               <span v-if="marketCache.error"> · {{ marketCache.error }}</span>
             </p>
 
+            <p
+              v-if="store.error"
+              class="market-search-error"
+              data-testid="market-search-error"
+              role="alert"
+            >{{ store.error }}</p>
+
             <div class="market-results">
               <template v-if="activeTab === 'skills'">
                 <section
@@ -284,7 +319,7 @@ onMounted(async () => {
                   :data-testid="'market-group-' + group.id"
                 >
                   <div class="market-group-head">
-                    <button type="button" class="market-result group-parent" @click="selectedMarketItem = group.items[0] ?? null">
+                    <button type="button" class="market-result group-parent" @click="selectMarketItem(group.items[0] ?? null)">
                       <strong>{{ group.name }}</strong>
                       <span>{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
                     </button>
@@ -302,7 +337,7 @@ onMounted(async () => {
                     type="button"
                     class="market-result"
                     :data-testid="'market-result-' + item.id"
-                    @click="selectedMarketItem = item"
+                    @click="selectMarketItem(item)"
                   >
                     <strong>{{ item.name }}</strong>
                     <span>{{ item.repo || item.id }}</span>
@@ -317,14 +352,14 @@ onMounted(async () => {
                   type="button"
                   class="market-result"
                   :data-testid="'market-result-' + item.id"
-                  @click="selectedMarketItem = item"
+                  @click="selectMarketItem(item)"
                 >
                   <strong>{{ item.name }}</strong>
                   <span>{{ item.repo || item.marketplace || item.id }}</span>
                   <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
                 </button>
               </template>
-              <p v-if="!marketItems.length && (activeTab !== 'skills' || !marketSkillGroups.length)" class="market-empty">
+              <p v-if="!store.error && !marketItems.length && (activeTab !== 'skills' || !marketSkillGroups.length)" class="market-empty">
                 {{ t("extensions.market.noResults") }}
               </p>
             </div>
@@ -337,6 +372,7 @@ onMounted(async () => {
             class="market-detail"
             :item="detailItem"
             :recommendation="detailRecommendation"
+            :evidence-label="selectedRecommendation ? t('extensions.market.catalogEvidence') : undefined"
             @close="selectedRecommendation = null; selectedMarketItem = null"
           >
             <template #actions>
@@ -454,7 +490,8 @@ onMounted(async () => {
 .market-result strong { color: var(--text); }
 .market-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .market-empty { margin: var(--space-3); color: var(--text-muted); }
-.market-cache { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
+.market-cache, .market-search-error { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
+.market-search-error { color: var(--error); }
 .market-detail { overflow: auto; }
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }

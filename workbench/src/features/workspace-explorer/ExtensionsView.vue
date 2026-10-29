@@ -3,7 +3,7 @@
  * R2: the main Extensions view owns installed assets. Discovery, categorized
  * recommendations, and source maintenance live in ExtensionMarketDialog.
  */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useExtensionsStore, type ExtensionAction, type ExtensionsKind } from "../../stores/extensions";
 import { useRuntimeStore } from "../../stores/runtime";
@@ -25,6 +25,9 @@ const KIND_TABS: { key: ExtensionsKind; labelKey: string }[] = [
 const runtimeId = computed(() => runtime.runtimeSnapshot?.runtime_id ?? "");
 const expandedGroupId = ref<string | null>(null);
 const marketOpen = ref(false);
+const marketButtonRef = ref<HTMLButtonElement | null>(null);
+const marketEmptyButtonRef = ref<HTMLButtonElement | null>(null);
+const marketOpener = ref<"toolbar" | "empty" | null>(null);
 const selected = ref<ExtensionsItem | null>(null);
 
 onMounted(syncContext);
@@ -55,6 +58,21 @@ function isUpdateAvailable(id: string): boolean {
 function updateCount(ids: string[]): number {
   return ids.filter((id) => isUpdateAvailable(id)).length;
 }
+function openMarket(from: "toolbar" | "empty"): void {
+  marketOpener.value = from;
+  marketOpen.value = true;
+}
+
+async function closeMarket(): Promise<void> {
+  marketOpen.value = false;
+  await nextTick();
+  const opener = marketOpener.value === "empty"
+    ? marketEmptyButtonRef.value
+    : marketButtonRef.value;
+  opener?.focus();
+  marketOpener.value = null;
+}
+
 async function updateSelected(): Promise<void> {
   const item = selected.value;
   if (!item || store.busy) return;
@@ -82,9 +100,10 @@ async function updateSelected(): Promise<void> {
       <button
         type="button"
         class="ui-button primary"
+        ref="marketButtonRef"
         data-testid="open-extension-market"
         :disabled="!store.canLoad"
-        @click="marketOpen = true"
+        @click="openMarket('toolbar')"
       >{{ t("extensions.market.title") }}</button>
       <span v-if="store.updatesError" class="explorer-error" role="alert">
         {{ t("extensions.updatesCheckFailedWithDetail", { message: store.updatesError }) }}
@@ -108,9 +127,14 @@ async function updateSelected(): Promise<void> {
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>
     <div v-else-if="!store.items.length" class="explorer-empty">
       <span>{{ t("extensions.empty") }}</span>
-      <button type="button" class="ui-button" :disabled="!store.canLoad" @click="marketOpen = true">
-        {{ t("extensions.market.open") }}
-      </button>
+      <button
+        ref="marketEmptyButtonRef"
+        type="button"
+        class="ui-button"
+        data-testid="open-extension-market-empty"
+        :disabled="!store.canLoad"
+        @click="openMarket('empty')"
+      >{{ t("extensions.market.open") }}</button>
     </div>
 
     <template v-else-if="store.kind === 'skills'">
@@ -119,17 +143,24 @@ async function updateSelected(): Promise<void> {
         :key="group.id"
         class="extensions-card"
         :data-testid="'ext-skill-group-' + group.id"
-        @click="expandedGroupId = expandedGroupId === group.id ? null : group.id; selected = null"
       >
         <div class="ext-row">
-          <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === group.id ? "▾" : "▸" }}</span>
-          <span v-if="group.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
-          <span class="ext-name" :class="{ 'has-update': updateCount(group.items.map((item) => item.id)) > 0 }" :title="group.repo">{{ group.name }}</span>
-          <span class="ext-badge">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
-          <span v-if="updateCount(group.items.map((item) => item.id)) > 0" class="update-badge">
-            {{ t("extensions.updateCount", { count: updateCount(group.items.map((item) => item.id)) }) }}
-          </span>
-          <span class="ext-spacer" />
+          <button
+            type="button"
+            class="group-header"
+            :data-testid="'ext-skill-header-' + group.id"
+            :aria-expanded="expandedGroupId === group.id"
+            :aria-controls="'ext-skill-children-' + group.id"
+            @click="expandedGroupId = expandedGroupId === group.id ? null : group.id; selected = null"
+          >
+            <span class="ext-chevron" aria-hidden="true">{{ expandedGroupId === group.id ? '▾' : '▸' }}</span>
+            <span v-if="group.conflict" class="ext-conflict" :title="t('extensions.sourceConflict')">⚠</span>
+            <span class="ext-name" :class="{ 'has-update': updateCount(group.items.map((item) => item.id)) > 0 }" :title="group.repo">{{ group.name }}</span>
+            <span class="ext-badge">{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
+            <span v-if="updateCount(group.items.map((item) => item.id)) > 0" class="update-badge">
+              {{ t("extensions.updateCount", { count: updateCount(group.items.map((item) => item.id)) }) }}
+            </span>
+          </button>
           <button
             v-for="agent in (['claude', 'codex'] as const)"
             :key="agent"
@@ -139,32 +170,42 @@ async function updateSelected(): Promise<void> {
             :disabled="store.busy"
             :title="t('extensions.toggle', { agent })"
             @click.stop="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))"
+            @keydown.enter.prevent="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))"
+            @keydown.space.prevent="store.toggleSkillGroup(group, agent, !group.items.every((item) => (agent === 'claude' ? item.enabled_claude : item.enabled_codex) === true))"
           >{{ agent === "claude" ? "C" : "X" }}</button>
-          <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.updateAll')" @click.stop="store.updateSkillGroup(group)">
+          <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.updateAll')" @click.stop="store.updateSkillGroup(group)"
+            @keydown.enter.prevent="store.updateSkillGroup(group)"
+            @keydown.space.prevent="store.updateSkillGroup(group)">
             <span v-if="opBusy('update', 'installed:' + group.id)" class="spinner" />
             <span v-else>⟳</span>
           </button>
-          <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.removeAll')" @click.stop="store.removeSkillGroup(group)">
+          <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.removeAll')" @click.stop="store.removeSkillGroup(group)"
+            @keydown.enter.prevent="store.removeSkillGroup(group)"
+            @keydown.space.prevent="store.removeSkillGroup(group)">
             <span v-if="opBusy('remove', 'installed:' + group.id)" class="spinner" />
             <span v-else>✕</span>
           </button>
         </div>
-        <div v-if="expandedGroupId === group.id" class="skill-children">
+        <div v-show="expandedGroupId === group.id" :id="'ext-skill-children-' + group.id" class="skill-children">
           <div
             v-for="item in group.items"
             :key="item.id"
             class="ext-row skill-child"
             :class="{ selected: selected?.id === item.id }"
             :data-testid="'ext-skill-child-' + item.name"
-            role="button"
-            tabindex="0"
-            @click.stop="select(item)"
-            @keydown.enter.stop.prevent="select(item)"
           >
-            <span class="ext-chevron" aria-hidden="true">·</span>
-            <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }">{{ item.name }}</span>
-            <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
-            <span class="ext-spacer" />
+            <button
+              type="button"
+              class="row-main"
+              :data-testid="'ext-skill-child-header-' + item.name"
+              @click="select(item)"
+              @keydown.enter.prevent="select(item)"
+              @keydown.space.prevent="select(item)"
+            >
+              <span class="ext-chevron" aria-hidden="true">·</span>
+              <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }">{{ item.name }}</span>
+              <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
+            </button>
             <button
               v-for="agent in (['claude', 'codex'] as const)"
               :key="agent"
@@ -174,11 +215,29 @@ async function updateSelected(): Promise<void> {
               :disabled="store.busy"
               :title="t('extensions.toggle', { agent })"
               @click.stop="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
+              @keydown.enter.prevent="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
+              @keydown.space.prevent="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
             >{{ agent === "claude" ? "C" : "X" }}</button>
-            <button type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.skillUpdate')" @click.stop="store.updateSkill(item)">
+            <button
+              type="button"
+              class="ui-icon-button sm"
+              :disabled="store.busy"
+              :title="t('extensions.skillUpdate')"
+              @click.stop="store.updateSkill(item)"
+              @keydown.enter.prevent="store.updateSkill(item)"
+              @keydown.space.prevent="store.updateSkill(item)"
+            >
               <span v-if="opBusy('update', item.id)" class="spinner" /><span v-else>⟳</span>
             </button>
-            <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.remove')" @click.stop="store.remove(item)">
+            <button
+              type="button"
+              class="ui-icon-button sm danger"
+              :disabled="store.busy"
+              :title="t('extensions.remove')"
+              @click.stop="store.remove(item)"
+              @keydown.enter.prevent="store.remove(item)"
+              @keydown.space.prevent="store.remove(item)"
+            >
               <span v-if="opBusy('remove', item.id)" class="spinner" /><span v-else>✕</span>
             </button>
           </div>
@@ -193,20 +252,24 @@ async function updateSelected(): Promise<void> {
         class="extensions-card one-line"
         :class="{ selected: selected?.id === item.id }"
         :data-testid="'ext-item-' + item.id"
-        role="button"
-        tabindex="0"
-        @click="select(item)"
-        @keydown.enter.prevent="select(item)"
       >
         <div class="ext-row">
-          <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }">{{ item.name }}</span>
-          <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
-          <span v-else-if="updateFor(item.id)?.status === 'unsupported'" class="unsupported-badge">{{ t("extensions.noComparableVersion") }}</span>
-          <span class="ext-badge">
-            <template v-if="store.kind === 'mcp'">{{ item.transport }}</template>
-            <template v-else>{{ item.marketplace }} · {{ item.version || "-" }}</template>
-          </span>
-          <span class="ext-spacer" />
+          <button
+            type="button"
+            class="row-main"
+            :data-testid="'ext-item-header-' + item.id"
+            @click="select(item)"
+            @keydown.enter.prevent="select(item)"
+            @keydown.space.prevent="select(item)"
+          >
+            <span class="ext-name" :class="{ 'has-update': isUpdateAvailable(item.id) }">{{ item.name }}</span>
+            <span v-if="isUpdateAvailable(item.id)" class="update-badge">{{ t("extensions.updateAvailable") }}</span>
+            <span v-else-if="updateFor(item.id)?.status === 'unsupported'" class="unsupported-badge">{{ t("extensions.noComparableVersion") }}</span>
+            <span class="ext-badge">
+              <template v-if="store.kind === 'mcp'">{{ item.transport }}</template>
+              <template v-else>{{ item.marketplace }} · {{ item.version || "-" }}</template>
+            </span>
+          </button>
           <template v-if="store.kind === 'mcp'">
             <button
               v-for="agent in (['claude', 'codex'] as const)"
@@ -217,16 +280,36 @@ async function updateSelected(): Promise<void> {
               :disabled="store.busy"
               :title="t('extensions.toggle', { agent })"
               @click.stop="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
+              @keydown.enter.prevent="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
+              @keydown.space.prevent="store.toggle(item, agent, !((agent === 'claude' ? item.enabled_claude : item.enabled_codex)))"
             >{{ agent === "claude" ? "C" : "X" }}</button>
           </template>
-          <button v-if="store.kind === 'plugins'" type="button" class="ui-icon-button sm" :disabled="store.busy" :title="t('extensions.pluginUpdate')" @click.stop="store.pluginAction('plugin-update', item.id)">
+          <button
+            v-if="store.kind === 'plugins'"
+            type="button"
+            class="ui-icon-button sm"
+            :disabled="store.busy"
+            :title="t('extensions.pluginUpdate')"
+            @click.stop="store.pluginAction('plugin-update', item.id)"
+            @keydown.enter.prevent="store.pluginAction('plugin-update', item.id)"
+            @keydown.space.prevent="store.pluginAction('plugin-update', item.id)"
+          >
             <span v-if="opBusy('update', item.id)" class="spinner" /><span v-else>⟳</span>
           </button>
-          <button type="button" class="ui-icon-button sm danger" :disabled="store.busy" :title="t('extensions.remove')" @click.stop="store.remove(item)">
+          <button
+            type="button"
+            class="ui-icon-button sm danger"
+            :disabled="store.busy"
+            :title="t('extensions.remove')"
+            @click.stop="store.remove(item)"
+            @keydown.enter.prevent="store.remove(item)"
+            @keydown.space.prevent="store.remove(item)"
+          >
             <span v-if="opBusy('remove', item.id)" class="spinner" /><span v-else>✕</span>
           </button>
         </div>
       </div>
+
     </template>
 
     <ExtensionDetailPanel
@@ -249,7 +332,7 @@ async function updateSelected(): Promise<void> {
       </template>
     </ExtensionDetailPanel>
 
-    <ExtensionMarketDialog v-if="marketOpen" @close="marketOpen = false" />
+    <ExtensionMarketDialog v-if="marketOpen" @close="closeMarket" />
   </div>
 </template>
 
@@ -264,7 +347,37 @@ async function updateSelected(): Promise<void> {
 .extensions-card.one-line { cursor: pointer; }
 .extensions-card.selected { border-color: var(--accent); background: var(--surface-2); }
 .ext-row { display: flex; align-items: center; gap: 6px; min-height: 30px; width: 100%; min-width: 0; box-sizing: border-box; }
-.extensions-card { cursor: pointer; }
+.group-header {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.group-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-ring-width); border-radius: var(--radius-sm); }
+.row-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row-main:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-ring-width); border-radius: var(--radius-sm); }
+.extensions-card { cursor: default; }
 .ext-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 10px; }
 .ext-conflict { flex: 0 0 auto; color: var(--warn); font-size: 14px; }
 .ext-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

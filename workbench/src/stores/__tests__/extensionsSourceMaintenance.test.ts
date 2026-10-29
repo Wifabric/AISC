@@ -64,6 +64,24 @@ describe("v2.1.17 R2 extension source maintenance", () => {
     expect(store.skillReposBusy).toBe(false);
   });
 
+  it("classifies only stable unsupported operations as source unavailable", async () => {
+    const store = useExtensionsStore();
+    store.setContext("e:/projects", "rid-1");
+
+    call.mockRejectedValueOnce({
+      code: "WB_ERR_EXTENSIONS_UNSUPPORTED_OP",
+      message: "当前运行环境不支持扩展来源维护",
+      technical_detail: "old runtime lacks skill-repos-list",
+    });
+    await store.loadSkillRepos();
+    expect(store.skillReposUnsupported).toBe(true);
+
+    call.mockRejectedValueOnce({ message: "database is locked" });
+    await store.loadSkillRepos();
+    expect(store.skillReposUnsupported).toBe(false);
+    expect(store.skillReposError).toContain("database is locked");
+  });
+
   it("removes a plugin marketplace and refreshes marketplace state", async () => {
     call.mockImplementation(async (params: any) => {
       if (params.op === "plugin-market-list") {

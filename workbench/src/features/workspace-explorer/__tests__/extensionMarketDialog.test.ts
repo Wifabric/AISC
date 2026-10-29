@@ -25,7 +25,7 @@ function makeStore() {
     marketSkills: [] as ExtensionsItem[], marketMcp: [] as ExtensionsItem[], marketPlugins: [] as ExtensionsItem[],
     marketSkillGroups: [] as any[],
     marketCacheByKind: { skills: null, mcp: null, plugins: null } as any,
-    skillRepos: [], pluginMarkets: [],
+    skillRepos: [], pluginMarkets: [], error: null as string | null,
   });
 }
 vi.mock("../../../stores/extensions", () => ({ useExtensionsStore: () => store }));
@@ -84,10 +84,40 @@ describe("ExtensionMarketDialog", () => {
     expect(detail.text()).toContain(
       EXTENSION_RECOMMENDATIONS_BY_CATEGORY.research[0]!.summaryZh,
     );
+    expect(detail.text()).toContain("推荐依据");
+    expect(detail.text()).toContain(
+      EXTENSION_RECOMMENDATIONS_BY_CATEGORY.research[0]!.summaryEn,
+    );
     expect(store.searchSkills).not.toHaveBeenCalled();
     await wrapper.get("[data-testid='market-search-action']").trigger("click");
     await flushPromises();
     expect(store.searchSkills).toHaveBeenCalledWith("research");
+    wrapper.unmount();
+  });
+
+  it("clears recommendation state after selecting a real market result", async () => {
+    const result: ExtensionsItem = {
+      kind: "market-skill", id: "owner/repo:research", name: "research",
+      repo: "owner/repo", directory: "research", description: "Live market copy",
+    };
+    store.searchSkills.mockImplementation(async () => {
+      store.marketSkills = [result];
+      store.marketSkillGroups = [{
+        id: "owner/repo", name: "owner/repo", repo: "owner/repo",
+        conflict: false, expanded: true, items: [result],
+      }];
+    });
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='recommendation-card']").trigger("click");
+    await wrapper.get("[data-testid='market-search-action']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid='market-result-owner/repo:research']").trigger("click");
+    const detail = wrapper.get("[data-testid='extension-detail-panel']");
+    expect(detail.text()).toContain("市场原文");
+    expect(detail.text()).toContain("Live market copy");
+    expect(detail.text()).not.toContain("推荐依据");
+    await wrapper.get("[data-testid='market-install-action']").trigger("click");
+    expect(store.installSkill).toHaveBeenCalledWith("owner/repo:research");
     wrapper.unmount();
   });
 
@@ -166,6 +196,20 @@ describe("ExtensionMarketDialog", () => {
     wrapper.unmount();
   });
 
+  it("renders search failures separately from a genuinely empty result", async () => {
+    store.kind = "mcp";
+    store.error = "Smithery transport unavailable";
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-mcp']").trigger("click");
+    const failure = wrapper.get("[data-testid='market-search-error']");
+    expect(failure.attributes("role")).toBe("alert");
+    expect(failure.text()).toContain("Smithery transport unavailable");
+    expect(wrapper.find("[data-testid='market-cache']").exists()).toBe(false);
+    expect(wrapper.find(".market-empty").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("暂无搜索结果");
+    wrapper.unmount();
+  });
+
   it("keeps market cache provenance visible in the search pane", async () => {
     store.kind = "plugins";
     store.marketCacheByKind = {
@@ -178,6 +222,18 @@ describe("ExtensionMarketDialog", () => {
     const cache = wrapper.get("[data-testid='market-cache']");
     expect(cache.text()).toContain("缓存结果");
     expect(cache.text()).toContain("remote refresh down");
+    wrapper.unmount();
+  });
+
+  it("moves between market tabs with arrow keys", async () => {
+    const wrapper = mountDialog();
+    const recommendations = wrapper.get("[data-testid='market-tab-recommendations']");
+    (recommendations.element as HTMLElement).focus();
+    await recommendations.trigger("keydown", { key: "ArrowRight" });
+    expect(wrapper.get("[data-testid='market-tab-skills']").attributes("aria-selected")).toBe("true");
+    const skills = wrapper.get("[data-testid='market-tab-skills']");
+    await skills.trigger("keydown", { key: "ArrowLeft" });
+    expect(wrapper.get("[data-testid='market-tab-recommendations']").attributes("aria-selected")).toBe("true");
     wrapper.unmount();
   });
 

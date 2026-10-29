@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { nextTick } from "vue";
 import { reactive } from "vue";
 import { i18n } from "../../../i18n";
 import ExtensionSourceManager from "../ExtensionSourceManager.vue";
@@ -7,7 +8,7 @@ import ExtensionSourceManager from "../ExtensionSourceManager.vue";
 let store: ReturnType<typeof makeStore>;
 function makeStore() {
   return reactive({
-    canLoad: true, busy: false,
+    canLoad: true, busy: false, sourceMaintenanceBusy: false, skillReposUnsupported: false,
     skillRepos: [
       { kind: "skill-repo", id: "owner/repo", name: "owner/repo", repo: "owner/repo", branch: "main", enabled: true },
       { kind: "skill-repo", id: "old/repo", name: "old/repo", repo: "old/repo", branch: "dev", enabled: false },
@@ -78,6 +79,43 @@ describe("ExtensionSourceManager", () => {
     expect(wrapper.text()).toContain("已安装插件不会被自动卸载");
     await wrapper.get("[data-testid='confirm-source-remove']").trigger("click");
     expect(store.removePluginMarket).toHaveBeenCalledWith("disposable");
+  });
+
+  it("uses aggregate source busy state across skill and plugin kinds", async () => {
+    const wrapper = mountManager();
+    store.sourceMaintenanceBusy = true;
+    await nextTick();
+    expect(wrapper.get("[data-testid='skill-repo-add-btn']").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid='plugin-market-add-btn']").attributes("disabled")).toBeDefined();
+    const skillRow = wrapper.findAll("[data-testid^='skill-source-row-']")[0]!;
+    const pluginRow = wrapper.findAll("[data-testid^='plugin-source-row-']")[0]!;
+    expect(skillRow.get("[data-testid='skill-repo-remove']").attributes("disabled")).toBeDefined();
+    expect(pluginRow.get("[data-testid='plugin-market-remove']").attributes("disabled")).toBeDefined();
+  });
+
+  it("explains only a stable unsupported operation", async () => {
+    store.skillReposError = "old runtime lacks skill-repos-list";
+    store.skillReposUnsupported = true;
+    const wrapper = mountManager();
+    expect(wrapper.get("[data-testid='source-maintenance-unavailable']").text()).toContain("当前运行环境不支持来源维护");
+    expect(wrapper.get("[data-testid='source-maintenance-unavailable']").text()).toContain("升级或重建镜像");
+    expect(wrapper.get("[data-testid='skill-repo-add-btn']").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid='plugin-market-add-btn']").attributes("disabled")).toBeDefined();
+    const skillRow = wrapper.findAll("[data-testid^='skill-source-row-']")[0]!;
+    expect(skillRow.get("[data-testid='skill-repo-remove']").attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("[role='alert']")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("keeps transient listing errors retryable rather than claiming unsupported", async () => {
+    store.skillReposError = "database is locked";
+    const wrapper = mountManager();
+    expect(wrapper.find("[data-testid='source-maintenance-unavailable']").exists()).toBe(false);
+    await wrapper.get("[data-testid='skill-repo-add']").setValue("https://github.com/owner/repo");
+    await wrapper.get("[data-testid='plugin-market-add']").setValue("https://example.test/market.json");
+    expect((wrapper.get("[data-testid='skill-repo-add-btn']").element as HTMLButtonElement).disabled).toBe(false);
+    expect((wrapper.get("[data-testid='plugin-market-add-btn']").element as HTMLButtonElement).disabled).toBe(false);
+    wrapper.unmount();
   });
 
   it("keeps Smithery built in and directs MCP maintenance to installed servers", () => {

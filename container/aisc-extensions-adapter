@@ -1102,6 +1102,11 @@ def skill_repos_list() -> list[dict[str, Any]]:
             "SELECT owner, name, branch, enabled FROM skill_repos "
             "ORDER BY owner COLLATE NOCASE ASC, name COLLATE NOCASE ASC"
         ).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise AdapterError(
+            ERR_SNAPSHOT,
+            "skill repository table is unavailable; upgrade the runtime image",
+        ) from exc
     finally:
         conn.close()
     return [
