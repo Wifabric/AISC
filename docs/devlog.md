@@ -7,7 +7,7 @@
 - 静态阅读页重新排版：每轮单一“思考与执行”折叠、逐项工具证据、Markdown/LaTeX/高亮/脚注/图片附件/受限文件与网址链接；实时终端继续原字节穿透。增加分页/迟到响应守卫、键盘关闭与焦点回归，修复深色阅读对比度。
 - 保留 provider-native resume ID 到 pane，跨认证引导/失败/断连重开保持；恢复前检查 Docker，重启同一 stopped runtime；新会话自动关联补齐 pane 身份，分屏激活正确 pane。损坏尾行与列表扫描预算不再让恢复按钮永久禁用，文件保持只读。
 - 全门禁 Python 1697/53/191 subtests、Rust 405/1 ignored、Vitest 822、vue-tsc 通过；自审 pane 关联 RED→GREEN，最终前端全测/targeted 29 和生产构建通过。冻结 CLI 两提供商读取/附件/损坏尾行/原文件不变验证 PASS。
-- Windows CU 真阅读/折叠/数学/图片 PASS；用户配置 Codex 后，FINAL 从真实记录恢复、进程强制中止后重开、同一隔离容器/runtime 停止后恢复均保留 native ID。CLI 追加不含标记的问题仍答原标记，确认原生上下文连续；未在 GUI Codex 终端自动输入。用户随后补配 Claude，真实初始对话成功，恢复参数保留 native ID；首次 TUI 工作区信任待用户自行处理，其进程/容器中断及召回仍未测。
+- Windows CU 真阅读/折叠/数学/图片 PASS；用户配置两提供商并处理 Claude 首次信任后，FINAL 分别从 Codex/Claude 真实记录恢复、进程强制中止后重开、同一隔离容器/runtime 停止后恢复均保留 native ID。CLI 追加不含标记的问题均答原标记，确认原生上下文连续；未在 GUI Codex 终端自动输入。真实阅读器两者均完整显示两轮问答（共 4 条），Claude 运行时自更新 2.1.311→2.1.314 的验证边界已记 PRETEST。
 - 修复 WebView2 公式内部多余竖滚动条，最终三宽视觉检查 0 FAIL/1 阅读留白 WARN；原生代码复制、txt 打开、网站打开和 Escape PASS。最终 CSS 后 targeted 29/vue-tsc/生产构建通过；draft PR #51 首轮 Workbench CI SUCCESS。R4 待用户单批验收/剩余项裁定，不开始新批次；R3 原待验收状态保留。
 
 # v2.1.17 R3 扩展市场批次修复（2026-10-30）

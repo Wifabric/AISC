@@ -290,7 +290,7 @@
   - [x] N3 / b4：Skills / MCP / Plugins 统一推荐与发现（CU 中英文推荐与搜索路由通过；离线禁用态待统一手测）
   - [ ] N5 / R4：Work Record 友好阅读、每轮思考/命令合并折叠、Markdown/LaTeX/图片附件/可点击文件与网址；实时终端继续字节穿透（2026-10-30 用户明确纳入 R4；实现/门禁/真实阅读 CU 已通过，公式滚动修复/最终构建通过，待单批验收）
 - 可靠性
-  - [ ] R4：Docker 意外断连 / bash 中止后从 Work Record 恢复原 Codex/Claude 会话；配置引导与重试保留会话身份（2026-10-30 用户追加；已认证 Codex 进程/容器中断 CU 恢复同 native ID、CLI 追加召回 PASS；Claude 已配置/初始对话 PASS，UI 首次工作区信任待用户处理；全局 Docker 引擎断连/Remote 等未测，待验收/显式延后）
+  - [ ] R4：Docker 意外断连 / bash 中止后从 Work Record 恢复原 Codex/Claude 会话；配置引导与重试保留会话身份（2026-10-30 用户追加；已认证 Codex/Claude 进程/容器中断 CU 恢复同 native ID、CLI 追加召回及真实阅读器完整两轮问答 PASS；全局 Docker 引擎断连/真实大历史/Remote 等未测，待本批验收/显式延后）
   - [x] b3：扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志（CU 超时日志/复制诊断通过；第二次可重试失败待统一手测）
   - [x] b5：网络 / 显式自更新 / CLI 与 bundle 版本配对健康报告（实现/自动化/CI/CU 显式更新主路径与健康报告通过；诊断竞态待统一手测）
 - 默认体验

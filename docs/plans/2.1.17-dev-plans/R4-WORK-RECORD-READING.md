@@ -28,8 +28,8 @@ R3 保留待验收，不视为已通过。R4 完成后等待用户验收，不�
 - [x] RED：记录解析多模态/phase/长回答/损坏尾部；聚合、富文本和链接；中断恢复与引导重试。
 - [x] GREEN：后端投影与 wire 类型；安全 Markdown/数学/附件阅读；恢复路径。
 - [x] targeted Python / Vitest / Rust、vue-tsc；本地完整门禁和生产构建。
-- [ ] Computer Use：真实 Workbench 阅读、折叠、链接、窄窗、恢复路径；失败先修复，环境阻塞如实记录。
-- [x] 更新 HANDTEST / PRETEST / todo / devlog；已准备本批复核步骤，认证恢复仍有环境前置。
+- [ ] Computer Use：本地真实阅读/折叠/链接及两提供商认证后进程/容器恢复主链通过；完整引擎断连/真实大历史/Remote 未测，见 PRETEST，待验收或明确延后。
+- [x] 更新 HANDTEST / PRETEST / todo / devlog；本批精确复核步骤及两提供商已认证恢复证据已回写。
 - [ ] 用户验收（未通过前不进入下一批）。
 
 ## 已识别风险
@@ -53,8 +53,8 @@ R3 保留待验收，不视为已通过。R4 完成后等待用户验收，不�
 - 浏览器组件交互 PASS：单折叠/逐项工具结果、代码复制参数、文件/网址路由参数、Escape 关闭。组件 harness 使用隔离数据与 store spy，不能代替真实 IPC。
 - 真冻结 CLI：两条夹具均可 list/preflight/read，Claude 图片附件保留；Codex 损坏尾行仍允许 preflight，reader malformed_lines=1，前后原文件 SHA256 相同。
 - 真 Workbench CU：Codex/Claude 阅读、单折叠/逐项执行证据、数学与图片节点均已观察；停止隔离容器后从记录恢复，重启同一个容器 c4da83e8aa5d / runtime df5c8f56-ea51-4ad2-9a77-14682db0e9e7 成功。
-- 首轮隔离环境无 Codex/Claude Provider 认证，Codex 仅恢复到登录引导；用户随后自行配置 Codex。本轮 FINAL 已通过真实 Codex 记录恢复、进程强制中止重开、隔离容器停止后同容器/runtime/native ID 恢复。关闭 TUI 并确认进程退出后，原生 exec resume 追加不含标记值的问题，回答原标记，确认上下文连续。CU 只点 Workbench 记录/窗口并观察，未在其 Codex 终端自动输入；上下文召回为 CLI 补充证据。用户随后补配 Claude，Provider configured，真实初始会话回答标记成功；CU 恢复参数保留 native ID，但首次 TUI 停在工作区信任确认，已请用户自行处理，进程/容器中断及召回仍待验证。
+- 首轮隔离环境无 Codex/Claude Provider 认证，Codex 仅恢复到登录引导；用户随后自行配置两者并处理 Claude 首次工作区信任。本轮 FINAL 已分别通过 Codex/Claude 真实记录恢复、进程强制中止重开、隔离容器停止后同容器/runtime/native ID 恢复。关闭 TUI 并确认进程退出后，原生 CLI resume 追加不含标记值的问题，两者都回答原标记，确认上下文连续；CU 阅读器均显示两轮完整问答（第 1–4 条 / 共 4 条）。CU 只操作 Workbench 记录/窗口并观察，未在 Codex 终端自动输入；上下文召回为 CLI 补充证据。Claude 运行期间自行从 2.1.311 更新为 2.1.314，准确边界已记 PRETEST。
 - 最终产物与 SHA256 见本机 `release-staging/2.1.17-r4/artifacts.json`；启动器 `start-handtest.ps1` 校验 Workbench/CLI/adapter，使用 R4 隔离数据根。当前旧 R3 用户验收状态保持待验收。
 - 阅读增量修复：真实 WebView2 公式出现额外竖滚动条，补充垂直留白并禁止公式内部纵向滚动；FINAL SHA256 `1ef06065…`。生产组件公式 clientHeight/scrollHeight=61/61；FINAL 真阅读公式完整。最终三宽视觉检查 0 FAIL / 1 阅读留白 WARN，已看桌面/手机图；targeted 29、vue-tsc 与生产构建通过。
 - 真 IPC 补充：代码复制显示“已复制”、文本报告启动 Notepad、Escape 关闭；FINAL 网站链接启动系统 Chrome 的 Wifabric/AISC 页面。本机 .md 没有默认关联，手册增加 .txt 成功路径。
-- draft PR #51：https://github.com/Wifabric/AISC/pull/51；首轮提交 f1bd8ee 的 Workbench CI 41005979469、最终产品提交 df33296 的 41022607098 均 SUCCESS。完整证据/仍未执行项见 PRETEST；用户验收和 Claude 认证恢复尚未完成，不进入下一批。
+- draft PR #51：https://github.com/Wifabric/AISC/pull/51；首轮提交 f1bd8ee 的 Workbench CI 41005979469、最终产品提交 df33296 的 41022607098 均 SUCCESS。完整证据/仍未执行项见 PRETEST；两提供商本地认证恢复主链通过，用户验收尚未完成，不进入下一批。

@@ -380,7 +380,7 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 
 ## R4 Work Record 阅读 / 中断恢复预测试（2026-10-30，本批未验收）
 
-运行 Windows 11，Computer Use `node_repl + @oai/sky`。首轮 GUI `AISC-Workbench-2.1.17-R4.exe` SHA256 `6ac8574ea8238aabd6aac09186c8f601c98c19dfcab22dcecec521109d9a3aa9`；公式修复后的最终 GUI `AISC-Workbench-2.1.17-R4-FINAL.exe` SHA256 `1ef06065f9f399516a47f344e52e734ffb0b400f8d6ccf3931985d32e6ed72b4`；冻结 CLI `59790567d0a1c4d4e7d679d9a2168403049c630eb97e82f86e434ab2b3d47ca9`；adapter `97464109…`；镜像 `2f54fad6…`。完整 hash 在 R4 artifacts.json。工作区 `C:/pt/aisc-r4-reader-workspace`，数据根 `C:/pt/aisc-217-r4-handtest-data`；使用演示记录和用户自行配置的隔离 Codex Provider，未复制其它环境凭据。
+运行 Windows 11，Computer Use `node_repl + @oai/sky`。首轮 GUI `AISC-Workbench-2.1.17-R4.exe` SHA256 `6ac8574ea8238aabd6aac09186c8f601c98c19dfcab22dcecec521109d9a3aa9`；公式修复后的最终 GUI `AISC-Workbench-2.1.17-R4-FINAL.exe` SHA256 `1ef06065f9f399516a47f344e52e734ffb0b400f8d6ccf3931985d32e6ed72b4`；冻结 CLI `59790567d0a1c4d4e7d679d9a2168403049c630eb97e82f86e434ab2b3d47ca9`；adapter `97464109…`；镜像 `2f54fad6…`。完整 hash 在 R4 artifacts.json。工作区 `C:/pt/aisc-r4-reader-workspace`，数据根 `C:/pt/aisc-217-r4-handtest-data`；使用演示记录和用户自行配置的隔离 Codex/Claude Provider，未复制其它环境凭据。
 
 | 检查 | 实际操作与证据 | 结果 |
 | --- | --- | --- |
@@ -398,11 +398,16 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 | 原生链接/复制/键盘 | 首轮复制按钮变“已复制”；文本报告启动 `result.txt - Notepad`；Escape 关闭。FINAL 点击“项目网站”后系统 Chrome 标题 `Wifabric/AISC - Google Chrome`。本机 .md 无默认关联，测试用 .txt 成功路径 | PASS；.md 关联为宿主前置 |
 | 公式增量修复 | FINAL 阅读预览点击滚动条下翻，完整积分/上下标可见且无内部竖滚动条。生产组件测量公式 clientHeight/scrollHeight=61/61，overflowY=hidden；最终 1440/768/390 检查 0 FAIL/1 留白 WARN，已看桌面/手机截图 | PASS |
 | Claude 已认证初始对话 | 用户补配后 provider current 为 codesome-v3 / cc-switch-proxy / configured（2026-10-30T08:27:04Z）。原生 `claude -p --output-format json --session-id 14972c8d-4c11-4da7-80c9-420dd2b09e8a` 成功回答 `R4-RESUME-1030-CLAUDE`、is_error=false。冻结 reader 返回 total=2 / malformed_lines=0，完整用户问题与答案 | PASS（CLI） |
-| Claude 已认证 UI 恢复 | CU 点击真实 Claude 记录 ▶，wrapper d635cd8e… / claude-real --resume 指向上述 native ID；首次 TUI 显示 /root/app 工作区信任确认，已请用户自行处理。未自动点击安全请求 | 进行中：首次工作区信任前置；进程/容器中断及追加召回尚未验证 |
+| Claude 已认证 UI 恢复 | CU 点击真实 Claude 记录 ▶，wrapper d635cd8e… / claude-real --resume 指向上述 native ID；用户自行处理首次 /root/app 工作区信任后，真实 TUI 显示原问题与标记答案。未自动点击安全请求 | PASS |
+| Claude 进程意外中止 | 仅 kill 本隔离容器 Claude PID 6808，原标签退出；CU 点同记录 ▶，新 wrapper df6d92dd-06a7-44da-ba2d-cb34e9ec7562 仍 --resume-id 14972c8d-4c11-4da7-80c9-420dd2b09e8a，原问题/答案可见。运行中重复点 ▶，UI 仍只有一个 Claude 标签 | PASS |
+| Claude 容器停止后恢复 | 仅 stop d300dd738f2b；UIA 显示 Runtime 已停止。CU 点原 Claude 记录 ▶，同容器和 runtime 439e5841-40a4-42b6-82b2-39d82ab3a68d 恢复 running，wrapper 108462f7-3acb-48d6-9ca4-c22fc4d286c9 继续同 native ID；TUI 原问题/标记答案完整，未再要求信任 | PASS |
+| Claude 上下文召回与真实阅读 | 关闭测试标签并 ps 确认 provider 进程退出；`claude -p --output-format json --resume <同 native ID>` 只问先前标记、不提供标记值，result=R4-RESUME-1030-CLAUDE / session_id 不变 / is_error=false。日志 C:/pt/aisc-r4-claude-recall.json。冻结 reader total=4 / malformed_lines=0；CU 点击该真实记录，UIA 两轮问题/相同答案均存在，页脚第 1–4 条 / 共 4 条，截图可见完整问答 | PASS（CLI 召回 + CU 阅读） |
 | 完整 Docker 引擎断连 / 真实大历史 / Remote | 不停止全局 Docker，不影响用户已有容器；Remote 真实 SSH 和长历史 UI 不在本次隔离夹具中 | NOT RUN；自动化覆盖错误/分页/代际路径 |
 
 早先 R3 尝试坐标失败是工具返回两截图区域而误选 12×12 的 icon 区域；R4 明确选择 `screenshot-1` 主窗口后可操作。部分 UIA 点击中心偏差，改用新截图真实坐标并再次观察结果。本记录不延伸为 R3 已验收。
 
 补充验证：最终 CSS 后阅读/runtime targeted 29 passed、vue-tsc 与 Tauri 生产构建通过。PR #51 为 draft；首轮产品提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS；公式修复提交 df33296 的 Workbench CI 41022607098 SUCCESS（https://github.com/Wifabric/AISC/actions/runs/41022607098）。召回首试在 TUI 尚未释放写锁时被上游拒绝；确认进程退出后重试成功，未同时写入同一会话。
 
-整体 R4 不标完成，Claude 已认证恢复仍在验证，表中环境项目尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。
+Claude 版本取证：最初 TUI 为镜像内 2.1.311，显示 Update installed；进程中止后的重开、容器恢复和召回均观察到已自动更新的 2.1.314（/opt/aisc/toolchain/npm-global/bin/claude，模型 Opus 5.5）。这是 CLI 自更新结果，不是本轮修改镜像锁版，原镜像 hash 不变。
+
+整体 R4 不标完成：Codex/Claude 本地已认证进程与容器恢复主链已通过，表中全局引擎/真实大历史/Remote 尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。

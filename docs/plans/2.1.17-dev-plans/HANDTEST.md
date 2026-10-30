@@ -257,7 +257,7 @@ $R4Cli = Join-Path $R4 'aisc-r4.exe'
 4. 分屏打开一个 Bash 后切到 Bash，再点原记录 ▶。理想：激活对应 Codex/Claude pane，不停留在旁边 Bash。
 5. 异常：引导重试后变新会话、恢复按钮永久禁用、重复恢复开出多个标签、错误没有行内提示，记 FAIL。尚未认证时显示登录/Provider 引导属于环境前置未满足，不算连续会话通过。
 
-本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`。进程中止后 CU 恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 已自行配置，真实记录 `This is an isolated AISC Claude resume test…` / native ID `14972c8d-4c11-4da7-80c9-420dd2b09e8a` 的初始回答为 `R4-RESUME-1030-CLAUDE`；首次 TUI 工作区信任提示需用户自行处理，同等中断复核尚未完成。
+本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`；Claude 记录 `This is an isolated AISC Claude resume test…` / native ID `14972c8d-4c11-4da7-80c9-420dd2b09e8a`，标记 `R4-RESUME-1030-CLAUDE`。两者进程中止后 CU 恢复、容器停止后恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 首次工作区信任已由用户处理，重复恢复保持一个标签。点击两个真实记录标题，各显示第 1–4 条 / 共 4 条，两轮问答的标记相同。
 
 ### R4-T4 容器停止后恢复原 runtime（只动隔离容器）
 
@@ -273,7 +273,7 @@ docker stop --timeout 2 $R4Container
 
 2. Work Record 点原记录 ▶。理想：只重启原容器，容器 ID/runtime ID 不变；成功后恢复相同 provider-native ID。旧 Bash/PTY 结束不会挡住恢复，也不删除记录。
 3. Docker 引擎确实不可用时，应显示行内可重试错误，不创建空标签。引擎恢复后可再点 ▶。本项不要为测试主动退出整个 Docker Desktop，以免打断其它工作区。
-4. 异常：意外停止后的恢复自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。CU 已确认 FINAL 停止 → 同一容器/runtime 重启 → 同一已认证 Codex 会话，并通过 CLI 追加问题召回；Claude 认证恢复仍待验证。正常退出应用清理临时容器属于现有退出行为，与本条意外停止不同。
+4. 异常：意外停止后的恢复自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。CU 已分别确认 FINAL 停止 → 同一容器/runtime 重启 → 同一已认证 Codex/Claude 会话，并通过 CLI 追加问题召回。正常退出应用清理临时容器属于现有退出行为，与本条意外停止不同。
 
 ### R4-T5 长记录与切换保护
 
