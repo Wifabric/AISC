@@ -22,9 +22,9 @@
 ## 检查账本
 
 - [x] 用户宣布收尾，确认 R3/R4 手测通过。
-- [ ] R4 集成 develop，集成 CI 通过。
-- [ ] 发布依赖重查与必要刷新验证。
-- [ ] 最终门禁、构建与统一预测试。
+- [x] R4 集成 develop，集成 CI 通过（`81c43e7` 四条 CI 全成功）。
+- [x] 发布依赖重查与必要刷新验证（`cf25671`，PR #52 合入 `bc189a3`）。
+- [ ] 最终门禁、构建与统一预测试（本地门禁/最终镜像/三轮数据面及 CU 已执行项 PASS；未测项和集成 CI 见下文）。
 - [ ] 用户统一回归通过 / 剩余项明确裁定。
 - [ ] Preview / TestPyPI 发布与产物复核。
 - [ ] 计划归档与阶段账本闭环。
@@ -70,4 +70,21 @@ Release digest 和固定 commit 字节，不混用可变 latest 数据。
 - vendor-refresh 第二次报告 9 verified/0 missing；vendor-verify 1533 项通过。
   首次 refresh 报告受 Windows Python stdout CRLF 干扰，使用本机 LF shim 后重跑。
 - bundle 首轮拒绝遗留的两处 caveman 测试 __pycache__；确认均为未跟踪生成缓存并清理后，
-  stage/verify 与版本检查通过。正在从最终干净 bundle 做发布形态 no-cache 构建和统一回归。
+  stage/verify 与版本检查通过。最终干净 bundle 无缓存镜像构建和统一预回归已执行，见下文。
+
+## 收尾候选与统一回归交付（2026-10-31）
+
+- [CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md) 记录最终产物 hash、镜像 ID、真实
+  容器 12 phases/三轮 9/9 全 PASS、Services 双端口 HTTP、市场/来源/阅读 CU 与 NOT RUN。
+- 本地 clean-room wheel/sdist/pipx/重复安装/off-checkout 全部 PASS；最终镜像为
+  `super-claude:2.1.17-closeout-final @ sha256:7f82194edeeda7a2668a071c73ba63c92f99485ebb95aafb06807c03b7377e64`。
+- 产品 SHA `cf25671` 的 Workbench CI、三平台 sidecar、deb/dmg、NSIS 均 SUCCESS，
+  已核对实际 artifact 元数据与安装/解包 smoke；[远程证据](closeout-ci-evidence.json)。
+- PR [#52](https://github.com/Wifabric/AISC/pull/52) 已合入 develop `bc189a3`。
+  精确集成 CI：Workbench `41089936055`、sidecar `41089936117` 已 SUCCESS；
+  Bundle `41089936114`、NSIS `41089936325` 正在核对，不能提前记绿。
+- [HANDTEST.md](HANDTEST.md) 文首 C0–C5 替换旧 R2 入口；本地启动器
+  `release-staging/2.1.17-closeout/start-handtest.ps1 -VerifyOnly` 校验成功；当前真窗口
+  保留给用户整体回归。旧 b5 专用副本仅验证交互合同，不能冒充当前候选安装包。
+- 用户统一回归和剩余环境项裁定尚未完成；preview/TestPyPI、归档、main/final 与最终清理
+  保持各自门，不提前关闭反馈或删除历史分支/tag。

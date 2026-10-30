@@ -300,5 +300,5 @@
   - [ ] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/审查复审通过/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；待统一手测）
   - [ ] R2：扩展 UI 重设计——删除主视图操作日志、分类扩展市场（六类各 10 条）、中文详情、整体布局优化与技能仓库/插件市场维护（PR #49 已合入 develop `6133eef`；审查/增量复审、803 前端测试、既有完整门禁、最终 PR/develop CI、三平台 sidecar/deb/dmg/NSIS 通过；来源维护与跨市场保留真容器通过，已修正插件市场级联卸载双语警告；当前 CU 无 node_repl，来源删除与窄屏等 UI 仍 NOT RUN，待统一用户手测）
   - [x] R3：扩展市场批次修复——旧 runtime 来源维护稳定提示、已安装空态移除“打开扩展市场”按钮、推荐卡片内联展开详情（TDD/完整门禁/最终生产构建/真实数据面通过；独立审查最终 Critical=0/Important=0；PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；早期 CU 阻塞记录保留；D-6 用户已确认本批手测通过）
-  - [ ] 高频链路自动化冒烟与 v2.1.17 preview 准备（三轮数据面 9/9、构建/材料与 CU 关键路径已完成；完整三轮 UI 冒烟、统一用户手测与发布门仍待通过）
+  - [ ] 高频链路自动化冒烟与 v2.1.17 preview 准备（10-31 发布依赖刷新 PR #52 合入 `bc189a3`；最终干净镜像三轮数据面 9/9、12 phases 全 PASS，完整门禁/clean-room/三平台出包与分支 CI 成功，CU 市场/Services/阅读关键路径通过；精确集成 CI、完整三轮 UI、统一用户回归/剩余项裁定与发布门见 CLOSEOUT.md）
   - [ ] CLI 开发版本 `0.1.10.dev0` 已启动；final 版本与发布时机按实际范围裁定

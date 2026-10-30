@@ -1,4 +1,96 @@
-# v2.1.17 统一手测方案（全部批次预测试后执行）
+# v2.1.17 统一手测方案
+
+## 当前收尾入口（2026-10-31，优先于下文 R2 历史变量）
+
+R3/R4 已由用户确认手测通过，本节用于收尾整体回归，不替代既往逐批验收。
+预测试证据和精确 SHA256 见 [CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md)。
+下文原 R2/b7 步骤保留作历史详细用例；除 b5 的 0.0.0 专用旧副本外，
+当前高频复核必须使用本节产物/最终镜像，不能把下文 R2 镜像和 CLI 混入当前候选。
+
+前置：Docker Desktop 正常；保留其它工作区容器运行；当前收尾 Workbench 已打开时
+直接在现有窗口测试，无需重复启动。新终端使用 PowerShell：
+
+```powershell
+$Repo = 'C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC'
+$Artifacts = "$Repo\release-staging\2.1.17-closeout"
+$Aisc = "$Artifacts\aisc-closeout.exe"
+$Bundle = "$Artifacts\handtest-stage\aisc-bundle"
+$Workspace = 'C:\pt\aisc-closeout-workspace'
+$Image = 'super-claude:2.1.17-closeout-final'
+& "$Artifacts\start-handtest.ps1" -VerifyOnly
+# 仅在没有当前收尾窗口时运行：
+# & "$Artifacts\start-handtest.ps1"
+```
+
+启动器绑定隔离数据根 `C:\pt\aisc-217-r4-handtest-data`、当前冻结 CLI 与干净 bundle，
+校验产物 hash 和镜像 ID；期望显示 `Closeout artifacts and pinned image verified.`。
+首页选 `$Workspace`，启动摘要高级设置的镜像填 `$Image`，等待右上“就绪”。
+镜像 ID 必须为 `sha256:7f82194edeeda7a2668a071c73ba63c92f99485ebb95aafb06807c03b7377e64`。
+任何校验失败/CLI 报旧 adapter usage/镜像不符，停止该项并反馈原文，不改用 latest。
+
+### C0 扩展市场与来源（约 5 分钟）
+
+1. 左侧“扩展”→“扩展市场”→“推荐”，依次切六分类；每类应有 10 张卡片。
+2. 点卡片正文：简介、类型、来源等应在卡片内部展开；无右侧空栏。
+3. 切“技能”，搜索 `caveman`，点击父组后点子技能；详情应有简要中文介绍。
+4. 切“来源管理”，分别看技能/插件/MCP：技能应有 4 仓库，插件 2 市场；前两类有
+   删除入口，MCP 有内置来源说明；不得出现 argparse usage 或空白错误弹窗。
+5. 如需验证删除，仅新增一个测试仓库/市场后删除该测试项，不删除默认源；插件删除
+   应先提示会连同该市场插件卸载。删除后列表不含测试源，原默认源仍保留。
+6. 关闭市场，主视图切已安装 MCP 空态：只显示“暂无内容。”，无空态第二个市场按钮，
+   无操作日记。推荐展开异常、中文简介缺失、源列表报错或删错来源均记 FAIL。
+
+### C1 扩展操作与 Services 交叉（约 5 分钟）
+
+前置：当前工作区已注册测试端口 3000/5173 并有真实 HTTP 服务。
+
+1. 技能市场搜索 `caveman`，已有 13 项可执行“更新全部”；操作期间切“服务”。
+2. 服务应及时显示“宿主工具（F2）”“注册服务”，3000 `closeout docs` 在前，
+   5173 回退为“端口 5173”在后；协议 HTTP、状态已注册，网关 ready。
+3. 点两条的“打开”，各自网页应显示 `closeout gateway ok`；回扩展等待成功通知，
+   13 项不丢失。阻塞超过既有 30 秒超时、端口顺序错误或更新后缺项均记 FAIL。
+4. 若 HTTP 进程已退出，只将服务浏览子项记 NOT RUN 并说明，不能将空白页算通过。
+
+### C2 Work Record 阅读（约 5 分钟）
+
+1. “工作记录”→点击 `R4 阅读预检：请汇总计算结果并附上报告。` 的正文（不点播放）。
+2. 应显示静态阅读弹窗，默认一项“思考与执行 3 项”；展开后见思考/过程说明/命令，
+   仍能分别展开细节。正文有表格、勾选列表、代码高亮、行内及独立公式、图片与脚注。
+3. 点“复制代码”、打开本地文本报告与项目网站；应分别得到完整代码、测试报告和
+   GitHub 项目页，不运行报告中的命令。Escape 关闭后仍回到记录列表。
+4. 分别点 `This is an isolated AISC resume test...`（Codex）和
+   `This is an isolated AISC Claude resume test...`（Claude），应各有两轮问答，页脚
+   `第 1–4 条 / 共 4 条`。正文缺失/重复/出现输出阶段推进、公式裁切均记 FAIL。
+
+### C3 新锁版中断恢复与隔离（需已认证环境）
+
+1. 自行在测试环境配置两个 Provider；本轮不会复制其它工作区凭据。选一个新测试
+   会话，告诉模型一段自定短标记，并等待回答；记录 Work Record 标题。
+2. 仅点击该测试终端页签右侧“关闭标签（会话将结束）”，回工作记录点该会话“恢复”；再次询问此前
+   标记但不附标记正文，期望答对；历史两轮可阅读，同一条记录不分裂成新会话。
+3. 仅在当前测试 runtime 仍为 `b290f18e-da74-4ab0-9159-16c03ee0e21f` 时，PowerShell
+   运行 `docker stop aisc-wb-b290f18e`；然后从同一记录“恢复”，期望重启原 runtime 后仍答对标记。
+   若已经更换 runtime，先反馈新 ID 再确认对应容器，不能停止其它工作区容器。
+4. 切另一个测试工作区 B，再回 A：记录和扩展开关不能串到 B。
+5. 恢复永久禁用/新开上下文/错关联或数据串区均记 FAIL。全局 Docker 引擎断连只在
+   你确认无其它工作负载时测试；Remote SSH、真实大历史缺环境可明确延后。
+
+### C4 安装与显式更新
+
+候选新 NSIS 的 CI 安装/升级/卸载保留数据已通过；本机交互形态尚待复核。
+采用下文 b5 0.0.0 专用副本步骤验证“下载完成仍留在应用→退出更新确认→Explorer
+选中安装包→正常 NSIS 界面”。候选尚未发布，检查更新仍会指向当前在线 release，
+不能把旧在线包当作本候选。最终 preview 出包后再对 preview 包复核真实更新；
+现在不要覆盖正式安装或把这一项误记 PASS。
+
+### C5 环境项与回报格式
+
+剩余故障网络/缓存竞态/重试 UI/离线禁用/诊断竞态/完整三轮 UI/窄屏键盘等项，
+详见 CLOSEOUT-PRETEST 的 NOT RUN 表与下文原编号。按实际环境补测或逐项明确延后。
+回报 `C0–C4：PASS/FAIL/NOT RUN；失败操作与原文；环境项：补测结果或同意延后项`。
+统一回归结论到位后才推进 preview/TestPyPI；正式 main/final 另走批准门。
+
+## 历史 R2 验收方案（以下变量仅用于复现旧证据）
 
 > 运行前先完成本批代码与 targeted 验证。所有命令在 PowerShell 5.1+ 执行；
 > `$Repo` 可按实际 checkout 修改，其余变量保持本文命名。

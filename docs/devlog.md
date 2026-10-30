@@ -2,11 +2,18 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 收尾统一预回归（2026-10-31）
+
+- PR #51 集成 `81c43e7` 四条 CI 全 SUCCESS。依赖刷新 PR #52 集成 develop `bc189a3`；分支产品 SHA `cf25671` 四条构建、三平台 sidecar parity/clean-room/SBOM、deb/dmg 非 checkout smoke、NSIS 安装/PATH/升级/卸载保留数据全部成功；集成 CI 独立检查中。
+- 最终干净 bundle 的 frozen CLI 无缓存镜像 `7f82194edeed…` 实测六工具版本及 geodata checksum 一致；三轮 Skills/MCP/Plugins 9/9、全部 12 phases、caveman 首装双开/升级保留 off、部分失败仅失败重试全 PASS（exit 0，532.736 秒）。CLI wheel/sdist/pipx/重复安装/off-checkout 全 PASS。
+- 收尾 CU：独立分类市场、整宽推荐卡片内联详情、来源列表、中文搜索详情、MCP 空态无多余按钮、Services 分组/排序与真实 3000/5173 网关 PASS；静态阅读单折叠/公式/表格/代码/图片降级与补齐后加载、Codex/Claude 真实旧记录各两轮四条 PASS。新锁版已认证恢复、全局 Docker/Remote/真实大历史等 NOT RUN 保留。
+- 当前隔离 Workbench 与校验式启动器已准备，HANDTEST 文首 C0–C5 为最新统一回归入口；等待用户整体回归/剩余项裁定后再 preview/TestPyPI，未归档、未 final/main。
+
 # v2.1.17 收尾启动（2026-10-30）
 
 - 用户宣布“开始收尾”，并确认“R3、R4 已手测通过，未测项留统一回归”；裁定 D-6 与 CLOSEOUT.md 已记录。既有 NOT RUN 不改成 PASS。
 - 开始最终集成、发布依赖重查与统一回归准备；preview、计划归档与正式 final 依各自门推进。
-- R4 PR #51 合入 develop `81c43e7`，集成 Workbench/三平台 sidecar/Bundle 已通过，NSIS 仍在构建。
+- R4 PR #51 合入 develop `81c43e7`，集成 Workbench/三平台 sidecar/Bundle/NSIS 全部通过（10-31 已核对最终状态）。
 - D-4 发布前刷新 Codex 0.166.0、Claude 2.1.314、Active LTS Node 26.13.0（固定 Bookworm slim index digest）、geodata 20261030 固定 commit；cc-switch/Mihomo/Yazi 重查无新稳定版。四份 npm SHA512 与三份 geodata 官方 SHA256 校验通过，默认 ARG/BuildPlan/vendor 同步。
 - 全门禁 Python 1697/53/191 subtests、Rust 405/1 ignored、Vitest 822、vue-tsc 通过；冻结 CLI、vendor 1533 项、bundle stage/verify、版本检查与文档检查 39 项通过。统一实机回归与最终发布构建仍按 CLOSEOUT.md 推进。
 

@@ -1,5 +1,9 @@
 # v2.1.17 Computer Use 预测试记录
 
+> **2026-10-31 当前收尾证据：** [CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md)，
+> 当前统一手测入口为 [HANDTEST.md](HANDTEST.md) 文首 C0–C5。下文是历史原始记录，
+> 早期工具不可用/未测状态不覆盖本轮真实 CU 结果；本轮未执行项也不因历史部分通过而记 PASS。
+
 > 执行环境：Windows 11；早期会话 Computer Use 可用，2026-10-27 续跑会话未暴露 Computer Use / JavaScript 工具。按 DEVELOP_WIKI §1.4，本文件先于用户
 > 统一手测记录 agent 预测试；`PASS` 不替代用户最终手测。
 

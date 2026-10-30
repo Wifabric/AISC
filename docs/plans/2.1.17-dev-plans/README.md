@@ -6,6 +6,12 @@
 
 ## 目标
 
+当前已进入用户授权的收尾：R3/R4 手测通过；发布依赖刷新已由 PR #52 合入 develop
+`bc189a3`，本地全门禁/最终干净镜像/三轮数据面与已执行 CU 均通过。
+统一回归交付及剩余项见 [CLOSEOUT.md](CLOSEOUT.md)、
+[CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md) 和 [HANDTEST.md](HANDTEST.md) 文首。
+Preview/TestPyPI 尚未发布，计划保持活动状态。
+
 把 v2.1.16 已具备的 Skills / MCP / Plugins、自更新与无代理链路从“可用”推进到
 “可安装完整、可诊断、可恢复、可长期维护”，并把反馈站 2026-10-26 的生态类反馈
 纳入同一版本闭环。
