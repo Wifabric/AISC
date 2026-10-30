@@ -64,7 +64,13 @@
   实际上传 698985810 字节资产，安装/PATH/升级/卸载保留数据 smoke 成功；publish skipped 符合无 tag 预期。
 - 只核对 GitHub artifact 元数据/digest 与实际 CI smoke，没有把远端资产下载到本机安装。
   本机显式更新 Explorer/正常 NSIS 交互沿用 10-29 预测试；新包交互安装仍待用户统一回归。
-- develop 集成 `bc189a3` 的四条 CI 独立复核结果见 CLOSEOUT.md，不能用分支成功代替。
+- 尝试下载上述 NSIS artifact 供本机候选验收，但约 699 MB 归档的下载速度过低；
+  停止本轮专用下载进程，仅保留 `release-staging/2.1.17-closeout/installer/candidate-nsis.zip.partial`。
+  下载未完成、官方 archive digest 未核验，不作为已验证安装产物，不自动执行；
+  后续在 preview/安装回归时重新获取完整包。此限制不改变 CI 真实安装 smoke 结果。
+- develop 集成 `bc189a3` 的四条 CI 均 SUCCESS，已独立核对安装/解包 smoke 与实际资产；
+  [集成证据](closeout-integration-ci-evidence.json) 保留精确 SHA 和每步结果。
+  后续只有 docs 提交，产品源码/依赖树没有继续变化。
 
 ## 保留 NOT RUN 与用户统一回归
 

@@ -24,7 +24,8 @@
 - [x] 用户宣布收尾，确认 R3/R4 手测通过。
 - [x] R4 集成 develop，集成 CI 通过（`81c43e7` 四条 CI 全成功）。
 - [x] 发布依赖重查与必要刷新验证（`cf25671`，PR #52 合入 `bc189a3`）。
-- [ ] 最终门禁、构建与统一预测试（本地门禁/最终镜像/三轮数据面及 CU 已执行项 PASS；未测项和集成 CI 见下文）。
+- [x] 最终门禁、构建与已执行统一预测试（本地门禁/最终镜像/三轮数据面及 CU 已执行项 PASS，develop 四条集成 CI 全 SUCCESS）。
+- [ ] 剩余环境/交互项补测或明确裁定（保留 NOT RUN，不以已执行项替代）。
 - [ ] 用户统一回归通过 / 剩余项明确裁定。
 - [ ] Preview / TestPyPI 发布与产物复核。
 - [ ] 计划归档与阶段账本闭环。
@@ -81,8 +82,10 @@ Release digest 和固定 commit 字节，不混用可变 latest 数据。
 - 产品 SHA `cf25671` 的 Workbench CI、三平台 sidecar、deb/dmg、NSIS 均 SUCCESS，
   已核对实际 artifact 元数据与安装/解包 smoke；[远程证据](closeout-ci-evidence.json)。
 - PR [#52](https://github.com/Wifabric/AISC/pull/52) 已合入 develop `bc189a3`。
-  精确集成 CI：Workbench `41089936055`、sidecar `41089936117` 已 SUCCESS；
-  Bundle `41089936114`、NSIS `41089936325` 正在核对，不能提前记绿。
+  精确集成 CI：Workbench `41089936055`、sidecar `41089936117`、
+  Bundle `41089936114`、NSIS `41089936325` 全部 SUCCESS；
+  [集成证据](closeout-integration-ci-evidence.json) 包含实际 artifact 和每步结果。
+  随后的收尾记录提交仅修改 docs，产品树与该已验证集成提交一致；未触发路径过滤之外的重复构建。
 - [HANDTEST.md](HANDTEST.md) 文首 C0–C5 替换旧 R2 入口；本地启动器
   `release-staging/2.1.17-closeout/start-handtest.ps1 -VerifyOnly` 校验成功；当前真窗口
   保留给用户整体回归。旧 b5 专用副本仅验证交互合同，不能冒充当前候选安装包。

@@ -4,7 +4,7 @@
 
 # v2.1.17 收尾统一预回归（2026-10-31）
 
-- PR #51 集成 `81c43e7` 四条 CI 全 SUCCESS。依赖刷新 PR #52 集成 develop `bc189a3`；分支产品 SHA `cf25671` 四条构建、三平台 sidecar parity/clean-room/SBOM、deb/dmg 非 checkout smoke、NSIS 安装/PATH/升级/卸载保留数据全部成功；集成 CI 独立检查中。
+- PR #51 集成 `81c43e7` 四条 CI 全 SUCCESS。依赖刷新 PR #52 集成 develop `bc189a3`；分支产品 SHA `cf25671` 及精确集成 SHA 的四条构建、三平台 sidecar parity/clean-room/SBOM、deb/dmg 非 checkout smoke、NSIS 安装/PATH/升级/卸载保留数据全部成功，逐步/资产证据已回写。
 - 最终干净 bundle 的 frozen CLI 无缓存镜像 `7f82194edeed…` 实测六工具版本及 geodata checksum 一致；三轮 Skills/MCP/Plugins 9/9、全部 12 phases、caveman 首装双开/升级保留 off、部分失败仅失败重试全 PASS（exit 0，532.736 秒）。CLI wheel/sdist/pipx/重复安装/off-checkout 全 PASS。
 - 收尾 CU：独立分类市场、整宽推荐卡片内联详情、来源列表、中文搜索详情、MCP 空态无多余按钮、Services 分组/排序与真实 3000/5173 网关 PASS；静态阅读单折叠/公式/表格/代码/图片降级与补齐后加载、Codex/Claude 真实旧记录各两轮四条 PASS。新锁版已认证恢复、全局 Docker/Remote/真实大历史等 NOT RUN 保留。
 - 当前隔离 Workbench 与校验式启动器已准备，HANDTEST 文首 C0–C5 为最新统一回归入口；等待用户整体回归/剩余项裁定后再 preview/TestPyPI，未归档、未 final/main。

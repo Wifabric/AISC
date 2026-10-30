@@ -1,0 +1,658 @@
+[
+  {
+    "id": 41089936055,
+    "name": "Workbench CI",
+    "sha": "bc189a3cd5dd598ef3e0e28c72b82a13634622fd",
+    "conclusion": "success",
+    "url": "https://github.com/Wifabric/AISC/actions/runs/41089936055",
+    "jobs": [
+      {
+        "name": "rust",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Linux system dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Rust",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run Swatinem/rust-cache@v2",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage sidecar stub + bundle resource for tauri-build",
+            "conclusion": "success"
+          },
+          {
+            "name": "Cargo test",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run Swatinem/rust-cache@v2",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "cli",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install CLI",
+            "conclusion": "success"
+          },
+          {
+            "name": "Python tests",
+            "conclusion": "success"
+          },
+          {
+            "name": "CLI clean-room install smoke (CLI-A01)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Baseline probe (Unix)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload baseline artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "frontend",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build (vue-tsc + vite)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Frontend tests",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12992937848,
+        "name": "baseline-manifest",
+        "size_in_bytes": 3654,
+        "digest": "sha256:b0d49c37798e599515e85ab874e386275948fb8f2078e468f00d094cb1223956",
+        "expired": false
+      }
+    ]
+  },
+  {
+    "id": 41089936117,
+    "name": "CLI sidecar build",
+    "sha": "bc189a3cd5dd598ef3e0e28c72b82a13634622fd",
+    "conclusion": "success",
+    "url": "https://github.com/Wifabric/AISC/actions/runs/41089936117",
+    "jobs": [
+      {
+        "name": "sidecar (ubuntu-latest, x86_64-unknown-linux-gnu)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Verify artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Wait for Docker engine (Windows cold-start guard)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Dual-track parity smoke (CLI-A05)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Sidecar clean-room smoke + manifest (CLI-A07)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Dependency SBOM + integrity audit (CLI-A08)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "sidecar (windows-latest, x86_64-pc-windows-msvc)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build CLI sidecar (Windows)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Wait for Docker engine (Windows cold-start guard)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Dual-track parity smoke (CLI-A05)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Sidecar clean-room smoke + manifest (CLI-A07)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Dependency SBOM + integrity audit (CLI-A08)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "sidecar (macos-latest, aarch64-apple-darwin)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Verify artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Wait for Docker engine (Windows cold-start guard)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Dual-track parity smoke (CLI-A05)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Sidecar clean-room smoke + manifest (CLI-A07)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Dependency SBOM + integrity audit (CLI-A08)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12994065815,
+        "name": "aisc-sidecar-x86_64-pc-windows-msvc",
+        "size_in_bytes": 12776656,
+        "digest": "sha256:2b8603245c54aa62a49c804248ab127a82303c56a75597403619c76e6d853aa5",
+        "expired": false
+      },
+      {
+        "id": 12993292059,
+        "name": "aisc-sidecar-x86_64-unknown-linux-gnu",
+        "size_in_bytes": 26754700,
+        "digest": "sha256:ed757316a7df2e29dc7dabfdbcd121fdc8a155c461c126fad7fec8d1896d1de9",
+        "expired": false
+      },
+      {
+        "id": 12993267047,
+        "name": "aisc-sidecar-aarch64-apple-darwin",
+        "size_in_bytes": 11629732,
+        "digest": "sha256:4968d07f66e59b63cd2a2fc4d8006ce7baf05c5602eef39e5e00a69298129e43",
+        "expired": false
+      }
+    ]
+  },
+  {
+    "id": 41089936114,
+    "name": "Bundle Linux/macOS",
+    "sha": "bc189a3cd5dd598ef3e0e28c72b82a13634622fd",
+    "conclusion": "success",
+    "url": "https://github.com/Wifabric/AISC/actions/runs/41089936114",
+    "jobs": [
+      {
+        "name": "bundle (macos-latest, aarch64-apple-darwin, dmg)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install CLI build deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Drop sidecar into externalBin dir",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage AISC CLI bundle (aisc-bundle for root discovery)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install frontend deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Linux system dependencies",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build dmg bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify bundle from a non-checkout cwd (A-INFRA-4)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload bundle artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "bundle (ubuntu-latest, x86_64-unknown-linux-gnu, deb)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install CLI build deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Drop sidecar into externalBin dir",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage AISC CLI bundle (aisc-bundle for root discovery)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install frontend deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Linux system dependencies",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build deb bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify bundle from a non-checkout cwd (A-INFRA-4)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload bundle artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12993169185,
+        "name": "aisc-workbench-ubuntu-latest",
+        "size_in_bytes": 2172940437,
+        "digest": "sha256:336a4427b6d9fbc0047444ca9dd972815ba2a8b9270c10e47015851c1ec9ea85",
+        "expired": false
+      },
+      {
+        "id": 12993083552,
+        "name": "aisc-workbench-macos-latest",
+        "size_in_bytes": 706122210,
+        "digest": "sha256:8054ce57e5625d3e5d461e2d4dcb5b487fda8bd981c87c450fceabe5081573aa",
+        "expired": false
+      }
+    ]
+  },
+  {
+    "id": 41089936325,
+    "name": "NSIS installer build",
+    "sha": "bc189a3cd5dd598ef3e0e28c72b82a13634622fd",
+    "conclusion": "success",
+    "url": "https://github.com/Wifabric/AISC/actions/runs/41089936325",
+    "jobs": [
+      {
+        "name": "NSIS installer (windows x86_64)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install CLI build deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Drop sidecar into externalBin dir",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage AISC CLI bundle (aisc-bundle for root discovery)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install frontend deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build NSIS installer (tauri downloads NSIS 3.11 automatically)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify installer artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Smoke test installed app (silent install + PATH + retention)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Publish Workbench release",
+        "conclusion": "skipped",
+        "steps": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 12993364408,
+        "name": "aisc-workbench-windows-nsis",
+        "size_in_bytes": 699001556,
+        "digest": "sha256:c5f7fef3afde5927d835b1dd2b9453c9c3770a12024f366087221494d2c0aabe",
+        "expired": false
+      }
+    ]
+  }
+]
