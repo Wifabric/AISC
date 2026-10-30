@@ -8,7 +8,7 @@
 - 空 envelope 实为旧宿主 CLI 0.1.9.dev0 pin 不支持 updates-check。补全 extensions 参数错误的 JSON 出口；Workbench 只有在同目标 stderr 确认旧 op 不支持时才用兼容随附 sidecar 重试只读检查，成功后更新旧 pin；显式 CLI、Remote 和未知失败保持原边界。
 - Python 1699/53/195 subtests、Rust 407/2 ignored、Vitest 822、vue-tsc 通过；真实旧/新冻结 CLI 恢复与显式覆盖测试另执行通过。生产 Tauri UI、冻结 CLI 与匹配镜像完成。
 - Windows CU T1–T4 PASS：旧 pin 自愈、技能/MCP/插件搜索及详情、真实插件参与更新、重复检查和服务读取、双工作区隔离、适配器不可用后恢复重试。模板简介、蓝框和长错误文案布局问题留已授权 b2。
-- 当前 b1 待远端 CI 及用户单批验收，b2–b6 未实施；未发布新 preview 或正式 final。
+- draft PR #53，产品 SHA `7c01bac` 的远端 Workbench CI（frontend/rust/cli）和三平台 CLI sidecar 全部 SUCCESS。当前 b1 待用户单批验收，b2–b6 未实施；未发布新 preview 或正式 final。
 
 # v2.1.17 preview 收尾发布（2026-10-31，已完成）
 

@@ -3,7 +3,9 @@
 ## b1（2026-10-31）
 
 结论：本地门禁、真实旧/新 CLI 恢复、Windows CU T1–T4 **PASS**。
-用户单批验收 **PENDING**；远端 CI 另记 PROGRESS，不能把 agent 结果当用户验收。
+用户单批验收 **PENDING**；不能把 agent 结果当用户验收。
+产品 SHA `7c01bac16a4d5fc619cb34cc570f72d04f5e2d55` 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/41113073318)
+与 [CLI 三平台构建](https://github.com/Wifabric/AISC/actions/runs/41113143095) 均 SUCCESS，draft PR #53。
 
 ### 产物与环境
 
