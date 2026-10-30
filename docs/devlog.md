@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 R3 扩展市场批次修复（2026-10-30）
+
+- 按 DEVELOP_WIKI 修订后的逐批验收门开题 R3：旧 adapter argparse usage 被收敛为稳定“来源维护不支持”错误；已安装空态移除第二个市场按钮；推荐页改为整宽卡片并在卡片内展开详情，搜索页保留右侧详情。
+- 根因取证发现 R2 手测实际误用 b7 `latest` 镜像。真实冻结 CLI/容器双路径验证通过：旧镜像返回 `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP` 与升级提示，新 adapter 镜像返回 4 条技能仓库。
+- 验证：Python 1693/53/186 subtests、Rust 404/1、Vitest 805、vue-tsc、生产 Vite/Tauri build 全绿。当前会话缺 `node_repl`，GUI CU 保持 NOT RUN；本批等待用户验收后再进入下一批。
+
 # v2.1.17 R2 集成验证与来源删除修正（2026-10-30）
 
 - PR #49 四轮独立审查通过，Workbench CI、三平台 CLI sidecar、Linux/macOS 安装包与 NSIS 安装/升级/卸载 smoke 初轮全部成功。

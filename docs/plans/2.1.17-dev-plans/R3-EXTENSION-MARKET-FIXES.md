@@ -92,12 +92,12 @@
 
 ### Task 4: R3 batch verification and handoff
 
-- [ ] Targeted Python + frontend tests.
-- [ ] Full frontend Vitest and production build.
-- [ ] Python tests appropriate to the touched data plane; run the full repository Python gate if runtime allows.
-- [ ] `tools/check-docs.sh`, `git diff --check`.
-- [ ] Build a direct R3 Workbench executable.
-- [ ] Attempt CU. If `node_repl` remains unavailable, record the exact blocker and all UI checks NOT RUN in `PRETEST.md`; do not fake UI evidence.
+- [x] Targeted Python + frontend tests.
+- [x] Full frontend Vitest and production build.
+- [x] Python tests appropriate to the touched data plane; run the full repository Python gate if runtime allows.
+- [x] `tools/check-docs.sh`, `git diff --check`.
+- [x] Build a direct R3 Workbench executable.
+- [x] Attempt CU. If `node_repl` remains unavailable, record the exact blocker and all UI checks NOT RUN in `PRETEST.md`; do not fake UI evidence.
 - [ ] Start the R3 build for this user's batch handtest and wait for user acceptance before any R4 work.
 
 ## R3 user handtest
@@ -109,3 +109,16 @@ Precondition: close earlier R2 windows. Launch only the provided R3 direct build
 3. In installed Skills, MCP, and Plugins tabs with no items, only “暂无内容” appears. No “打开扩展市场” button follows the empty text.
 4. Open Extension Market → Recommendations. Cards fill the content area; no permanently empty right column exists. Click one Skill, one MCP, and one Plugin recommendation in different categories. Each expands inside its own card, shows Chinese summary/metadata/evidence and “搜索市场”; clicking another card collapses the previous one; clicking again or Close collapses detail.
 5. Narrow the dialog below 720px. Recommendation cards and inline details remain readable without horizontal text overlap.
+
+## Verification evidence (2026-10-30)
+
+- TDD: Task 1 legacy argparse classifier and Task 2/3 UI contracts all failed on the pre-fix source, then passed after implementation.
+- Full local gates on final source: Python **1693 passed / 53 skipped / 186 subtests**, Rust **404 passed / 1 ignored**, Vitest **95 files / 805 tests**, and `vue-tsc --noEmit` all passed (`LOCAL GATES: ALL GREEN`).
+- Production build: `npm run build` plus Tauri release `--no-bundle` passed.
+- R3 frozen CLI: `release-staging/2.1.17-r3/pyinstaller-dist/aisc.exe`, SHA256 `3034659f4efccdc88cbfc7904219b4baf5297bf607e38effd93f127695b92b13`. Built in an isolated PyInstaller output because the older running Workbench retained inaccessible `aisc.exe` children; no user process was terminated.
+- R3 direct GUI: `release-staging/2.1.17-r3/AISC-Workbench-2.1.17-R3.exe`, SHA256 `e916416343aeb2f89d8116d438643f9bbedd29171538994d69acb1cc8a30f931`.
+- Real frozen-CLI/container smoke:
+  - Old b7 `super-claude:latest @ 610cd7ebfa39…`: `skill-repos-list` exited 1 with stable `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP` and clear upgrade/rebuild message; no argparse usage leaked.
+  - R3 adapter image `2f54fad6…`: the same op exited 0 and returned the four expected repositories.
+  - Both disposable runtimes were stopped; evidence is under `release-staging/2.1.17-r3/`.
+- CU attempt: the Computer Use skill and required guidance/confirmation docs were read, but this session exposes no `node_repl` tool, so `@oai/sky` cannot be initialized. R3 GUI layout/keyboard/focus checks remain **NOT RUN (tool unavailable)**. User batch handtest is still required.

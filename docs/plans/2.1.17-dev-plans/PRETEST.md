@@ -366,3 +366,11 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 - 数据 smoke runtime 已停止；用户 R1 容器 `4ac8ca6c9a97` 与 `latest @ 610cd7ebfa39` 保持原状。后续真实交叉市场补验：两个本地市场各安装一个测试插件，删除 aisc-r2-handtest 后插件数 2→1，保留 aisc-r2-other-plugin@aisc-r2-other 及其来源；PASS，证据 cross-market-smoke.jsonl。两个一次性容器均已停止/删除。
 
 最终集成：PR #49 → develop `6133eef`；合入后的 Workbench `40927944987`、三平台 sidecar `40927944984`、Bundle `40927944792`、NSIS `40927944887` 最终全部 SUCCESS。Bundle macOS attempt 1 依赖 staging HTTP 403 限流，单独重跑后通过；不隐去首轮失败。本段为远端自动化证据，未改变 GUI NOT RUN 或用户验收状态。
+
+## 2026-10-30 R3 扩展市场批次修复预测试
+
+- 根因证据：R2 手测数据根 `C:\\pt\\aisc-217-r2-handtest-data` 的 history/log 显示实际运行时为 `super-claude:latest @ 610cd7ebfa39…`（b7 旧 adapter），不是 R2/R3 adapter 派生镜像。旧 adapter 以 argparse usage 退出，Python 原先把它归为普通 `AISC_ERR_EXTENSIONS_EXEC_FAILED`。
+- TDD 与自动化：旧 argparse 分类、空态按钮、推荐内联展开均先失败后通过。最终全门禁 Python 1693/53/186 subtests、Rust 404/1 ignored、Vitest 95 files/805、vue-tsc 全绿；生产 Vite/Tauri direct build 通过。
+- 真实数据面：R3 冻结 CLI + 旧 b7 镜像，`skill-repos-list` exit 1 且错误码为 `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`，消息为“当前运行环境不支持扩展来源维护，请升级或重建运行时镜像”；R3 adapter 镜像同 op exit 0，返回 4 条技能仓库。两个一次性 runtime 均已停止，证据见 `release-staging/2.1.17-r3/*image*result*.json`。
+- 产物：GUI `AISC-Workbench-2.1.17-R3.exe` SHA256 `e916416343aeb2f89d8116d438643f9bbedd29171538994d69acb1cc8a30f931`；CLI SHA256 `3034659f4efccdc88cbfc7904219b4baf5297bf607e38effd93f127695b92b13`。
+- CU：已读取 Computer Use SKILL/guidance/confirmations，但当前会话无 `node_repl`，无法初始化要求的 `@oai/sky`。来源管理提示、空态视觉、推荐卡片内联展开/键盘/焦点、<720px 均为 **NOT RUN（工具不可用）**。本批等待用户按 HANDTEST R3 验收，不能进入下一批。
