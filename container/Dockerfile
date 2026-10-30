@@ -6,7 +6,7 @@
 # 使用官方轻量级 Node 镜像；国内网络可通过 --build-arg NODE_IMAGE=... 替换拉取源
 # USE_CN_MIRROR=1 时自动使用国内镜像加速（docker.1ms.run）
 ARG USE_CN_MIRROR=1
-ARG NODE_IMAGE=node:24.22.1-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9
 FROM ${NODE_IMAGE}
 
 # 是否使用国内镜像源（apt 清华 / npm 淘宝）。1=用（默认），0=用官方源。
@@ -43,14 +43,14 @@ ARG CC_SWITCH_ASSET_NAME=
 ARG CC_SWITCH_BUILD_MANIFEST=
 
 # Claude Code npm 版本（@anthropic-ai/claude-code）——A5：随 versions.env 出厂 pin（node>=22）
-ARG CLAUDE_CODE_VERSION=2.1.311
+ARG CLAUDE_CODE_VERSION=2.1.314
 
 # Codex CLI npm 版本（@openai/codex）——A5：随 versions.env 出厂 pin
-ARG CODEX_VERSION=0.164.0
+ARG CODEX_VERSION=0.166.0
 
 # AISC geodata snapshot date (not an upstream tag); immutable payload commit.
-ARG GEODATA_VERSION=20261027
-ARG GEODATA_COMMIT=02ae05ac06e8c9287916fbabfe61ef5c8591407f
+ARG GEODATA_VERSION=20261030
+ARG GEODATA_COMMIT=10f120b9f0cd1bcae8b8ff88b3f999237b919702
 
 # ==========================================
 # 1. 网络环境优化：按 USE_CN_MIRROR 决定 apt 源

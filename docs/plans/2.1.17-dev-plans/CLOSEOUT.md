@@ -28,3 +28,46 @@
 - [ ] 用户统一回归通过 / 剩余项明确裁定。
 - [ ] Preview / TestPyPI 发布与产物复核。
 - [ ] 计划归档与阶段账本闭环。
+
+## 发布依赖刷新规格（2026-10-30，D-4 原范围）
+
+本轮从 develop 集成提交 `81c43e7` 切 `codex/2.1.17-closeout` 实施。
+官方 npm latest 查询选 Codex `0.166.0`、Claude Code `2.1.314`；主包与 Linux
+companion 精确配对，沿用 stage_npm.py 的官方 SHA512 与事务替换流程。
+Node 官方计划显示 v26 已于 10-28 进入 Active LTS，采用 `26.13.0-bookworm-slim`，
+固定官方多平台 index `sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9`。
+显式 Bookworm 保持现有发行版依赖基础；宿主构建 Node 仍为 22。D-5 的时间空档已结束。
+
+GitHub 认证查询确认 cc-switch `v5.11.3`、Mihomo `v1.19.33`、Yazi `v26.9.1`
+仍为稳定最新版，保留已验证 payload。geodata 选 `20261030` 快照，固定 release
+commit `10f120b9f0cd1bcae8b8ff88b3f999237b919702`；三份文件必须同时符合官方
+Release digest 和固定 commit 字节，不混用可变 latest 数据。
+
+同步 versions.env、Dockerfile 默认 ARG、vendor manifest、payload 与校验账本；
+同步 BuildPlan 的缺配置回退默认值；既有固定版本夹具保持原样，仅更新当前默认值断言。
+保留 b7 原证据作为回退基线。刷新后执行 vendor verify、依赖/构建回归、全门禁、
+真实 no-cache 镜像构建、工具版本与 caveman 首装/显式 off 保留验证。
+最终发布构建及 CU 统一回归使用该新 bundle；任一失败先修复再推进。
+
+### 官方来源与已完成校验
+
+- Node：[官方 LTS 计划](https://github.com/nodejs/Release/blob/main/schedule.json)、
+  [26.13.0 Bookworm slim 镜像记录](https://github.com/docker-library/repo-info/blob/master/repos/node/remote/26.13.0-bookworm-slim.md)；
+  官方 registry 固定 index digest 拉取成功（dockerproxy.net TLS 超时保留为失败尝试）。
+- Codex/Claude：官方 npm exact metadata 的 SHA512 均校验成功，主包和 x64
+  companion 共四份。详细 SHA256、大小、源地址与 engines 见 closeout-dependency-payloads.json。
+- geodata：三份固定 commit 下载字节与 GitHub Release `428580064` 官方 SHA256
+  一致，全组验证后事务替换。旧快照可从 b7/develop 父提交恢复。
+- cc-switch/Mihomo/Yazi：认证 GitHub latest 查询确认版本未变，资产 SHA256
+  与 b7 记录一致。匿名 API 限流/TLS 错误未当成“没有更新”。
+- 定向依赖回归 80 passed。首次未激活 dev-env 的调用误导入旧 E: editable
+  源码，19 failed/61 passed，已纠正为显式当前 worktree PYTHONPATH；真实重跑 80 passed。
+- 首轮全测 1696 passed/1 failed，为仍固定旧发布默认值的测试；更新默认值断言后
+  staging/build 定向 48 passed。重跑全门禁：Python 1697 passed/53 skipped/191 subtests，
+  Rust 405 passed/1 ignored，Vitest 97 files/822 tests，vue-tsc 通过。
+- 冻结 CLI 构建成功。首轮镜像因本轮生成的 geodata checksum 表 CRLF 在 Linux awk
+  中匹配失败，规范为 LF 后 frozen CLI no-cache 构建成功；未修改校验算法放宽验证。
+- vendor-refresh 第二次报告 9 verified/0 missing；vendor-verify 1533 项通过。
+  首次 refresh 报告受 Windows Python stdout CRLF 干扰，使用本机 LF shim 后重跑。
+- bundle 首轮拒绝遗留的两处 caveman 测试 __pycache__；确认均为未跟踪生成缓存并清理后，
+  stage/verify 与版本检查通过。正在从最终干净 bundle 做发布形态 no-cache 构建和统一回归。

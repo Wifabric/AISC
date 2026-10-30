@@ -6,6 +6,9 @@
 
 - 用户宣布“开始收尾”，并确认“R3、R4 已手测通过，未测项留统一回归”；裁定 D-6 与 CLOSEOUT.md 已记录。既有 NOT RUN 不改成 PASS。
 - 开始最终集成、发布依赖重查与统一回归准备；preview、计划归档与正式 final 依各自门推进。
+- R4 PR #51 合入 develop `81c43e7`，集成 Workbench/三平台 sidecar/Bundle 已通过，NSIS 仍在构建。
+- D-4 发布前刷新 Codex 0.166.0、Claude 2.1.314、Active LTS Node 26.13.0（固定 Bookworm slim index digest）、geodata 20261030 固定 commit；cc-switch/Mihomo/Yazi 重查无新稳定版。四份 npm SHA512 与三份 geodata 官方 SHA256 校验通过，默认 ARG/BuildPlan/vendor 同步。
+- 全门禁 Python 1697/53/191 subtests、Rust 405/1 ignored、Vitest 822、vue-tsc 通过；冻结 CLI、vendor 1533 项、bundle stage/verify、版本检查与文档检查 39 项通过。统一实机回归与最终发布构建仍按 CLOSEOUT.md 推进。
 
 # v2.1.17 R4 Work Record 阅读与中断恢复（2026-10-30）
 
