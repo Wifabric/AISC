@@ -10,7 +10,7 @@
 `bc189a3`，本地全门禁/最终干净镜像/三轮数据面与已执行 CU 均通过。
 统一回归交付及剩余项见 [CLOSEOUT.md](CLOSEOUT.md)、
 [CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md) 和 [HANDTEST.md](HANDTEST.md) 文首。
-Preview/TestPyPI 尚未发布，计划保持活动状态。
+D-7 用户已取消剩余补测、放行 preview/TestPyPI 与归档；未测项保留 NOT RUN。执行见 [PUBLISH.md](PUBLISH.md)。
 
 把 v2.1.16 已具备的 Skills / MCP / Plugins、自更新与无代理链路从“可用”推进到
 “可安装完整、可诊断、可恢复、可长期维护”，并把反馈站 2026-10-26 的生态类反馈
@@ -28,15 +28,15 @@ Preview/TestPyPI 尚未发布，计划保持活动状态。
 
 | 批 | 内容 | 优先级 | 分支 | 终态 |
 | --- | --- | --- | --- | --- |
-| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器/远端 CI/CU 关键 UI 路径通过；H1 toast 与故障网络分支待用户统一手测 |
-| b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 代码/自动化/真实容器通过；CU 三类市场搜索与详情 PASS，断网缓存/隔离分支 NOT RUN；PR #41 已合并；待统一手测 |
-| b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `codex/2.1.17-b3-extension-operation-recovery` | 代码/审查/全门禁/b7 数据面通过；CU 超时日志与复制诊断 PASS，第二次可重试失败 NOT RUN；PR #42 已合并；待统一手测 |
-| b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化/b7 数据面通过；CU 中英文推荐与搜索路由 PASS，离线禁用态 NOT RUN；PR #43 已合并；待统一手测 |
-| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI/冻结 CLI 配对通过；CU 显式更新主路径与健康报告 PASS，诊断竞态 NOT RUN；PR #44 已合并；待统一手测 |
-| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI/CU Services 与默认态 PASS；A→B→A 隔离 NOT RUN；PR #45 已合并；待统一手测 |
-| R1 | CU 预手测修复轮：长扩展组操作独立传输 | P0 | `codex/2.1.17-r1-long-op-concurrency` | 代码/TDD/审查复审/Rust 门禁/生产构建通过；Local CU 组安装期间 Services 读取 PASS；Remote direct 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；待统一手测，详见 [R1-CU-FIXES.md](R1-CU-FIXES.md) |
-| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮数据面 9/9，CU 版本/H4/关键路径 PASS，完整三轮 UI 冒烟 NOT RUN；PR #46/#47 已合并；进入统一手测，尚未发布 |
-| R2 | 扩展 UI 重设计：分类市场、中文详情与来源维护 | P0 | `codex/2.1.17-r2-extension-ui-redesign` | 实现/审查及增量复审/本地门禁/最终 PR/develop CI、三平台 sidecar、deb/dmg/NSIS 通过；PR #49 已合入 develop `6133eef`；来源新增/删除与跨市场插件保留真实数据面通过，级联卸载双语警告已修正；剩余 CU 因当前无 node_repl 记 NOT RUN，待统一用户手测，详见 [R2-EXTENSION-UI-REDESIGN.md](R2-EXTENSION-UI-REDESIGN.md) |
+| b1 | 无代理 skill 安装/更新完整性与诊断 | P0 | `2.1.17-b1-proxyless-extension-reliability` | 代码/自动化/真实容器/远端 CI/CU 关键 UI 路径通过；H1 toast 与故障网络分支D-7 用户免补测放行 |
+| b2 | 市场元数据、已安装项更新标识与详情中文化 | P1 | `2.1.17-b2-market-metadata-update-signals` | 代码/自动化/真实容器通过；CU 三类市场搜索与详情 PASS，断网缓存/隔离分支 NOT RUN；PR #41 已合并；D-7 用户免补测放行 |
+| b3 | 扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志 | P1 | `codex/2.1.17-b3-extension-operation-recovery` | 代码/审查/全门禁/b7 数据面通过；CU 超时日志与复制诊断 PASS，第二次可重试失败 NOT RUN；PR #42 已合并；D-7 用户免补测放行 |
+| b4 | Skills / MCP / Plugins 统一推荐与发现 | P2 | `codex/2.1.17-b4-unified-extension-recommendations` | 代码/自动化/b7 数据面通过；CU 中英文推荐与搜索路由 PASS，离线禁用态 NOT RUN；PR #43 已合并；D-7 用户免补测放行 |
+| b5 | 网络、显式自更新与版本配对健康报告 | P1 | `codex/2.1.17-b5-update-health-report` | 代码/审查/全门禁/远端 CI/冻结 CLI 配对通过；CU 显式更新主路径与健康报告 PASS，诊断竞态 NOT RUN；PR #44 已合并；D-7 用户免补测放行 |
+| b6 | Services 标签补齐与 caveman 默认开启修复 | P1 | `codex/2.1.17-b6-service-caveman-defaults` | 代码/审查/全门禁/真实容器/远端 CI/CU Services 与默认态 PASS；A→B→A 隔离 NOT RUN；PR #45 已合并；D-7 用户免补测放行 |
+| R1 | CU 预手测修复轮：长扩展组操作独立传输 | P0 | `codex/2.1.17-r1-long-op-concurrency` | 代码/TDD/审查复审/Rust 门禁/生产构建通过；Local CU 组安装期间 Services 读取 PASS；Remote direct 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；D-7 用户免补测放行，详见 [R1-CU-FIXES.md](R1-CU-FIXES.md) |
+| b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮数据面 9/9，CU 版本/H4/关键路径 PASS，完整三轮 UI 冒烟 NOT RUN；PR #46/#47 已合并；D-7 用户免补测放行，preview 发布中 |
+| R2 | 扩展 UI 重设计：分类市场、中文详情与来源维护 | P0 | `codex/2.1.17-r2-extension-ui-redesign` | 实现/审查及增量复审/本地门禁/最终 PR/develop CI、三平台 sidecar、deb/dmg/NSIS 通过；PR #49 已合入 develop `6133eef`；来源新增/删除与跨市场插件保留真实数据面通过，级联卸载双语警告已修正；剩余 CU 因当前无 node_repl 记 NOT RUN，D-7 用户免补测放行，详见 [R2-EXTENSION-UI-REDESIGN.md](R2-EXTENSION-UI-REDESIGN.md) |
 | R3 | 扩展市场批次修复：旧 runtime 来源提示、空态按钮与推荐内联详情 | P0 | `codex/2.1.17-r3-extension-market-fixes` | TDD/完整门禁/最终生产构建/真实旧镜像负向与新镜像正向数据面通过；独立审查最终 Critical=0/Important=0，PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；早期 CU 环境阻塞记录保留；2026-10-30 用户已确认 R3 手测通过，详见 [R3-EXTENSION-MARKET-FIXES.md](R3-EXTENSION-MARKET-FIXES.md) |
 | R4 | Work Record 友好阅读与中断恢复 | P0 | `codex/2.1.17-r4-work-record-reading` | TDD/全门禁/冻结 CLI/最终生产构建通过；真 CU 阅读、公式/链接及已认证 Codex/Claude 进程/容器中断恢复 PASS，CLI 同 native ID 召回原上下文 PASS，真实阅读器两轮问答完整；PR #51 已合入 develop `81c43e7`，分支 CI SUCCESS；2026-10-30 用户确认本批手测通过，未测项留收尾统一回归，详见 [R4-WORK-RECORD-READING.md](R4-WORK-RECORD-READING.md) |
 
