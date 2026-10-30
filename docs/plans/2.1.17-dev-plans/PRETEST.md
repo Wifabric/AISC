@@ -402,6 +402,6 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 
 早先 R3 尝试坐标失败是工具返回两截图区域而误选 12×12 的 icon 区域；R4 明确选择 `screenshot-1` 主窗口后可操作。部分 UIA 点击中心偏差，改用新截图真实坐标并再次观察结果。本记录不延伸为 R3 已验收。
 
-补充验证：最终 CSS 后阅读/runtime targeted 29 passed、vue-tsc 与 Tauri 生产构建通过。PR #51 为 draft；首轮产品提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS。召回首试在 TUI 尚未释放写锁时被上游拒绝；确认进程退出后重试成功，未同时写入同一会话。
+补充验证：最终 CSS 后阅读/runtime targeted 29 passed、vue-tsc 与 Tauri 生产构建通过。PR #51 为 draft；首轮产品提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS；公式修复提交 df33296 的 Workbench CI 41022607098 SUCCESS（https://github.com/Wifabric/AISC/actions/runs/41022607098）。召回首试在 TUI 尚未释放写锁时被上游拒绝；确认进程退出后重试成功，未同时写入同一会话。
 
 整体 R4 不标完成，Claude 已认证恢复及表中环境项目尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。
