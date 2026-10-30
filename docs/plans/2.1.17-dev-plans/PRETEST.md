@@ -376,3 +376,24 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 - CU：已读取 Computer Use SKILL/guidance/confirmations，但当前会话无 `node_repl`，无法初始化要求的 `@oai/sky`。来源管理提示、空态视觉、推荐卡片内联展开/键盘/焦点、<720px 均为 **NOT RUN（工具不可用）**。独立审查初轮发现的 Close/焦点、native button 内容模型、测试覆盖与五 op 覆盖均已修复；ARIA 复审项亦已修复。最终审查 Critical=0/Important=0，PR #50 精确产品头 Workbench CI `40989333294` SUCCESS。最终 CLI 对旧 b7 镜像复测仍稳定返回 unsupported。本批等待用户按 HANDTEST R3 验收，不能进入下一批。
 
 R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三平台 sidecar `40990054524`、Bundle deb/dmg `40990054583` 全部 SUCCESS；NSIS `40990054531` attempt 1 在依赖 staging 遇 npm `HTTP 403 rate limit exceeded`，仅重跑失败 job，attempt 2 安装/PATH/升级/卸载 smoke SUCCESS。首败证据保留，源码未改。用户 R3 手测仍待完成。
+
+
+## R4 Work Record 阅读 / 中断恢复预测试（2026-10-30，本批未验收）
+
+运行 Windows 11，Computer Use `node_repl + @oai/sky`。最终 GUI `AISC-Workbench-2.1.17-R4.exe` SHA256 `6ac8574ea8238aabd6aac09186c8f601c98c19dfcab22dcecec521109d9a3aa9`；冻结 CLI `59790567d0a1c4d4e7d679d9a2168403049c630eb97e82f86e434ab2b3d47ca9`；adapter `97464109…`；镜像 `2f54fad6…`。完整 hash 在 R4 artifacts.json。工作区 `C:/pt/aisc-r4-reader-workspace`，数据根 `C:/pt/aisc-217-r4-handtest-data`；不使用用户记录和凭据。
+
+| 检查 | 实际操作与证据 | 结果 |
+| --- | --- | --- |
+| 原生启动 | 选工作区→下一步→启动，Docker/镜像等均“通过”；出现真实 Bash 与 Work Record 列表 | PASS |
+| Codex 阅读 | 点击未归档 Codex 记录标题；UIA 对话框标题匹配，`第 1–5 条 / 共 5 条`；Markdown 表格、任务、MathML、代码、图片节点在真实冻结 CLI/IPC 输出中出现 | PASS |
+| 单轮执行折叠 | `思考与执行 3 项`→exec_command，UIA `工具结果`、`Process exited with code 0 result = 1/3`；主答案仍在折叠项外 | PASS |
+| Claude 多模态 | 点击 Claude 记录；标题匹配，图片节点 image / 本地图片，`思考与执行 1 项`，完整答案；1px 图片不是大图视觉验证 | PASS |
+| 组件生产版 | 两主题 × 1440/768/390，修正深色链接/关键字对比度；例外见 R4 计划，0 FAIL / 1 阅读留白 WARN。链接/复制以可见 harness 输出核对参数，Escape 关闭 | PASS（组件级） |
+| 冻结记录读取 | list=2、Codex read=5、Claude read=3（附件1）；均 preflight 成功。人为损坏尾行→resumable=true / malformed_lines=1；读取前后 hash 相同，夹具最终已恢复 | PASS（CLI级） |
+| 停止后重启原 runtime | 宿主只 stop 隔离容器 c4da83e8aa5d；Work Record Codex ▶ 后 docker ps 同一 ID 再 running，runtime df5c8f56-ea51-4ad2-9a77-14682db0e9e7；原 Bash 退出 | PASS（至引导） |
+| 已认证原生继续对话 | 隔离环境无 Provider，UI 显示 `Codex 未配置` / `codex 需要登录`；未自动操作官方登录、未复制宿主凭据 | NOT RUN：需用户自行配置测试认证 |
+| 完整 Docker 引擎断连 / 真实大历史 / Remote | 不停止全局 Docker，不影响用户已有容器；Remote 真实 SSH 和长历史 UI 不在本次隔离夹具中 | NOT RUN；自动化覆盖错误/分页/代际路径 |
+
+早先 R3 尝试坐标失败是工具返回两截图区域而误选 12×12 的 icon 区域；R4 明确选择 `screenshot-1` 主窗口后可操作。部分 UIA 点击中心偏差，改用新截图真实坐标并再次观察结果。本记录不延伸为 R3 已验收。
+
+本地门禁与测试数见 R4 计划；真实认证恢复尚未验证，整体 R4 不标 PASS/完成，不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。

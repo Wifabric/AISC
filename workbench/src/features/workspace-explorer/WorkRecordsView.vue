@@ -566,6 +566,7 @@ watch(() => props.workspace, async (workspace) => {
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(row.member.member_key)">✎</button>
               <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.remove')" :aria-label="t('workRecords.remove')" @click.stop="removeMember(collection.id, row.member.agent, row.member.conversation_id)">✕</button>
             </li>
+            <li v-if="memberVisible(row) && explorer.resumeErrors[row.member.conversation_id]" class="record-resume-error" role="alert">{{ explorer.resumeErrors[row.member.conversation_id] }}</li>
           </template>
         </ul>
         <p v-if="!collapsedCollections.has(collection.id) && !collection.members.length" class="work-record-no-members">{{ t("workRecords.noMembers") }}</p>
@@ -604,10 +605,10 @@ watch(() => props.workspace, async (workspace) => {
               <button class="ui-icon-button sm" type="button" :disabled="!row.conversation.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" :data-testid="'resume-' + unfiledKey(row.conversation)" @click.stop="explorer.resumeConversation(row.conversation)">▶</button>
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(unfiledKey(row.conversation))">✎</button>
             </div>
+            <p v-if="unfiledVisible(row) && explorer.resumeErrors[row.conversation.conversation_id]" class="record-resume-error" role="alert">{{ explorer.resumeErrors[row.conversation.conversation_id] }}</p>
           </template>
         </div>
       </section>
-
 
       <section v-if="records.failures().length" class="work-record-failures" data-testid="delete-failures">
         <h4>{{ t("workRecords.failures") }}</h4>
@@ -651,6 +652,7 @@ watch(() => props.workspace, async (workspace) => {
 
 <style scoped>
 .work-records-panel { gap: var(--space-2); overflow: auto; width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
+.record-resume-error { color: var(--error, var(--text-2)); white-space: normal !important; overflow-wrap: anywhere; font-size: var(--font-sm); padding: 6px; }
 .work-record-switches { display:flex; align-items:center; gap:var(--space-1); flex-wrap:wrap; }
 .work-record-checkbox { display:inline-flex; gap:4px; align-items:center; font-size:var(--font-sm); }
 .work-record-create { display:flex; gap:var(--space-1); }

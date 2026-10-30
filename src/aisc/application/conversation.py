@@ -9,9 +9,10 @@ filename carries the id).
 Oversized files (>10MB) are never fully parsed: a streaming head scan of
 the first 200 parseable lines yields title/time, ``message_count`` stays
 ``null`` and the entry is annotated ``file_too_large``. Malformed JSON
-lines are skipped; a file with at least one parseable user message but
-some corrupt lines is annotated ``malformed`` and kept, ``resumable:
-false``. Entries with zero parseable user messages are excluded.
+lines are skipped. R4: scan limits and a damaged tail do not disable native
+provider resume for a file with parseable user messages. The reader reports
+malformed/omitted entries; provider files stay untouched. Entries with zero
+parseable user messages are excluded.
 
 D-5 (decisions.md): conversation ids are provider-native — Codex uses
 time-ordered UUIDv7 in the wild (see the frozen T0 codex fixtures), so id
@@ -22,6 +23,7 @@ still rejected (the check's stated intent).
 from __future__ import annotations
 
 import json
+from collections import deque
 import os
 import re
 from dataclasses import dataclass
@@ -303,16 +305,9 @@ def _summarize(agent: str, conv_id: str, file_size: int,
     excluded from the list (zero parseable user messages)."""
     if scan.user_messages == 0:
         return None
-    resumable = True
-    reason: Optional[str] = None
     message_count: Optional[int] = scan.user_messages
     if file_size > MAX_JSONL_BYTES:
-        resumable = False
-        reason = "file_too_large"
         message_count = None  # head scan only — a full count was not taken
-    elif scan.malformed_seen:
-        resumable = False
-        reason = "malformed"
     entry: Dict[str, Any] = {
         "conversation_id": conv_id,
         "agent": agent,
@@ -321,11 +316,11 @@ def _summarize(agent: str, conv_id: str, file_size: int,
         "last_at": scan.last_ts,
         "message_count": message_count,
         "file_size": file_size,
-        "resumable": resumable,
+        # The list's parser budget is not a provider resume limit. A partial
+        # final write after a crash must not grey out the Resume action.
+        "resumable": True,
         "parent_thread_id": scan.parent_thread_id,
     }
-    if not resumable:
-        entry["unavailable_reason"] = reason
     return entry
 
 
@@ -574,9 +569,9 @@ def rename_conversation(workspace: str, conversation_id: str, agent: str,
 # ---------------------------------------------------------------------------
 
 CONVERSATION_READ_SCHEMA = "aisc.conversation-read/v1"
-_READ_TEXT_CAP = 8000     # per user/assistant message (chars)
-_READ_REASONING_CAP = 4000
-_READ_TOOL_CAP = 4000     # per tool_use input / tool_result output
+_READ_TEXT_CAP = 256_000   # preserve complete long-form Markdown answers
+_READ_REASONING_CAP = 32_000
+_READ_TOOL_CAP = 32_000
 _READ_MAX_MESSAGES = 4000  # hard bound on the rendered stream
 
 
@@ -635,6 +630,29 @@ def _read_summary_text(summary: Any) -> Optional[str]:
     return None
 
 
+def _read_attachment(block: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep non-text objects visible without interpreting executable content."""
+    bt = str(block.get("type", "attachment"))
+    kind = "image" if "image" in bt else "audio" if "audio" in bt else "video" if "video" in bt else "file"
+    source = block.get("source")
+    source = source if isinstance(source, dict) else {}
+    url = block.get("image_url") or block.get("file_url") or block.get("url") or source.get("url") or block.get("path")
+    if isinstance(url, dict):
+        url = url.get("url")
+    mime = source.get("media_type") or block.get("mime_type")
+    if source.get("type") == "base64" and isinstance(source.get("data"), str) and isinstance(mime, str):
+        url = f"data:{mime};base64,{source['data']}"
+    attachment: Dict[str, Any] = {
+        "kind": kind,
+        "name": _read_cap(block.get("filename") or block.get("title") or block.get("name") or bt, 256),
+    }
+    if isinstance(url, str) and len(url) <= 12_000_000:
+        attachment["url"] = url
+    else:
+        attachment["detail"] = _read_cap(_read_as_text(block), _READ_TOOL_CAP)
+    return attachment
+
+
 def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     """One codex rollout line → zero or more rendered entries. Rendered:
     user/assistant messages, reasoning summaries, function calls/results.
@@ -649,39 +667,44 @@ def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     kind = payload.get("type")
     if kind == "message":
         role = payload.get("role")
-        if role == "user":
-            text = _read_join_text(payload.get("content"), "input_text")
-            if not text or not text.strip():
-                return []
-            if _CONTEXT_TITLE_RE.match(text.lstrip()):
-                return []
-            return [{"role": "user", "kind": "message", "text": text, "ts": ts}]
-        if role == "assistant":
-            text = _read_join_text(payload.get("content"), "output_text")
-            if not text or not text.strip():
-                return []
-            return [{"role": "assistant", "kind": "message", "text": text, "ts": ts}]
-        return []
+        if role not in ("user", "assistant"):
+            return []
+        content = payload.get("content")
+        text = _read_join_text(content, "input_text" if role == "user" else "output_text") or ""
+        if role == "user" and _CONTEXT_TITLE_RE.match(text.lstrip()):
+            return []
+        attachments = [_read_attachment(b) for b in content if isinstance(b, dict) and b.get("type") not in ("input_text", "output_text")] if isinstance(content, list) else []
+        if not text.strip() and not attachments:
+            return []
+        entry = {"role": role, "kind": "message", "text": text, "ts": ts}
+        if attachments:
+            entry["attachments"] = attachments
+        if isinstance(payload.get("phase"), str):
+            entry["phase"] = payload["phase"]
+        return [entry]
     if kind == "reasoning":
         text = _read_summary_text(payload.get("summary"))
         if not text:
             return []
         return [{"role": "assistant", "kind": "reasoning", "text": text, "ts": ts}]
-    if kind == "function_call":
+    if kind in ("function_call", "custom_tool_call", "local_shell_call", "web_search_call"):
         name = payload.get("name")
         call_id = payload.get("call_id")
         return [{
             "role": "assistant", "kind": "tool_use",
             "name": name if isinstance(name, str) else "tool",
-            "text": _read_as_text(payload.get("arguments")),
+            "text": _read_as_text(payload.get("arguments", payload.get("input", payload.get("action")))),
             "call_id": call_id if isinstance(call_id, str) else None,
             "ts": ts,
         }]
-    if kind == "function_call_output":
+    if kind in ("function_call_output", "custom_tool_call_output"):
         call_id = payload.get("call_id")
+        output = payload.get("output")
+        attachments = [_read_attachment(b) for b in output if isinstance(b, dict) and b.get("type") not in ("text", "input_text", "output_text")] if isinstance(output, list) else []
         return [{
             "role": "tool", "kind": "tool_result",
-            "text": _read_as_text(payload.get("output")),
+            "text": _read_join_text(output, "text") if isinstance(output, list) else _read_as_text(output),
+            "attachments": attachments,
             "call_id": call_id if isinstance(call_id, str) else None,
             "ts": ts,
         }]
@@ -738,13 +761,23 @@ def _read_entries_claude(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
             elif bt == "tool_result":
                 inner = block.get("content")
                 text = inner if isinstance(inner, str) else _read_join_text(inner, "text")
+                attachments = [_read_attachment(b) for b in inner if isinstance(b, dict) and b.get("type") != "text"] if isinstance(inner, list) else []
                 call_id = block.get("tool_use_id")
                 out.append({
                     "role": "tool", "kind": "tool_result",
                     "text": text,
+                    "attachments": attachments,
                     "call_id": call_id if isinstance(call_id, str) else None,
                     "ts": ts,
                 })
+            elif bt != "redacted_thinking":
+                # Image-only user entries must remain a user turn too.
+                attachment = _read_attachment(block)
+                if out and out[-1]["kind"] == "message":
+                    out[-1].setdefault("attachments", []).append(attachment)
+                else:
+                    out.append({"role": role, "kind": "message", "text": "", "ts": ts,
+                                "attachments": [attachment]})
     return out
 
 
@@ -785,7 +818,8 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
             error_code=ERROR_UNRESUMABLE,
         )
     extract = _READ_EXTRACTORS[agent]
-    entries: List[Dict[str, Any]] = []
+    entries: deque[Dict[str, Any]] = deque(maxlen=_READ_MAX_MESSAGES)
+    omitted_entries = 0
     malformed_lines = 0
     try:
         fh = path.open("r", encoding="utf-8", errors="replace")
@@ -808,8 +842,8 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
             if not isinstance(obj, dict):
                 continue
             for entry in extract(obj):
-                if len(entries) >= _READ_MAX_MESSAGES:
-                    break  # stream bound; the tail window still pages correctly
+                if len(entries) == _READ_MAX_MESSAGES:
+                    omitted_entries += 1
                 entries.append(entry)
     # Pair tool results into their calls (nearest preceding unmatched match);
     # unpaired results stay standalone so nothing is silently dropped.
@@ -821,6 +855,8 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
             call = open_calls.get(entry["call_id"])
             if call is not None and "result" not in call:
                 call["result"] = entry.pop("text")
+                if entry.get("attachments"):
+                    call["result_attachments"] = entry["attachments"]
                 entry["consumed"] = True
     rendered = [e for e in entries if not e.get("consumed")]
     for i, entry in enumerate(rendered):
@@ -854,4 +890,5 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
         "messages": rendered[start:end],
         "malformed_lines": malformed_lines,
         "degraded_reason": "malformed" if malformed_lines else None,
+        "omitted_entries": omitted_entries,
     }

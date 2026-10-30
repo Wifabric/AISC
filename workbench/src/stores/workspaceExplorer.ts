@@ -25,12 +25,17 @@ import {
   workspaceCreateFile,
   workspaceList,
   workspaceOpen,
+  workspaceReadImage,
   workspaceRename,
   workspaceReveal,
   workspaceWatchStart,
   workspaceWatchStop,
 } from "../lib/ipc";
 import { useSettingsStore } from "./settings";
+import { i18n } from "../i18n";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { recordLink } from "../features/history/conversationReading";
 import type {
   ArtifactRecord,
   ConversationSummary,
@@ -194,6 +199,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     /** Per-conversation inline resume error (preflight failure keeps the
      *  layout — no tab is created; design §1c). */
     resumeErrors: {} as Record<string, string>,
+    resumePending: {} as Record<string, boolean>,
     /** 批 2 聊天式 UI: the conversation the read-only viewer overlay is
      *  open on (null = closed). The viewer component owns its own paging
      *  state; this only anchors the overlay + its title. */
@@ -754,31 +760,47 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
      *  Returns true when the resume tab was created. */
     async resumeConversation(c: ConversationSummary, forkSession = false): Promise<boolean> {
       if (!this.workspace) return false;
+      const requestWorkspace = this.workspace;
+      const pendingKey = `${requestWorkspace}:${c.agent}:${c.conversation_id}`;
+      if (this.resumePending[pendingKey]) return false;
+      this.resumePending[pendingKey] = true;
       delete this.resumeErrors[c.conversation_id];
       try {
         await conversationPreflight(this.workspace, c.conversation_id, c.agent);
+        const { useRuntimeStore } = await import("./runtime");
+        const runtime = useRuntimeStore();
+        if (this.workspace !== requestWorkspace || runtime.workspace !== requestWorkspace) return false;
+        await runtime.prepareConversationResume();
+        if (this.workspace !== requestWorkspace || runtime.workspace !== requestWorkspace) return false;
+        const live = !forkSession ? runtime.findLiveResumeTab?.(c.conversation_id) : null;
+        if (live) {
+          const matching = Object.entries(live.panes).find(([, pane]) =>
+            pane.resumeConversationId === c.conversation_id && !pane.resumeForkSession &&
+            ["running", "starting"].includes(pane.sessionState));
+          runtime.activateTab(live.tabId);
+          if (matching) runtime.setActivePane(live.tabId, matching[0]);
+          return true;
+        }
+        const recoverable = !forkSession ? runtime.findRecoverableResumePane?.(c.conversation_id) : null;
+        if (recoverable) {
+          runtime.setActivePane(recoverable.tabId, recoverable.paneId);
+          runtime.openTab(recoverable.tabId, c.conversation_id);
+          return true;
+        }
+        const created = runtime.createTab(c.agent, c.conversation_id, forkSession);
+        if (!created) this.resumeErrors[c.conversation_id] = i18n.global.t("history.viewer.tabLimit");
+        return created !== null;
       } catch (e) {
         // WorkbenchError serializes { code, message }; prefer its message.
         const msg =
           e && typeof e === "object" && "message" in e
             ? String((e as { message?: unknown }).message)
             : String(e);
-        this.resumeErrors[c.conversation_id] = msg;
+        if (this.workspace === requestWorkspace) this.resumeErrors[c.conversation_id] = msg;
         return false;
+      } finally {
+        delete this.resumePending[pendingKey];
       }
-      const { useRuntimeStore } = await import("./runtime");
-      const runtime = useRuntimeStore();
-      // A live tab that already resumed this conversation: activate it
-      // instead of spawning a duplicate resume — the provider refuses a
-      // second resume of a live session (手测反馈).
-      // A fork intentionally creates a new provider session, so a live tab
-      // resuming the source conversation must not hijack the action.
-      const live = !forkSession ? runtime.findLiveResumeTab?.(c.conversation_id) : null;
-      if (live) {
-        runtime.activateTab(live.tabId);
-        return true;
-      }
-      return runtime.createTab(c.agent, c.conversation_id, forkSession) !== null;
     },
 
     /** Rename a conversation (手测反馈 #2): persists a title override in the
@@ -804,6 +826,21 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       if (!this.workspace) return;
       await workspaceOpen(this.workspace, relativePath);
     },
+
+    async readRecordImage(relativePath: string, workspace?: string): Promise<string> {
+      const root = workspace ?? this.workspace;
+      if (!root) throw new Error("no workspace");
+      return workspaceReadImage(root, relativePath);
+    },
+
+    async openRecordLink(url: string, workspace: string): Promise<void> {
+      const link = recordLink(url, workspace);
+      if (!link || link.kind === "anchor") throw new Error(i18n.global.t("history.viewer.linkUnavailable"));
+      if (link.kind === "web") await openUrl(link.url);
+      else await workspaceOpen(workspace, link.path);
+    },
+
+    async copyRecordText(text: string): Promise<void> { await writeText(text); },
 
     async revealFile(relativePath: string) {
       if (!this.workspace) return;

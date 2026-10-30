@@ -223,6 +223,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
     reopenTab: fwdFn("reopenTab"),
     createTab: fwdFn("createTab"),
     findLiveResumeTab: fwdFn("findLiveResumeTab"),
+    findRecoverableResumePane: fwdFn("findRecoverableResumePane"),
+    prepareConversationResume: fwdFn("prepareConversationResume"),
     resolvePendingConversationAssociations: fwdFn("resolvePendingConversationAssociations"),
     closeLiveConversationSessions: fwdFn("closeLiveConversationSessions"),
     removeTab: fwdFn("removeTab"),

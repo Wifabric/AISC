@@ -97,4 +97,5 @@ error_log/
 release-staging/
 .pnpm-store/
 .containers.lock
+workbench/.taste-skill/
 /containers.json

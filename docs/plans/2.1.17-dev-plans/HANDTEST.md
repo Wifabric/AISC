@@ -218,3 +218,65 @@ aisc-web-expose 3000 --name "docs preview"
 3. 依次切到已安装 Skills/MCP/Plugins 且均无内容。理想：每个空态只有“暂无内容”，后面没有“打开扩展市场”按钮；工具栏仍有一个“扩展市场”。
 4. 推荐页切六个分类，各分类仍正好 10 条。卡片占满内容区，右侧没有固定空白详情栏。分别单击技能、MCP、插件推荐：详情在同一卡片内展开，包含中文简介、身份/来源、热度/证据和“搜索市场”；点另一张卡时上一张收起；再次点击当前卡或 Close 收起。
 5. 将弹窗宽度压到 720px 以下。理想：推荐卡片与内联详情无横向文字重叠，键盘可到达卡片和动作。
+
+
+## R4 Work Record 阅读与中断恢复（单批验收）
+
+前置：只验收本批，R3 未自动判为通过。Docker 已运行。使用 R4 direct build 和 R4 冻结 CLI；启动脚本校验 SHA256，独立数据根不会显示用户原工作区历史。
+
+```powershell
+$Repo = 'C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC'
+$R4 = Join-Path $Repo 'release-staging\2.1.17-r4'
+$R4Workspace = 'C:\pt\aisc-r4-reader-workspace'
+$R4Cli = Join-Path $R4 'aisc-r4.exe'
+& (Join-Path $R4 'start-handtest.ps1')
+```
+
+首页填 `$R4Workspace` → 下一步 → 启动。镜像 `super-claude:2.1.17-r3-final` / 当前等价 latest，ID 应为 `2f54fad6…`。已经打开 R4 则使用现有窗口；不要打开多个同工作区窗口。纯阅读不需要 Provider 认证；恢复连续对话需要用户在这个隔离环境自行配置 Codex/Claude Provider，不要把演示夹具当作已认证会话。
+
+### R4-T1 静态阅读和单轮折叠
+
+1. 左侧“工作记录” → “未归档会话” → 单击 `R4 阅读预检：请汇总计算结果并附上报告。` 标题（不是右侧 ▶）。
+2. 理想：弹窗标题、Codex、用户问题与答案一次出现，页脚 `第 1–5 条 / 共 5 条`、`会话阅读 · 只读快照`；没有输入框、播放/阶段切换、自动跟随输出。
+3. 理想：问答之间恰有一个默认收起的 `思考与执行 3 项`。点开后看到思考过程、过程说明、exec_command；再点 exec_command，看到 `{"cmd":"python calculate.py"}` 和工具结果 `Process exited with code 0` / `result = 1/3`。收起再打开不丢正文。
+4. 异常：工具调用在主问答区散成多条，最终答案被折进执行项、正文逐字播放、不同会话串页，记 FAIL。
+
+### R4-T2 富文本、附件、链接与窄窗
+
+1. 在 T1 弹窗向下阅读。理想：标题、粗体、两列表格、勾选任务、行内 E=mc² 与独立积分公式、引用、Python 高亮代码、脚注可读；代码有“复制代码”，点击后显示“已复制”，粘贴应为原 Python 代码。
+2. 点击“打开本地报告”。理想：系统关联程序打开 `$R4Workspace\reports\result.md`，内容 `R4 本地文件链接打开成功。`；点击“项目网站”，系统浏览器打开 `https://github.com/Wifabric/AISC`。不存在/越界文件只显示打不开的提示，不执行任意路径。
+3. 关闭后点 `R4 Claude 阅读预检：请说明这张图。`。理想：Claude Code、图片附件、一个 `思考与执行 1 项` 和完整答案可见；1px 演示图片视觉很小，但不显示“图片不可用”。真实较大图片需另用含图片的用户会话复核。
+4. 在设置切换明/暗主题，再打开记录；将窗口还原缩窄。理想：正文不挤进右栏，表格/长代码在各自内部横向滚动；关闭、展开和链接仍可操作，深色链接可读。Tab 留在弹窗，Escape 关闭并回到原触发点。
+5. 异常：公式变成乱码、图片静默丢弃、网页抢占阅读页、深色链接看不清、整页横向溢出、键盘无法退出，记 FAIL。
+
+### R4-T3 进程中止后继续原会话（认证前置）
+
+1. 用户自行在隔离环境配置 Codex/Claude；各新建真实会话发一个容易核对的问题，例如“请记住本次标记 R4-RESUME-1030”。确认回答写入 Work Record，记录对应 provider-native ID。
+2. 通过 CLI 正常退出或在该测试会话终止进程；再在“工作记录”找到同一条记录点 ▶ 恢复。
+3. 理想：恢复原会话上下文，继续询问标记能得到相同值；不会新建空白对话。已经恢复且仍运行时重复点 ▶ 应激活同一 pane，不重复创建标签。
+4. 分屏打开一个 Bash 后切到 Bash，再点原记录 ▶。理想：激活对应 Codex/Claude pane，不停留在旁边 Bash。
+5. 异常：引导重试后变新会话、恢复按钮永久禁用、重复恢复开出多个标签、错误没有行内提示，记 FAIL。尚未认证时显示登录/Provider 引导属于环境前置未满足，不算连续会话通过。
+
+### R4-T4 容器停止后恢复原 runtime（只动隔离容器）
+
+1. T3 测试会话存盘后，在宿主 PowerShell 先识别本工作区容器，检查名称/runtime ID，禁止停止其它工作区：
+
+```powershell
+docker ps --filter label=io.aisc.workspace-key=c3e3bcd645d5674ac2fc35142c6142fdf8ed9aaae6602a0818bee21a66f7b2b2 --format '{{.ID}} {{.Names}}'
+# 本次预检实例 c4da83e8aa5d；若已重建必须换成上一步实际返回的 ID。
+$R4Container = 'c4da83e8aa5d'
+docker inspect $R4Container --format '{{ index .Config.Labels "io.aisc.runtime-id" }}'
+docker stop --timeout 2 $R4Container
+```
+
+2. Work Record 点原记录 ▶。理想：只重启原容器，容器 ID/runtime ID 不变；成功后恢复相同 provider-native ID。旧 Bash/PTY 结束不会挡住恢复，也不删除记录。
+3. Docker 引擎确实不可用时，应显示行内可重试错误，不创建空标签。引擎恢复后可再点 ▶。本项不要为测试主动退出整个 Docker Desktop，以免打断其它工作区。
+4. 异常：自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。认证后的完整恢复为本批剩余实机验证项；CU 已确认停止 → 同一容器重启 → Codex 认证引导。
+
+### R4-T5 长记录与切换保护
+
+1. 用一条含长答案、多轮工具或图片的真实用户记录打开预览，滚动并点“加载更早的消息”。理想：旧内容插入后当前位置保持，问答次序一致；若记录超出读取预算/有损坏行，出现明确部分读取提示。
+2. 连续关闭/打开不同记录，再切换工作区。理想：旧请求不覆盖新标题/内容，换工作区时阅读弹窗关闭；JSONL 不被阅读器改写。
+3. 异常：缺尾部但标完整、旧结果覆盖、无限忙碌、切工作区仍显示上个工作区文件，记 FAIL。
+
+记录每项 PASS / FAIL / NOT RUN、提供商、实际会话 ID、容器 ID、按钮与文案；本批用户验收未完成前不进入下一批。
