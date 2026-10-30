@@ -397,11 +397,12 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 | Codex 上下文召回 | 关闭测试标签并确认 provider 进程退出后，执行 `codex exec resume --skip-git-repo-check --json <同 native ID>`，问题只问“之前让我记住的标记是什么”，不含标记值。thread.started ID 不变、答案 `R4-RESUME-1030-CODEX`、turn.completed。日志 C:/pt/aisc-r4-codex-recall.jsonl。随后 CU 点击该真实记录标题，阅读器显示两轮完整问答、两次相同标记、`第 1–4 条 / 共 4 条` | PASS（CLI 召回 + CU 阅读，未在 GUI 终端自动输入） |
 | 原生链接/复制/键盘 | 首轮复制按钮变“已复制”；文本报告启动 `result.txt - Notepad`；Escape 关闭。FINAL 点击“项目网站”后系统 Chrome 标题 `Wifabric/AISC - Google Chrome`。本机 .md 无默认关联，测试用 .txt 成功路径 | PASS；.md 关联为宿主前置 |
 | 公式增量修复 | FINAL 阅读预览点击滚动条下翻，完整积分/上下标可见且无内部竖滚动条。生产组件测量公式 clientHeight/scrollHeight=61/61，overflowY=hidden；最终 1440/768/390 检查 0 FAIL/1 留白 WARN，已看桌面/手机截图 | PASS |
-| Claude 已认证继续对话 | 当前 runtime 的 provider current 仍为 default / official-direct / login_required（2026-10-30T07:20:04Z）；未自动登录。已通知用户补配 Claude；此前无认证的阅读/附件测试保持 PASS | NOT RUN：Claude 认证前置未满足 |
+| Claude 已认证初始对话 | 用户补配后 provider current 为 codesome-v3 / cc-switch-proxy / configured（2026-10-30T08:27:04Z）。原生 `claude -p --output-format json --session-id 14972c8d-4c11-4da7-80c9-420dd2b09e8a` 成功回答 `R4-RESUME-1030-CLAUDE`、is_error=false。冻结 reader 返回 total=2 / malformed_lines=0，完整用户问题与答案 | PASS（CLI） |
+| Claude 已认证 UI 恢复 | CU 点击真实 Claude 记录 ▶，wrapper d635cd8e… / claude-real --resume 指向上述 native ID；首次 TUI 显示 /root/app 工作区信任确认，已请用户自行处理。未自动点击安全请求 | 进行中：首次工作区信任前置；进程/容器中断及追加召回尚未验证 |
 | 完整 Docker 引擎断连 / 真实大历史 / Remote | 不停止全局 Docker，不影响用户已有容器；Remote 真实 SSH 和长历史 UI 不在本次隔离夹具中 | NOT RUN；自动化覆盖错误/分页/代际路径 |
 
 早先 R3 尝试坐标失败是工具返回两截图区域而误选 12×12 的 icon 区域；R4 明确选择 `screenshot-1` 主窗口后可操作。部分 UIA 点击中心偏差，改用新截图真实坐标并再次观察结果。本记录不延伸为 R3 已验收。
 
 补充验证：最终 CSS 后阅读/runtime targeted 29 passed、vue-tsc 与 Tauri 生产构建通过。PR #51 为 draft；首轮产品提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS；公式修复提交 df33296 的 Workbench CI 41022607098 SUCCESS（https://github.com/Wifabric/AISC/actions/runs/41022607098）。召回首试在 TUI 尚未释放写锁时被上游拒绝；确认进程退出后重试成功，未同时写入同一会话。
 
-整体 R4 不标完成，Claude 已认证恢复及表中环境项目尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。
+整体 R4 不标完成，Claude 已认证恢复仍在验证，表中环境项目尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。

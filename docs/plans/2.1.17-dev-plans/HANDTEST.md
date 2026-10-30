@@ -257,7 +257,7 @@ $R4Cli = Join-Path $R4 'aisc-r4.exe'
 4. 分屏打开一个 Bash 后切到 Bash，再点原记录 ▶。理想：激活对应 Codex/Claude pane，不停留在旁边 Bash。
 5. 异常：引导重试后变新会话、恢复按钮永久禁用、重复恢复开出多个标签、错误没有行内提示，记 FAIL。尚未认证时显示登录/Provider 引导属于环境前置未满足，不算连续会话通过。
 
-本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`。进程中止后 CU 恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 当前仍 login_required，需自行配置后完成同等复核。
+本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`。进程中止后 CU 恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 已自行配置，真实记录 `This is an isolated AISC Claude resume test…` / native ID `14972c8d-4c11-4da7-80c9-420dd2b09e8a` 的初始回答为 `R4-RESUME-1030-CLAUDE`；首次 TUI 工作区信任提示需用户自行处理，同等中断复核尚未完成。
 
 ### R4-T4 容器停止后恢复原 runtime（只动隔离容器）
 
