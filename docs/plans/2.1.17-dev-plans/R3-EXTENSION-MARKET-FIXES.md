@@ -113,12 +113,21 @@ Precondition: close earlier R2 windows. Launch only the provided R3 direct build
 ## Verification evidence (2026-10-30)
 
 - TDD: Task 1 legacy argparse classifier and Task 2/3 UI contracts all failed on the pre-fix source, then passed after implementation.
-- Full local gates on final source: Python **1693 passed / 53 skipped / 186 subtests**, Rust **404 passed / 1 ignored**, Vitest **95 files / 805 tests**, and `vue-tsc --noEmit` all passed (`LOCAL GATES: ALL GREEN`).
+- Full local gates on final source: Python **1694 passed / 53 skipped / 191 subtests**, Rust **404 passed / 1 ignored**, Vitest **95 files / 808 tests**, and `vue-tsc --noEmit` all passed (`LOCAL GATES: ALL GREEN`) on review-fix source `7482301`.
 - Production build: `npm run build` plus Tauri release `--no-bundle` passed.
-- R3 frozen CLI: `release-staging/2.1.17-r3/pyinstaller-dist/aisc.exe`, SHA256 `3034659f4efccdc88cbfc7904219b4baf5297bf607e38effd93f127695b92b13`. Built in an isolated PyInstaller output because the older running Workbench retained inaccessible `aisc.exe` children; no user process was terminated.
-- R3 direct GUI: `release-staging/2.1.17-r3/AISC-Workbench-2.1.17-R3.exe`, SHA256 `e916416343aeb2f89d8116d438643f9bbedd29171538994d69acb1cc8a30f931`.
+- R3 frozen CLI: `release-staging/2.1.17-r3/aisc-r3-final.exe`, SHA256 `1f6032257026537bfd7840965c1087f96c4028f8005fc3d9b5b82bf38552107f`. Built in an isolated PyInstaller output because the older running Workbench retained inaccessible `aisc.exe` children; no user process was terminated.
+- R3 direct GUI: `release-staging/2.1.17-r3/AISC-Workbench-2.1.17-R3-FINAL.exe`, SHA256 `73ec51edce9fcf699a3c2c7413763590232c2251d8f4474c65f5a9b284676942`.
 - Real frozen-CLI/container smoke:
   - Old b7 `super-claude:latest @ 610cd7ebfa39…`: `skill-repos-list` exited 1 with stable `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP` and clear upgrade/rebuild message; no argparse usage leaked.
   - R3 adapter image `2f54fad6…`: the same op exited 0 and returned the four expected repositories.
   - Both disposable runtimes were stopped; evidence is under `release-staging/2.1.17-r3/`.
 - CU attempt: the Computer Use skill and required guidance/confirmation docs were read, but this session exposes no `node_repl` tool, so `@oai/sky` cannot be initialized. R3 GUI layout/keyboard/focus checks remain **NOT RUN (tool unavailable)**. User batch handtest is still required.
+
+## Independent review and final integration evidence (2026-10-30)
+
+- Initial independent review found one Critical (missing inline Close/focus path) and three Important findings (native-button content model, interaction test gaps, and one-op classifier coverage). They were fixed in `7482301`: explicit Close with focus restoration, valid phrasing-only native disclosure content, Enter/Space/native-ARIA contracts, five-op argparse parameterization plus `skill-repo-add` negative, shared source-op set, shared recommendation converter, and narrow metadata wrapping.
+- Follow-up review found invalid collapsed-state `aria-controls` IDREFs. `ed3ed71` omits the optional attribute while collapsed and emits it only when the detail node is mounted; the runtime test resolves the expanded ID through `document.getElementById`.
+- Final independent review at `ed3ed71`: **Critical=0 / Important=0, ready to merge from code review**, subject to user batch handtest.
+- After the ARIA-only change, targeted dialog/preview tests **22/22**, `vue-tsc`, and a fresh production Tauri build passed. Python/Rust sources were unchanged from the fully gated `7482301` revision.
+- PR [#50](https://github.com/Wifabric/AISC/pull/50); Workbench CI [40989333294](https://github.com/Wifabric/AISC/actions/runs/40989333294) on exact product head `ed3ed714fcfeb9241e0238e96edcaa684ca23981`: **SUCCESS**.
+- Final CLI old-image negative smoke using SHA256 `1f603225…52107f`: b7 returned stable `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`; evidence `release-staging/2.1.17-r3/final-cli-old-image-source-result.json`.

@@ -370,7 +370,7 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 ## 2026-10-30 R3 扩展市场批次修复预测试
 
 - 根因证据：R2 手测数据根 `C:\\pt\\aisc-217-r2-handtest-data` 的 history/log 显示实际运行时为 `super-claude:latest @ 610cd7ebfa39…`（b7 旧 adapter），不是 R2/R3 adapter 派生镜像。旧 adapter 以 argparse usage 退出，Python 原先把它归为普通 `AISC_ERR_EXTENSIONS_EXEC_FAILED`。
-- TDD 与自动化：旧 argparse 分类、空态按钮、推荐内联展开均先失败后通过。最终全门禁 Python 1693/53/186 subtests、Rust 404/1 ignored、Vitest 95 files/805、vue-tsc 全绿；生产 Vite/Tauri direct build 通过。
+- TDD 与自动化：旧 argparse 分类、空态按钮、推荐内联展开均先失败后通过。审查修复源 `7482301` 全门禁 Python 1694/53/191 subtests、Rust 404/1 ignored、Vitest 95 files/808、vue-tsc 全绿；ARIA 收敛提交 `ed3ed71` 后 targeted 22/22、vue-tsc 与生产 Tauri build 通过，Python/Rust 源相对全门禁修订不变。
 - 真实数据面：R3 冻结 CLI + 旧 b7 镜像，`skill-repos-list` exit 1 且错误码为 `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`，消息为“当前运行环境不支持扩展来源维护，请升级或重建运行时镜像”；R3 adapter 镜像同 op exit 0，返回 4 条技能仓库。两个一次性 runtime 均已停止，证据见 `release-staging/2.1.17-r3/*image*result*.json`。
-- 产物：GUI `AISC-Workbench-2.1.17-R3.exe` SHA256 `e916416343aeb2f89d8116d438643f9bbedd29171538994d69acb1cc8a30f931`；CLI SHA256 `3034659f4efccdc88cbfc7904219b4baf5297bf607e38effd93f127695b92b13`。
-- CU：已读取 Computer Use SKILL/guidance/confirmations，但当前会话无 `node_repl`，无法初始化要求的 `@oai/sky`。来源管理提示、空态视觉、推荐卡片内联展开/键盘/焦点、<720px 均为 **NOT RUN（工具不可用）**。本批等待用户按 HANDTEST R3 验收，不能进入下一批。
+- 产物：最终 GUI `AISC-Workbench-2.1.17-R3-FINAL.exe` SHA256 `73ec51edce9fcf699a3c2c7413763590232c2251d8f4474c65f5a9b284676942`；最终 CLI `aisc-r3-final.exe` SHA256 `1f6032257026537bfd7840965c1087f96c4028f8005fc3d9b5b82bf38552107f`。
+- CU：已读取 Computer Use SKILL/guidance/confirmations，但当前会话无 `node_repl`，无法初始化要求的 `@oai/sky`。来源管理提示、空态视觉、推荐卡片内联展开/键盘/焦点、<720px 均为 **NOT RUN（工具不可用）**。独立审查初轮发现的 Close/焦点、native button 内容模型、测试覆盖与五 op 覆盖均已修复；ARIA 复审项亦已修复。最终审查 Critical=0/Important=0，PR #50 精确产品头 Workbench CI `40989333294` SUCCESS。最终 CLI 对旧 b7 镜像复测仍稳定返回 unsupported。本批等待用户按 HANDTEST R3 验收，不能进入下一批。
