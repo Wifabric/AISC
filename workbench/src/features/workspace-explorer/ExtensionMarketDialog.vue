@@ -85,6 +85,18 @@ function categoryLabel(category: { labelZh: string; labelEn: string }): string {
 function recommendationSummary(entry: { summaryZh: string; summaryEn: string }): string {
   return locale.value === "en-US" ? entry.summaryEn : entry.summaryZh;
 }
+
+function recommendationItem(entry: CategorizedRecommendation): ExtensionsItem {
+  return {
+    kind: entry.kind,
+    id: entry.identity,
+    name: entry.name,
+    repo: entry.identity.split(":", 1)[0],
+    directory: entry.identity.split(":")[1] ?? "",
+    description: entry.summaryEn,
+    ...(entry.heat ? { installs: entry.heat } : {}),
+  };
+}
 function heatLabel(entry: {
   heat?: string;
   heatSource: "skills.sh" | "smithery" | "official-directory";
@@ -300,7 +312,7 @@ onMounted(async () => {
                   v-if="isSelectedRecommendation(entry)"
                   :id="'recommendation-detail-' + entryIndex"
                   class="recommendation-detail"
-                  :item="detailItem"
+                  :item="recommendationItem(entry)"
                   :recommendation="entry"
                   :evidence-label="t('extensions.market.catalogEvidence')"
                   @close="selectedRecommendation = null"

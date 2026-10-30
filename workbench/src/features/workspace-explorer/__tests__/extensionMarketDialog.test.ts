@@ -131,7 +131,7 @@ describe("ExtensionMarketDialog", () => {
     cards = wrapper.findAll("[data-testid='recommendation-card']");
     expect(cards[1]!.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
     await cards[1]!.get("[data-testid='recommendation-card-header']").trigger("click");
-    expect(wrapper.get("[data-testid='market-search-action']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='market-search-action']").exists()).toBe(true);
 
     await wrapper.get("[data-testid='market-search-action']").trigger("click");
     await flushPromises();
