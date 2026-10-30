@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 preview 收尾发布（2026-10-31，进行中）
+
+- 用户 D-7 明确“没有测试通过的也不测试了，直接进入收尾阶段”，取消剩余补测并放行收尾；保留 NOT RUN、历史失败和修正证据，不把免补测伪装为实测通过。
+- 同提交 `2c0088d` 已推 annotated `v2.1.17.dev0` / `v0.1.10.dev0`，分别启动 Workbench NSIS 和 CLI 三平台 Artifact 发布；CLI tag 意外匹配的重复 Workbench NSIS 已主动取消，避免错误版本和同名 Release 竞争。
+- 完成 GitHub prerelease、TestPyPI/真实 index 安装验证后归档阶段计划；正式 main/final 及最终反馈/Release/分支清理保持独立门。
+
 # v2.1.17 收尾统一预回归（2026-10-31）
 
 - PR #51 集成 `81c43e7` 四条 CI 全 SUCCESS。依赖刷新 PR #52 集成 develop `bc189a3`；分支产品 SHA `cf25671` 及精确集成 SHA 的四条构建、三平台 sidecar parity/clean-room/SBOM、deb/dmg 非 checkout smoke、NSIS 安装/PATH/升级/卸载保留数据全部成功，逐步/资产证据已回写。

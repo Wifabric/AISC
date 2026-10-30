@@ -8,11 +8,12 @@
 
 - CLI `0.1.10.dev0`，GitHub prerelease/tag `v0.1.10.dev0`，Artifact workflow 在此
   tag dispatch，发布三平台 archive、CLI Windows setup、macOS pkg 和 SHA256SUMS。
-- Workbench prerelease/tag `v2.1.17.dev0`，现有 NSIS tag workflow 自动构建并发布
-  Workbench setup 与 SHA256。两个 annotated tag 指向同一已同步 develop 提交。
+- Workbench prerelease/tag `v2.1.17-preview.1`，现有 NSIS tag workflow 自动构建并发布
+  Workbench setup 与 SHA256。Workbench 使用现有 SemVer `-preview.N` 契约；
+  CLI 继续 `.devN`。两个版本的产品树相同，后续 docs 提交不改变产品字节。
 - CLI v* tag 也会匹配 NSIS 的宽泛 tag 触发器。为避免把 CLI 版本写入 Workbench 和
   两个 workflow 争用同一 release，主动取消仅 `v0.1.10.dev0` 的重复 NSIS run；
-  Workbench 正常 NSIS 以 `v2.1.17.dev0` 为准。不取消必要构建/检查或掩盖产品失败。
+  Workbench 正常 NSIS 以 `v2.1.17-preview.1` 为准。不取消必要构建/检查或掩盖产品失败。
 - CLI GitHub Release 成功后，dispatch `pypi-publish.yml`，输入 `v0.1.10.dev0`；
   验证 TestPyPI wheel/sdist 与真实安装结果，确认正式 PyPI job skipped。
 - 两个 tag、TestPyPI 版本先确认不存在，不覆盖引用或同名资产。失败时只按证据修复/重试，
@@ -22,7 +23,8 @@
 
 - [x] D-7 记录；发布说明与已验证产品树核对。
 - [x] 远端两个 tag、对应 TestPyPI 版本不存在。
-- [ ] 同提交 annotated tags 已推送。
+- [x] CLI annotated tag 已推送：`2c0088d127652d8e11ff1c01f2c7ead59cf52714`。
+- [ ] Workbench 正确 `-preview.1` annotated tag 已推送。
 - [ ] Workbench preview/NSIS 发布与 SHA256 复核。
 - [ ] CLI 三平台 archive/setup/pkg/SHA256SUMS 发布复核。
 - [ ] TestPyPI 发布与真实 index 安装验证；正式 PyPI skipped。
@@ -30,3 +32,11 @@
 
 正式 final/main 合并尚未授权；最终反馈 resolved、删除 prerelease 记录与临时分支只在
 正式 final 验证后进行。
+
+### 已启动任务
+
+- 首次 Workbench tag 误用了 CLI `.devN` 后缀：`v2.1.17.dev0`，run `41094919913`。
+  `update.rs` 明确拒绝 dot-dev 标签、Tauri 需要 SemVer，因此停止该不适用任务，
+  改用既有 `v2.1.17-preview.1`，不改产品解析器、不覆盖或删除旧 tag。此项保留为发布准备错误。
+- CLI Artifact：`41094996589`，tag `v0.1.10.dev0`，dispatch 已接受。
+- 重复 CLI-tag NSIS：`41094919766`，已按上述发布设计主动取消（不是产品测试失败）。
