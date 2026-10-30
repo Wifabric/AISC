@@ -321,10 +321,10 @@ class BuildPlan:
     no_cache: bool = False
     pull: bool = False
     build_arg_use_cn_mirror: str = "1"
-    build_arg_node_image: str = "node:24.22.1-slim"
+    build_arg_node_image: str = "node:26.13.0-bookworm-slim"
     build_arg_mihomo_version: str = "v1.19.33"
-    build_arg_geodata_version: str = "20261027"
-    build_arg_geodata_commit: str = "02ae05ac06e8c9287916fbabfe61ef5c8591407f"
+    build_arg_geodata_version: str = "20261030"
+    build_arg_geodata_commit: str = "10f120b9f0cd1bcae8b8ff88b3f999237b919702"
     build_arg_yazi_version: str = "26.9.1"
     # A5 (D-9): forwarded tool pins — factory default under the data-root
     # user overlay (D-27); "latest" keeps the pre-A5 behavior when the

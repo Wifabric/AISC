@@ -288,9 +288,9 @@
   - [x] N1 / b1：无代理 skill 安装/更新完整性与逐项诊断（CU H4/安装进度与终态通过；H1 toast、H2/H3 故障网络待统一手测）
   - [x] N2 + N4 / b2：市场元数据、已安装项更新标识与详情中文化（CU 三类市场搜索/详情通过；断网缓存与隔离待统一手测）
   - [x] N3 / b4：Skills / MCP / Plugins 统一推荐与发现（CU 中英文推荐与搜索路由通过；离线禁用态待统一手测）
-  - [ ] N5 / R4：Work Record 友好阅读、每轮思考/命令合并折叠、Markdown/LaTeX/图片附件/可点击文件与网址；实时终端继续字节穿透（2026-10-30 用户明确纳入 R4；实现/门禁/真实阅读 CU 已通过，公式滚动修复/最终构建通过，待单批验收）
+  - [x] N5 / R4：Work Record 友好阅读、每轮思考/命令合并折叠、Markdown/LaTeX/图片附件/可点击文件与网址；实时终端继续字节穿透（2026-10-30 用户明确纳入 R4；实现/门禁/真实阅读 CU 已通过，公式滚动修复/最终构建通过，D-6 用户手测通过）
 - 可靠性
-  - [ ] R4：Docker 意外断连 / bash 中止后从 Work Record 恢复原 Codex/Claude 会话；配置引导与重试保留会话身份（2026-10-30 用户追加；已认证 Codex/Claude 进程/容器中断 CU 恢复同 native ID、CLI 追加召回及真实阅读器完整两轮问答 PASS；全局 Docker 引擎断连/真实大历史/Remote 等未测，待本批验收/显式延后）
+  - [x] R4：Docker 意外断连 / bash 中止后从 Work Record 恢复原 Codex/Claude 会话；配置引导与重试保留会话身份（2026-10-30 用户追加；已认证 Codex/Claude 进程/容器中断 CU 恢复同 native ID、CLI 追加召回及真实阅读器完整两轮问答 PASS；D-6 用户手测通过；全局 Docker 引擎断连/真实大历史/Remote 等未测项留收尾统一回归）
   - [x] b3：扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志（CU 超时日志/复制诊断通过；第二次可重试失败待统一手测）
   - [x] b5：网络 / 显式自更新 / CLI 与 bundle 版本配对健康报告（实现/自动化/CI/CU 显式更新主路径与健康报告通过；诊断竞态待统一手测）
 - 默认体验
@@ -299,6 +299,6 @@
   - [x] b7：镜像内置 cc-switch / Codex / Claude / Node 稳定最新版刷新（Node 24.22.1 依 D-5；构建/校验/真实镜像/跨平台出包验证通过，PR #46/#47 已集成）
   - [ ] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/审查复审通过/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；待统一手测）
   - [ ] R2：扩展 UI 重设计——删除主视图操作日志、分类扩展市场（六类各 10 条）、中文详情、整体布局优化与技能仓库/插件市场维护（PR #49 已合入 develop `6133eef`；审查/增量复审、803 前端测试、既有完整门禁、最终 PR/develop CI、三平台 sidecar/deb/dmg/NSIS 通过；来源维护与跨市场保留真容器通过，已修正插件市场级联卸载双语警告；当前 CU 无 node_repl，来源删除与窄屏等 UI 仍 NOT RUN，待统一用户手测）
-  - [ ] R3：扩展市场批次修复——旧 runtime 来源维护稳定提示、已安装空态移除“打开扩展市场”按钮、推荐卡片内联展开详情（TDD/完整门禁/最终生产构建/真实数据面通过；独立审查最终 Critical=0/Important=0；PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；当前无 node_repl，GUI CU NOT RUN，待用户逐批手测）
+  - [x] R3：扩展市场批次修复——旧 runtime 来源维护稳定提示、已安装空态移除“打开扩展市场”按钮、推荐卡片内联展开详情（TDD/完整门禁/最终生产构建/真实数据面通过；独立审查最终 Critical=0/Important=0；PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；早期 CU 阻塞记录保留；D-6 用户已确认本批手测通过）
   - [ ] 高频链路自动化冒烟与 v2.1.17 preview 准备（三轮数据面 9/9、构建/材料与 CU 关键路径已完成；完整三轮 UI 冒烟、统一用户手测与发布门仍待通过）
   - [ ] CLI 开发版本 `0.1.10.dev0` 已启动；final 版本与发布时机按实际范围裁定

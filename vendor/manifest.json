@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated": "2026-10-27",
+  "generated": "2026-10-30",
   "components": [
     {
       "name": "mihomo",
@@ -13,14 +13,14 @@
     },
     {
       "name": "geodata",
-      "version": "20261027",
-      "source": "https://github.com/MetaCubeX/meta-rules-dat/commit/02ae05ac06e8c9287916fbabfe61ef5c8591407f",
+      "version": "20261030",
+      "source": "https://github.com/MetaCubeX/meta-rules-dat/commit/10f120b9f0cd1bcae8b8ff88b3f999237b919702",
       "license": "unknown",
       "files": [
         "container/downloads/geoip.metadb",
         "container/downloads/geosite.dat",
         "container/downloads/country.mmdb",
-        "container/downloads/geodata-20261027.sha256"
+        "container/downloads/geodata-20261030.sha256"
       ]
     },
     {
@@ -89,19 +89,19 @@
     {
       "name": "claude-code",
       "license": "SEE_PACKAGE",
-      "version": "2.1.311",
+      "version": "2.1.314",
       "source": "https://www.npmjs.com/package/@anthropic-ai/claude-code",
       "files": [
-        "container/downloads/claude-code-2.1.311.tgz"
+        "container/downloads/claude-code-2.1.314.tgz"
       ]
     },
     {
       "name": "codex",
       "license": "Apache-2.0",
-      "version": "0.164.0",
+      "version": "0.166.0",
       "source": "https://www.npmjs.com/package/@openai/codex",
       "files": [
-        "container/downloads/codex-0.164.0.tgz"
+        "container/downloads/codex-0.166.0.tgz"
       ]
     },
     {

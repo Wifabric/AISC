@@ -118,7 +118,7 @@ def test_model_and_missing_env_defaults_agree(tmp_path):
     root = build_root(tmp_path)
     planned = plan_build(root, data_root=tmp_path / "user")
     default = BuildPlan()
-    assert default.build_arg_node_image == "node:24.22.1-slim"
+    assert default.build_arg_node_image == "node:26.13.0-bookworm-slim"
     for prefix in ("MIHOMO_VERSION=", "GEODATA_VERSION=", "GEODATA_COMMIT=", "YAZI_VERSION="):
         expected = next(arg for arg in default.docker_argv if arg.startswith(prefix))
         assert expected in planned.docker_argv
