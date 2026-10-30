@@ -394,7 +394,7 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 | Codex 已认证恢复 | 用户配置后，原生 exec 建立 `01a18b57-ce8c-7321-bf6b-2d146bafd587` 并回答标记。FINAL 窗口 7536886：未归档该记录 ▶，终端显示原问题及 `R4-RESUME-1030-CODEX`；docker ps/进程 argv 确认同 native ID | PASS（CU 启动/观察 + CLI 数据面） |
 | Codex 进程意外中止 | 仅 kill 隔离容器内 Codex 二进制 PID 565；原标签退出，再点同记录 ▶。新 session wrapper `efc42a2d…`、native resume ID 不变，历史仍显示原标记 | PASS |
 | Codex 容器停止后恢复 | 正常关闭旧 GUI 清理临时容器后，FINAL 启动生成 d300dd738f2b / runtime 439e5841-40a4-42b6-82b2-39d82ab3a68d。只 stop 此容器，再点记录 ▶：同容器和 runtime 恢复 running，新 wrapper e83bbeff… 仍 resume 同一 native ID，原历史显示 | PASS |
-| Codex 上下文召回 | 关闭测试标签并确认 provider 进程退出后，执行 `codex exec resume --skip-git-repo-check --json <同 native ID>`，问题只问“之前让我记住的标记是什么”，不含标记值。thread.started ID 不变、答案 `R4-RESUME-1030-CODEX`、turn.completed。日志 C:/pt/aisc-r4-codex-recall.jsonl | PASS（CLI 补充，未在 GUI 终端自动输入） |
+| Codex 上下文召回 | 关闭测试标签并确认 provider 进程退出后，执行 `codex exec resume --skip-git-repo-check --json <同 native ID>`，问题只问“之前让我记住的标记是什么”，不含标记值。thread.started ID 不变、答案 `R4-RESUME-1030-CODEX`、turn.completed。日志 C:/pt/aisc-r4-codex-recall.jsonl。随后 CU 点击该真实记录标题，阅读器显示两轮完整问答、两次相同标记、`第 1–4 条 / 共 4 条` | PASS（CLI 召回 + CU 阅读，未在 GUI 终端自动输入） |
 | 原生链接/复制/键盘 | 首轮复制按钮变“已复制”；文本报告启动 `result.txt - Notepad`；Escape 关闭。FINAL 点击“项目网站”后系统 Chrome 标题 `Wifabric/AISC - Google Chrome`。本机 .md 无默认关联，测试用 .txt 成功路径 | PASS；.md 关联为宿主前置 |
 | 公式增量修复 | FINAL 阅读预览点击滚动条下翻，完整积分/上下标可见且无内部竖滚动条。生产组件测量公式 clientHeight/scrollHeight=61/61，overflowY=hidden；最终 1440/768/390 检查 0 FAIL/1 留白 WARN，已看桌面/手机截图 | PASS |
 | Claude 已认证继续对话 | 当前 runtime 的 provider current 仍为 default / official-direct / login_required（2026-10-30T07:20:04Z）；未自动登录。已通知用户补配 Claude；此前无认证的阅读/附件测试保持 PASS | NOT RUN：Claude 认证前置未满足 |
