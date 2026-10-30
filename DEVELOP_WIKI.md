@@ -28,7 +28,7 @@ git status --short
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
    - 全部开发与远程同步：develop 已推送、工作树干净、推送后远程 CI 全绿（补充）；
-   - 本阶段成果发布为 **preview 版本**：CLI tag 用 `.devN` 后缀 → GitHub 自动标 prerelease 的 Release（三平台 + NSIS 随附）+ TestPyPI；pypi-publish 的 final-only 门使其不触碰正式 PyPI（补充：preview 形态具体化）；
+   - 本阶段成果发布为 **preview 版本**：CLI tag 用 `v<CLI版本>.devN`，Artifact workflow 在 tag 上手动 dispatch → 三平台 CLI archive/安装包 GitHub prerelease + TestPyPI；Workbench tag 用 `v<Workbench版本>-preview.N` → NSIS workflow 发布 Workbench prerelease。CLI/Workbench 保持双轨，pypi-publish 的 final-only 门使 dev 不触碰正式 PyPI；
    - `docs/todo.md` 当前版本条目全部标记完成；未完成项显式转期，不强制打勾（补充）；
    - `docs/devlog.md` 更新到位；
    - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档；
@@ -47,7 +47,11 @@ git status --short
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
-注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（release job 仅命中 `-dev`/`.dev`）；preview 统一用 `.devN` 形态，如需 rc 形态先补该 workflow 的后缀判断。
+注（2026-10-31 发布验证补充）：CLI Artifact preview 用 `.devN`；Workbench 用既有
+`-preview.N`。Tauri 的 version 必须是 SemVer，Workbench 更新器也只识别 final / preview
+标签，不能把 CLI 的 `.devN` 直接套在 Workbench 上。CLI 的 v* tag 会额外匹配 NSIS 的
+宽泛 tag 触发器，独立发布 CLI Artifact 时须停止该重复 NSIS run，避免生成错误 Workbench
+版本或争用同一 Release。`-rc` 当前不会被 Artifact 正确标 prerelease，使用前须先补规则。
 
 ### 1.2 开工纪律（2026-09-19 用户裁定）
 
@@ -786,10 +790,10 @@ CI 矩阵及唯一官方平台集合：
 
 ### 11.1b Artifact workflow
 
-`.github/workflows/artifact.yml` 是当前唯一 GitHub Actions workflow：
+`.github/workflows/artifact.yml` 是 CLI 独立发布资产流水线（非唯一 workflow）：
 
 ```text
-触发：push develop | PR -> main | push v* tag | workflow_dispatch
+触发：workflow_dispatch（branch ref 只构建；CLI version tag ref 执行 aggregate/release）
 
 build matrix（三平台）
   -> Python 3.12 + editable install
@@ -813,11 +817,17 @@ tag only release
   -> 上传 archive、installer、sidecar、SHA256SUMS
 ```
 
-tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为普通 Release。workflow 没有 Docker image build job，也没有运行完整 unittest、`check-docs.sh` 或 `vendor-verify.sh`，这些仍是本地/合入门禁。
+tag 名包含 `-dev` 或 `.dev` 时该 CLI GitHub Release 标为 Pre-release；其他适用 `v*` tag 为普通 Release。workflow 没有 Docker image build job，也没有运行完整 unittest、`check-docs.sh` 或 `vendor-verify.sh`，这些仍是本地/合入门禁。
 
 仓库有 `.gitleaks.toml`，但当前 Artifact workflow 没有 gitleaks step；不要把配置文件存在误写成 CI 已强制扫描。
 
 ### 11.2 发布步骤
+
+> **2026-10-31 当前双轨执行说明：** preview 从已验证 `develop` 提交发布，正式 final
+> 才走 main 合并批准门。Workbench `v2.1.x-preview.N` 由 NSIS workflow 发布；CLI
+> `v0.x.y.devN` 在该 tag 上 dispatch Artifact，再 dispatch PyPI publish 到 TestPyPI。
+> CLI SSOT 是 `src/aisc/VERSION`，Workbench 是 `workbench/src-tauri/tauri.conf.json`，
+> 下文旧的根 VERSION/共版本步骤不能直接套到 Workbench。既有 v* tag 不覆盖、不删除。
 
 > **D-8 发布模型重构（2026-09-19 裁定，实施批进行中）**：release 版本号**以 Workbench 为准**（tag = `v2.1.12` 线），每个 release 附**双安装器**——`AISC-Workbench-<版本>-setup.exe`（Workbench NSIS，自带打包时最新 CLI，装 UI 顺带装 CLI）+ `aisc-cli-<CLI版本>-installer.exe`（CLI 包，让出 `-setup.exe` 后缀）。自更新资产匹配 =「`AISC-Workbench-` 前缀 + `-setup.exe` 后缀」双条件。**PyPI 解耦**：CLI 版本发布走 pip 独立节奏，tag 用 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`）。下方步骤为旧形态（CLI 版本号 tag），D-8 实施批落地时同步重写。
 

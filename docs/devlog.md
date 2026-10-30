@@ -2,11 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
-# v2.1.17 preview 收尾发布（2026-10-31，进行中）
+# v2.1.17 preview 收尾发布（2026-10-31，已完成）
 
 - 用户 D-7 明确“没有测试通过的也不测试了，直接进入收尾阶段”，取消剩余补测并放行收尾；保留 NOT RUN、历史失败和修正证据，不把免补测伪装为实测通过。
 - 同提交 `2c0088d` 已推 annotated `v2.1.17.dev0` / `v0.1.10.dev0`，分别启动 Workbench NSIS 和 CLI 三平台 Artifact 发布；CLI tag 意外匹配的重复 Workbench NSIS 已主动取消，避免错误版本和同名 Release 竞争。
-- 完成 GitHub prerelease、TestPyPI/真实 index 安装验证后归档阶段计划；正式 main/final 及最终反馈/Release/分支清理保持独立门。
+- 已发布 Workbench `v2.1.17-preview.1` 与 CLI `v0.1.10.dev0` GitHub prerelease，三平台 CLI archive/setup/pkg、Workbench NSIS 与 checksum 完整，checksum 文本匹配 GitHub 官方资产 digest。TestPyPI wheel/sdist 与真实 index 安装验证通过；正式 PyPI job skipped。
+- 初次 Workbench 标签误用 dot-dev 后缀导致 Tauri SemVer 校验失败；改用现有 `-preview.1` 合同后发布成功，旧标签与失败日志保留，无产品源码变更。
+- 阶段计划已归档 `docs/archive/2.1.17-dev-plans/`，todo 目标完成/用户免补测闭环；正式 main/final 及最终反馈/Release/分支清理保持独立门。
 
 # v2.1.17 收尾统一预回归（2026-10-31）
 

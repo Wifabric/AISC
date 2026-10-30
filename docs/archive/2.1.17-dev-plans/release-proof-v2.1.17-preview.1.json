@@ -1,0 +1,16 @@
+{
+  "tag": "v2.1.17-preview.1",
+  "url": "https://github.com/Wifabric/AISC/releases/tag/v2.1.17-preview.1",
+  "prerelease": true,
+  "draft": false,
+  "assets": [
+    {
+      "name": "AISC-Workbench-2.1.17-preview.1-setup.exe",
+      "size": 698809734,
+      "official_sha256": "29a57c1682b3f57702e29795b8e66fab23fca8e710b439092723270ed7be3052",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v2.1.17-preview.1/AISC-Workbench-2.1.17-preview.1-setup.exe"
+    }
+  ],
+  "checksum_asset": "AISC-Workbench-2.1.17-preview.1-setup.exe.sha256",
+  "verification": "downloaded checksum text matched GitHub asset digests; installers/archives not downloaded or run locally"
+}

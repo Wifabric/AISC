@@ -6,8 +6,8 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.17-dev-plans`](2.1.17-dev-plans/) — 反馈驱动生态与可靠性：无代理扩展完整性、市场更新信号、失败恢复、推荐、显式自更新、默认体验与发布前版本刷新。
-- [`terminal-experience-intake`](terminal-experience-intake.md) — 未开题 backlog：CLI 富文本渲染、命令折叠与可点击路径/URL（反馈站 N5）。
+- 当前无已开题实施阶段；v2.1.17 已完成 preview 收尾，见 [`2.1.17-dev-plans`](../archive/2.1.17-dev-plans/)（Workbench 2.1.17-preview.1 / CLI 0.1.10.dev0，D-7 免补测放行，NOT RUN 保留）。
+- [`terminal-experience-intake`](terminal-experience-intake.md) — 历史 intake：N5 的 Work Record 静态阅读已由 v2.1.17 R4 实现；实时终端继续字节穿透，其余方向不自动进入新版本。
 - v2.1.16 开发计划与 preview 修复链已归档：
   - `docs/archive/2.1.16-dev-plans/`
   - `docs/archive/2.1.16-preview-fixes/`

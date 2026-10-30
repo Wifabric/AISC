@@ -1,0 +1,673 @@
+[
+  {
+    "id": 41094996589,
+    "name": "Artifact",
+    "head_sha": "2c0088d127652d8e11ff1c01f2c7ead59cf52714",
+    "head_branch": "v0.1.10.dev0",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/Wifabric/AISC/actions/runs/41094996589",
+    "jobs": [
+      {
+        "name": "Build macos arm64",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install project (editable)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install PyInstaller 6.21.0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run packaging unit tests",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onedir (CI smoke only)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Smoke onedir version",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onefile",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify staged bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create archive",
+            "conclusion": "success"
+          },
+          {
+            "name": "Final smoke (checkout-independent)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Inno Setup (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build setup.exe (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Installer smoke (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build macOS .pkg (macOS)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Structural verify .pkg (macOS)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload matrix artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload Windows setup artifact",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Upload macOS pkg artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Build linux x86_64",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install project (editable)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install PyInstaller 6.21.0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run packaging unit tests",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onedir (CI smoke only)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Smoke onedir version",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onefile",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify staged bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create archive",
+            "conclusion": "success"
+          },
+          {
+            "name": "Final smoke (checkout-independent)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Inno Setup (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build setup.exe (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Installer smoke (Windows)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Build macOS .pkg (macOS)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Structural verify .pkg (macOS)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Upload matrix artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload Windows setup artifact",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Upload macOS pkg artifact",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Build windows x86_64",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install project (editable)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install PyInstaller 6.21.0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run packaging unit tests",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onedir (CI smoke only)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Smoke onedir version",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build onefile",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify staged bundle",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create archive",
+            "conclusion": "success"
+          },
+          {
+            "name": "Final smoke (checkout-independent)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install Inno Setup (Windows)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build setup.exe (Windows)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Installer smoke (Windows)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build macOS .pkg (macOS)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Structural verify .pkg (macOS)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Upload matrix artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload Windows setup artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload macOS pkg artifact",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Aggregate SHA256SUMS",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Aggregate and verify (archives)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Include Windows setup in SHA256SUMS",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Include macOS pkg in SHA256SUMS",
+            "conclusion": "success"
+          },
+          {
+            "name": "Upload aggregated artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Publish GitHub Release",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Version/tag guard",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Publish release",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 41095888035,
+    "name": "NSIS installer build",
+    "head_sha": "051157fec4e1a4a895878f6f2c1f8aa4ade535b9",
+    "head_branch": "v2.1.17-preview.1",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/Wifabric/AISC/actions/runs/41095888035",
+    "jobs": [
+      {
+        "name": "NSIS installer (windows x86_64)",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install CLI build deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build CLI sidecar",
+            "conclusion": "success"
+          },
+          {
+            "name": "Drop sidecar into externalBin dir",
+            "conclusion": "success"
+          },
+          {
+            "name": "Stage AISC CLI bundle (aisc-bundle for root discovery)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install frontend deps",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build NSIS installer (tauri downloads NSIS 3.11 automatically)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify installer artifact",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Smoke test installed app (silent install + PATH + retention)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Node",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Set up Python",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Publish Workbench release",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Rename + checksum (AISC-Workbench-<tag>-setup.exe)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Publish release metadata",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 41098209973,
+    "name": "PyPI publish",
+    "head_sha": "051157fec4e1a4a895878f6f2c1f8aa4ade535b9",
+    "head_branch": "develop",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/Wifabric/AISC/actions/runs/41098209973",
+    "jobs": [
+      {
+        "name": "Build + guards",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install build tooling",
+            "conclusion": "success"
+          },
+          {
+            "name": "Tag/version guard (guide 3.4.2)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Final-tag classification",
+            "conclusion": "success"
+          },
+          {
+            "name": "Version consistency (VERSION == tauri.conf normalized == notes exist)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Build wheel + sdist",
+            "conclusion": "success"
+          },
+          {
+            "name": "twine check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Artifact must stay thin (negative guard, guide 3.4.4)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Secret scan of the artifacts themselves",
+            "conclusion": "success"
+          },
+          {
+            "name": "pip-audit the built wheel (Critical/High block)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/upload-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Publish to TestPyPI",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/download-artifact@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Version (for the verify step)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Publish",
+            "conclusion": "success"
+          },
+          {
+            "name": "Verify installability from TestPyPI",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Publish",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Publish to PyPI (final only)",
+        "conclusion": "skipped",
+        "steps": []
+      }
+    ]
+  }
+]

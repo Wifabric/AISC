@@ -1,0 +1,18 @@
+{
+  "exists": true,
+  "version": "0.1.10.dev0",
+  "files": [
+    {
+      "filename": "aisc_cli-0.1.10.dev0-py3-none-any.whl",
+      "sha256": "7b2da5405786d0bb50b96e2514b8262f32df46e7ffe5ad85c266520f6c451d4f",
+      "size": 376800,
+      "yanked": false
+    },
+    {
+      "filename": "aisc_cli-0.1.10.dev0.tar.gz",
+      "sha256": "47f52995096b61b47f8a6b11c1ebe6711bf646a9b0acf65760b93779864020a2",
+      "size": 344667,
+      "yanked": false
+    }
+  ]
+}

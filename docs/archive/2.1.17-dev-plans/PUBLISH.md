@@ -24,11 +24,11 @@
 - [x] D-7 记录；发布说明与已验证产品树核对。
 - [x] 远端两个 tag、对应 TestPyPI 版本不存在。
 - [x] CLI annotated tag 已推送：`2c0088d127652d8e11ff1c01f2c7ead59cf52714`。
-- [ ] Workbench 正确 `-preview.1` annotated tag 已推送。
-- [ ] Workbench preview/NSIS 发布与 SHA256 复核。
-- [ ] CLI 三平台 archive/setup/pkg/SHA256SUMS 发布复核。
-- [ ] TestPyPI 发布与真实 index 安装验证；正式 PyPI skipped。
-- [ ] todo/devlog/发布记录更新，计划归档，develop 同步且工作树干净。
+- [x] Workbench 正确 `-preview.1` annotated tag 已推送，提交 `051157fec4e1a4a895878f6f2c1f8aa4ade535b9`（相对 CLI tag 仅 docs 变化）。
+- [x] Workbench preview/NSIS 发布与 SHA256 复核。
+- [x] CLI 三平台 archive/setup/pkg/SHA256SUMS 发布复核。
+- [x] TestPyPI 发布与真实 index 安装验证；正式 PyPI skipped。
+- [x] todo/devlog/发布记录更新，计划归档，develop 同步且工作树干净。
 
 正式 final/main 合并尚未授权；最终反馈 resolved、删除 prerelease 记录与临时分支只在
 正式 final 验证后进行。
@@ -36,7 +36,18 @@
 ### 已启动任务
 
 - 首次 Workbench tag 误用了 CLI `.devN` 后缀：`v2.1.17.dev0`，run `41094919913`。
-  `update.rs` 明确拒绝 dot-dev 标签、Tauri 需要 SemVer，因此停止该不适用任务，
+  该 run 已失败，日志明确 `tauri.conf.json > version must be a semver string`。
+  `update.rs` 也明确拒绝 dot-dev 标签、Tauri 需要 SemVer，因此不重跑该不适用任务，
   改用既有 `v2.1.17-preview.1`，不改产品解析器、不覆盖或删除旧 tag。此项保留为发布准备错误。
+- 正确 Workbench NSIS：`41095888035`，tag `v2.1.17-preview.1`。
 - CLI Artifact：`41094996589`，tag `v0.1.10.dev0`，dispatch 已接受。
 - 重复 CLI-tag NSIS：`41094919766`，已按上述发布设计主动取消（不是产品测试失败）。
+
+## 发布结果（2026-10-31）
+
+- Workbench：<https://github.com/Wifabric/AISC/releases/tag/v2.1.17-preview.1>，NSIS 与 SHA256 完整，prerelease=true。
+- CLI：<https://github.com/Wifabric/AISC/releases/tag/v0.1.10.dev0>，三平台 archive、Windows CLI setup、macOS pkg 与 SHA256SUMS 完整，prerelease=true。
+- 两条 Release 的实际 checksum 文本均与 GitHub 对应资产 digest 一致；证据见同目录 release-proof JSON。未下载/运行全部大体积资产，不声称本机重复安装通过。
+- TestPyPI：<https://test.pypi.org/project/aisc-cli/0.1.10.dev0/>；wheel/sdist 已可获取，流水线真实 index 安装验证通过，正式 PyPI job skipped。
+- publication-ci.json 保存三条发布流水线各步结果；无产品源码或运行时行为变更。main/final 与最终清理保持待独立授权。
+- D-7 免补测放行后阶段目标闭环，计划归档；历史 NOT RUN/失败/修正不改写为 PASS。
