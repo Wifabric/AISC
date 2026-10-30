@@ -136,8 +136,13 @@ async function selectTab(target: MarketTab): Promise<void> {
   await store.load(target);
 }
 
+function isSelectedRecommendation(entry: CategorizedRecommendation): boolean {
+  return selectedRecommendation.value?.kind === entry.kind
+    && selectedRecommendation.value.identity === entry.identity;
+}
+
 function selectRecommendation(entry: CategorizedRecommendation): void {
-  selectedRecommendation.value = entry;
+  selectedRecommendation.value = isSelectedRecommendation(entry) ? null : entry;
   selectedMarketItem.value = null;
 }
 
@@ -247,6 +252,7 @@ onMounted(async () => {
         <div
           :id="'market-panel-' + activeTab"
           class="market-body"
+          :class="{ recommendations: activeTab === 'recommendations' }"
           role="tabpanel"
           :aria-labelledby="'market-tab-' + activeTab"
         >
@@ -264,24 +270,50 @@ onMounted(async () => {
             </div>
             <div class="recommendation-list">
               <article
-                v-for="entry in recommendations"
+                v-for="(entry, entryIndex) in recommendations"
                 :key="`${entry.kind}:${entry.identity}`"
                 class="recommendation-card"
+                :class="{ expanded: isSelectedRecommendation(entry) }"
                 data-testid="recommendation-card"
-                tabindex="0"
-                role="button"
-                @click="selectRecommendation(entry)"
-                @keydown.enter.prevent="selectRecommendation(entry)"
-                @keydown.space.prevent="selectRecommendation(entry)"
               >
-                <header>
-                  <strong>{{ entry.name }}</strong>
-                  <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
-                </header>
-                <p>{{ recommendationSummary(entry) }}</p>
-                <footer>
-                  <span>{{ heatLabel(entry) }}</span>
-                </footer>
+                <button
+                  type="button"
+                  class="recommendation-header"
+                  data-testid="recommendation-card-header"
+                  :data-entry-index="entryIndex"
+                  :aria-expanded="isSelectedRecommendation(entry) ? 'true' : 'false'"
+                  :aria-controls="'recommendation-detail-' + entryIndex"
+                  @click="selectRecommendation(entry)"
+                >
+                  <span class="recommendation-title">
+                    <strong>{{ entry.name }}</strong>
+                    <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
+                  </span>
+                  <p>{{ recommendationSummary(entry) }}</p>
+                  <footer>
+                    <span>{{ entry.identity }}</span>
+                    <span class="recommendation-source" :title="entry.sourceUrl">{{ entry.sourceUrl }}</span>
+                    <span>{{ heatLabel(entry) }}</span>
+                  </footer>
+                </button>
+                <ExtensionDetailPanel
+                  v-if="isSelectedRecommendation(entry)"
+                  :id="'recommendation-detail-' + entryIndex"
+                  class="recommendation-detail"
+                  :item="detailItem"
+                  :recommendation="entry"
+                  :evidence-label="t('extensions.market.catalogEvidence')"
+                  @close="selectedRecommendation = null"
+                >
+                  <template #actions>
+                    <button
+                      type="button"
+                      data-testid="market-search-action"
+                      :disabled="!store.canLoad || store.marketBusy"
+                      @click="searchSelectedRecommendation"
+                    >{{ t("extensions.market.searchAction") }}</button>
+                  </template>
+                </ExtensionDetailPanel>
               </article>
             </div>
           </div>
@@ -368,7 +400,7 @@ onMounted(async () => {
           <ExtensionSourceManager v-else />
 
           <ExtensionDetailPanel
-            v-if="detailItem && activeTab !== 'sources'"
+            v-if="detailItem && activeTab !== 'sources' && activeTab !== 'recommendations'"
             class="market-detail"
             :item="detailItem"
             :recommendation="detailRecommendation"
@@ -462,23 +494,38 @@ onMounted(async () => {
 }
 .category-chips button { min-height: var(--control-h-sm); padding: 0 var(--space-2); border-radius: var(--radius-full); cursor: pointer; }
 .category-chips button.active { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.recommendation-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); align-content: start; }
+.market-body.recommendations { grid-template-columns: 1fr; }
+.recommendation-list { display: grid; grid-template-columns: 1fr; gap: var(--space-2); align-content: start; }
 .recommendation-card {
   display: flex;
-  min-height: 116px;
+  min-width: 0;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
   border: var(--border-w) solid var(--border-2);
   border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-2);
-  cursor: pointer;
+  overflow: hidden;
 }
-.recommendation-card:hover, .recommendation-card:focus-visible, .market-result:hover, .market-result:focus-visible { border-color: var(--border-strong); background: var(--surface-hover); }
-.recommendation-card header, .recommendation-card footer { display: flex; justify-content: space-between; gap: var(--space-2); }
-.recommendation-card header span, .recommendation-card footer, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
-.recommendation-card p { margin: 0; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
+.recommendation-card.expanded { border-color: var(--accent); }
+.recommendation-header {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.recommendation-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-width)); }
+.recommendation-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.recommendation-title strong { color: var(--text); overflow-wrap: anywhere; }
+.recommendation-title span, .recommendation-header footer, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
+.recommendation-header p { margin: 0; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
+.recommendation-header footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1); }
+.recommendation-source { overflow-wrap: anywhere; }
+.recommendation-detail { margin: 0 var(--space-2) var(--space-2); }
 .market-search { display: flex; gap: var(--space-2); }
 .market-search input { flex: 1; min-width: 0; }
 .market-results { display: grid; gap: var(--space-1); overflow: auto; }
