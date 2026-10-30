@@ -122,8 +122,13 @@ describe("ExtensionMarketDialog", () => {
     const header = wrapper.get("[data-testid='recommendation-card-header']");
     expect(header.element.tagName).toBe("BUTTON");
     expect(header.element.querySelector("p, footer")).toBeNull();
+    expect(header.attributes("aria-controls")).toBeUndefined();
     (header.element as HTMLElement).focus();
     await header.trigger("click");
+    const expandedHeader = wrapper.get("[data-testid='recommendation-card-header']");
+    const detailId = expandedHeader.attributes("aria-controls");
+    expect(detailId).toBeTruthy();
+    expect(document.getElementById(detailId!)).not.toBeNull();
     let card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
     const closeButton = card.get("[data-testid='market-close-action']");
     (closeButton.element as HTMLElement).focus();

@@ -296,7 +296,7 @@ onMounted(async () => {
                   data-testid="recommendation-card-header"
                   :data-entry-index="entryIndex"
                   :aria-expanded="isSelectedRecommendation(entry) ? 'true' : 'false'"
-                  :aria-controls="'recommendation-detail-' + entryIndex"
+                  :aria-controls="isSelectedRecommendation(entry) ? 'recommendation-detail-' + entryIndex : undefined"
                   @click="selectRecommendation(entry)"
                 >
                   <span class="recommendation-title">
