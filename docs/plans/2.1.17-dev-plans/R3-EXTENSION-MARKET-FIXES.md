@@ -143,4 +143,4 @@ PR [#50](https://github.com/Wifabric/AISC/pull/50) merged into `develop` as `c3b
 | Bundle deb/dmg | [40990054583](https://github.com/Wifabric/AISC/actions/runs/40990054583) | SUCCESS |
 | NSIS installed-app smoke | [40990054531](https://github.com/Wifabric/AISC/actions/runs/40990054531) | SUCCESS attempt 2; attempt 1 failed dependency staging with upstream npm `HTTP 403 rate limit exceeded` |
 
-The attempt-1 NSIS failure is retained as evidence; only the failed job was rerun and no source changed. R3 remains open for this batch's user handtest. No main merge, tag, publication, or next product batch has started.
+The attempt-1 NSIS failure is retained as evidence; only the failed job was rerun and no source changed. On 2026-10-30 the user explicitly confirmed that R3 and R4 handtests passed and requested closeout; unrun checks remain in the unified regression ledger (CLOSEOUT.md). No main merge or publication is implied by this handtest result.

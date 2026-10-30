@@ -69,7 +69,7 @@ use workspace::{
     workspace_forget, workspace_forget_preview, workspace_history_remove, workspace_list,
     workspace_git_diff, workspace_git_info, workspace_git_status,
     workspace_export_lifecycle, workspace_import_lifecycle,
-    workspace_open, workspace_path_exists, workspace_rename, workspace_reveal,
+    workspace_open, workspace_read_image, workspace_path_exists, workspace_rename, workspace_reveal,
     workspace_upload_image,
     workspace_reveal_data_file,
 };
@@ -252,6 +252,7 @@ pub fn run(cli_arg: Option<String>) {
             artifact_refresh,
             workspace_list,
             workspace_open,
+            workspace_read_image,
             workspace_reveal,
             workspace_forget_preview,
             workspace_forget,

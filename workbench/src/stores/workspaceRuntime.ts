@@ -1238,6 +1238,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   ) {
     const p = tab.panes[paneId];
     if (!p || p.sessionState === "starting" || p.sessionState === "running") return;
+    resumeConversationId ??= p.resumeConversationId;
+    if (resumeConversationId) {
+      forkSession = p.resumeForkSession ?? forkSession;
+      p.resumeConversationId = resumeConversationId;
+      p.resumeForkSession = forkSession;
+    }
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
     if (!agent || !runtimeId.value) return;
     const sid = uuid();
@@ -1293,6 +1299,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         resumeConversationId ?? null,
         forkSession,
       );
+      if (p.sessionId !== sid || !tab.panes[paneId]) return;
       // v2.1.8 T4: remember the conversation this tab resumed so the
       // History panel can activate the live tab instead of re-resuming
       // (a second provider resume on a live session fails).
@@ -1301,12 +1308,16 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       if (resumeConversationId && !forkSession) {
         tab.resumeConversationId = resumeConversationId;
       }
+      if (forkSession) {
+        delete p.resumeConversationId;
+        delete p.resumeForkSession;
+      }
       if (p.sessionState === "starting") {
         p.sessionState = "running";
         syncProjection(tab);
       }
     } catch {
-      if (p.sessionState === "starting") {
+      if (p.sessionId === sid && p.sessionState === "starting") {
         p.sessionState = "failed";
         syncProjection(tab);
       }
@@ -1483,6 +1494,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
+    const createdPane = activePane(tabs.value[tabs.value.length - 1]);
+    if (resumeConversationId) {
+      createdPane.resumeConversationId = resumeConversationId;
+      createdPane.resumeForkSession = forkSession;
+    }
     activeTabId.value = tabId;
     void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession);
     scheduleSave();
@@ -1544,13 +1560,49 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * the provider refuses a second resume of a live session (手测). */
   function findLiveResumeTab(conversationId: string): Tab | null {
     for (const tab of tabs.value) {
-      if (tab.resumeConversationId !== conversationId) continue;
-      const live = Object.values(tab.panes).some(
-        (p) => p.sessionState === "running" || p.sessionState === "starting"
-      );
+      const live = Object.values(tab.panes).some((p) =>
+        p.resumeConversationId === conversationId && !p.resumeForkSession &&
+        (p.sessionState === "running" || p.sessionState === "starting"));
       if (live) return tab;
     }
     return null;
+  }
+
+  function findRecoverableResumePane(conversationId: string): { tabId: string; paneId: string } | null {
+    for (const tab of tabs.value) for (const [paneId, pane] of Object.entries(tab.panes)) {
+      if (pane.resumeConversationId === conversationId && !pane.resumeForkSession &&
+          ["idle", "guide", "failed", "disconnected", "exited"].includes(pane.sessionState)) return { tabId: tab.tabId, paneId };
+    }
+    return null;
+  }
+
+  /** A local transcript can outlive Docker and its PTY. Inspect before the
+   * provider gate; restart only this existing stopped runtime, never delete it. */
+  async function prepareConversationResume(): Promise<void> {
+    const requestWorkspace = workspace.value.trim();
+    const requestRuntime = runtimeId.value;
+    const generation = webServicesGeneration;
+    if (!requestRuntime || !requestWorkspace) throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+    let seq = ++requestSeq.value;
+    let snap = await ipc.runtimeInspect(requestWorkspace, requestRuntime);
+    if (workspace.value.trim() !== requestWorkspace || runtimeId.value !== requestRuntime || generation !== webServicesGeneration) throw new Error(i18n.global.t("history.viewer.workspaceChanged"));
+    if (snap.state !== "running") {
+      // A confirmed stopped container invalidates every old exec attachment.
+      for (const tab of tabs.value) for (const pane of Object.values(tab.panes)) {
+        if (["running", "starting"].includes(pane.sessionState)) {
+          pane.sessionState = "disconnected";
+          pane.exit = { reason: "transport_error", exitCode: null };
+        }
+        syncProjection(tab);
+      }
+      if (snap.state !== "stopped") throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+      snap = await ipc.runtimeRestart(requestWorkspace, requestRuntime);
+      if (workspace.value.trim() !== requestWorkspace || runtimeId.value !== requestRuntime || generation !== webServicesGeneration) throw new Error(i18n.global.t("history.viewer.workspaceChanged"));
+      seq = ++requestSeq.value;
+    }
+    if (snap.state !== "running") throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+    applyRuntimeSnapshot(snap, seq);
+    runtimeReady.value = true;
   }
 
   /** G-12 (Step 8): activate an existing cc-switch tab or create one -
@@ -1616,7 +1668,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
           && !association.knownConversationIds.has(item.conversation_id.toLowerCase()),
       );
       if (candidates.length !== 1) continue;
+      const panes = Object.entries(tab.panes).filter(([paneId, pane]) =>
+        findLeaf(tab.tree, paneId)?.sessionType === tab.agent &&
+        (pane.sessionState === "starting" || pane.sessionState === "running"));
+      if (panes.length !== 1) continue;
       tab.resumeConversationId = candidates[0].conversation_id;
+      panes[0][1].resumeConversationId = candidates[0].conversation_id;
       pendingConversationAssociations.delete(tab.tabId);
       resolved += 1;
     }
@@ -2124,6 +2181,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     reopenTab,
     createTab,
     findLiveResumeTab,
+    findRecoverableResumePane,
+    prepareConversationResume,
     resolvePendingConversationAssociations,
     closeLiveConversationSessions,
     removeTab,

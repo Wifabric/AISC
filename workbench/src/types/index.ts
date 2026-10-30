@@ -180,6 +180,16 @@ export interface ConversationReadMessage {
   call_id?: string | null;
   result?: string | null;
   ts?: string | null;
+  phase?: string | null;
+  attachments?: ConversationAttachment[];
+  result_attachments?: ConversationAttachment[];
+}
+
+export interface ConversationAttachment {
+  kind: "image" | "audio" | "video" | "file";
+  name: string;
+  url?: string;
+  detail?: string;
 }
 
 export interface ConversationReadResult {
@@ -192,6 +202,7 @@ export interface ConversationReadResult {
   messages: ConversationReadMessage[];
   malformed_lines: number;
   degraded_reason: "malformed" | null;
+  omitted_entries?: number;
 }
 
 /** Result of the unified exit coordinator (03 §4.3; runtime-lifecycle-ux
@@ -776,6 +787,9 @@ export interface SplitLayout {
 /** Live per-pane session state (pane tree leaf runtime; the pane's static
  * session type lives in the leaf, not here). */
 export interface PaneRuntime {
+  /** Resume intent survives provider guide and failed PTY opens. */
+  resumeConversationId?: string;
+  resumeForkSession?: boolean;
   sessionId: string | null;
   sessionState: TabSessionState;
   exit: TabExit | null;

@@ -923,6 +923,9 @@ export const workspaceList = (
 export const workspaceOpen = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_open", { workspace, relativePath });
 
+export const workspaceReadImage = (workspace: string, relativePath: string) =>
+  invoke<string>("workspace_read_image", { workspace, relativePath });
+
 
 export const workspaceReveal = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_reveal", { workspace, relativePath });

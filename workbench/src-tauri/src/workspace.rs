@@ -1989,6 +1989,48 @@ pub async fn workspace_open(
     open_path(Path::new(&workspace), &relative_path)
 }
 
+const RECORD_IMAGE_MAX: usize = 8 * 1024 * 1024;
+
+fn record_image_data_url(bytes: &[u8]) -> Result<String, WorkbenchError> {
+    use base64::Engine;
+    if bytes.len() > RECORD_IMAGE_MAX { return Err(WorkbenchError::input_too_large()); }
+    let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") { "image/png" }
+        else if bytes.starts_with(b"\xff\xd8\xff") { "image/jpeg" }
+        else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") { "image/gif" }
+        else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") { "image/webp" }
+        else { return Err(WorkbenchError::workspace_invalid().with_detail("not a supported raster image")); };
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+/// A bounded, contained image read for the record reader. No asset:// scope
+/// widening; the remote leg uses the same filesystem gate as Explorer.
+#[tauri::command]
+pub async fn workspace_read_image(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    relative_path: String,
+) -> Result<String, WorkbenchError> {
+    if let crate::cli::CliTarget::Remote(t) = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
+        use base64::Engine;
+        let data = crate::serve::fs_op(crate::serve::global_pool(), &t, "fs.read",
+            &serde_json::json!({ "root": workspace, "path": relative_path, "maxBytes": RECORD_IMAGE_MAX })).await?;
+        if data.get("truncated").and_then(|v| v.as_bool()).unwrap_or(true) { return Err(WorkbenchError::input_too_large()); }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data.get("base64").and_then(|v| v.as_str()).unwrap_or_default())
+            .map_err(|e| WorkbenchError::cli_protocol().with_detail(e.to_string()))?;
+        return record_image_data_url(&bytes);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Read;
+        let path = resolve_contained(Path::new(&workspace), &relative_path)?;
+        let file = fs::File::open(path).map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?;
+        let mut bytes = Vec::new();
+        file.take((RECORD_IMAGE_MAX + 1) as u64).read_to_end(&mut bytes)
+            .map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?;
+        record_image_data_url(&bytes)
+    }).await.map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?
+}
+
 #[tauri::command]
 pub async fn workspace_reveal(
     workspace: String,
@@ -2786,6 +2828,13 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn record_images_are_bounded_rasters_not_active_markup() {
+        assert!(record_image_data_url(b"\x89PNG\r\n\x1a\n").unwrap().starts_with("data:image/png;base64,"));
+        assert!(record_image_data_url(b"<svg onload='alert(1)'/>").is_err());
+        assert!(record_image_data_url(&vec![0; RECORD_IMAGE_MAX + 1]).is_err());
+    }
 
     #[cfg(unix)]
     use std::os::unix::fs::symlink;

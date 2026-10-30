@@ -59,6 +59,8 @@ vi.mock("../../../lib/ipc", () => ({
   workRecordMoveMember: vi.fn(),
 }));
 const runtimeMock = vi.hoisted(() => ({
+  workspace: "/ws",
+  prepareConversationResume: vi.fn().mockResolvedValue(undefined),
   tabs: [] as unknown[],
   activeTabId: null as string | null,
   activateTab: vi.fn(),
@@ -139,6 +141,12 @@ async function mountView() {
 }
 
 describe("WorkRecordsView", () => {
+  it("shows a failed resume inline instead of silently doing nothing", async () => {
+    const { wrapper, explorer } = await mountView();
+    explorer.resumeErrors[conversationId] = "Docker not ready";
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[role=alert]').text()).toContain("Docker not ready");
+  });
   it("hides archived collections by default and shows them with the switch", async () => {
     const { wrapper } = await mountView();
     expect(wrapper.findAll("[data-testid=collection]").map((w) => w.attributes("data-id")))
