@@ -1,0 +1,106 @@
+{
+  "assets": [
+    {
+      "version": "2.1.16",
+      "bytes": 293124128
+    },
+    {
+      "version": "2.1.17-preview.1",
+      "bytes": 698809734
+    }
+  ],
+  "growth_bytes": 405685606,
+  "top_tracked_payload_growth": [
+    {
+      "path": "vendor/checksums.txt",
+      "delta_bytes": 109,
+      "old_bytes": 262187,
+      "new_bytes": 262296
+    },
+    {
+      "path": "vendor/manifest.json",
+      "delta_bytes": 102,
+      "old_bytes": 3174,
+      "new_bytes": 3276
+    },
+    {
+      "path": "vendor/licenses/README.md",
+      "delta_bytes": 0,
+      "old_bytes": 2465,
+      "new_bytes": 2465
+    },
+    {
+      "path": "container/_bundle/skills/gstack/plan-eng-review/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 101409,
+      "new_bytes": 101409
+    },
+    {
+      "path": "container/_bundle/skills/gstack/plan-devex-review/dx-hall-of-fame.md",
+      "delta_bytes": 0,
+      "old_bytes": 7285,
+      "new_bytes": 7285
+    },
+    {
+      "path": "container/_bundle/skills/gstack/plan-devex-review/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 104571,
+      "new_bytes": 104571
+    },
+    {
+      "path": "container/_bundle/skills/gstack/plan-design-review/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 105592,
+      "new_bytes": 105592
+    },
+    {
+      "path": "container/_bundle/skills/gstack/plan-ceo-review/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 130891,
+      "new_bytes": 130891
+    },
+    {
+      "path": "container/_bundle/skills/gstack/office-hours/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 110915,
+      "new_bytes": 110915
+    },
+    {
+      "path": "container/_bundle/skills/gstack/autoplan/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 89274,
+      "new_bytes": 89274
+    },
+    {
+      "path": "container/_bundle/skills/gstack/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 47785,
+      "new_bytes": 47785
+    },
+    {
+      "path": "container/_bundle/skills/artifact/SKILL.md",
+      "delta_bytes": 0,
+      "old_bytes": 3128,
+      "new_bytes": 3128
+    },
+    {
+      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/utils.py",
+      "delta_bytes": 0,
+      "old_bytes": 1708,
+      "new_bytes": 1708
+    },
+    {
+      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/run_loop.py",
+      "delta_bytes": 0,
+      "old_bytes": 13933,
+      "new_bytes": 13933
+    },
+    {
+      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/run_eval.py",
+      "delta_bytes": 0,
+      "old_bytes": 11774,
+      "new_bytes": 11774
+    }
+  ],
+  "boundary": "read-only preliminary attribution; compressed installer savings not measured"
+}

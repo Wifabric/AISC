@@ -309,7 +309,7 @@ pub fn enumerate_candidates(explicit: Option<&Path>, saved: Option<&Path>) -> Ve
 /// sidecar next to the main binary under its **base name** (target triple
 /// stripped, e.g. `aisc.exe` on Windows — tauri-bundler 2.9.x NSIS layout);
 /// dev builds have no sidecar (None).
-fn sidecar_candidate() -> Option<PathBuf> {
+pub(crate) fn sidecar_candidate() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     sidecar_candidate_in(exe.parent()?)
 }
@@ -505,7 +505,7 @@ pub async fn validate_candidate(path: PathBuf, source: CandidateSource) -> Candi
     }
 }
 
-fn same_path(a: &str, b: &Path) -> bool {
+pub(crate) fn same_path(a: &str, b: &Path) -> bool {
     let pa = Path::new(a);
     let ca = std::fs::canonicalize(pa).ok();
     let cb = std::fs::canonicalize(b).ok();
@@ -859,8 +859,21 @@ pub async fn run_control_direct_for_tests(
     timeout: Duration,
     cancel: CancellationToken,
 ) -> Result<Envelope, WorkbenchError> {
+    run_control_direct_target(
+        &CliTarget::Local(executable.to_path_buf()), argv, timeout, cancel,
+    ).await
+}
+
+/// Read-only diagnostics can recover argparse stderr that an old serve
+/// version reduces to an empty envelope.
+pub(crate) async fn run_control_direct_target(
+    target: &CliTarget,
+    argv: Vec<String>,
+    timeout: Duration,
+    cancel: CancellationToken,
+) -> Result<Envelope, WorkbenchError> {
     let run_id = uuid::Uuid::new_v4().to_string();
-    run_control_inner(&CliTarget::Local(executable.to_path_buf()), argv, None, timeout, cancel, &run_id).await
+    run_control_inner(target, argv, None, timeout, cancel, &run_id).await
 }
 
 async fn run_control_inner(

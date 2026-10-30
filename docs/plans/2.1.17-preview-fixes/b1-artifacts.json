@@ -1,0 +1,21 @@
+{
+  "source_base": "7cc5a2550e5ad0ffceb2d876a618f9a47e5f1328",
+  "branch": "codex/2.1.17-preview-b1-market-envelope",
+  "bundle": "C:\\Users\\wangyu\\.codex\\worktrees\\217-b1-proxyless-extension-reliability\\AISC\\release-staging\\2.1.17-closeout\\handtest-stage\\aisc-bundle",
+  "data_root": "C:/pt/aisc217pfb1-data",
+  "workspace": "C:/pt/aisc217pfb1-workspace",
+  "image": "super-claude:2.1.17-preview-b1",
+  "image_id": "sha256:9831ce1d36dfc0b874e97a97420118393a105726943e41c0f0cbd88bce61444d",
+  "files": [
+    {
+      "sha256": "8846DF53C59DE18065FDC245948901CE68A99EA78233972C3DC9F9DBA3FDECC1",
+      "bytes": 25903616,
+      "name": "AISC-Workbench-2.1.17-PREVIEW-B1.exe"
+    },
+    {
+      "sha256": "765592AE3DF28CEC8F0516D79CEA563F5F58FF37448764BB94D813B7C2AC4225",
+      "bytes": 12977845,
+      "name": "aisc.exe"
+    }
+  ]
+}

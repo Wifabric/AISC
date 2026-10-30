@@ -163,6 +163,46 @@ class CliOpInProcessTests(unittest.TestCase):
         self.assertGreater(env["meta"]["exit_code"], 0)
         self.assertEqual(env["errors"][0]["code"], "AISC_ERR_SERVE_CLI_OUTPUT")
 
+    def test_extensions_parse_errors_keep_the_json_protocol(self) -> None:
+        """Bad extension argv must not become an empty captured envelope."""
+        cases = (
+            ["extensions", "unknown-preview-op"],
+            ["extensions", "updates-check"],  # missing runtime
+            ["extensions", "updates-check", "--runtime-id", "rid", "--kind", "skills"],
+            ["extensions", "list", "--runtime-id", "rid", "--kind", "unknown"],
+        )
+        for argv in cases:
+            with self.subTest(argv=argv):
+                frame = self._run({"argv": argv})
+                self.assertTrue(frame["ok"])
+                env = frame["envelope"]
+                self.assertEqual(env["meta"]["command"], "extensions")
+                self.assertEqual(env["meta"]["exit_code"], 2)
+                self.assertEqual(env["errors"][0]["code"], "AISC_ERR_USAGE")
+                self.assertNotIn("non-envelope", env["errors"][0]["message"])
+
+    def test_updates_check_business_failure_then_success_on_same_channel(self) -> None:
+        from unittest import mock
+        from aisc.domain.models import CliError
+
+        payload = {"argv": ["extensions", "updates-check", "--runtime-id", "rid",
+                            "--workspace", "C:/pt/preview-workspace"]}
+        data = {"op": "updates-check", "items": [
+            {"kind": "skills", "id": "caveman", "status": "unsupported",
+             "update_available": False},
+        ]}
+        with mock.patch("aisc.application.extensions.extensions_call_raw", side_effect=[
+            CliError(message="market metadata unavailable", exit_code=1,
+                     error_code="AISC_ERR_EXTENSIONS_EXEC_FAILED"), data,
+        ]):
+            failed = self._run(payload)["envelope"]
+            succeeded = self._run(payload)["envelope"]
+        self.assertEqual(failed["errors"][0]["code"], "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+        self.assertEqual(failed["errors"][0]["message"], "market metadata unavailable")
+        self.assertEqual(succeeded["meta"]["exit_code"], 0)
+        self.assertEqual(succeeded["data"], data)
+        self.assertEqual(self._run({"argv": ["version"]})["envelope"]["errors"], [])
+
 
 class CliOpSubprocessTests(unittest.TestCase):
     def _spawn(self) -> subprocess.Popen:

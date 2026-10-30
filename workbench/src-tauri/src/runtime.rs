@@ -96,6 +96,98 @@ fn map_old_cli_source_unsupported(
     }
 }
 
+fn is_empty_update_check_envelope(op: Option<&str>, env: &crate::cli::Envelope) -> bool {
+    op == Some("updates-check")
+        && env.errors.iter().any(|e| {
+            e.code == "AISC_ERR_SERVE_CLI_OUTPUT"
+                && e.message == "cli op got non-envelope output: ''"
+        })
+}
+
+fn is_legacy_update_check_rejection(error: &WorkbenchError) -> bool {
+    let detail = error.technical_detail.as_deref().unwrap_or_default();
+    error.code == "WB_ERR_CLI_PROTOCOL"
+        && detail.contains("aisc extensions")
+        && detail.contains("argument extensions_command: invalid choice: 'updates-check'")
+}
+
+fn update_check_fallback_path(
+    target: &crate::cli::CliTarget,
+    explicit: bool,
+    bundled: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    match target {
+        crate::cli::CliTarget::Local(old) if !explicit => bundled.filter(|p| {
+            p.is_file() && !crate::cli::same_path(&old.to_string_lossy(), p)
+        }),
+        _ => None,
+    }
+}
+
+/// Recover only the known pre-2.1.17 host CLI boundary. The diagnostic and
+/// retry are read-only and retain the original workspace/data-root/target.
+async fn recover_update_check(
+    target: &crate::cli::CliTarget,
+    argv: &[String],
+    original: crate::cli::Envelope,
+    explicit: bool,
+    bundled: Option<std::path::PathBuf>,
+    timeout: Duration,
+) -> Result<(crate::cli::Envelope, Option<std::path::PathBuf>), WorkbenchError> {
+    if !is_empty_update_check_envelope(argv.get(1).map(String::as_str), &original) {
+        return Ok((original, None));
+    }
+    let diagnostic = crate::cli::run_control_direct_target(
+        target, argv.to_vec(), timeout, CancellationToken::new(),
+    ).await;
+    // Never reinterpret an arbitrary empty response, timeout, database or
+    // network failure as an unsupported CLI, and never replay a mutation.
+    if !matches!(&diagnostic, Err(e) if is_legacy_update_check_rejection(e)) {
+        return Ok((original, None));
+    }
+    let upgrade = || {
+        let mut error = WorkbenchError::capability_unsupported();
+        error.message = "当前 AISC CLI 不支持扩展更新检查，请升级 CLI 或选择应用附带的 CLI".into();
+        error.with_detail("host CLI rejected extensions updates-check; runtime image is not the cause")
+    };
+    let Some(path) = update_check_fallback_path(target, explicit, bundled) else {
+        return Err(upgrade());
+    };
+    let report = crate::cli::negotiate(&path, CancellationToken::new()).await;
+    if !report.required_ok {
+        return Err(upgrade());
+    }
+    let replacement = crate::cli::run_control_target(
+        &crate::cli::CliTarget::Local(path.clone()), argv.to_vec(), timeout,
+        CancellationToken::new(),
+    ).await?;
+    if is_empty_update_check_envelope(Some("updates-check"), &replacement) {
+        return Err(upgrade());
+    }
+    let healed = replacement.meta.exit_code == 0 && replacement.errors.is_empty();
+    Ok((replacement, healed.then_some(path)))
+}
+
+fn persist_healed_cli_pin(app: &AppHandle, target: &crate::cli::CliTarget, path: &std::path::Path) {
+    let crate::cli::CliTarget::Local(old) = target else { return; };
+    // Re-read after IO. A CLI chosen by the user while checking updates must
+    // not be overwritten by this older in-flight request.
+    let result = (|| -> Result<bool, String> {
+        let dir = crate::session::config_dir(app).map_err(|e| format!("{e:?}"))?;
+        let mut settings = crate::settings::Settings::load(&dir).map_err(|e| e.to_string())?;
+        if !settings.aisc_cli_path().is_some_and(|p| crate::cli::same_path(p, old)) {
+            return Ok(false);
+        }
+        settings.set_aisc_cli_path(Some(&path.to_string_lossy()));
+        settings.save(&dir).map_err(|e| e.to_string())?;
+        Ok(true)
+    })();
+    crate::logging::append_event(
+        if result.is_err() { "warn" } else { "info" }, "app", "extension_cli_pin_recovery", None,
+        serde_json::json!({"updated": matches!(result, Ok(true)), "reason": "legacy_updates_check"}),
+    );
+}
+
 fn extensions_group_timeout(specs: &[String]) -> Duration {
     let mut repos: Vec<&str> = Vec::new();
     for spec in specs {
@@ -794,13 +886,28 @@ async fn cc_switch_call_value_with_timeout(
     // special-case entry (run_serve_op_target) was folded away when the
     // Local arm flipped.
     let command_op = argv.get(1).cloned();
-    let env = match input {
+    let argv_for_recovery = argv.clone();
+    let (env, healed_pin) = match input {
         Some(text) => crate::cli::run_control_input_target(
             &target, argv, text, timeout, CancellationToken::new(),
-        ).await.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?,
-        None => crate::cli::run_control_target(
-            &target, argv, timeout, CancellationToken::new(),
-        ).await.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?,
+        ).await.map(|env| (env, None)),
+        None => {
+            let env = crate::cli::run_control_target(
+                &target, argv, timeout, CancellationToken::new(),
+            ).await.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?;
+            if argv_for_recovery.first().map(String::as_str) == Some("extensions") {
+                recover_update_check(
+                    &target, &argv_for_recovery, env,
+                    crate::cli::explicit_cli_path(app, None).is_some(),
+                    crate::cli::sidecar_candidate(), timeout,
+                ).await
+            } else {
+                Ok((env, None))
+            }
+        }
+    }.map_err(|e| map_old_cli_source_unsupported(command_op.as_deref(), e))?;
+    if let Some(path) = healed_pin {
+        persist_healed_cli_pin(app, &target, &path);
     };
     if let Some(env_err) = env.errors.first() {
         if is_source_maintenance_envelope_unsupported(
@@ -2078,6 +2185,81 @@ mod tests {
     #[test]
     fn extensions_ops_include_updates_check() {
         assert!(EXTENSIONS_OPS.contains(&"updates-check"));
+    }
+
+    #[test]
+    fn legacy_update_check_requires_both_exact_boundaries() {
+        let env: crate::cli::Envelope = serde_json::from_value(serde_json::json!({
+            "meta": {"protocol": "aisc.cli/v1", "command": "extensions", "exit_code": 2},
+            "errors": [{"code": "AISC_ERR_SERVE_CLI_OUTPUT", "message": "cli op got non-envelope output: ''"}]
+        })).unwrap();
+        assert!(is_empty_update_check_envelope(Some("updates-check"), &env));
+        assert!(!is_empty_update_check_envelope(Some("skill-install"), &env));
+        let legacy = WorkbenchError::cli_protocol().with_detail(
+            "stderr: aisc extensions: error: argument extensions_command: invalid choice: 'updates-check' (choose from list)",
+        );
+        assert!(is_legacy_update_check_rejection(&legacy));
+        for detail in [
+            "connection closed while fetching metadata",
+            "aisc extensions: database locked",
+            "aisc extensions: error: argument --kind: invalid choice: 'updates-check'",
+        ] {
+            assert!(!is_legacy_update_check_rejection(&WorkbenchError::cli_protocol().with_detail(detail)));
+        }
+    }
+
+    #[test]
+    fn update_check_recovery_preserves_explicit_and_remote_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old-cli");
+        let new = dir.path().join("bundled-cli");
+        std::fs::write(&old, "old").unwrap();
+        std::fs::write(&new, "new").unwrap();
+        let local = crate::cli::CliTarget::Local(old.clone());
+        assert_eq!(update_check_fallback_path(&local, false, Some(new.clone())), Some(new.clone()));
+        assert!(update_check_fallback_path(&local, true, Some(new.clone())).is_none());
+        assert!(update_check_fallback_path(&local, false, Some(old)).is_none());
+        assert!(update_check_fallback_path(&local, false, None).is_none());
+        assert!(update_check_fallback_path(&local, false, Some(dir.path().join("missing"))).is_none());
+        let remote = crate::cli::CliTarget::Remote(crate::cli::SshTarget {
+            host: "remote-test".into(), port: None, key_path: None,
+            extra_args: vec![],
+        });
+        assert!(update_check_fallback_path(&remote, false, Some(new)).is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AISC_TEST_LEGACY_CLI, AISC_TEST_BUNDLED_CLI and isolated runtime/workspace"]
+    async fn legacy_update_check_recovers_over_real_cli_processes() {
+        let required = |name: &str| std::env::var(name).expect(name);
+        let legacy = std::path::PathBuf::from(required("AISC_TEST_LEGACY_CLI"));
+        let bundled = std::path::PathBuf::from(required("AISC_TEST_BUNDLED_CLI"));
+        let workspace = required("AISC_TEST_WORKSPACE");
+        let rid = required("AISC_TEST_RUNTIME_ID");
+        let target = crate::cli::CliTarget::Local(legacy);
+        let argv = vec!["extensions".into(), "updates-check".into(), "--runtime-id".into(),
+                        rid, "--workspace".into(), workspace, "--format".into(), "json".into()];
+        eprintln!("legacy update-check: request");
+        let original = crate::cli::run_control_target(
+            &target, argv.clone(), Duration::from_secs(60), CancellationToken::new(),
+        ).await.unwrap();
+        assert!(is_empty_update_check_envelope(Some("updates-check"), &original));
+        eprintln!("legacy update-check: empty envelope reproduced; recover");
+        let (env, healed) = recover_update_check(
+            &target, &argv, original.clone(), false, Some(bundled.clone()), Duration::from_secs(150),
+        ).await.unwrap();
+        assert_eq!(env.meta.exit_code, 0, "{:?}", env.errors);
+        assert!(env.errors.is_empty());
+        assert!(env.data.as_ref().unwrap()["items"].is_array());
+        assert_eq!(healed, Some(bundled.clone()));
+        eprintln!("legacy update-check: recovered; verify explicit override");
+        let error = recover_update_check(
+            &target, &argv, original, true, Some(bundled), Duration::from_secs(60),
+        ).await.unwrap_err();
+        assert_eq!(error.code, "WB_ERR_CAPABILITY_UNSUPPORTED");
+        eprintln!("legacy update-check: override respected; drain resident processes");
+        crate::serve::drain_pool().await;
+        eprintln!("legacy update-check: complete");
     }
 
     #[test]
