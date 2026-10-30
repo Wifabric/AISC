@@ -167,9 +167,7 @@ def _exec_adapter(
         # database/network failures. Legacy adapters have no dedicated code, so
         # classify only their exact unknown-op and stale-schema responses.
         legacy_unsupported = (
-            op in ("skill-repos-list", "skill-repo-remove",
-                   "plugin-market-list", "plugin-market-add",
-                   "plugin-market-remove")
+            op in _SOURCE_MAINTENANCE_OPS
             and code == "AISC_ERR_USAGE"
             and message == f"unhandled op: {op}"
         )

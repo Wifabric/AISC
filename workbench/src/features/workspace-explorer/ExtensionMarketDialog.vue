@@ -62,15 +62,8 @@ const detailRecommendation = computed(() => {
     : undefined;
 });
 const detailItem = computed<ExtensionsItem | null>(() =>
-  selectedMarketItem.value ?? (selectedRecommendation.value ? {
-    kind: selectedRecommendation.value.kind,
-    id: selectedRecommendation.value.identity,
-    name: selectedRecommendation.value.name,
-    repo: selectedRecommendation.value.identity.split(":", 1)[0],
-    directory: selectedRecommendation.value.identity.split(":")[1] ?? "",
-    description: selectedRecommendation.value.summaryEn,
-    ...(selectedRecommendation.value.heat ? { installs: selectedRecommendation.value.heat } : {}),
-  } : null),
+  selectedMarketItem.value
+  ?? (selectedRecommendation.value ? recommendationItem(selectedRecommendation.value) : null),
 );
 const locale = computed(() => (useI18n().locale.value === "en-US" ? "en-US" : "zh-CN") as "en-US" | "zh-CN");
 const marketCache = computed(() => {
@@ -156,6 +149,15 @@ function isSelectedRecommendation(entry: CategorizedRecommendation): boolean {
 function selectRecommendation(entry: CategorizedRecommendation): void {
   selectedRecommendation.value = isSelectedRecommendation(entry) ? null : entry;
   selectedMarketItem.value = null;
+}
+
+async function closeRecommendation(entryIndex: number): Promise<void> {
+  selectedRecommendation.value = null;
+  selectedMarketItem.value = null;
+  await nextTick();
+  panelRef.value
+    ?.querySelector<HTMLButtonElement>(`[data-entry-index='${entryIndex}']`)
+    ?.focus();
 }
 
 function selectMarketItem(item: ExtensionsItem | null): void {
@@ -300,14 +302,15 @@ onMounted(async () => {
                   <span class="recommendation-title">
                     <strong>{{ entry.name }}</strong>
                     <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
+                    <span aria-hidden="true">{{ isSelectedRecommendation(entry) ? "▾" : "▸" }}</span>
                   </span>
-                  <p>{{ recommendationSummary(entry) }}</p>
-                  <footer>
-                    <span>{{ entry.identity }}</span>
-                    <span class="recommendation-source" :title="entry.sourceUrl">{{ entry.sourceUrl }}</span>
-                    <span>{{ heatLabel(entry) }}</span>
-                  </footer>
+                  <span class="recommendation-summary">{{ recommendationSummary(entry) }}</span>
                 </button>
+                <footer class="recommendation-meta">
+                  <span>{{ entry.identity }}</span>
+                  <span class="recommendation-source" :title="entry.sourceUrl">{{ entry.sourceUrl }}</span>
+                  <span>{{ heatLabel(entry) }}</span>
+                </footer>
                 <ExtensionDetailPanel
                   v-if="isSelectedRecommendation(entry)"
                   :id="'recommendation-detail-' + entryIndex"
@@ -315,9 +318,14 @@ onMounted(async () => {
                   :item="recommendationItem(entry)"
                   :recommendation="entry"
                   :evidence-label="t('extensions.market.catalogEvidence')"
-                  @close="selectedRecommendation = null"
+                  @close="closeRecommendation(entryIndex)"
                 >
                   <template #actions>
+                    <button
+                      type="button"
+                      data-testid="market-close-action"
+                      @click="closeRecommendation(entryIndex)"
+                    >{{ t("common.close") }}</button>
                     <button
                       type="button"
                       data-testid="market-search-action"
@@ -533,10 +541,15 @@ onMounted(async () => {
 .recommendation-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-width)); }
 .recommendation-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .recommendation-title strong { color: var(--text); overflow-wrap: anywhere; }
-.recommendation-title span, .recommendation-header footer, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
-.recommendation-header p { margin: 0; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
-.recommendation-header footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1); }
-.recommendation-source { overflow-wrap: anywhere; }
+.recommendation-title span, .recommendation-meta span, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
+.recommendation-summary { display: block; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
+.recommendation-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
+}
+.recommendation-meta span, .recommendation-source { min-width: 0; overflow-wrap: anywhere; }
 .recommendation-detail { margin: 0 var(--space-2) var(--space-2); }
 .market-search { display: flex; gap: var(--space-2); }
 .market-search input { flex: 1; min-width: 0; }
@@ -555,5 +568,6 @@ onMounted(async () => {
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }
   .market-detail { max-height: 45vh; }
+  .recommendation-meta { grid-template-columns: 1fr; padding-bottom: var(--space-2); }
 }
 </style>

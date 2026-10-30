@@ -117,6 +117,44 @@ describe("ExtensionMarketDialog", () => {
     wrapper.unmount();
   });
 
+  it("uses a valid native disclosure and restores focus after inline close or Escape", async () => {
+    const wrapper = mountDialog();
+    const header = wrapper.get("[data-testid='recommendation-card-header']");
+    expect(header.element.tagName).toBe("BUTTON");
+    expect(header.element.querySelector("p, footer")).toBeNull();
+    (header.element as HTMLElement).focus();
+    await header.trigger("click");
+    let card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    const closeButton = card.get("[data-testid='market-close-action']");
+    (closeButton.element as HTMLElement).focus();
+    await closeButton.trigger("click");
+    await nextTick();
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    expect(card.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(document.activeElement).toBe(card.get("[data-testid='recommendation-card-header']").element);
+
+    await card.get("[data-testid='recommendation-card-header']").trigger("click");
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    const detail = card.get("[data-testid='extension-detail-panel']");
+    const searchAction = card.get("[data-testid='market-search-action']");
+    (searchAction.element as HTMLElement).focus();
+    await detail.trigger("keydown", { key: "Escape" });
+    await nextTick();
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    expect(card.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(document.activeElement).toBe(card.get("[data-testid='recommendation-card-header']").element);
+    wrapper.unmount();
+  });
+
+  it("clears an expanded recommendation when the category changes", async () => {
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='recommendation-card-header']").trigger("click");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(true);
+    await wrapper.findAll("[data-testid='recommendation-category']")[1]!.trigger("click");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("collapses one recommendation when another opens and keeps search explicit", async () => {
     const wrapper = mountDialog();
     const headers = wrapper.findAll("[data-testid='recommendation-card-header']");
