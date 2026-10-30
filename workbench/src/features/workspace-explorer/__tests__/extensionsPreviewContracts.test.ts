@@ -37,7 +37,20 @@ describe("v2.1.17 R2 extension layout contracts", () => {
     expect(block).toContain('class="op-progress-track"');
   });
 
+  it("uses native button activation for recommendation disclosures", () => {
+    const marker = marketSource.indexOf('data-testid="recommendation-card-header"');
+    expect(marker).toBeGreaterThan(-1);
+    const start = marketSource.lastIndexOf("<button", marker);
+    const end = marketSource.indexOf("</button>", marker);
+    const block = marketSource.slice(start, end);
+    expect(block).toContain('type="button"');
+    expect(block).toContain(":aria-expanded");
+    expect(block).toContain(":aria-controls");
+    expect(block).not.toContain("@keydown");
+  });
+
   it("keeps the market dialog usable at narrow widths", () => {
+    expect(marketSource).toContain(".market-body.recommendations { grid-template-columns: 1fr; }");
     expect(marketSource).toContain("grid-template-columns: minmax(0, 1fr) 300px");
     expect(marketSource).toContain("@media (max-width: 720px)");
     expect(marketSource).toContain("grid-template-columns: 1fr");

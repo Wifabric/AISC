@@ -248,6 +248,41 @@ class BridgeTests(unittest.TestCase):
                 self.assertEqual(ctx.exception.error_code,
                                  "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP")
 
+    def test_legacy_adapter_argparse_source_ops_become_stable_unsupported_code(self):
+        for op in sorted(ext._SOURCE_MAINTENANCE_OPS):
+            with self.subTest(op=op):
+                legacy_stderr = (
+                    "usage: aisc-extensions-adapter [-h] [--query QUERY] [--url URL] "
+                    "[--kind {skills,mcp,plugins}] [--id ID] "
+                    "[--agent {claude,codex}] [--on {true,false}]\n"
+                    f"aisc-extensions-adapter: error: argument --op: invalid choice: '{op}'\n"
+                )
+                executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+                    exit_code=2, stdout="", stderr=legacy_stderr,
+                ))
+                from aisc.domain.models import CliError
+                with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+                    with self.assertRaises(CliError) as ctx:
+                        ext.extensions_call_raw("rid", op, "/ws", executor)
+                self.assertEqual(ctx.exception.error_code, ext.UNSUPPORTED_OP)
+                self.assertIn("不支持扩展来源维护", ctx.exception.message)
+                self.assertNotIn("usage: aisc-extensions-adapter", ctx.exception.message)
+
+    def test_neighboring_adapter_argparse_op_remains_execution_failure(self):
+        op = "skill-repo-add"
+        legacy_stderr = (
+            "usage: aisc-extensions-adapter [-h]\n"
+            f"aisc-extensions-adapter: error: argument --op: invalid choice: '{op}'\n"
+        )
+        executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+            exit_code=2, stdout="", stderr=legacy_stderr,
+        ))
+        from aisc.domain.models import CliError
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            with self.assertRaises(CliError) as ctx:
+                ext.extensions_call_raw("rid", op, "/ws", executor)
+        self.assertEqual(ctx.exception.error_code, "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+
     def test_transient_source_failure_keeps_adapter_error_code(self):
         executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
             exit_code=1,
@@ -265,6 +300,19 @@ class BridgeTests(unittest.TestCase):
                 ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
         self.assertEqual(ctx.exception.error_code,
                          "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED")
+
+    def test_non_argparse_adapter_stderr_remains_execution_failure(self):
+        executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+            exit_code=1, stdout="",
+            stderr="aisc-extensions-adapter: database is locked",
+        ))
+        from aisc.domain.models import CliError
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            with self.assertRaises(CliError) as ctx:
+                ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
+        self.assertEqual(ctx.exception.error_code,
+                         "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+        self.assertIn("database is locked", ctx.exception.message)
 
     def test_r2_source_maintenance_ops_are_transportable(self):
         calls = []

@@ -62,15 +62,8 @@ const detailRecommendation = computed(() => {
     : undefined;
 });
 const detailItem = computed<ExtensionsItem | null>(() =>
-  selectedMarketItem.value ?? (selectedRecommendation.value ? {
-    kind: selectedRecommendation.value.kind,
-    id: selectedRecommendation.value.identity,
-    name: selectedRecommendation.value.name,
-    repo: selectedRecommendation.value.identity.split(":", 1)[0],
-    directory: selectedRecommendation.value.identity.split(":")[1] ?? "",
-    description: selectedRecommendation.value.summaryEn,
-    ...(selectedRecommendation.value.heat ? { installs: selectedRecommendation.value.heat } : {}),
-  } : null),
+  selectedMarketItem.value
+  ?? (selectedRecommendation.value ? recommendationItem(selectedRecommendation.value) : null),
 );
 const locale = computed(() => (useI18n().locale.value === "en-US" ? "en-US" : "zh-CN") as "en-US" | "zh-CN");
 const marketCache = computed(() => {
@@ -84,6 +77,18 @@ function categoryLabel(category: { labelZh: string; labelEn: string }): string {
 }
 function recommendationSummary(entry: { summaryZh: string; summaryEn: string }): string {
   return locale.value === "en-US" ? entry.summaryEn : entry.summaryZh;
+}
+
+function recommendationItem(entry: CategorizedRecommendation): ExtensionsItem {
+  return {
+    kind: entry.kind,
+    id: entry.identity,
+    name: entry.name,
+    repo: entry.identity.split(":", 1)[0],
+    directory: entry.identity.split(":")[1] ?? "",
+    description: entry.summaryEn,
+    ...(entry.heat ? { installs: entry.heat } : {}),
+  };
 }
 function heatLabel(entry: {
   heat?: string;
@@ -136,9 +141,23 @@ async function selectTab(target: MarketTab): Promise<void> {
   await store.load(target);
 }
 
+function isSelectedRecommendation(entry: CategorizedRecommendation): boolean {
+  return selectedRecommendation.value?.kind === entry.kind
+    && selectedRecommendation.value.identity === entry.identity;
+}
+
 function selectRecommendation(entry: CategorizedRecommendation): void {
-  selectedRecommendation.value = entry;
+  selectedRecommendation.value = isSelectedRecommendation(entry) ? null : entry;
   selectedMarketItem.value = null;
+}
+
+async function closeRecommendation(entryIndex: number): Promise<void> {
+  selectedRecommendation.value = null;
+  selectedMarketItem.value = null;
+  await nextTick();
+  panelRef.value
+    ?.querySelector<HTMLButtonElement>(`[data-entry-index='${entryIndex}']`)
+    ?.focus();
 }
 
 function selectMarketItem(item: ExtensionsItem | null): void {
@@ -247,6 +266,7 @@ onMounted(async () => {
         <div
           :id="'market-panel-' + activeTab"
           class="market-body"
+          :class="{ recommendations: activeTab === 'recommendations' }"
           role="tabpanel"
           :aria-labelledby="'market-tab-' + activeTab"
         >
@@ -264,24 +284,56 @@ onMounted(async () => {
             </div>
             <div class="recommendation-list">
               <article
-                v-for="entry in recommendations"
+                v-for="(entry, entryIndex) in recommendations"
                 :key="`${entry.kind}:${entry.identity}`"
                 class="recommendation-card"
+                :class="{ expanded: isSelectedRecommendation(entry) }"
                 data-testid="recommendation-card"
-                tabindex="0"
-                role="button"
-                @click="selectRecommendation(entry)"
-                @keydown.enter.prevent="selectRecommendation(entry)"
-                @keydown.space.prevent="selectRecommendation(entry)"
               >
-                <header>
-                  <strong>{{ entry.name }}</strong>
-                  <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
-                </header>
-                <p>{{ recommendationSummary(entry) }}</p>
-                <footer>
+                <button
+                  type="button"
+                  class="recommendation-header"
+                  data-testid="recommendation-card-header"
+                  :data-entry-index="entryIndex"
+                  :aria-expanded="isSelectedRecommendation(entry) ? 'true' : 'false'"
+                  :aria-controls="isSelectedRecommendation(entry) ? 'recommendation-detail-' + entryIndex : undefined"
+                  @click="selectRecommendation(entry)"
+                >
+                  <span class="recommendation-title">
+                    <strong>{{ entry.name }}</strong>
+                    <span>{{ t(`extensions.tab.${entry.kind}`) }}</span>
+                    <span aria-hidden="true">{{ isSelectedRecommendation(entry) ? "▾" : "▸" }}</span>
+                  </span>
+                  <span class="recommendation-summary">{{ recommendationSummary(entry) }}</span>
+                </button>
+                <footer class="recommendation-meta">
+                  <span>{{ entry.identity }}</span>
+                  <span class="recommendation-source" :title="entry.sourceUrl">{{ entry.sourceUrl }}</span>
                   <span>{{ heatLabel(entry) }}</span>
                 </footer>
+                <ExtensionDetailPanel
+                  v-if="isSelectedRecommendation(entry)"
+                  :id="'recommendation-detail-' + entryIndex"
+                  class="recommendation-detail"
+                  :item="recommendationItem(entry)"
+                  :recommendation="entry"
+                  :evidence-label="t('extensions.market.catalogEvidence')"
+                  @close="closeRecommendation(entryIndex)"
+                >
+                  <template #actions>
+                    <button
+                      type="button"
+                      data-testid="market-close-action"
+                      @click="closeRecommendation(entryIndex)"
+                    >{{ t("common.close") }}</button>
+                    <button
+                      type="button"
+                      data-testid="market-search-action"
+                      :disabled="!store.canLoad || store.marketBusy"
+                      @click="searchSelectedRecommendation"
+                    >{{ t("extensions.market.searchAction") }}</button>
+                  </template>
+                </ExtensionDetailPanel>
               </article>
             </div>
           </div>
@@ -368,7 +420,7 @@ onMounted(async () => {
           <ExtensionSourceManager v-else />
 
           <ExtensionDetailPanel
-            v-if="detailItem && activeTab !== 'sources'"
+            v-if="detailItem && activeTab !== 'sources' && activeTab !== 'recommendations'"
             class="market-detail"
             :item="detailItem"
             :recommendation="detailRecommendation"
@@ -462,23 +514,43 @@ onMounted(async () => {
 }
 .category-chips button { min-height: var(--control-h-sm); padding: 0 var(--space-2); border-radius: var(--radius-full); cursor: pointer; }
 .category-chips button.active { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.recommendation-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); align-content: start; }
+.market-body.recommendations { grid-template-columns: 1fr; }
+.recommendation-list { display: grid; grid-template-columns: 1fr; gap: var(--space-2); align-content: start; }
 .recommendation-card {
   display: flex;
-  min-height: 116px;
+  min-width: 0;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
   border: var(--border-w) solid var(--border-2);
   border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text-2);
-  cursor: pointer;
+  overflow: hidden;
 }
-.recommendation-card:hover, .recommendation-card:focus-visible, .market-result:hover, .market-result:focus-visible { border-color: var(--border-strong); background: var(--surface-hover); }
-.recommendation-card header, .recommendation-card footer { display: flex; justify-content: space-between; gap: var(--space-2); }
-.recommendation-card header span, .recommendation-card footer, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
-.recommendation-card p { margin: 0; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
+.recommendation-card.expanded { border-color: var(--accent); }
+.recommendation-header {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.recommendation-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-width)); }
+.recommendation-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.recommendation-title strong { color: var(--text); overflow-wrap: anywhere; }
+.recommendation-title span, .recommendation-meta span, .market-result span { color: var(--text-muted); font-size: var(--font-xs); }
+.recommendation-summary { display: block; font-size: var(--font-sm); line-height: var(--leading-normal); overflow-wrap: anywhere; }
+.recommendation-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
+}
+.recommendation-meta span, .recommendation-source { min-width: 0; overflow-wrap: anywhere; }
+.recommendation-detail { margin: 0 var(--space-2) var(--space-2); }
 .market-search { display: flex; gap: var(--space-2); }
 .market-search input { flex: 1; min-width: 0; }
 .market-results { display: grid; gap: var(--space-1); overflow: auto; }
@@ -496,5 +568,6 @@ onMounted(async () => {
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }
   .market-detail { max-height: 45vh; }
+  .recommendation-meta { grid-template-columns: 1fr; padding-bottom: var(--space-2); }
 }
 </style>

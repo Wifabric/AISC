@@ -77,21 +77,110 @@ describe("ExtensionMarketDialog", () => {
     wrapper.unmount();
   });
 
-  it("opens recommendation details before any search mutation", async () => {
+  it("expands recommendation details inline without a fixed right pane", async () => {
     const wrapper = mountDialog();
-    await wrapper.get("[data-testid='recommendation-card']").trigger("click");
-    const detail = wrapper.get("[data-testid='extension-detail-panel']");
-    expect(detail.text()).toContain(
-      EXTENSION_RECOMMENDATIONS_BY_CATEGORY.research[0]!.summaryZh,
-    );
-    expect(detail.text()).toContain("推荐依据");
-    expect(detail.text()).toContain(
-      EXTENSION_RECOMMENDATIONS_BY_CATEGORY.research[0]!.summaryEn,
-    );
+    const body = wrapper.get(".market-body");
+    expect(body.classes()).toContain("recommendations");
+    expect(wrapper.find(".market-detail").exists()).toBe(false);
+
+    const cases = [
+      { category: "research" as const, kind: "skills" as const, label: "技能" },
+      { category: "education" as const, kind: "mcp" as const, label: "MCP" },
+      { category: "development" as const, kind: "plugins" as const, label: "插件" },
+    ];
+    const chips = wrapper.findAll("[data-testid='recommendation-category']");
+    for (const testCase of cases) {
+      const categoryIndex = EXTENSION_RECOMMENDATION_CATEGORIES.findIndex(
+        (category) => category.id === testCase.category,
+      );
+      await chips[categoryIndex]!.trigger("click");
+      const catalog = EXTENSION_RECOMMENDATIONS_BY_CATEGORY[testCase.category];
+      const entryIndex = catalog.findIndex((entry) => entry.kind === testCase.kind);
+      const card = wrapper.findAll("[data-testid='recommendation-card']")[entryIndex]!;
+      const entry = catalog[entryIndex]!;
+      expect(card.text()).toContain(entry.name);
+      expect(card.text()).toContain(entry.identity);
+      expect(card.text()).toContain(entry.sourceUrl);
+
+      const header = card.get("[data-testid='recommendation-card-header']");
+      expect(header.attributes("aria-expanded")).toBe("false");
+      await header.trigger("click");
+      const expandedCard = wrapper.findAll("[data-testid='recommendation-card']")[entryIndex]!;
+      const expandedHeader = expandedCard.get("[data-testid='recommendation-card-header']");
+      expect(expandedHeader.attributes("aria-expanded")).toBe("true");
+      const detail = expandedCard.get("[data-testid='extension-detail-panel']");
+      expect(detail.text()).toContain(entry.summaryZh);
+      expect(wrapper.findAll("[data-testid='extension-detail-panel']")).toHaveLength(1);
+      expect(wrapper.find(".market-detail").exists()).toBe(false);
+      expect(wrapper.text()).toContain(testCase.label);
+    }
+    wrapper.unmount();
+  });
+
+  it("uses a valid native disclosure and restores focus after inline close or Escape", async () => {
+    const wrapper = mountDialog();
+    const header = wrapper.get("[data-testid='recommendation-card-header']");
+    expect(header.element.tagName).toBe("BUTTON");
+    expect(header.element.querySelector("p, footer")).toBeNull();
+    expect(header.attributes("aria-controls")).toBeUndefined();
+    (header.element as HTMLElement).focus();
+    await header.trigger("click");
+    const expandedHeader = wrapper.get("[data-testid='recommendation-card-header']");
+    const detailId = expandedHeader.attributes("aria-controls");
+    expect(detailId).toBeTruthy();
+    expect(document.getElementById(detailId!)).not.toBeNull();
+    let card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    const closeButton = card.get("[data-testid='market-close-action']");
+    (closeButton.element as HTMLElement).focus();
+    await closeButton.trigger("click");
+    await nextTick();
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    expect(card.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(document.activeElement).toBe(card.get("[data-testid='recommendation-card-header']").element);
+
+    await card.get("[data-testid='recommendation-card-header']").trigger("click");
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    const detail = card.get("[data-testid='extension-detail-panel']");
+    const searchAction = card.get("[data-testid='market-search-action']");
+    (searchAction.element as HTMLElement).focus();
+    await detail.trigger("keydown", { key: "Escape" });
+    await nextTick();
+    card = wrapper.findAll("[data-testid='recommendation-card']")[0]!;
+    expect(card.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(document.activeElement).toBe(card.get("[data-testid='recommendation-card-header']").element);
+    wrapper.unmount();
+  });
+
+  it("clears an expanded recommendation when the category changes", async () => {
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='recommendation-card-header']").trigger("click");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(true);
+    await wrapper.findAll("[data-testid='recommendation-category']")[1]!.trigger("click");
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("collapses one recommendation when another opens and keeps search explicit", async () => {
+    const wrapper = mountDialog();
+    const headers = wrapper.findAll("[data-testid='recommendation-card-header']");
+    await headers[0]!.trigger("click");
+    await headers[1]!.trigger("click");
+    let cards = wrapper.findAll("[data-testid='recommendation-card']");
+    expect(cards[0]!.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(cards[1]!.find("[data-testid='extension-detail-panel']").exists()).toBe(true);
     expect(store.searchSkills).not.toHaveBeenCalled();
+
+    await cards[1]!.get("[data-testid='recommendation-card-header']").trigger("click");
+    cards = wrapper.findAll("[data-testid='recommendation-card']");
+    expect(cards[1]!.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    await cards[1]!.get("[data-testid='recommendation-card-header']").trigger("click");
+    expect(wrapper.find("[data-testid='market-search-action']").exists()).toBe(true);
+
     await wrapper.get("[data-testid='market-search-action']").trigger("click");
     await flushPromises();
-    expect(store.searchSkills).toHaveBeenCalledWith("research");
+    expect(store.searchSkills).toHaveBeenCalledWith(
+      EXTENSION_RECOMMENDATIONS_BY_CATEGORY.research[1]!.query,
+    );
     wrapper.unmount();
   });
 
@@ -108,7 +197,7 @@ describe("ExtensionMarketDialog", () => {
       }];
     });
     const wrapper = mountDialog();
-    await wrapper.get("[data-testid='recommendation-card']").trigger("click");
+    await wrapper.get("[data-testid='recommendation-card-header']").trigger("click");
     await wrapper.get("[data-testid='market-search-action']").trigger("click");
     await flushPromises();
     await wrapper.get("[data-testid='market-result-owner/repo:research']").trigger("click");

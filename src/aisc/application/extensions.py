@@ -34,6 +34,24 @@ _OPS = (
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
+_SOURCE_MAINTENANCE_OPS = frozenset({
+    "skill-repos-list", "skill-repo-remove",
+    "plugin-market-list", "plugin-market-add", "plugin-market-remove",
+})
+
+
+def _legacy_argparse_source_unsupported(op: str, stderr: str) -> bool:
+    """Match only an old in-container adapter's exact argparse boundary.
+
+    Old images reject R2 source ops before the JSON envelope exists. Keep
+    database/network stderr and unrelated argparse failures retryable/visible
+    rather than mislabeling them as an upgrade-only condition.
+    """
+    return (
+        op in _SOURCE_MAINTENANCE_OPS
+        and "usage: aisc-extensions-adapter" in stderr
+        and f"invalid choice: '{op}'" in stderr
+    )
 
 
 def _group_timeout_seconds(specs: list[str]) -> float:
@@ -115,8 +133,15 @@ def _exec_adapter(
 
     result = executor.run_captured(argv, timeout=timeout, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
+        stderr = (result.stderr or "").strip()
+        if _legacy_argparse_source_unsupported(op, stderr):
+            raise CliError(
+                message="当前运行环境不支持扩展来源维护，请升级或重建运行时镜像",
+                exit_code=1,
+                error_code=UNSUPPORTED_OP,
+            )
         raise CliError(
-            message=f"extensions {op} failed: {(result.stderr or '').strip()[:200]}",
+            message=f"extensions {op} failed: {stderr[:200]}",
             exit_code=1,
             error_code="AISC_ERR_EXTENSIONS_EXEC_FAILED",
         )
@@ -142,9 +167,7 @@ def _exec_adapter(
         # database/network failures. Legacy adapters have no dedicated code, so
         # classify only their exact unknown-op and stale-schema responses.
         legacy_unsupported = (
-            op in ("skill-repos-list", "skill-repo-remove",
-                   "plugin-market-list", "plugin-market-add",
-                   "plugin-market-remove")
+            op in _SOURCE_MAINTENANCE_OPS
             and code == "AISC_ERR_USAGE"
             and message == f"unhandled op: {op}"
         )
