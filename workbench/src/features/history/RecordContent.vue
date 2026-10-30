@@ -136,7 +136,7 @@ async function click(event: MouseEvent) {
 .record-markdown :deep(.hljs-keyword), .record-markdown :deep(.hljs-selector-tag) { color: var(--record-link); font-weight: 600; }
 .record-markdown :deep(.hljs-string), .record-markdown :deep(.hljs-title), .record-markdown :deep(.hljs-number) { color: var(--text); font-weight: 600; }
 .record-markdown :deep(.hljs-comment) { color: var(--text-2); font-style: italic; }
-.record-markdown :deep(.katex-display), .record-markdown :deep(eq) { display: block; overflow-x: auto; max-width: 100%; margin: 1em 0; }
+.record-markdown :deep(.katex-display), .record-markdown :deep(eq) { display: block; overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 1em 0; padding: .4em 0; }
 .record-markdown :deep(img), .record-attachment img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
 .record-markdown :deep(.footnotes) { color: var(--text-2); font-size: .88em; }
 .record-attachments { display: grid; gap: 12px; margin-top: 12px; }

@@ -244,7 +244,7 @@ $R4Cli = Join-Path $R4 'aisc-r4.exe'
 ### R4-T2 富文本、附件、链接与窄窗
 
 1. 在 T1 弹窗向下阅读。理想：标题、粗体、两列表格、勾选任务、行内 E=mc² 与独立积分公式、引用、Python 高亮代码、脚注可读；代码有“复制代码”，点击后显示“已复制”，粘贴应为原 Python 代码。
-2. 点击“打开本地报告”。理想：系统关联程序打开 `$R4Workspace\reports\result.md`，内容 `R4 本地文件链接打开成功。`；点击“项目网站”，系统浏览器打开 `https://github.com/Wifabric/AISC`。不存在/越界文件只显示打不开的提示，不执行任意路径。
+2. 点击“打开文本报告”。理想：系统关联程序打开 `$R4Workspace\reports\result.txt`，内容 `R4 本地文件链接打开成功。`；“打开本地报告”对应同目录 result.md，本机未关联 .md 程序时显示打不开提示；点击“项目网站”，系统浏览器打开 `https://github.com/Wifabric/AISC`。不存在/越界文件只显示打不开的提示，不执行任意路径。
 3. 关闭后点 `R4 Claude 阅读预检：请说明这张图。`。理想：Claude Code、图片附件、一个 `思考与执行 1 项` 和完整答案可见；1px 演示图片视觉很小，但不显示“图片不可用”。真实较大图片需另用含图片的用户会话复核。
 4. 在设置切换明/暗主题，再打开记录；将窗口还原缩窄。理想：正文不挤进右栏，表格/长代码在各自内部横向滚动；关闭、展开和链接仍可操作，深色链接可读。Tab 留在弹窗，Escape 关闭并回到原触发点。
 5. 异常：公式变成乱码、图片静默丢弃、网页抢占阅读页、深色链接看不清、整页横向溢出、键盘无法退出，记 FAIL。
@@ -257,21 +257,23 @@ $R4Cli = Join-Path $R4 'aisc-r4.exe'
 4. 分屏打开一个 Bash 后切到 Bash，再点原记录 ▶。理想：激活对应 Codex/Claude pane，不停留在旁边 Bash。
 5. 异常：引导重试后变新会话、恢复按钮永久禁用、重复恢复开出多个标签、错误没有行内提示，记 FAIL。尚未认证时显示登录/Provider 引导属于环境前置未满足，不算连续会话通过。
 
+本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`。进程中止后 CU 恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 当前仍 login_required，需自行配置后完成同等复核。
+
 ### R4-T4 容器停止后恢复原 runtime（只动隔离容器）
 
 1. T3 测试会话存盘后，在宿主 PowerShell 先识别本工作区容器，检查名称/runtime ID，禁止停止其它工作区：
 
 ```powershell
 docker ps --filter label=io.aisc.workspace-key=c3e3bcd645d5674ac2fc35142c6142fdf8ed9aaae6602a0818bee21a66f7b2b2 --format '{{.ID}} {{.Names}}'
-# 本次预检实例 c4da83e8aa5d；若已重建必须换成上一步实际返回的 ID。
-$R4Container = 'c4da83e8aa5d'
+# FINAL 本轮实例 d300dd738f2b；退出应用会清理临时容器，重建后必须使用上一步实际返回的 ID。
+$R4Container = 'd300dd738f2b'
 docker inspect $R4Container --format '{{ index .Config.Labels "io.aisc.runtime-id" }}'
 docker stop --timeout 2 $R4Container
 ```
 
 2. Work Record 点原记录 ▶。理想：只重启原容器，容器 ID/runtime ID 不变；成功后恢复相同 provider-native ID。旧 Bash/PTY 结束不会挡住恢复，也不删除记录。
 3. Docker 引擎确实不可用时，应显示行内可重试错误，不创建空标签。引擎恢复后可再点 ▶。本项不要为测试主动退出整个 Docker Desktop，以免打断其它工作区。
-4. 异常：自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。认证后的完整恢复为本批剩余实机验证项；CU 已确认停止 → 同一容器重启 → Codex 认证引导。
+4. 异常：意外停止后的恢复自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。CU 已确认 FINAL 停止 → 同一容器/runtime 重启 → 同一已认证 Codex 会话，并通过 CLI 追加问题召回；Claude 认证恢复仍待验证。正常退出应用清理临时容器属于现有退出行为，与本条意外停止不同。
 
 ### R4-T5 长记录与切换保护
 

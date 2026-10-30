@@ -32,7 +32,7 @@
 | b7 | 镜像内置工具稳定最新版刷新、高频冒烟与 preview 准备 | P2 | `codex/2.1.17-b7-release-readiness`；`codex/2.1.17-b7-ci-readiness` | 实现/审查/全门禁/三平台 sidecar/deb/dmg/NSIS/真实镜像通过；三轮数据面 9/9，CU 版本/H4/关键路径 PASS，完整三轮 UI 冒烟 NOT RUN；PR #46/#47 已合并；进入统一手测，尚未发布 |
 | R2 | 扩展 UI 重设计：分类市场、中文详情与来源维护 | P0 | `codex/2.1.17-r2-extension-ui-redesign` | 实现/审查及增量复审/本地门禁/最终 PR/develop CI、三平台 sidecar、deb/dmg/NSIS 通过；PR #49 已合入 develop `6133eef`；来源新增/删除与跨市场插件保留真实数据面通过，级联卸载双语警告已修正；剩余 CU 因当前无 node_repl 记 NOT RUN，待统一用户手测，详见 [R2-EXTENSION-UI-REDESIGN.md](R2-EXTENSION-UI-REDESIGN.md) |
 | R3 | 扩展市场批次修复：旧 runtime 来源提示、空态按钮与推荐内联详情 | P0 | `codex/2.1.17-r3-extension-market-fixes` | TDD/完整门禁/最终生产构建/真实旧镜像负向与新镜像正向数据面通过；独立审查最终 Critical=0/Important=0，PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；CU 因当前无 node_repl 记 NOT RUN，待用户逐批手测，详见 [R3-EXTENSION-MARKET-FIXES.md](R3-EXTENSION-MARKET-FIXES.md) |
-| R4 | Work Record 友好阅读与中断恢复 | P0 | `codex/2.1.17-r4-work-record-reading` | TDD/全门禁/冻结 CLI/最终生产构建通过；真 CU Codex/Claude 阅读与隔离容器同 ID 恢复至认证引导 PASS；已认证连续对话 NOT RUN，等待用户配置隔离认证；未进入下一批，详见 [R4-WORK-RECORD-READING.md](R4-WORK-RECORD-READING.md) |
+| R4 | Work Record 友好阅读与中断恢复 | P0 | `codex/2.1.17-r4-work-record-reading` | TDD/全门禁/冻结 CLI/最终生产构建通过；真 CU 阅读、公式/链接及已认证 Codex 进程/容器中断恢复 PASS，CLI 同 native ID 召回原上下文 PASS；Claude 仍 login_required；draft PR #51，首轮 CI SUCCESS；待本批用户验收/剩余项裁定，详见 [R4-WORK-RECORD-READING.md](R4-WORK-RECORD-READING.md) |
 
 ## 开工前账本门
 

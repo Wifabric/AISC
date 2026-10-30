@@ -380,7 +380,7 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 
 ## R4 Work Record 阅读 / 中断恢复预测试（2026-10-30，本批未验收）
 
-运行 Windows 11，Computer Use `node_repl + @oai/sky`。最终 GUI `AISC-Workbench-2.1.17-R4.exe` SHA256 `6ac8574ea8238aabd6aac09186c8f601c98c19dfcab22dcecec521109d9a3aa9`；冻结 CLI `59790567d0a1c4d4e7d679d9a2168403049c630eb97e82f86e434ab2b3d47ca9`；adapter `97464109…`；镜像 `2f54fad6…`。完整 hash 在 R4 artifacts.json。工作区 `C:/pt/aisc-r4-reader-workspace`，数据根 `C:/pt/aisc-217-r4-handtest-data`；不使用用户记录和凭据。
+运行 Windows 11，Computer Use `node_repl + @oai/sky`。首轮 GUI `AISC-Workbench-2.1.17-R4.exe` SHA256 `6ac8574ea8238aabd6aac09186c8f601c98c19dfcab22dcecec521109d9a3aa9`；公式修复后的最终 GUI `AISC-Workbench-2.1.17-R4-FINAL.exe` SHA256 `1ef06065f9f399516a47f344e52e734ffb0b400f8d6ccf3931985d32e6ed72b4`；冻结 CLI `59790567d0a1c4d4e7d679d9a2168403049c630eb97e82f86e434ab2b3d47ca9`；adapter `97464109…`；镜像 `2f54fad6…`。完整 hash 在 R4 artifacts.json。工作区 `C:/pt/aisc-r4-reader-workspace`，数据根 `C:/pt/aisc-217-r4-handtest-data`；使用演示记录和用户自行配置的隔离 Codex Provider，未复制其它环境凭据。
 
 | 检查 | 实际操作与证据 | 结果 |
 | --- | --- | --- |
@@ -391,9 +391,17 @@ R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三�
 | 组件生产版 | 两主题 × 1440/768/390，修正深色链接/关键字对比度；例外见 R4 计划，0 FAIL / 1 阅读留白 WARN。链接/复制以可见 harness 输出核对参数，Escape 关闭 | PASS（组件级） |
 | 冻结记录读取 | list=2、Codex read=5、Claude read=3（附件1）；均 preflight 成功。人为损坏尾行→resumable=true / malformed_lines=1；读取前后 hash 相同，夹具最终已恢复 | PASS（CLI级） |
 | 停止后重启原 runtime | 宿主只 stop 隔离容器 c4da83e8aa5d；Work Record Codex ▶ 后 docker ps 同一 ID 再 running，runtime df5c8f56-ea51-4ad2-9a77-14682db0e9e7；原 Bash 退出 | PASS（至引导） |
-| 已认证原生继续对话 | 隔离环境无 Provider，UI 显示 `Codex 未配置` / `codex 需要登录`；未自动操作官方登录、未复制宿主凭据 | NOT RUN：需用户自行配置测试认证 |
+| Codex 已认证恢复 | 用户配置后，原生 exec 建立 `01a18b57-ce8c-7321-bf6b-2d146bafd587` 并回答标记。FINAL 窗口 7536886：未归档该记录 ▶，终端显示原问题及 `R4-RESUME-1030-CODEX`；docker ps/进程 argv 确认同 native ID | PASS（CU 启动/观察 + CLI 数据面） |
+| Codex 进程意外中止 | 仅 kill 隔离容器内 Codex 二进制 PID 565；原标签退出，再点同记录 ▶。新 session wrapper `efc42a2d…`、native resume ID 不变，历史仍显示原标记 | PASS |
+| Codex 容器停止后恢复 | 正常关闭旧 GUI 清理临时容器后，FINAL 启动生成 d300dd738f2b / runtime 439e5841-40a4-42b6-82b2-39d82ab3a68d。只 stop 此容器，再点记录 ▶：同容器和 runtime 恢复 running，新 wrapper e83bbeff… 仍 resume 同一 native ID，原历史显示 | PASS |
+| Codex 上下文召回 | 关闭测试标签并确认 provider 进程退出后，执行 `codex exec resume --skip-git-repo-check --json <同 native ID>`，问题只问“之前让我记住的标记是什么”，不含标记值。thread.started ID 不变、答案 `R4-RESUME-1030-CODEX`、turn.completed。日志 C:/pt/aisc-r4-codex-recall.jsonl | PASS（CLI 补充，未在 GUI 终端自动输入） |
+| 原生链接/复制/键盘 | 首轮复制按钮变“已复制”；文本报告启动 `result.txt - Notepad`；Escape 关闭。FINAL 点击“项目网站”后系统 Chrome 标题 `Wifabric/AISC - Google Chrome`。本机 .md 无默认关联，测试用 .txt 成功路径 | PASS；.md 关联为宿主前置 |
+| 公式增量修复 | FINAL 阅读预览点击滚动条下翻，完整积分/上下标可见且无内部竖滚动条。生产组件测量公式 clientHeight/scrollHeight=61/61，overflowY=hidden；最终 1440/768/390 检查 0 FAIL/1 留白 WARN，已看桌面/手机截图 | PASS |
+| Claude 已认证继续对话 | 当前 runtime 的 provider current 仍为 default / official-direct / login_required（2026-10-30T07:20:04Z）；未自动登录。已通知用户补配 Claude；此前无认证的阅读/附件测试保持 PASS | NOT RUN：Claude 认证前置未满足 |
 | 完整 Docker 引擎断连 / 真实大历史 / Remote | 不停止全局 Docker，不影响用户已有容器；Remote 真实 SSH 和长历史 UI 不在本次隔离夹具中 | NOT RUN；自动化覆盖错误/分页/代际路径 |
 
 早先 R3 尝试坐标失败是工具返回两截图区域而误选 12×12 的 icon 区域；R4 明确选择 `screenshot-1` 主窗口后可操作。部分 UIA 点击中心偏差，改用新截图真实坐标并再次观察结果。本记录不延伸为 R3 已验收。
 
-本地门禁与测试数见 R4 计划；真实认证恢复尚未验证，整体 R4 不标 PASS/完成，不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。
+补充验证：最终 CSS 后阅读/runtime targeted 29 passed、vue-tsc 与 Tauri 生产构建通过。PR #51 为 draft；首轮产品提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS。召回首试在 TUI 尚未释放写锁时被上游拒绝；确认进程退出后重试成功，未同时写入同一会话。
+
+整体 R4 不标完成，Claude 已认证恢复及表中环境项目尚未执行，等待本批用户验收/明确延后；不进入下一批。HANDTEST R4-T1–T5 为当前精确复核步骤。

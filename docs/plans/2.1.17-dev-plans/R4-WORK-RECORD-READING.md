@@ -53,5 +53,8 @@ R3 保留待验收，不视为已通过。R4 完成后等待用户验收，不�
 - 浏览器组件交互 PASS：单折叠/逐项工具结果、代码复制参数、文件/网址路由参数、Escape 关闭。组件 harness 使用隔离数据与 store spy，不能代替真实 IPC。
 - 真冻结 CLI：两条夹具均可 list/preflight/read，Claude 图片附件保留；Codex 损坏尾行仍允许 preflight，reader malformed_lines=1，前后原文件 SHA256 相同。
 - 真 Workbench CU：Codex/Claude 阅读、单折叠/逐项执行证据、数学与图片节点均已观察；停止隔离容器后从记录恢复，重启同一个容器 c4da83e8aa5d / runtime df5c8f56-ea51-4ad2-9a77-14682db0e9e7 成功。
-- 隔离环境无 Codex/Claude Provider 认证；Codex 恢复到“未配置 / codex 需要登录”引导。已登录原生会话连续对话仍 NOT RUN，不将到达引导等同恢复全部成功。没有复制宿主凭据或自动操作登录。
+- 首轮隔离环境无 Codex/Claude Provider 认证，Codex 仅恢复到登录引导；用户随后自行配置 Codex。本轮 FINAL 已通过真实 Codex 记录恢复、进程强制中止重开、隔离容器停止后同容器/runtime/native ID 恢复。关闭 TUI 并确认进程退出后，原生 exec resume 追加不含标记值的问题，回答原标记，确认上下文连续。CU 只点 Workbench 记录/窗口并观察，未在其 Codex 终端自动输入；上下文召回为 CLI 补充证据。Claude 当前 login_required，认证恢复仍 NOT RUN。
 - 最终产物与 SHA256 见本机 `release-staging/2.1.17-r4/artifacts.json`；启动器 `start-handtest.ps1` 校验 Workbench/CLI/adapter，使用 R4 隔离数据根。当前旧 R3 用户验收状态保持待验收。
+- 阅读增量修复：真实 WebView2 公式出现额外竖滚动条，补充垂直留白并禁止公式内部纵向滚动；FINAL SHA256 `1ef06065…`。生产组件公式 clientHeight/scrollHeight=61/61；FINAL 真阅读公式完整。最终三宽视觉检查 0 FAIL / 1 阅读留白 WARN，已看桌面/手机图；targeted 29、vue-tsc 与生产构建通过。
+- 真 IPC 补充：代码复制显示“已复制”、文本报告启动 Notepad、Escape 关闭；FINAL 网站链接启动系统 Chrome 的 Wifabric/AISC 页面。本机 .md 没有默认关联，手册增加 .txt 成功路径。
+- draft PR #51：https://github.com/Wifabric/AISC/pull/51；首轮提交 f1bd8ee 的 Workbench CI 41005979469 SUCCESS。完整证据/仍未执行项见 PRETEST；用户验收和 Claude 认证恢复尚未完成，不进入下一批。
