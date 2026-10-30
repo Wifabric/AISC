@@ -257,7 +257,17 @@ describe("v2.1.17 b2 update signals", () => {
     wrapper.unmount();
   });
 
-  it("returns focus to the empty-state button that opened the market", async () => {
+  it("renders an empty installed list without a second market button", async () => {
+    vi.mocked(ipc.extensionsCall).mockResolvedValue({ items: [] });
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain("暂无内容");
+    expect(wrapper.find("[data-testid='open-extension-market-empty']").exists()).toBe(false);
+    expect(wrapper.findAll("[data-testid='open-extension-market']")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("returns focus to the toolbar opener from an empty installed list", async () => {
     vi.mocked(ipc.extensionsCall).mockResolvedValue({ items: [] });
     const wrapper = mount(ExtensionsView, {
       attachTo: document.body,
@@ -272,8 +282,7 @@ describe("v2.1.17 b2 update signals", () => {
       },
     });
     await flushPromises();
-    const opener = wrapper.get("[data-testid=open-extension-market-empty]");
-    (opener.element as HTMLElement).focus();
+    const opener = wrapper.get("[data-testid='open-extension-market']");
     await opener.trigger("click");
     await wrapper.get("[data-testid='stub-market-close']").trigger("click");
     await flushPromises();

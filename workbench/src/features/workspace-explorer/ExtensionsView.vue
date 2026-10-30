@@ -26,8 +26,6 @@ const runtimeId = computed(() => runtime.runtimeSnapshot?.runtime_id ?? "");
 const expandedGroupId = ref<string | null>(null);
 const marketOpen = ref(false);
 const marketButtonRef = ref<HTMLButtonElement | null>(null);
-const marketEmptyButtonRef = ref<HTMLButtonElement | null>(null);
-const marketOpener = ref<"toolbar" | "empty" | null>(null);
 const selected = ref<ExtensionsItem | null>(null);
 
 onMounted(syncContext);
@@ -58,19 +56,14 @@ function isUpdateAvailable(id: string): boolean {
 function updateCount(ids: string[]): number {
   return ids.filter((id) => isUpdateAvailable(id)).length;
 }
-function openMarket(from: "toolbar" | "empty"): void {
-  marketOpener.value = from;
+function openMarket(): void {
   marketOpen.value = true;
 }
 
 async function closeMarket(): Promise<void> {
   marketOpen.value = false;
   await nextTick();
-  const opener = marketOpener.value === "empty"
-    ? marketEmptyButtonRef.value
-    : marketButtonRef.value;
-  opener?.focus();
-  marketOpener.value = null;
+  marketButtonRef.value?.focus();
 }
 
 async function updateSelected(): Promise<void> {
@@ -103,7 +96,7 @@ async function updateSelected(): Promise<void> {
         ref="marketButtonRef"
         data-testid="open-extension-market"
         :disabled="!store.canLoad"
-        @click="openMarket('toolbar')"
+        @click="openMarket"
       >{{ t("extensions.market.title") }}</button>
       <span v-if="store.updatesError" class="explorer-error" role="alert">
         {{ t("extensions.updatesCheckFailedWithDetail", { message: store.updatesError }) }}
@@ -125,17 +118,9 @@ async function updateSelected(): Promise<void> {
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
     <p v-if="!store.canLoad" class="explorer-empty">{{ t("extensions.noRuntime") }}</p>
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>
-    <div v-else-if="!store.items.length" class="explorer-empty">
-      <span>{{ t("extensions.empty") }}</span>
-      <button
-        ref="marketEmptyButtonRef"
-        type="button"
-        class="ui-button"
-        data-testid="open-extension-market-empty"
-        :disabled="!store.canLoad"
-        @click="openMarket('empty')"
-      >{{ t("extensions.market.open") }}</button>
-    </div>
+    <p v-else-if="!store.items.length" class="explorer-empty">
+      {{ t("extensions.empty") }}
+    </p>
 
     <template v-else-if="store.kind === 'skills'">
       <div
