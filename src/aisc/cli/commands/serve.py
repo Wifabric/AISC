@@ -376,6 +376,7 @@ def _op_session_open(args: argparse.Namespace, payload: Dict[str, Any],
         registry_root=registry_root,
         resume_conversation_id=resume if isinstance(resume, str) else None,
         fork_session=fork_session,
+        workspace=workspace if isinstance(workspace, str) else None,
     )
 
     cols = int(payload.get("cols") or DEFAULT_COLS)

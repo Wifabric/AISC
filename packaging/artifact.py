@@ -339,6 +339,10 @@ def build_onefile(root: Path, output_dir: Path) -> Tuple[Path, str]:
                 "--name", "aisc",
                 "--paths", str(root / "src"),
                 "--add-data", f"{root / 'src' / 'aisc' / 'VERSION'}:.",
+                "--collect-data", "aisc",
+                # collect-data excludes .py even though the Agent needs this
+                # helper as a physical file in its per-topic skill snapshot.
+                "--add-data", f"{root / 'src/aisc/_topic_skill/scripts/workshop.py'}:aisc/_topic_skill/scripts",
                 "--distpath", str(dd),
                 "--workpath", str(wd / "build"),
                 "--specpath", str(wd),

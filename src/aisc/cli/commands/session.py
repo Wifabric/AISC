@@ -74,6 +74,7 @@ def cmd_session_open(
         registry_root=reg_root,
         resume_conversation_id=resume_conversation_id,
         fork_session=fork_session,
+        workspace=str(_ws) if _ws else None,
     )
 
     exit_code = proc.exit_code if proc.exit_code >= 0 else 1

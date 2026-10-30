@@ -44,6 +44,7 @@ import StartProgress from "../startup/StartProgress.vue";
 import BuildProgress from "../startup/BuildProgress.vue";
 import ConflictManager from "../startup/ConflictManager.vue";
 import WorkspaceExplorer from "../workspace-explorer/WorkspaceExplorer.vue";
+import TopicConversationBanner from "./TopicConversationBanner.vue";
 
 const props = defineProps<{
   /** Terminal counter-zoom style (App owns the zoom machinery, G-11). */
@@ -72,6 +73,7 @@ const RAIL_ITEMS = [
   // b5 D-1 (2026-10-18 用户裁定): 供应商与扩展进左侧导航，不再与终端页签混排。
   { kind: "providers", labelKey: "explorer.tab.providers", icon: "plug" },
   { kind: "extensions", labelKey: "explorer.tab.extensions", icon: "puzzle" },
+  { kind: "topics", labelKey: "explorer.tab.topics", icon: "book" },
 ] as const;
 function onRailIcon(kind: string): void {
   const action = railIconAction(
@@ -455,6 +457,9 @@ function setPaneTreeRef(tabId: string) {
               <svg v-else-if="item.icon === 'puzzle'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <path d="M2.5 6h2a1.5 1.5 0 1 1 3 0h2v2a1.5 1.5 0 1 0 0 3v2h-7z" />
               </svg>
+              <svg v-else-if="item.icon === 'book'" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                <path d="M8 3.5C6 2 3 2 1.5 2.5v10C4 12 6 12.5 8 14c2-1.5 4-2 6.5-1.5v-10C13 2 10 2 8 3.5zM8 3.5V14" />
+              </svg>
               <svg v-else width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" />
                 <path d="M2.5 6h11M2.5 10h11M8 2c-2 1.7-3 3.7-3 6s1 4.3 3 6c2-1.7 3-3.7 3-6s-1-4.3-3-6z" />
@@ -511,6 +516,7 @@ function setPaneTreeRef(tabId: string) {
         @dblclick="setExplorerCollapsed(true)"
       ></div>
       <div class="main">
+        <TopicConversationBanner />
         <TabBar />
         <main ref="terminalAreaRef" class="terminal-area">
           <div v-if="store.tabs.length === 0" class="empty-tabs">

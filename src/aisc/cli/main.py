@@ -752,6 +752,27 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _add_global_args(wl_rec, is_subparser=True)
     wl_rec.add_argument("--workspace", type=str, default=None)
+    # --- topic (v2.1.16 b7: persistent topic-workshop) ---
+    topicp = sub.add_parser("topic", help="Create and continue topic practice", allow_abbrev=False)
+    _add_global_args(topicp, is_subparser=True)
+    topicsub = topicp.add_subparsers(dest="topic_command", required=True,
+                                     parser_class=_AiscArgumentParser)
+    for operation in ("list", "create", "show", "prepare", "check", "activate", "deactivate", "sync"):
+        tp = topicsub.add_parser(operation, allow_abbrev=False)
+        _add_global_args(tp, is_subparser=True)
+        tp.add_argument("--workspace", required=True)
+        if operation in {"show", "prepare", "check", "activate"}:
+            tp.add_argument("--id", required=True)
+        if operation == "create":
+            tp.add_argument("--title", default="")
+            tp.add_argument("--text", default="")
+            tp.add_argument("--sources-json", default="[]")
+            tp.add_argument("--input-json", choices=("-",), help="Read form JSON from stdin")
+        if operation == "prepare":
+            tp.add_argument("--action", choices=("continue", "feedback", "guide", "improve"), default="continue")
+            tp.add_argument("--text", default="")
+            tp.add_argument("--input-json", choices=("-",), help="Read form JSON from stdin")
+
     # --- work-record (v2.1.15 b6: Work Record / Collection) ---
     wrp = sub.add_parser("work-record",
                          help="Provider conversation Work Record collections",
@@ -1307,7 +1328,7 @@ def _detect_command(argv: List[str]) -> Optional[str]:
     known = {"version", "doctor", "build", "run", "config", "profile",
              "status", "stop", "restart", "shell", "switch", "provider",
              "extensions", "cc-switch", "network", "usage", "logs", "ps", "runtime", "session",
-             "artifact", "data-root", "maintenance"}
+             "artifact", "data-root", "maintenance", "topic"}
     for arg in argv:
         if arg in known:
             return arg
@@ -3120,6 +3141,17 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         except (AttributeError, IndexError, KeyError):
             pass
 
+    # Topic is also used via in-process serve, whose sys.argv is not the request.
+    if cmd_hint == "topic":
+        topic_parser = next(a for a in parser._subparsers._group_actions
+                            if a.dest == "command").choices["topic"]
+        topic_parser._aisc_format = "json" if json_requested else None
+        topic_parser._aisc_command = "topic"
+        for action in topic_parser._subparsers._group_actions:
+            for child in action.choices.values():
+                child._aisc_format = "json" if json_requested else None
+                child._aisc_command = "topic"
+
     # Propagate JSON format to data-root subparser for parse-time errors.
     if "data-root" in args_list:
         try:
@@ -3313,6 +3345,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_conversation(args, effective_format)
         elif args.command == "worklog":
             data, exit_code, errors = _cmd_worklog(args, effective_format)
+        elif args.command == "topic":
+            from aisc.cli.commands.topic import run as run_topic
+            data = run_topic(args)
+            exit_code, errors = 0, []
+            if effective_format != "json":
+                print(json.dumps(data, ensure_ascii=False, indent=2))
         elif args.command == "work-record":
             data, exit_code, errors = _cmd_work_record(args, effective_format)
         elif args.command == "artifact":

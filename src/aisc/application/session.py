@@ -77,6 +77,7 @@ def build_session_exec(
     registry_root: Any,
     resume_conversation_id: Optional[str] = None,
     fork_session: bool = False,
+    workspace: Optional[str] = None,
 ) -> Tuple[str, List[str], Optional[Dict[str, str]]]:
     """Resolve + validate + construct the exec for one interactive session.
 
@@ -178,6 +179,13 @@ def build_session_exec(
 
         env = help_function_env()
 
+    if workspace and agent in ("claude", "codex"):
+        from aisc.application.topic_conversation import bridge_argv
+        try:
+            docker_argv = bridge_argv(executor, container_name, docker_argv, workspace, session_id, agent)
+        except (ValueError, OSError) as exc:
+            raise CliError(message=f"Topic conversation could not start: {exc}",
+                           exit_code=2, error_code="AISC_ERR_TOPIC") from exc
     return container_name, docker_argv, env
 
 
@@ -200,6 +208,7 @@ def open_session(
     registry_root: Any,
     resume_conversation_id: Optional[str] = None,
     fork_session: bool = False,
+    workspace: Optional[str] = None,
 ) -> Any:
     """Open an interactive agent session via ``docker exec -it``.
 
@@ -221,6 +230,7 @@ def open_session(
         registry_root=registry_root,
         resume_conversation_id=resume_conversation_id,
         fork_session=fork_session,
+        workspace=workspace,
     )
     return executor.open_interactive(container_name, docker_argv, env=env)
 

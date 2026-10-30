@@ -87,6 +87,17 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 - **诊断**：任何页面可打开诊断对话框（环境检查、最近日志、导出诊断包）。
 - **应用自更新**：Windows 设置页「检查更新」→「下载更新」，校验完成后点击「退出更新」并确认，资源管理器选中安装包、正常打开安装向导后 Workbench 退出；可按向导完成更新。下载完成本身不会退出，取消或启动失败仍保留应用。其他平台按提示手动安装。
 
+### 主题实践工坊（开发分支新功能）
+
+左侧活动栏点击「主题」，或从「扩展 → 技能 → 主题实践工坊 → 使用这个技能」进入。
+
+1. 点击「新建主题」，填写名称、目标与实际条件；参考文件可选，填写工作区内的相对路径，一行一个。点击创建后，资料原件保留，目标存入主题记录。
+2. 创建后自动设为新对话主题；已有主题点击「设为新对话的主题」。点击「与 Claude 开始对话」或「与 Codex 开始对话」，也可从原有新建会话入口打开AI。技能、手册和进度在后台作为会话背景加载，不自动提交开场消息，也不因打开会话而执行任务或修订。直接输入你的第一条消息即可；较长资料按需读取。模型执行任务时的工具活动仍由原生CLI显示。
+3. 正常对话即可：目标、问题、限制、实际反馈直接告诉AI。平台同步关联会话的用户/AI对外文本，AI按skill整理手册、状态和实践依据。聊天区显示当前新对话主题与已保存消息数，同步失败明确提示。
+4. 在侧栏「手册 / 迭代 / 进度 / 成果 / 过程」查看持续更新的内容。「迭代」对应主题目录的 `ITERATION_LOG.md`：按最新在前展示每次手册修订的原因、改动、验证、后续及证据。日志从修订事件自动生成；普通聊天不产生修订，旧历史缺失项标明未记录，原始事件与快照保留。修改日志内容应追加修订/纠正事件，不直接编辑生成文件。旧任务和手动整理入口保留在折叠的「可选操作」中。切换主题只影响之后新开的会话；已绑定会话继续记录到原主题。
+
+主题保存在工作区 `topics/<主题ID>/`，包含手册、状态、事件、成果和快照；`.skill/` 保存完整技能版本。仅同步明确关联会话的对外文本，不复制推理、工具输出和附件二进制。关闭侧栏仍同步；应用未运行时保留原Agent日志，重新打开工作区后补同步。原始对话已保存不代表手册已整理或方法已验证。「检查记录」检查文件与证据关联，不代替真实效果验证。工作台与CLI须配套更新；会话启动桥接从可信CLI部署到容器临时目录，无需全局安装skill。
+
 ### Provider 模板清单
 
 「添加 provider」时镜像内置以下模板，用户只需填 API Key：
@@ -246,6 +257,9 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc provider set-key` | `PROVIDER_ID`, `--name`, `--label`, `--agent` | 打开 cc-switch provider 安全交互编辑器；凭据不进命令行参数 |
 | `aisc conversation read` | 会话定位参数 | 聊天式只读对话查看器（历史会话阅读） |
 | `aisc work-record list/reconcile` | `--workspace` | 列出或重新对账 Work Record / Collection 与未归档会话 |
+| `aisc topic list/show/check` | `--workspace`, `--id`（show/check） | 发现主题、查看手册/进度/过程、检查记录完整性 |
+| `aisc topic create` | `--workspace`, `--title`, `--text`, `--sources-json`（可选） | 创建主题及内置 skill 副本，保存目标和资料引用 |
+| `aisc topic prepare` | `--workspace`, `--id`, `--action continue/feedback/guide/improve`, `--text` | 保存实践/反馈任务并返回可填入 Agent 会话的读取指令，不调用模型 |
 | `aisc work-record create/rename/activate/deactivate/archive/restore` | `--workspace`, `--title`, `--collection-id` 等 | 管理 Work Record 元数据与生命周期 |
 | `aisc work-record add/remove/delete` | `--workspace`, `--collection-id`, `--agent`, `--conversation-id` 等 | 手动整理成员或级联删除 Collection（CLI 只删除 transcript；live PTY 由 Workbench 预先编排关闭） |
 | `aisc worklog list/rename/archive` | `--id` 等 | 工作区 PTY 会话账本（开关钩子自动记账，fail-open） |

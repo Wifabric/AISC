@@ -75,6 +75,7 @@ include = ["aisc", "aisc.*"]
 # site-packages; --user installs missed it, the probe needed a fallback).
 [tool.setuptools.package-data]
 aisc = ["VERSION"]
+"aisc._topic_skill" = ["SKILL.md", "agents/*.yaml", "assets/*.md", "references/*.md", "scripts/workshop.py"]
 
 [tool.setuptools.dynamic]
 # A2: file-based dynamic version — building must not import the package

@@ -12,9 +12,12 @@ import ExtensionDetailPanel from "./ExtensionDetailPanel.vue";
 import ExtensionFailureNotice from "./ExtensionFailureNotice.vue";
 import ExtensionMarketDialog from "./ExtensionMarketDialog.vue";
 
+import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
+
 const { t } = useI18n();
 const store = useExtensionsStore();
 const runtime = useRuntimeStore();
+const explorer = useWorkspaceExplorerStore();
 
 const KIND_TABS: { key: ExtensionsKind; labelKey: string }[] = [
   { key: "skills", labelKey: "extensions.tab.skills" },
@@ -83,6 +86,11 @@ async function updateSelected(): Promise<void> {
 
 <template>
   <div class="explorer-body extensions-view" data-testid="extensions-view">
+    <div v-if="store.kind === 'skills'" class="extensions-card" data-testid="topic-skill-entry">
+      <strong>{{ t("topics.skill") }}</strong>
+      <p class="ext-desc">{{ t("topics.skillDescription") }}</p>
+      <button type="button" class="ui-button sm" @click="explorer.activateView('topics')">{{ t("topics.useSkill") }}</button>
+    </div>
     <div class="extensions-tabs" role="tablist">
       <button v-for="tab in KIND_TABS" :key="tab.key" type="button" role="tab" :aria-selected="store.kind === tab.key" :class="{ active: store.kind === tab.key }" :data-testid="'ext-tab-' + tab.key" @click="onTab(tab.key)">{{ t(tab.labelKey) }}</button>
     </div>

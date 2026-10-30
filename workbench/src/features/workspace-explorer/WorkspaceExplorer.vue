@@ -29,6 +29,7 @@ import WorkRecordsView from "./WorkRecordsView.vue";
 import CcSwitchUiTab from "../ccswitch/CcSwitchUiTab.vue";
 import ExtensionsView from "./ExtensionsView.vue";
 import HostToolsServicePanel from "./HostToolsServicePanel.vue";
+import TopicsView from "./TopicsView.vue";
 import ConversationsPane from "./ConversationsPane.vue";
 import TypeIcon from "./TypeIcon.vue";
 import type { WorkspaceNode } from "../../types";
@@ -226,6 +227,7 @@ const TITLE_KEY: Record<string, string> = {
   services: "explorer.tab.services",
   providers: "explorer.tab.providers",
   extensions: "explorer.tab.extensions",
+  topics: "explorer.tab.topics",
 };
 
 const WEB_REASON_KEY: Record<string, string> = {
@@ -674,6 +676,10 @@ function refreshFromMenu() {
  *  conversations (手测反馈: refresh was artifact/tree-only and the list
  *  went stale), everything else keeps refreshRoot. */
 function onToolbarRefresh() {
+  if (explorer.activeKind === "topics") {
+    void import("../../stores/topics").then(({ useTopicsStore }) => useTopicsStore().refresh());
+    return;
+  }
   if (explorer.activeKind === "conversations") {
     void explorer.loadConversations(true);
     return;
@@ -842,6 +848,7 @@ function onTreeKeydown(e: KeyboardEvent) {
            widths never squeeze (03 §2). -->
       <div class="explorer-actions">
         <button
+          v-if="explorer.activeKind !== 'topics'"
           class="ui-icon-button sm"
           type="button"
           :aria-label="t('explorer.toolbar.newFile')"
@@ -856,6 +863,7 @@ function onTreeKeydown(e: KeyboardEvent) {
           </svg>
         </button>
         <button
+          v-if="explorer.activeKind !== 'topics'"
           class="ui-icon-button sm"
           type="button"
           :aria-label="t('explorer.toolbar.newFolder')"
@@ -905,7 +913,7 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- v2.1.7 S5c: shared top search (VSCode-style). Applies to the active
          panel: files tab = flat match list over every loaded directory;
          artifacts tab = filters every group. Hidden on the services tab. -->
-    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records' && artifactFilter !== 'providers' && artifactFilter !== 'extensions'" class="explorer-search">
+    <div v-if="artifactFilter !== 'services' && artifactFilter !== 'work-records' && artifactFilter !== 'providers' && artifactFilter !== 'extensions' && artifactFilter !== 'topics'" class="explorer-search">
       <input
         v-model="panelSearch"
         type="search"
@@ -926,6 +934,7 @@ function onTreeKeydown(e: KeyboardEvent) {
       <CcSwitchUiTab v-if="explorer.activeKind === 'providers'" :visible="true" />
       <ExtensionsView v-else />
     </div>
+    <TopicsView v-if="explorer.activeKind === 'topics'" />
     <!-- 10e: cross-fade between the tree and artifacts panels (out-in). -->
     <Transition name="fade" mode="out-in">
     <!-- Explorer tree -->
