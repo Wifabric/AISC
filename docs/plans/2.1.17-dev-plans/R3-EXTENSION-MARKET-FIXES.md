@@ -131,3 +131,16 @@ Precondition: close earlier R2 windows. Launch only the provided R3 direct build
 - After the ARIA-only change, targeted dialog/preview tests **22/22**, `vue-tsc`, and a fresh production Tauri build passed. Python/Rust sources were unchanged from the fully gated `7482301` revision.
 - PR [#50](https://github.com/Wifabric/AISC/pull/50); Workbench CI [40989333294](https://github.com/Wifabric/AISC/actions/runs/40989333294) on exact product head `ed3ed714fcfeb9241e0238e96edcaa684ca23981`: **SUCCESS**.
 - Final CLI old-image negative smoke using SHA256 `1f603225…52107f`: b7 returned stable `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`; evidence `release-staging/2.1.17-r3/final-cli-old-image-source-result.json`.
+
+## Develop integration final result (2026-10-30)
+
+PR [#50](https://github.com/Wifabric/AISC/pull/50) merged into `develop` as `c3b297b935207b268a0846e22019040a5b3d6be5`.
+
+| Workflow | Run | Result |
+| --- | --- | --- |
+| Workbench CLI/Rust/frontend | [40990054633](https://github.com/Wifabric/AISC/actions/runs/40990054633) | SUCCESS |
+| CLI sidecar Windows/Linux/macOS | [40990054524](https://github.com/Wifabric/AISC/actions/runs/40990054524) | SUCCESS |
+| Bundle deb/dmg | [40990054583](https://github.com/Wifabric/AISC/actions/runs/40990054583) | SUCCESS |
+| NSIS installed-app smoke | [40990054531](https://github.com/Wifabric/AISC/actions/runs/40990054531) | SUCCESS attempt 2; attempt 1 failed dependency staging with upstream npm `HTTP 403 rate limit exceeded` |
+
+The attempt-1 NSIS failure is retained as evidence; only the failed job was rerun and no source changed. R3 remains open for this batch's user handtest. No main merge, tag, publication, or next product batch has started.

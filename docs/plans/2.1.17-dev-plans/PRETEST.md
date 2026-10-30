@@ -374,3 +374,5 @@ unsupported alert 去重与空态焦点恢复；最终 direct binary
 - 真实数据面：R3 冻结 CLI + 旧 b7 镜像，`skill-repos-list` exit 1 且错误码为 `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`，消息为“当前运行环境不支持扩展来源维护，请升级或重建运行时镜像”；R3 adapter 镜像同 op exit 0，返回 4 条技能仓库。两个一次性 runtime 均已停止，证据见 `release-staging/2.1.17-r3/*image*result*.json`。
 - 产物：最终 GUI `AISC-Workbench-2.1.17-R3-FINAL.exe` SHA256 `73ec51edce9fcf699a3c2c7413763590232c2251d8f4474c65f5a9b284676942`；最终 CLI `aisc-r3-final.exe` SHA256 `1f6032257026537bfd7840965c1087f96c4028f8005fc3d9b5b82bf38552107f`。
 - CU：已读取 Computer Use SKILL/guidance/confirmations，但当前会话无 `node_repl`，无法初始化要求的 `@oai/sky`。来源管理提示、空态视觉、推荐卡片内联展开/键盘/焦点、<720px 均为 **NOT RUN（工具不可用）**。独立审查初轮发现的 Close/焦点、native button 内容模型、测试覆盖与五 op 覆盖均已修复；ARIA 复审项亦已修复。最终审查 Critical=0/Important=0，PR #50 精确产品头 Workbench CI `40989333294` SUCCESS。最终 CLI 对旧 b7 镜像复测仍稳定返回 unsupported。本批等待用户按 HANDTEST R3 验收，不能进入下一批。
+
+R3 最终集成：PR #50 → develop `c3b297b`。Workbench `40990054633`、三平台 sidecar `40990054524`、Bundle deb/dmg `40990054583` 全部 SUCCESS；NSIS `40990054531` attempt 1 在依赖 staging 遇 npm `HTTP 403 rate limit exceeded`，仅重跑失败 job，attempt 2 安装/PATH/升级/卸载 smoke SUCCESS。首败证据保留，源码未改。用户 R3 手测仍待完成。
