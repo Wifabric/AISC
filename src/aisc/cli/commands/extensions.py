@@ -183,6 +183,14 @@ def cmd_extensions_updates_check(args: argparse.Namespace) -> Dict[str, Any]:
     return extensions_call_raw(runtime_id, "updates-check", workspace, None)
 
 
+def cmd_extensions_skill_describe(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-describe", workspace, None,
+                               item_id=args.id)
+
+
 def cmd_extensions_skill_search(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw
 

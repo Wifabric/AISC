@@ -8,11 +8,12 @@ import { useI18n } from "vue-i18n";
 import { useExtensionsStore, type ExtensionAction, type ExtensionsKind } from "../../stores/extensions";
 import { useRuntimeStore } from "../../stores/runtime";
 import type { ExtensionsItem } from "../../lib/ipc";
-import ExtensionDetailPanel from "./ExtensionDetailPanel.vue";
+import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
+import { skillGroupSummary } from "./extensionSummaries";
 import ExtensionFailureNotice from "./ExtensionFailureNotice.vue";
 import ExtensionMarketDialog from "./ExtensionMarketDialog.vue";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const store = useExtensionsStore();
 const runtime = useRuntimeStore();
 
@@ -31,6 +32,8 @@ const selected = ref<ExtensionsItem | null>(null);
 onMounted(syncContext);
 watch([() => runtime.workspace, runtimeId], syncContext);
 function syncContext(): void {
+  selected.value = null;
+  expandedGroupId.value = null;
   if (runtime.workspace && runtimeId.value) store.setContext(runtime.workspace, runtimeId.value);
   else store.setContext("", "");
   if (store.canLoad) void store.load();
@@ -46,6 +49,11 @@ function opBusy(action: ExtensionAction, id: string): boolean {
 }
 function select(item: ExtensionsItem): void {
   selected.value = selected.value?.id === item.id ? null : item;
+}
+async function closeDetail(item: ExtensionsItem): Promise<void> {
+  selected.value = null;
+  await nextTick();
+  document.getElementById(`installed-header-${item.id}`)?.focus();
 }
 function updateFor(id: string) {
   return store.updateItems[id];
@@ -66,12 +74,6 @@ async function closeMarket(): Promise<void> {
   marketButtonRef.value?.focus();
 }
 
-async function updateSelected(): Promise<void> {
-  const item = selected.value;
-  if (!item || store.busy) return;
-  if (store.kind === "skills") await store.updateSkill(item);
-  else if (store.kind === "plugins") await store.pluginAction("plugin-update", item.id);
-}
 </script>
 
 <template>
@@ -171,18 +173,23 @@ async function updateSelected(): Promise<void> {
             <span v-else>✕</span>
           </button>
         </div>
-        <div v-show="expandedGroupId === group.id" :id="'ext-skill-children-' + group.id" class="skill-children">
+        <div v-if="expandedGroupId === group.id" :id="'ext-skill-children-' + group.id" class="skill-children">
+          <p class="group-summary" data-testid="installed-group-summary">{{ skillGroupSummary(group, locale === 'en-US' ? 'en-US' : 'zh-CN') }}</p>
           <div
             v-for="item in group.items"
             :key="item.id"
-            class="ext-row skill-child"
+            class="skill-child"
             :class="{ selected: selected?.id === item.id }"
             :data-testid="'ext-skill-child-' + item.name"
           >
+            <div class="ext-row">
             <button
               type="button"
               class="row-main"
               :data-testid="'ext-skill-child-header-' + item.name"
+              :id="'installed-header-' + item.id"
+              :aria-controls="selected?.id === item.id ? 'installed-detail-' + item.id : undefined"
+              :aria-expanded="selected?.id === item.id"
               @click="select(item)"
               @keydown.enter.prevent="select(item)"
               @keydown.space.prevent="select(item)"
@@ -225,6 +232,9 @@ async function updateSelected(): Promise<void> {
             >
               <span v-if="opBusy('remove', item.id)" class="spinner" /><span v-else>✕</span>
             </button>
+            </div>
+            <ExtensionDetailPanel v-if="selected?.id === item.id" class="installed-detail"
+              :id="'installed-detail-' + item.id" :item="item" :update="updateFor(item.id)" @close="closeDetail(item)" />
           </div>
         </div>
       </div>
@@ -243,6 +253,9 @@ async function updateSelected(): Promise<void> {
             type="button"
             class="row-main"
             :data-testid="'ext-item-header-' + item.id"
+            :id="'installed-header-' + item.id"
+            :aria-controls="selected?.id === item.id ? 'installed-detail-' + item.id : undefined"
+            :aria-expanded="selected?.id === item.id"
             @click="select(item)"
             @keydown.enter.prevent="select(item)"
             @keydown.space.prevent="select(item)"
@@ -293,29 +306,11 @@ async function updateSelected(): Promise<void> {
             <span v-if="opBusy('remove', item.id)" class="spinner" /><span v-else>✕</span>
           </button>
         </div>
+        <ExtensionDetailPanel v-if="selected?.id === item.id" class="installed-detail"
+          :id="'installed-detail-' + item.id" :item="item" :update="updateFor(item.id)" @close="closeDetail(item)" />
       </div>
 
     </template>
-
-    <ExtensionDetailPanel
-      v-if="selected"
-      class="installed-detail"
-      :item="selected"
-      :update="updateFor(selected.id)"
-      @close="selected = null"
-    >
-      <template #actions>
-        <button
-          v-if="isUpdateAvailable(selected.id) && store.kind !== 'mcp'"
-          type="button"
-          :disabled="store.busy"
-          @click="updateSelected"
-        >{{ t("extensions.skillUpdate") }}</button>
-        <button type="button" class="danger" :disabled="store.busy" @click="store.remove(selected)">
-          {{ t("extensions.remove") }}
-        </button>
-      </template>
-    </ExtensionDetailPanel>
 
     <ExtensionMarketDialog v-if="marketOpen" @close="closeMarket" />
   </div>
@@ -326,7 +321,9 @@ async function updateSelected(): Promise<void> {
 .extensions-tabs { display: flex; gap: var(--space-1); }
 .extensions-tabs button { flex: 1; min-height: var(--control-h-sm); padding: 0 var(--space-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
 .extensions-tabs button.active { border-color: var(--accent); color: var(--text); background: var(--surface-3); }
-.extensions-toolbar { display: flex; align-items: center; gap: var(--space-2); }
+.extensions-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.extensions-toolbar > button { flex-shrink: 0; }
+.extensions-toolbar .explorer-error { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; }
 .extensions-toolbar .primary { margin-left: auto; }
 .extensions-card { width: 100%; min-width: 0; box-sizing: border-box; padding: 2px var(--space-2); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface); }
 .extensions-card.one-line { cursor: pointer; }
@@ -346,7 +343,7 @@ async function updateSelected(): Promise<void> {
   text-align: left;
   cursor: pointer;
 }
-.group-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-ring-width); border-radius: var(--radius-sm); }
+.group-header:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-width)); border-radius: var(--radius-sm); }
 .row-main {
   display: flex;
   flex: 1 1 auto;
@@ -361,7 +358,7 @@ async function updateSelected(): Promise<void> {
   text-align: left;
   cursor: pointer;
 }
-.row-main:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: var(--focus-ring-width); border-radius: var(--radius-sm); }
+.row-main:focus-visible { outline: var(--focus-ring-width) solid var(--focus); outline-offset: calc(-1 * var(--focus-ring-width)); border-radius: var(--radius-sm); }
 .extensions-card { cursor: default; }
 .ext-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 10px; }
 .ext-conflict { flex: 0 0 auto; color: var(--warn); font-size: 14px; }
@@ -369,9 +366,9 @@ async function updateSelected(): Promise<void> {
 .ext-badge { flex: 0 0 auto; max-width: 35%; overflow: hidden; text-overflow: ellipsis; font-size: var(--font-xs); color: var(--text-faint); border: var(--border-w) solid var(--border-2); border-radius: var(--radius-full); padding: 0 6px; white-space: nowrap; }
 .ext-spacer { flex: 1; }
 .ext-row .ui-icon-button.on { color: var(--accent); border-color: var(--accent); }
-.skill-children { display: grid; gap: 2px; margin: 2px 0 3px 14px; }
+.skill-children { display: grid; min-width: 0; gap: 2px; margin: 2px 0 3px; }
 .skill-child { min-height: 28px; border-top: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); }
-.skill-child.selected { background: var(--accent-soft); }
+.skill-child.selected { background: var(--surface-2); }
 .operation-progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }
 .op-action { flex: 0 0 auto; font-size: var(--font-sm); font-weight: 600; }
 .op-count { flex: 0 0 auto; font-size: var(--font-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -384,5 +381,9 @@ async function updateSelected(): Promise<void> {
 .ext-name.has-update { font-weight: 800; }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.installed-detail { position: sticky; bottom: 0; margin-top: var(--space-2); box-shadow: var(--shadow-soft); }
+.installed-detail { margin: var(--space-2) 0; }
+.group-summary { margin: var(--space-2) 0; color: var(--text-2); font-size: var(--font-sm); line-height: var(--leading-relaxed); overflow-wrap: anywhere; }
+.extensions-view > * { flex-shrink: 0; }
+.ext-row .ui-icon-button { flex-shrink: 0; }
+.ext-row .ui-icon-button.sm { width: 24px; height: 26px; padding: 2px; }
 </style>

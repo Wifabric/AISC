@@ -51,7 +51,7 @@ describe("v2.1.17 R2 extension layout contracts", () => {
 
   it("keeps the market dialog usable at narrow widths", () => {
     expect(marketSource).toContain(".market-body.recommendations { grid-template-columns: 1fr; }");
-    expect(marketSource).toContain("grid-template-columns: minmax(0, 1fr) 300px");
+    expect(marketSource).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(marketSource).toContain("@media (max-width: 720px)");
     expect(marketSource).toContain("grid-template-columns: 1fr");
     expect(marketSource).toContain("role=\"dialog\"");

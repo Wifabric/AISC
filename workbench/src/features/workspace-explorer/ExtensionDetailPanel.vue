@@ -11,13 +11,15 @@ const props = defineProps<{
   recommendation?: CategorizedRecommendation;
   update?: ExtensionUpdateItem;
   evidenceLabel?: string;
+  loading?: boolean;
+  error?: string;
 }>();
 
-const emit = defineEmits<{ close: [] }>();
-const { t } = useI18n();
+const emit = defineEmits<{ close: []; retry: [] }>();
+const { t, locale: currentLocale } = useI18n();
 
 const locale = computed<ExtensionSummaryLocale>(() =>
-  i18nLocaleValue() === "en-US" ? "en-US" : "zh-CN",
+  currentLocale.value === "en-US" ? "en-US" : "zh-CN",
 );
 const summary = computed(() => extensionSummary(props.item, locale.value));
 const kindLabel = computed(() => {
@@ -48,9 +50,6 @@ const sourceUrl = computed(() => {
   return "";
 });
 
-function i18nLocaleValue(): string {
-  return useI18n().locale.value;
-}
 </script>
 
 <template>
@@ -59,7 +58,6 @@ function i18nLocaleValue(): string {
     data-testid="extension-detail-panel"
     role="complementary"
     :aria-label="t('extensions.detail.panel')"
-    tabindex="-1"
     @keydown.escape.stop="emit('close')"
   >
     <header class="detail-header">
@@ -77,8 +75,12 @@ function i18nLocaleValue(): string {
     </header>
 
     <p class="detail-summary" data-testid="extension-detail-summary">
-      {{ summary.summary }}
+      {{ loading ? t("extensions.detail.loading") : summary.summary }}
     </p>
+
+    <div v-if="error" class="detail-fetch-error" role="status">
+      <p>{{ error }}</p><button type="button" @click="emit('retry')">{{ t("extensions.detail.retry") }}</button>
+    </div>
 
     <p
       v-if="update?.status === 'unsupported'"
@@ -113,9 +115,9 @@ function i18nLocaleValue(): string {
       </div>
     </dl>
 
-    <div v-if="summary.marketOriginal || item.description" class="detail-original">
+    <div v-if="summary.marketOriginal && summary.marketOriginal !== summary.summary" class="detail-original">
       <span>{{ evidenceLabel ?? t("extensions.detail.marketOriginal") }}</span>
-      <p data-testid="extension-detail-original">{{ summary.marketOriginal || item.description }}</p>
+      <p data-testid="extension-detail-original">{{ summary.marketOriginal }}</p>
     </div>
 
     <footer v-if="$slots.actions" class="detail-actions">
@@ -127,6 +129,10 @@ function i18nLocaleValue(): string {
 <style scoped>
 .extension-detail-panel {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 auto;
+  overflow-wrap: anywhere;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-3);
@@ -145,8 +151,8 @@ function i18nLocaleValue(): string {
   min-width: 0;
   gap: var(--space-2);
 }
-.detail-header { justify-content: space-between; }
-.detail-heading { flex: 1 1 auto; flex-direction: column; align-items: flex-start; }
+.detail-header { justify-content: space-between; flex-wrap: wrap; }
+.detail-heading { flex: 1 1 140px; flex-direction: column; align-items: flex-start; }
 h3 { margin: 0; color: var(--text); font-size: var(--font-lg); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .detail-kind, .detail-original span {
   color: var(--text-muted);
@@ -158,7 +164,7 @@ h3 { margin: 0; color: var(--text); font-size: var(--font-lg); line-height: var(
 .detail-unsupported { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .detail-metadata {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
   gap: var(--space-2);
   margin: 0;
   padding-top: var(--space-2);
@@ -172,5 +178,9 @@ dd { margin: 2px 0 0; color: var(--text-2); font-size: var(--font-sm); overflow-
   border-top: var(--border-w) solid var(--border);
 }
 .detail-original p { margin: 2px 0 0; color: var(--text-muted); font-size: var(--font-xs); line-height: var(--leading-normal); }
-.detail-actions { justify-content: flex-end; padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
+.detail-actions { flex-wrap: wrap; justify-content: flex-end; padding-top: var(--space-2); border-top: var(--border-w) solid var(--border); }
+/* The region itself never takes focus: keep keyboard rings on real controls. */
+.detail-fetch-error { display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--text-muted); font-size: var(--font-xs); }
+.detail-fetch-error p { margin: 0; min-width: 0; flex: 1 1 160px; }
+.detail-fetch-error button { flex: none; }
 </style>

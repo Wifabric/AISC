@@ -26,7 +26,7 @@ UNSUPPORTED_OP = "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP"
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
-    "skill-install-group", "skill-search", "deeplink", "skill-repo-add",
+    "skill-install-group", "skill-search", "skill-describe", "deeplink", "skill-repo-add",
     "skill-repos-list", "skill-repo-remove", "skill-update-group",
     "skill-update", "plugin-market-list", "plugin-market-add",
     "plugin-market-remove", "plugin-search",

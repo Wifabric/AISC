@@ -405,6 +405,10 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extss)
     extss.add_argument("--query", required=True)
 
+    extsd = extsub.add_parser("skill-describe", help="Read upstream skill description", allow_abbrev=False)
+    _extensions_common(extsd)
+    extsd.add_argument("--id", required=True)
+
     extsu = extsub.add_parser("skill-update",
                               help="Update a skill while preserving enable/disable choices",
                               allow_abbrev=False)
@@ -2069,6 +2073,8 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_plugin_uninstall(args)
     elif sub == "plugin-update":
         data = ext_cmd.cmd_extensions_plugin_update(args)
+    elif sub == "skill-describe":
+        data = ext_cmd.cmd_extensions_skill_describe(args)
     elif sub == "skill-search":
         data = ext_cmd.cmd_extensions_skill_search(args)
     elif sub == "deeplink":

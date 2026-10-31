@@ -780,6 +780,8 @@ export const zhCN = {
   "extensions.marketRefreshed": "已刷新",
   "extensions.marketCacheAt": "上次成功：",
   "extensions.updatesCheckFailedWithDetail": "更新检查失败：{message}",
+  "extensions.detail.loading": "正在读取上游功能介绍…",
+  "extensions.detail.retry": "重新读取",
   "extensions.detail.marketOriginal": "市场原文",
   "extensions.detail.panel": "扩展详情",
   "extensions.detail.openSource": "查看来源",
