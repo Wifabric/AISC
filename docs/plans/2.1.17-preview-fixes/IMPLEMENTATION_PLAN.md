@@ -103,4 +103,4 @@ GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实
 - [x] b3 本地门禁、真实数据面和生产候选。
 - [x] b3 用户单批验收（2026-11-01 用户明确回复「b3测试通过，进入下一个批次开发」）。
 - [ ] b3 Windows CU 完整自动预测试（多窗口/坐标点击受阻，未冒充 PASS；用户实机验收放行）。
-- [ ] b3 远端 CI（PR 待提交后核对）。
+- [x] b3 远端 CI（PR #55 三项 Workbench CI SUCCESS，develop 集成 `bf886f2`）。

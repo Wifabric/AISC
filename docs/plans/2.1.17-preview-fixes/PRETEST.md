@@ -146,3 +146,5 @@ Windows CU 完整自动预测试未完成：多实例/多显示器下部分 WebV
 用户验收摘录 `C:/pt/aisc-pfb3-user-acceptance.txt`。日志：`%TEMP%/aisc-pfb3-local-gates-final.log`、
 `aisc-pfb3-vendor-verify-final.log`、`aisc-pfb3-image-final.log`、`aisc-pfb3-production-final.log`。
 测试容器已停止/移除，未复制用户凭据，未内置 PAT。
+
+PR #55 head `d43fae0aa1ea634cefc7b1a412255596a145674b` 的 Workbench CI run `41220190227` frontend/Rust/CLI 全部 SUCCESS；合并 develop `bf886f2579cabb2eb280879f4493f9acbbbfb3ec`。
