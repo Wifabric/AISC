@@ -60,7 +60,52 @@ Codex/Claude 终端 UI 输入命令。依赖故障通过工具命令在自有隔
 
 - Remote/无 sidecar 只有策略单测，显式覆盖另有真实进程验证；未运行真实 SSH。
 - 上游未给可靠版本字段时仍明确 unsupported；真实插件为 metadata unavailable，未伪称最新版或执行更新。
-- 模板简介、详情蓝框、错误长文挤压按钮在 CU 复现，属于已登记 b2，本批未改这些 UI。
+- 模板简介、详情蓝框、错误长文挤压按钮当时留给随后实施的 b2；现已在下方 b2 记录中复测通过。
 - 初次普通 cargo release 候选访问 localhost:9000，已换为上列正确生产产物后完成 CU。
   初次真实测试未 drain pool 导致不退出，补清理后通过。初次 Vitest cwd 错误已正确重跑全绿。
-- 用户验收尚未进行，b2–b6 未实施；原阶段免补测不适用于本轮。
+- 本段记录的是 b1 当时的限制；b1 随后已由用户验收通过，b2 结果见下方，后续批次仍等待逐批验收。
+
+- 2026-10-31 用户批次验收：用户明确回复「b1 通过，进入 b2」。b1 关闭；PR #53 已合入 develop `cb60cd4`，最新提交 Workbench CI SUCCESS。
+
+## b2（2026-10-31）
+
+结论：本地门禁、真实 adapter/镜像数据面、生产候选与 Windows CU **PASS**；用户单批验收 **PENDING**。
+
+### 产物与环境
+
+- 分支 `codex/2.1.17-preview-b2-extension-details`，develop 基线 `cb60cd4b8f813fa65343b944edf079229aa91784`。
+- 候选目录 `release-staging/2.1.17-preview-b2/`；最终 CU 启动器校验的 Workbench SHA256 为
+  `6ab3a7ff0bc787773fc1ecc80d69be656e079540d2cd026472b7b63f0aaa7a67`，CLI SHA256 为
+  `91d527d111387dcf332846e0c1e94b17bda7d6b19cabb4a7915feaa931e921c3`。
+- 镜像 `super-claude:2.1.17-preview-b2`，ID `sha256:b7d746a3c3cb784bbe88018e4339cbc303e53f9b50c15f11acd22acf7e0e911b`；adapter SHA256
+  `6f1370b4fc169728ae701c98ca5559fc9a9798962aa213b44edac2e55ec75d6b`。
+- 数据根 `C:/pt/aisc217pfb2-data`，工作区 `C:/pt/aisc217pfb2-workspace`；本轮 fixture 中 MCP 与 frontend-design
+  仅用于查看描述，未执行安装/卸载。
+
+### 自动化与真实数据面
+
+| 验证 | 实际结果 | 结论 |
+| --- | --- | --- |
+| Python 全门禁 | 1705 passed / 53 skipped / 201 subtests | PASS |
+| Rust / 前端 / 类型 | 407 passed / 2 ignored；98 files / 831 tests passed；vue-tsc 通过 | PASS |
+| sidecar、vendor、Docker、生产 Tauri | 冻结 CLI、vendor refresh、镜像重建与 `tauri build --no-bundle` 均完成 | PASS |
+| 真实 `skill-describe` | `anthropics/skills:skill-creator` 返回真实上游描述；错误路径限制、超时/大小与 adapter dispatcher 有覆盖 | PASS |
+
+### Computer Use
+
+使用 computer-use 技能的 node_repl + `@oai/sky`，直接操作真实候选 Workbench；没有在 Bash/Codex/Claude
+终端 UI 输入命令。窗口树证据保存于 `C:/pt/aisc-pfb2-market-description-window.txt`。
+
+| 项 | 实际观察 | 结论 |
+| --- | --- | --- |
+| B2-T1 已安装项 | Caveman 组显示功能简介及 13 个子技能；evidence-review 显示费用/CaveScore/工作流/调用链/延迟/节省，compress 显示 CLAUDE.md/记忆/待办压缩；MCP 文件服务和 frontend-design 均在自身卡片显示实际描述 | PASS |
+| B2-T2 推荐与市场 | 推荐分类显示 6 类、每类 10 项；推荐详情在单项卡片内；技能 `research` 显示中文功能介绍；`skill-creator` 先显示读取中，恢复 adapter 后显示真实上游介绍；MCP `github` 与插件 `frontend` 返回结果并可展开具体描述 | PASS |
+| B2-T3 布局与焦点 | 侧栏拖至约 280px 后文本换行且按钮完整；搜索详情没有固定右栏；鼠标展开无蓝色外框，Tab/Enter 有键盘焦点框；Escape 收起并恢复对应条目焦点；长错误在详情内换行并提供“重新读取” | PASS |
+| 更新回归 | 最终候选启动预检五项通过；扩展更新检查结束后 caveman 13 项与 mattpocock 1 项保留且无 b1 空 envelope 错误 | PASS |
+
+故障恢复：通过工具将隔离容器 adapter 临时移走，`skill-describe` 详情保留搜索列表并显示
+`AISC CLI 返回错误 ... No such file or directory` 与“重新读取”；恢复同一 adapter 后重试，详情显示
+`Create new skills, modify and improve existing skills...` 的真实上游文本。未执行安装/删除等有副作用 UI 操作。
+
+日志：`C:/pt/aisc-pfb2-python.log`、`aisc-pfb2-rust.log`、`aisc-pfb2-vitest-final.log`、
+`aisc-pfb2-production-final.log`、`aisc-pfb2-image.log`、`aisc-pfb2-market-description-window.txt`。

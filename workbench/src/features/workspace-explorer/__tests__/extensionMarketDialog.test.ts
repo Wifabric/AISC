@@ -16,6 +16,8 @@ vi.mock("../ExtensionSourceManager.vue", () => ({
 let store: ReturnType<typeof makeStore>;
 function makeStore() {
   return reactive({
+    describedItem: (item: ExtensionsItem) => item, descriptionState: (_item: ExtensionsItem) => undefined,
+    describeSkill: vi.fn(async (_item: ExtensionsItem) => {}),
     kind: "skills", canLoad: true, marketBusy: false, busy: false,
     load: vi.fn(async () => {}), searchSkills: vi.fn(async () => {}),
     searchMcp: vi.fn(async () => {}), searchPlugins: vi.fn(async () => {}),
@@ -202,7 +204,7 @@ describe("ExtensionMarketDialog", () => {
     await flushPromises();
     await wrapper.get("[data-testid='market-result-owner/repo:research']").trigger("click");
     const detail = wrapper.get("[data-testid='extension-detail-panel']");
-    expect(detail.text()).toContain("市场原文");
+    expect(detail.text()).not.toContain("这是一个来自");
     expect(detail.text()).toContain("Live market copy");
     expect(detail.text()).not.toContain("推荐依据");
     await wrapper.get("[data-testid='market-install-action']").trigger("click");
@@ -222,9 +224,25 @@ describe("ExtensionMarketDialog", () => {
     const wrapper = mountDialog();
     await wrapper.get("[data-testid='market-tab-skills']").trigger("click");
     await wrapper.get("[data-testid^='market-result-']").trigger("click");
-    expect(wrapper.get("[data-testid='extension-detail-summary']").text()).toMatch(/^这是一个/);
+    expect(wrapper.get("[data-testid='extension-detail-summary']").text()).toBe("Original copy");
+    expect(wrapper.get(".market-result-card").find("[data-testid=extension-detail-panel]").exists()).toBe(true);
     await wrapper.get("[data-testid='market-install-action']").trigger("click");
     expect(store.installSkill).toHaveBeenCalledWith("owner/repo:demo");
+    wrapper.unmount();
+  });
+
+  it("returns keyboard focus to a market result after Escape closes its details", async () => {
+    store.marketMcp = [{ kind: "market-mcp", id: "github", name: "GitHub", description: "Manage repositories and pull requests" }];
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-mcp']").trigger("click");
+    await wrapper.get("[data-testid='market-result-github']").trigger("click");
+    const action = wrapper.get("[data-testid='market-install-action']");
+    (action.element as HTMLElement).focus();
+    await action.trigger("keydown", { key: "Escape" });
+    await nextTick();
+    expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get("[data-testid='market-result-github']").element);
+    expect(wrapper.emitted("close")).toBeUndefined();
     wrapper.unmount();
   });
 

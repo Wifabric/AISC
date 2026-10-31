@@ -3,7 +3,9 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ExtensionsItem } from "../../lib/ipc";
 import { useExtensionsStore, type ExtensionsKind } from "../../stores/extensions";
-import ExtensionDetailPanel from "./ExtensionDetailPanel.vue";
+import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
+import ExtensionMarketResult from "./ExtensionMarketResult.vue";
+import { skillGroupSummary } from "./extensionSummaries";
 import ExtensionSourceManager from "./ExtensionSourceManager.vue";
 import {
   EXTENSION_RECOMMENDATION_CATEGORIES,
@@ -14,7 +16,7 @@ import {
 
 type MarketTab = "recommendations" | ExtensionsKind | "sources";
 
-const { t } = useI18n();
+const { t, locale: currentLocale } = useI18n();
 const store = useExtensionsStore();
 const emit = defineEmits<{ close: [] }>();
 
@@ -28,8 +30,12 @@ const tabs: { key: MarketTab; labelKey: string }[] = [
 const activeTab = ref<MarketTab>("recommendations");
 const activeCategory = ref<RecommendationCategoryId>("research");
 const query = ref("");
+function setKeyboardMode(event: Event, enabled: boolean): void {
+  (event.currentTarget as HTMLElement).classList.toggle("keyboard-navigation", enabled);
+}
 const selectedRecommendation = ref<CategorizedRecommendation | null>(null);
 const selectedMarketItem = ref<ExtensionsItem | null>(null);
+const expandedMarketGroupId = ref<string | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 const closeRef = ref<HTMLButtonElement | null>(null);
 
@@ -43,29 +49,7 @@ const marketItems = computed<ExtensionsItem[]>(() => {
   if (activeTab.value === "plugins") return store.marketPlugins;
   return [];
 });
-const detailRecommendation = computed(() => {
-  if (selectedRecommendation.value) return selectedRecommendation.value;
-  const item = selectedMarketItem.value;
-  if (!item) return undefined;
-  const direct = EXTENSION_RECOMMENDATIONS_BY_CATEGORY[activeCategory.value].find(
-    (entry) => entry.kind === item.kind && entry.identity === item.id,
-  );
-  if (direct) return direct;
-  const category = (Object.keys(EXTENSION_RECOMMENDATIONS_BY_CATEGORY) as RecommendationCategoryId[])
-    .find((value) => EXTENSION_RECOMMENDATIONS_BY_CATEGORY[value].some(
-      (entry) => entry.kind === item.kind && entry.identity === item.id,
-    ));
-  return category
-    ? EXTENSION_RECOMMENDATIONS_BY_CATEGORY[category].find(
-      (entry) => entry.kind === item.kind && entry.identity === item.id,
-    )
-    : undefined;
-});
-const detailItem = computed<ExtensionsItem | null>(() =>
-  selectedMarketItem.value
-  ?? (selectedRecommendation.value ? recommendationItem(selectedRecommendation.value) : null),
-);
-const locale = computed(() => (useI18n().locale.value === "en-US" ? "en-US" : "zh-CN") as "en-US" | "zh-CN");
+const locale = computed(() => (currentLocale.value === "en-US" ? "en-US" : "zh-CN") as "en-US" | "zh-CN");
 const marketCache = computed(() => {
   if (activeTab.value === "skills") return store.marketCacheByKind.skills;
   if (activeTab.value === "mcp") return store.marketCacheByKind.mcp;
@@ -132,6 +116,8 @@ function onTabArrow(direction: 1 | -1): void {
 async function selectTab(target: MarketTab): Promise<void> {
   activeTab.value = target;
   selectedMarketItem.value = null;
+  selectedRecommendation.value = null;
+  expandedMarketGroupId.value = null;
   if (target === "sources") {
     await Promise.all([store.loadSkillRepos(), store.loadPluginMarkets()]);
     return;
@@ -162,7 +148,14 @@ async function closeRecommendation(entryIndex: number): Promise<void> {
 
 function selectMarketItem(item: ExtensionsItem | null): void {
   selectedRecommendation.value = null;
-  selectedMarketItem.value = item;
+  selectedMarketItem.value = selectedMarketItem.value?.id === item?.id ? null : item;
+}
+
+async function closeMarketItem(item: ExtensionsItem): Promise<void> {
+  selectedMarketItem.value = null;
+  await nextTick();
+  [...panelRef.value?.querySelectorAll<HTMLButtonElement>("[data-testid^='market-result-']") ?? []]
+    .find(button => button.dataset.testid === `market-result-${item.id}`)?.focus();
 }
 
 async function searchSelectedRecommendation(): Promise<void> {
@@ -183,8 +176,7 @@ async function searchActiveKind(): Promise<void> {
   else if (activeTab.value === "plugins") await store.searchPlugins(value);
 }
 
-async function installDetail(): Promise<void> {
-  const item = selectedMarketItem.value;
+async function installDetail(item: ExtensionsItem): Promise<void> {
   if (!item || store.busy) return;
   if (item.kind === "market-skill" || item.kind === "skills") {
     await store.installSkill(item.id);
@@ -212,10 +204,7 @@ async function onTabKey(event: KeyboardEvent): Promise<void> {
   items[nextIndex]?.focus();
 }
 
-onMounted(async () => {
-  await nextTick();
-  closeRef.value?.focus();
-});
+onMounted(() => { closeRef.value?.focus(); });
 </script>
 
 <template>
@@ -224,6 +213,8 @@ onMounted(async () => {
       <section
         ref="panelRef"
         class="extension-market-dialog"
+        @keydown.capture="setKeyboardMode($event, true)"
+        @pointerdown.capture="setKeyboardMode($event, false)"
         data-testid="extension-market-dialog"
         role="dialog"
         aria-modal="true"
@@ -371,7 +362,8 @@ onMounted(async () => {
                   :data-testid="'market-group-' + group.id"
                 >
                   <div class="market-group-head">
-                    <button type="button" class="market-result group-parent" @click="selectMarketItem(group.items[0] ?? null)">
+                    <button type="button" class="market-result group-parent" :aria-expanded="expandedMarketGroupId === group.id"
+                      @click="expandedMarketGroupId = expandedMarketGroupId === group.id ? null : group.id">
                       <strong>{{ group.name }}</strong>
                       <span>{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
                     </button>
@@ -383,33 +375,16 @@ onMounted(async () => {
                       @click.stop="store.installSkillGroup(group)"
                     >{{ t("extensions.installAll") }}</button>
                   </div>
-                  <button
-                    v-for="item in group.items"
-                    :key="item.id"
-                    type="button"
-                    class="market-result"
-                    :data-testid="'market-result-' + item.id"
-                    @click="selectMarketItem(item)"
-                  >
-                    <strong>{{ item.name }}</strong>
-                    <span>{{ item.repo || item.id }}</span>
-                    <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
-                  </button>
+                  <p v-if="expandedMarketGroupId === group.id" class="market-group-summary">{{ skillGroupSummary(group, locale) }}</p>
+                  <ExtensionMarketResult v-for="item in group.items" :key="item.id" :item="item"
+                    :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
+                    @close="closeMarketItem(item)" @install="installDetail(item)" />
                 </section>
               </template>
               <template v-else>
-                <button
-                  v-for="item in marketItems"
-                  :key="item.id"
-                  type="button"
-                  class="market-result"
-                  :data-testid="'market-result-' + item.id"
-                  @click="selectMarketItem(item)"
-                >
-                  <strong>{{ item.name }}</strong>
-                  <span>{{ item.repo || item.marketplace || item.id }}</span>
-                  <span v-if="item.installs">{{ t("extensions.detail.installs") }} {{ item.installs }}</span>
-                </button>
+                <ExtensionMarketResult v-for="item in marketItems" :key="item.id" :item="item"
+                  :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
+                  @close="closeMarketItem(item)" @install="installDetail(item)" />
               </template>
               <p v-if="!store.error && !marketItems.length && (activeTab !== 'skills' || !marketSkillGroups.length)" class="market-empty">
                 {{ t("extensions.market.noResults") }}
@@ -419,31 +394,6 @@ onMounted(async () => {
 
           <ExtensionSourceManager v-else />
 
-          <ExtensionDetailPanel
-            v-if="detailItem && activeTab !== 'sources' && activeTab !== 'recommendations'"
-            class="market-detail"
-            :item="detailItem"
-            :recommendation="detailRecommendation"
-            :evidence-label="selectedRecommendation ? t('extensions.market.catalogEvidence') : undefined"
-            @close="selectedRecommendation = null; selectedMarketItem = null"
-          >
-            <template #actions>
-              <button
-                v-if="selectedRecommendation"
-                type="button"
-                data-testid="market-search-action"
-                :disabled="!store.canLoad || store.marketBusy"
-                @click="searchSelectedRecommendation"
-              >{{ t("extensions.market.searchAction") }}</button>
-              <button
-                v-else-if="selectedMarketItem"
-                type="button"
-                data-testid="market-install-action"
-                :disabled="store.busy"
-                @click="installDetail"
-              >{{ t("extensions.install") }}</button>
-            </template>
-          </ExtensionDetailPanel>
         </div>
       </section>
     </div>
@@ -465,6 +415,8 @@ onMounted(async () => {
   display: flex;
   width: min(1080px, 96vw);
   max-height: min(860px, 92vh);
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   border: var(--border-w) solid var(--border-2);
   border-radius: var(--radius-lg);
@@ -483,6 +435,7 @@ onMounted(async () => {
 .market-header p { margin: 2px 0 0; color: var(--text-muted); font-size: var(--font-xs); }
 .market-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-4) 0;
 }
@@ -498,14 +451,14 @@ onMounted(async () => {
 .market-tabs button.active { background: var(--surface-active); color: var(--text); }
 .market-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   min-height: 0;
   flex: 1;
   padding: var(--space-3) var(--space-4) var(--space-4);
-  overflow: hidden;
+  overflow: auto;
 }
-.recommendation-pane, .search-pane { display: flex; min-width: 0; flex-direction: column; gap: var(--space-3); overflow: auto; }
+.recommendation-pane, .search-pane { display: flex; min-width: 0; flex-direction: column; gap: var(--space-3); }
 .category-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .category-chips button, .market-search button, .market-result, .market-detail :is(button) {
   border: var(--border-w) solid var(--border-2);
@@ -526,7 +479,7 @@ onMounted(async () => {
   color: var(--text-2);
   overflow: hidden;
 }
-.recommendation-card.expanded { border-color: var(--accent); }
+.recommendation-card.expanded { border-color: var(--border-2); background: var(--surface); }
 .recommendation-header {
   display: grid;
   min-width: 0;
@@ -553,21 +506,24 @@ onMounted(async () => {
 .recommendation-detail { margin: 0 var(--space-2) var(--space-2); }
 .market-search { display: flex; gap: var(--space-2); }
 .market-search input { flex: 1; min-width: 0; }
-.market-results { display: grid; gap: var(--space-1); overflow: auto; }
+.market-results { display: grid; gap: var(--space-2); align-content: start; }
 .market-result { display: flex; min-height: var(--control-h-md); align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
 .market-group { display: grid; min-width: 0; gap: var(--space-1); padding: var(--space-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
-.market-group-head { display: flex; align-items: center; gap: var(--space-2); }
-.market-group-head .group-parent { flex: 1; }
+.market-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.market-group-head .group-parent { flex: 1 1 200px; min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
 .group-install { min-height: var(--control-h-sm); padding: 0 var(--space-3); border: var(--border-w) solid var(--accent); background: var(--accent-soft); color: var(--text); cursor: pointer; }
 .market-result strong { color: var(--text); }
 .market-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .market-empty { margin: var(--space-3); color: var(--text-muted); }
 .market-cache, .market-search-error { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .market-search-error { color: var(--error); }
-.market-detail { overflow: auto; }
+.market-group-summary { margin: var(--space-1); color: var(--text-2); font-size: var(--font-sm); line-height: var(--leading-relaxed); overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }
-  .market-detail { max-height: 45vh; }
   .recommendation-meta { grid-template-columns: 1fr; padding-bottom: var(--space-2); }
 }
+/* The app's general modal rule outlines every :focus, including mouse clicks.
+   Keep rings for keyboard navigation and inset them so scroll edges cannot clip them. */
+.extension-market-dialog:not(.keyboard-navigation) :deep(:focus) { outline: none; }
+.extension-market-dialog.keyboard-navigation :deep(:focus) { outline-offset: calc(-1 * var(--focus-ring-width)); }
 </style>

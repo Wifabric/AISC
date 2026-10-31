@@ -4354,3 +4354,14 @@ bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCI
 
 - 三类扩展操作失败保留原错误，组成功项不重复执行，失败项按原参数单独重试；结果未知先核对 SSOT。操作日志限内存 100 条、诊断 8 KiB 并脱敏，提供双语日志和复制。
 - 修复结构化中文超时误判、旧上下文 catch 污染、预检失败分类与引号凭据泄露；审查复核通过。全门禁 Python 1498 / Rust 368 / Vitest 679 / vue-tsc 通过，debug 构建通过。Computer Use/Docker 不可用导致实机 NOT RUN，已记 PRETEST；统一手测不逐批发起。
+
+## 2026-10-31 preview 修复 b1 用户验收与 b2 启动
+
+用户确认 b1 通过。PR #53 在最新 head CI SUCCESS 后合入 develop `cb60cd4`。
+b2 从该基线独立分支实施功能简介及内联详情布局，范围/回归见活动 IMPLEMENTATION_PLAN。
+
+## 2026-10-31 preview 修复 b2 预测试完成
+
+b2 完成功能简介数据出口、按需上游 skill 描述、精确仓库中文简介和市场卡片内联详情；修复窄栏换行、
+鼠标焦点外框、长错误与 Escape 后焦点恢复。全门禁及生产候选通过，Windows Computer Use 已按
+HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。

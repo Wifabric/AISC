@@ -6,4 +6,7 @@
 - 冻结 CLI、生产 Tauri 静态 UI、匹配镜像完成；Windows CU T1–T4 通过：旧 pin 恢复、三市场/详情、重复/Services/双工作区隔离、适配器真实失败后不重启重试。
 - 校验式启动器已备，HANDTEST 有准确路径和字段级结果；原始窗口树和日志位置、限制见 PRETEST。
 - 产品提交 `7c01bac16a4d5fc619cb34cc570f72d04f5e2d55` 已推送；draft [PR #53](https://github.com/Wifabric/AISC/pull/53)。[Workbench CI](https://github.com/Wifabric/AISC/actions/runs/41113073318) 三个 job 与 [CLI sidecar build](https://github.com/Wifabric/AISC/actions/runs/41113143095) 三平台全部 SUCCESS；证据对应该产品 SHA。
-- 当前：交付 b1 手测，用户验收待确认，draft PR 未合并，b2–b6 未实施。用户通过/明确放行后再集成并进入 b2。
+- 当前：b1 已用户验收并合入 develop；b2 按独立分支实施，b3–b6 等待前批验收。
+
+- 2026-10-31 用户批次验收：用户明确回复「b1 通过，进入 b2」。b1 关闭；PR #53 已合入 develop `cb60cd4`，最新提交 Workbench CI SUCCESS。b2 开始，尚未交付。
+- 2026-10-31：b2 实施完成。补齐 adapter 的已安装 MCP/插件描述与只读 `skill-describe`，修正精确仓库简介，市场详情改为卡片内联展开，组/子技能简介、窄栏换行和键盘焦点已覆盖。Python 1705 passed / 53 skipped / 201 subtests，Rust 407 passed / 2 ignored，Vitest 98 files / 831 passed，vue-tsc 与生产构建通过；候选与镜像标识见 PRETEST。Windows CU 预测试完成，待用户按 B2-T1–T3 验收。
