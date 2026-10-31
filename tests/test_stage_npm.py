@@ -217,7 +217,11 @@ def test_missing_or_unpinned_companion_fails_before_publishing(tmp_path, optiona
 
 def test_main_pins_and_both_architectures_come_from_versions_env(tmp_path, monkeypatch):
     (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "versions.env").write_text("CLAUDE_CODE_VERSION=2.1.311\nCODEX_VERSION=0.164.0\nYAZI_VERSION=26.9.1 # stable\n")
+    (tmp_path / "config" / "versions.env").write_text(
+        "CLAUDE_CODE_VERSION=2.1.311\nCODEX_VERSION=0.164.0\nYAZI_VERSION=26.9.1 # stable\n"
+        "YAZI_X64_SHA256=" + "a" * 64 + "\nYAZI_X64_BYTES=1\n"
+        "YAZI_ARM64_SHA256=" + "b" * 64 + "\nYAZI_ARM64_BYTES=1\n"
+    )
     module = helper()
     calls = []
     class FakeStager:
@@ -227,7 +231,7 @@ def test_main_pins_and_both_architectures_come_from_versions_env(tmp_path, monke
             calls.append((args, {}))
     monkeypatch.setattr(module, "Stager", lambda *args, **kwargs: FakeStager())
     assert module.main(["--root", str(tmp_path), "--all-arches", "--yazi"]) == 0
-    assert calls == [((CLAUDE, "2.1.311", ["x64", "arm64"]), {"no_companions": False}), ((CODEX, "0.164.0", ["x64", "arm64"]), {"no_companions": False}), (("26.9.1", ["x64", "arm64"]), {})]
+    assert calls == [((CLAUDE, "2.1.311", ["x64", "arm64"]), {"no_companions": False}), ((CODEX, "0.164.0", ["x64", "arm64"]), {"no_companions": False}), (("26.9.1", ["x64", "arm64"], {"YAZI_VERSION": "26.9.1", "YAZI_X64_SHA256": "a" * 64, "YAZI_X64_BYTES": "1", "YAZI_ARM64_SHA256": "b" * 64, "YAZI_ARM64_BYTES": "1"}), {})]
 
 
 def test_official_integrity_rejects_bad_mirror_and_falls_back_to_official(tmp_path):
@@ -287,49 +291,54 @@ def test_non_optional_dependencies_fail_before_replacing_family(tmp_path, depend
 
 
 def yazi(registry):
-    assets = []
-    for arch in ("x86_64", "aarch64"):
-        name = f"yazi-{arch}-unknown-linux-musl.zip"
+    pins = {}
+    for arch in ("x64", "arm64"):
+        asset_arch = "x86_64" if arch == "x64" else "aarch64"
+        name = f"yazi-{asset_arch}-unknown-linux-musl.zip"
         url = f"https://github.com/sxyazi/yazi/releases/download/v26.9.1/{name}"
-        body = f"official yazi {arch}".encode()
-        assets.append({"name": name, "browser_download_url": url, "digest": "sha256:" + hashlib.sha256(body).hexdigest()})
+        body = f"official yazi {asset_arch}".encode()
         registry.bytes[url] = registry.bytes["https://ghfast.top/" + url] = body
-    registry.json["https://api.github.com/repos/sxyazi/yazi/releases/tags/v26.9.1"] = {"tag_name": "v26.9.1", "draft": False, "prerelease": False, "assets": assets}
+        pin_arch = "X86_64" if arch == "x64" else "ARM64"
+        pins[f"YAZI_{pin_arch}_SHA256"] = hashlib.sha256(body).hexdigest()
+        pins[f"YAZI_{pin_arch}_BYTES"] = str(len(body))
+    return pins
 
 
 def test_yazi_all_arches_checks_official_digests_and_clears_old_zip_only(tmp_path):
     registry = Registry()
-    yazi(registry)
+    pins = yazi(registry)
     (tmp_path / "yazi-x86_64-unknown-linux-musl-v25.2.26.zip").write_bytes(b"old")
     (tmp_path / "codex-0.154.0.tgz").write_bytes(b"other family")
     stager = stage(tmp_path, registry)
-    stager.stage_yazi("26.9.1", ["x64", "arm64"])
+    stager.stage_yazi("26.9.1", ["x64", "arm64"], pins)
     assert set(snapshot(tmp_path)) == {"yazi-x86_64-unknown-linux-musl-v26.9.1.zip", "yazi-aarch64-unknown-linux-musl-v26.9.1.zip", "codex-0.154.0.tgz"}
     registry.downloads.clear()
-    stager.stage_yazi("26.9.1", ["x64", "arm64"])
+    stager.stage_yazi("26.9.1", ["x64", "arm64"], pins)
     assert registry.downloads == []
 
 
 def test_yazi_second_arch_bad_digest_keeps_entire_old_family(tmp_path):
     registry = Registry()
-    yazi(registry)
+    pins = yazi(registry)
     for url in registry.bytes:
         if "aarch64" in url:
             registry.bytes[url] = b"corrupt zip"
     (tmp_path / "yazi-x86_64-unknown-linux-musl-v25.2.26.zip").write_bytes(b"old")
     initial = snapshot(tmp_path)
     with pytest.raises(Exception, match="(?i)(digest|sha256)"):
-        stage(tmp_path, registry).stage_yazi("26.9.1", ["x64", "arm64"])
+        stage(tmp_path, registry).stage_yazi("26.9.1", ["x64", "arm64"], pins)
     assert snapshot(tmp_path) == initial
 
 
 def test_yazi_missing_official_asset_digest_fails_closed(tmp_path):
     registry = Registry()
-    yazi(registry)
-    del registry.json["https://api.github.com/repos/sxyazi/yazi/releases/tags/v26.9.1"]["assets"][0]["digest"]
+    pins = yazi(registry)
+    pins["YAZI_X86_64_SHA256"] = "not-a-digest"
     with pytest.raises(Exception, match="(?i)(digest|sha256)"):
-        stage(tmp_path, registry).stage_yazi("26.9.1", ["x64"])
+        stage(tmp_path, registry).stage_yazi("26.9.1", ["x64"], pins)
     assert snapshot(tmp_path) == {}
+    assert registry.requests == []
+    assert registry.downloads == []
 
 
 def test_cleanup_preserves_non_versioned_same_prefix_files(tmp_path):
@@ -348,7 +357,7 @@ def test_cleanup_preserves_non_versioned_same_prefix_files(tmp_path):
     (tmp_path / "yazi-aarch64-unknown-linux-musl-v25.2.26.zip").write_bytes(b"obsolete zip")
     stager = stage(tmp_path, registry)
     stager.stage_family(CODEX, "0.164.0", ["x64"], no_companions=True)
-    stager.stage_yazi("26.9.1", ["x64"])
+    stager.stage_yazi("26.9.1", ["x64"], yazi(registry))
     remaining = snapshot(tmp_path)
     assert {name: remaining.get(name) for name in unrelated} == unrelated
     assert set(remaining) == set(unrelated) | {"codex-0.164.0.tgz", "yazi-x86_64-unknown-linux-musl-v26.9.1.zip"}
