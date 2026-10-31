@@ -154,3 +154,31 @@ $repo = 'C:/Users/wangyu/.codex/worktrees/217-b1-proxyless-extension-reliability
 
 异常判定：默认 GitHub 缺失、双引擎未默认开启、重启后覆盖用户开关、自定义同名被
 改写、认证状态误报“已配置”或泄露凭据，均判 b3 失败。
+
+- 2026-11-01：b4 实现、全量门禁、x64 NSIS 构建与真实启动清理预测试完成，待用户验收。
+
+## b4：显式更新清理与包体积
+
+### 前置准备
+
+候选与校验脚本位于 `release-staging/2.1.17-preview-b4/`（实施完成后生成）。
+B4-T1 使用隔离 TEMP 和数据根，不触碰真实 Downloads 或用户手动下载。
+
+### B4-T1：成功升级后的下载包清理
+
+1. 关闭其它 AISC Workbench，运行候选目录的 `start-cleanup-pretest.ps1`。
+2. 脚本会预置一个已验证 receipt、假的 `workbench-setup-2.1.16.exe` 和无关
+   `user-download.exe`，然后启动候选。
+3. 等待脚本返回。理想：旧目标安装包与 receipt 被删除；无关文件保留；脚本输出
+   `PASS real Workbench startup cleanup`。取消安装/失败保留由自动化回归覆盖，
+   不要求用户手工破坏安装流程。
+
+### B4-T2：包体积与离线闭包
+
+1. 打开 `package-size-intake.json` 与候选 NSIS 文件属性。
+2. 理想：x64 安装包约 384,516,079 字节（本地构建允许因签名/时间戳小幅差异），
+   相比 preview.1 的 698,809,734 字节减少约 314.3MB；7-Zip 列表只包含
+   x64 Codex/Claude/yazi payload，不包含 arm64 payload；bundle verify PASS。
+
+异常判定：清理无关文件、未复验 hash/size、取消或失败后删除、双架构 payload 再次
+进入同一安装包、bundle verify 降级或 arm64 包缺失导致对应平台无法离线安装，均判失败。

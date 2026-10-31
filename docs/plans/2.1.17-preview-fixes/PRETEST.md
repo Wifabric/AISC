@@ -148,3 +148,52 @@ Windows CU 完整自动预测试未完成：多实例/多显示器下部分 WebV
 测试容器已停止/移除，未复制用户凭据，未内置 PAT。
 
 PR #55 head `d43fae0aa1ea634cefc7b1a412255596a145674b` 的 Workbench CI run `41220190227` frontend/Rust/CLI 全部 SUCCESS；合并 develop `bf886f2579cabb2eb280879f4493f9acbbbfb3ec`。
+
+## b4（2026-11-01）
+
+结论：本地门禁、x64 bundle/NSIS、包体积归因与真实 Workbench 启动清理 **PASS**。
+完整下载→交互安装→新版本启动链路的 Windows CU 待候选交付后执行；不把 Rust 注入测试
+或启动清理冒充完整安装 CU。
+
+### 产物与环境
+
+- 分支 `codex/2.1.17-preview-b4-update-package-size`，基线 develop `b9f1dcf`，产品提交 `f39618ab0d97365c68547d603ed4c790a2eb3cd0`。
+- x64 staged bundle 展开 397,386,330 字节，bundle verify PASS。
+- 本地生产 NSIS `AISC Workbench_2.1.17_x64-setup.exe`：384,516,079 字节，SHA256
+  `1f07d5e09c5fd6b8bc1ea1b98d26743d28d30d85ab8e15e3a361e07121332d8a`。
+- 候选目录 `release-staging/2.1.17-preview-b4/`。Workbench SHA256
+  `8d59ec8283bb62213a1f826073a97f7bd2cff1f5881f6be475a5bd8d385f97e9`，冻结 CLI SHA256
+  `2bc2feb32bcee9b18376e107c7ed822e5a97d7102e741652dc379cc98c3ecbeb`。
+  `start-handtest.ps1` 与 `start-cleanup-pretest.ps1` 均解析 PASS；后者已实跑返回
+  `PASS real Workbench startup cleanup`。
+- 7-Zip 列表确认仅包含 `codex-linux-x64`、`claude-code-linux-x64` 与
+  `yazi-x86_64`，无 arm64 payload。
+
+### 包体积实测
+
+| 版本 | 压缩安装包 | 对比 |
+| --- | ---: | ---: |
+| 2.1.16 | 293,124,128 B | baseline |
+| 2.1.17-preview.1 | 698,809,734 B | +405,685,606 B |
+| 2.1.17 preview b4 x64 | 384,516,079 B | 比 preview.1 -314,293,655 B；比 2.1.16 +91,391,951 B |
+
+preview.1 根因是每个安装包同时打入 x64/arm64离线 payload。b4剩余增长的约
+90,804,023 B 展开载荷主要来自 Codex x64 +42,670,811 B、Claude x64 +35,570,393 B、
+yazi +6,778,413 B、Mihomo +5,009,561 B 与 Workbench +1,233,920 B；geodata 合计略降。
+完整数据见 [package-size-intake.json](package-size-intake.json)。
+
+### 自动化与真实启动
+
+| 验证 | 实际结果 | 结论 |
+| --- | --- | --- |
+| 全门禁 | Python 1722 passed / 53 skipped / 201 subtests；Rust 410 passed / 2 ignored；Vitest 98 files / 833 passed；vue-tsc 通过 | PASS |
+| workflow/打包 | 三个 workflow 均目标架构 `--yazi` staging，不再 `--all-arches`；Git 不再跟踪 yazi zip | PASS |
+| yazi 完整性 | x64/arm64官方 SHA256+size 入 pin；bundle 要求恰好一个目标架构 payload，过期/重复/损坏失败 | PASS |
+| bundle/vendor | x64 stage/verify PASS；vendor 1533 checksums PASS | PASS |
+| 更新 receipt | 下载校验成功写 receipt；当前版本 > 目标且 size/hash 复验一致才删除；同版本/字节变化/路径逃逸/无关文件保留 | PASS |
+| 真实启动清理 | 隔离 TEMP 中启动生产 Workbench，旧已验证安装包与 receipt 删除，`user-download.exe` 保留 | PASS |
+
+日志：`%TEMP%/aisc-pfb4-local-gates-2.log`、`aisc-pfb4-vendor-verify.log`、
+`aisc-pfb4-freeze.log`、`aisc-pfb4-production.log`、`aisc-pfb4-nsis.log`。
+2.1.16 对照安装包与两次 7-Zip 列表保存在 `C:/pt/aisc-pfb4-*`。清理测试根
+`C:/pt/aisc-pfb4-cleanup` 保留无关文件证据，测试 Workbench 已关闭。
