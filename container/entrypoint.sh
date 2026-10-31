@@ -371,6 +371,7 @@ fi
 CC_SWITCH_DAEMON_LOG="/tmp/cc-switch-daemon.log"
 CC_SWITCH_CODEX_INIT_LOG="/tmp/cc-switch-codex-init.log"
 CC_SWITCH_SKILLS_LOG="/tmp/cc-switch-skills-init.log"
+CC_SWITCH_DEFAULT_MCP_LOG="/tmp/cc-switch-default-mcp.log"
 if command -v cc-switch >/dev/null 2>&1; then
     # P3 热切换拓扑（手测 r2）：daemon worker 默认绑 15721/15722——那两个
     # 端口属于 model-shim（存量会话的内存 env 指向那里）。daemon 启动
@@ -478,6 +479,26 @@ if command -v cc-switch >/dev/null 2>&1; then
             esac
         else
             echo "⚠️  cc-switch skills 离线安装失败；日志: $CC_SWITCH_SKILLS_LOG" >&2
+        fi
+
+        # v2.1.17 preview fixes b3: install the official hosted GitHub MCP only
+        # when no user/custom github registration exists. AISC owns just its
+        # tagged row; switches/config edits survive every restart.
+        if AISC_DEFAULT_MCP_RESULT="$(
+            python3 /usr/local/bin/lib/default_mcp.py \
+                --config-dir "$CC_SWITCH_CONFIG_DIR" \
+                --project-dir /root/app \
+                --codex-config-dir "$CODEX_CONFIG_DIR" \
+                --log "$CC_SWITCH_DEFAULT_MCP_LOG"
+        )"; then
+            case "$AISC_DEFAULT_MCP_RESULT" in
+                installed) echo "✅ GitHub MCP 已默认安装（Claude + Codex）" ;;
+                synced) echo "ℹ️  GitHub MCP 默认配置已与当前开关同步" ;;
+                custom|custom-config|custom-live) echo "ℹ️  检测到自定义 GitHub MCP，保留用户配置" ;;
+                *) echo "ℹ️  GitHub MCP 默认同步结果：$AISC_DEFAULT_MCP_RESULT" ;;
+            esac
+        else
+            echo "⚠️  GitHub MCP 默认安装失败；日志: $CC_SWITCH_DEFAULT_MCP_LOG" >&2
         fi
 
         # 2.1.12 (D-6.7, 2026-09-18): images no longer pre-seed keyless

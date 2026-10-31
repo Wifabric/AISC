@@ -157,8 +157,31 @@ def _skill_items() -> list[dict[str, Any]]:
     return out_list
 
 
+def _mcp_auth_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Secret-free, per-engine auth signal for official hosted GitHub MCP."""
+    url = cfg.get("url")
+    if not isinstance(url, str) or url.rstrip("/") != "https://api.githubcopilot.com/mcp":
+        return {}
+    headers = cfg.get("headers")
+    claude_ready = (
+        isinstance(headers, dict)
+        and isinstance(headers.get("Authorization"), str)
+        and bool(headers["Authorization"].strip())
+    )
+    declared = cfg.get("bearer_token_env_var")
+    env_name = declared if isinstance(declared, str) and declared.strip() else "GITHUB_PAT_TOKEN"
+    codex_ready = bool(os.environ.get(env_name, "").strip())
+    return {
+        "auth_required": True,
+        "auth_configured": claude_ready and codex_ready,
+        "auth_claude_configured": claude_ready,
+        "auth_codex_configured": codex_ready,
+        "auth_env_var": env_name,
+    }
+
+
 def _mcp_summary(server_config: str) -> dict[str, Any]:
-    """Transport summary WITHOUT env values (key names only — secret-free)."""
+    """Transport/auth summary WITHOUT env, header, or token VALUES."""
     try:
         cfg = json.loads(server_config) if server_config else {}
     except json.JSONDecodeError:
@@ -177,8 +200,8 @@ def _mcp_summary(server_config: str) -> dict[str, Any]:
         out = {"transport": "unknown"}
     if env_keys:
         out["env_keys"] = env_keys
+    out.update(_mcp_auth_summary(cfg))
     return out
-
 
 def _mcp_items() -> list[dict[str, Any]]:
     path = _db_path()

@@ -73,6 +73,58 @@ class TempEnv(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
 
 
+class GithubMcpAuthSummaryTests(unittest.TestCase):
+    def test_official_github_mcp_requires_auth_and_hides_values(self):
+        summary = A._mcp_summary(json.dumps({
+            "url": "https://api.githubcopilot.com/mcp/",
+            "bearer_token_env_var": "GITHUB_PAT_TOKEN",
+        }))
+        self.assertTrue(summary["auth_required"])
+        self.assertFalse(summary["auth_configured"])
+        self.assertFalse(summary["auth_claude_configured"])
+        self.assertFalse(summary["auth_codex_configured"])
+        self.assertEqual(summary["auth_env_var"], "GITHUB_PAT_TOKEN")
+        self.assertNotIn("GITHUB_PERSONAL_ACCESS_TOKEN", json.dumps(summary))
+
+    def test_environment_token_configures_only_codex_until_claude_header_exists(self):
+        config = json.dumps({
+            "url": "https://api.githubcopilot.com/mcp/",
+            "bearer_token_env_var": "GITHUB_PAT_TOKEN",
+        })
+        with mock.patch.dict(os.environ, {"GITHUB_PAT_TOKEN": ""}):
+            summary = A._mcp_summary(config)
+            self.assertFalse(summary["auth_claude_configured"])
+            self.assertFalse(summary["auth_codex_configured"])
+        with mock.patch.dict(os.environ, {"GITHUB_PAT_TOKEN": "ghp_secret"}):
+            summary = A._mcp_summary(config)
+        self.assertFalse(summary["auth_claude_configured"])
+        self.assertTrue(summary["auth_codex_configured"])
+        self.assertFalse(summary["auth_configured"])
+        self.assertNotIn("ghp_secret", json.dumps(summary))
+
+    def test_both_agent_credential_paths_are_required_for_overall_configured(self):
+        config = {
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {"Authorization": "Bearer ghp_secret"},
+            "bearer_token_env_var": "GITHUB_PAT_TOKEN",
+        }
+        header_only = A._mcp_summary(json.dumps(config))
+        self.assertTrue(header_only["auth_claude_configured"])
+        self.assertFalse(header_only["auth_codex_configured"])
+        self.assertFalse(header_only["auth_configured"])
+
+        with mock.patch.dict(os.environ, {"GITHUB_PAT_TOKEN": "ghp_secret"}):
+            both = A._mcp_summary(json.dumps(config))
+        self.assertTrue(both["auth_claude_configured"])
+        self.assertTrue(both["auth_codex_configured"])
+        self.assertTrue(both["auth_configured"])
+        self.assertNotIn("ghp_secret", json.dumps(both))
+
+    def test_other_http_mcp_does_not_claim_github_auth_requirement(self):
+        summary = A._mcp_summary(json.dumps({"url": "https://example.com/mcp"}))
+        self.assertNotIn("auth_required", summary)
+        self.assertNotIn("auth_configured", summary)
+
 class ListTests(TempEnv):
     def test_skills_snapshot_shape(self):
         items = A.list_items("skills")
