@@ -109,3 +109,40 @@ Codex/Claude 终端 UI 输入命令。依赖故障通过工具命令在自有隔
 
 日志：`C:/pt/aisc-pfb2-python.log`、`aisc-pfb2-rust.log`、`aisc-pfb2-vitest-final.log`、
 `aisc-pfb2-production-final.log`、`aisc-pfb2-image.log`、`aisc-pfb2-market-description-window.txt`。
+
+## b3（2026-11-01）
+
+结论：本地门禁、真实 adapter/镜像数据面、生产候选与用户实机验收 **PASS**。
+Windows CU 完整自动预测试未完成：多实例/多显示器下部分 WebView 按钮无法获得
+可点击坐标；保留为 NOT RUN，不冒充 CU PASS。用户随后明确验收 b3 通过。
+
+### 产物与环境
+
+- 分支 `codex/2.1.17-preview-b3-default-github-mcp`，develop 基线 `66d9549e7a841040b6d40ab014e10809fefa6900`，产品提交 `cc508da91ba0cda9658a5f92f2007c955cf7429c`。
+- 候选目录 `release-staging/2.1.17-preview-b3/`。Workbench SHA256
+  `f4660f84e614aa1461733a8673d7dda014469740a363e4f24c1357b96368fd60`，CLI SHA256
+  `6839e327dfe53804495aba619ce5793aae40415bde2836c3e2970587088c8ec6`。
+- 镜像 `super-claude:2.1.17-preview-b3 @ sha256:983ce21cc5259437926a49f0bf286c36d789b614598b8477d3ea543e7178df1a`。
+  首次误用 b2 bundle 构建时发现新 helper 未入镜像；改用当前源码根重建最终镜像，
+  该构建错误未覆盖，最终镜像包含 helper/adapter。
+- 用户验收 runtime `aisc-wb-266263b2` 当时运行 `super-claude:latest`，本地 latest
+  已临时指向上述 b3 image ID；验收后容器清理，latest 恢复为回退标签
+  `sha256:f78a53822b9cbbc85162cf7f0130a5ccf615643d5b78169a5697a054cf69fbc5`。
+
+### 自动化与真实数据面
+
+| 验证 | 实际结果 | 结论 |
+| --- | --- | --- |
+| 官方远程端点 | 无 Authorization 请求 `https://api.githubcopilot.com/mcp/` 返回 401 与 Bearer 挑战 | PASS |
+| 本地全门禁 | Python 1718 passed / 53 skipped / 201 subtests；Rust 407 passed / 2 ignored；Vitest 98 files / 833 passed；vue-tsc 通过；LOCAL GATES ALL GREEN | PASS |
+| vendor / bundle | vendor refresh 后 1534 checksums 全部通过；候选 bundle stage/verify PASS | PASS |
+| 默认首装 | cc-switch SSOT 有官方 URL、默认 Claude/Codex 开启；Claude `.mcp.json` 与 Codex `config.toml` 均正确写入 | PASS |
+| 用户开关保留 | `cc-switch mcp disable github -a claude` 后重启，SSOT 为 Claude=false/Codex=true；Claude live 键移除、Codex 表保留 | PASS |
+| 自定义同名 | 已有自定义 `github` SSOT/live 配置重启后 URL、启停与内容原样保留 | PASS |
+| 认证状态 | 默认 required=true、整体/Claude/Codex=false、env=GITHUB_PAT_TOKEN；设置测试 env 后 Codex=true/Claude=false/整体=false；header+env 双侧才整体=true；输出不含测试 token | PASS |
+| 生产候选 | 冻结 CLI、生产 Tauri `--no-bundle`、启动器解析与候选哈希校验通过 | PASS |
+
+真实容器证据 roots：`C:/pt/aisc217pfb3-real-3`、`C:/pt/aisc217pfb3-final-real`；
+用户验收摘录 `C:/pt/aisc-pfb3-user-acceptance.txt`。日志：`%TEMP%/aisc-pfb3-local-gates-final.log`、
+`aisc-pfb3-vendor-verify-final.log`、`aisc-pfb3-image-final.log`、`aisc-pfb3-production-final.log`。
+测试容器已停止/移除，未复制用户凭据，未内置 PAT。

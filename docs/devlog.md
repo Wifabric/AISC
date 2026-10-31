@@ -2,6 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 preview 修复 b2–b3（2026-11-01，b3 用户验收通过）
+
+- b2 补齐已安装/市场/子技能真实功能简介与卡片内联详情，修复杂乱来源模板、窄栏布局和键盘焦点；PR #54 已合入 develop `66d9549`。
+- b3 默认安装 GitHub 官方 hosted MCP：cc-switch SSOT 默认双端开启，AISC marker 保留用户启停与自定义同名配置；Claude/Codex live 配置精确合并，避免 cc-switch 5.11.3 将 HTTP MCP 错写成 Codex stdio。未内置或代管 PAT。
+- 认证状态按 Claude Authorization header 与 Codex `GITHUB_PAT_TOKEN` 分别显示，双侧可用才整体已配置；无凭据时明确需要 GitHub PAT，快照永不泄露 header/env 值。
+- 最终门禁 Python 1718 / Rust 407 / Vitest 833 / vue-tsc 通过，vendor 1534 校验通过。真实容器覆盖默认首装、关闭 Claude 后重启保留、自定义同名不覆盖、官方端点 401 与生产候选；用户 2026-11-01 明确验收 b3 通过。CU 自动预测试未完整完成，保留 NOT RUN，不以用户验收冒充 CU PASS。b3 产品提交 `cc508da`，PR/远端 CI 待收口，随后进入 b4。
+
 # v2.1.17 preview 修复 b1（2026-10-31，待用户验收）
 
 - 本轮十项手测反馈登记为六个顺序批次，独立活动计划 `docs/plans/2.1.17-preview-fixes/`；按 DEVELOP_WIKI §1.4 逐批验收，原阶段免补测裁定不复用。

@@ -68,3 +68,39 @@ runtime-not-found。当前源码与原 closeout 冻结 `0.1.10.dev0` 同请求�
 - [x] b2 实现与回归。
 - [x] b2 本地门禁、真实数据面和生产候选。
 - [x] b2 CU 预测试、远端 CI、用户单批验收。
+
+## b3 实施范围（2026-10-31，基线 66d9549）
+
+工作分支 `codex/2.1.17-preview-b3-default-github-mcp`。官方来源已核实：
+GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实测返回
+401 与 Bearer 挑战；Claude 官方指南用 HTTP MCP，Codex 官方指南要求
+`bearer_token_env_var`。不引入嵌套 Docker，不内置/代管 PAT。
+
+1. 新增容器内幂等默认 MCP 同步：SSOT 写 cc-switch `mcp_servers.github`
+   官方 URL/描述/tags，默认 Claude/Codex 开启；所有权用独立 secret-free marker 记录（tags 仅兼容），首次安装与重启均保留已有行
+   的 server_config 与启停选择。若同名 `github` 已存在且没有 AISC marker/tag，
+   视为用户自定义配置，完全不覆盖其 SSOT 与 live 配置。
+2. AISC default 专属 live 同步不能调用 cc-switch 5.11.3 的通用 HTTP sync
+   （实测会生成 Codex `type="stdio"`/空 command）。改为精确合并：Claude
+   `/root/app/.mcp.json` 仅维护 `github` 键并保留其它 server；Codex
+   `config.toml` 仅重写 `[mcp_servers.github]`，写官方 URL 与
+   `bearer_token_env_var = "GITHUB_PAT_TOKEN"`，保留其它 TOML 内容。禁用时移除
+   AISC default 的 live 键/表；自定义同名配置不接管。
+3. adapter 的 MCP 快照增加脱敏认证状态：官方 GitHub URL 标记需要认证；
+   认证状态按 Claude/Codex 分别推导：Claude 需要 Authorization header，Codex 需要
+   `GITHUB_PAT_TOKEN` 实际存在；双侧可用才显示整体已配置，单侧可用显示部分配置，
+   永不返回 header/env 值。Workbench MCP 卡片中英文一致展示。
+4. 回归覆盖空库首装、重复启动、用户关闭、已有自定义同名、live 配置保留/
+   移除、官方 401 挑战记录、认证状态脱敏与 UI 展示。真实容器验证 cc-switch
+   SSOT、Claude/Codex live 文件、自定义行不覆盖；生产候选与 Windows CU 按
+   B3-T1–T3 预测试后交付用户验收。
+5. 不在本批实现 PAT 输入/存储/OAuth 浏览器流，不把未认证服务显示为可调用
+   成功；用户凭据仍由既有安全边界管理。
+
+- [x] b2 用户验收及集成。
+- [x] b3 规格与准确实施范围落档。
+- [x] b3 RED 回归与实现。
+- [x] b3 本地门禁、真实数据面和生产候选。
+- [x] b3 用户单批验收（2026-11-01 用户明确回复「b3测试通过，进入下一个批次开发」）。
+- [ ] b3 Windows CU 完整自动预测试（多窗口/坐标点击受阻，未冒充 PASS；用户实机验收放行）。
+- [ ] b3 远端 CI（PR 待提交后核对）。
