@@ -118,6 +118,13 @@ def test_release_staging_targets_runner_architecture_only(name):
         assert "--all-arches" not in line, (name, line)
 
 
+def test_artifact_macos_runner_follows_supported_bundle_runner():
+    """Artifact must use the currently supported macOS runner label."""
+    data = yaml.safe_load((WORKFLOW_DIR / "artifact.yml").read_text(encoding="utf-8"))
+    mac = next(row for row in data["jobs"]["build"]["strategy"]["matrix"]["include"] if row["arch"] == "arm64")
+    assert mac["runner"] == "macos-latest"
+
+
 def test_yazi_distribution_payload_is_staged_not_tracked():
     """Yazi is integrity-pinned and staged per target, not committed twice."""
     tracked = subprocess.run(

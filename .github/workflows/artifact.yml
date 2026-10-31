@@ -22,7 +22,7 @@ jobs:
             platform: windows
             arch: x86_64
             exe_suffix: ".exe"
-          - runner: macos-14
+          - runner: macos-latest
             platform: macos
             arch: arm64
             exe_suffix: ""
