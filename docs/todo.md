@@ -305,3 +305,16 @@
   - [x] 高频链路自动化冒烟与 v2.1.17 preview 准备（10-31 发布依赖刷新 PR #52 合入 `bc189a3`；最终干净镜像三轮数据面 9/9、12 phases 全 PASS，完整门禁/clean-room/三平台出包与分支及精确集成四条 CI 全 SUCCESS，CU 市场/Services/阅读关键路径通过；剩余手测依 D-7 免除；Workbench 2.1.17-preview.1 / CLI 0.1.10.dev0 GitHub preview 与 TestPyPI 已发布，计划归档）
   - [x] CLI `0.1.10.dev0` GitHub preview / TestPyPI 已发布并通过真实 index 安装验证；正式 PyPI job skipped。
   - 正式 final/main 发布与最终反馈、Release、临时分支清理不属于本次 preview 收尾，按独立批准门处理。
+
+# v2.1.17-preview-fixes-target（2026-10-31 用户手测追加）
+
+用户本轮明确授权以下十项反馈进入 preview 修复，计划见 `docs/plans/2.1.17-preview-fixes/`。
+按 DEVELOP_WIKI §1.4 逐批实现、验证、CU 预测试及用户验收，再进入下一批；原阶段 D-7 不冒充本轮验收。
+
+- [ ] b1 / 反馈 1：修复扩展/技能市场检查更新 `cli op got non-envelope output: ''`，覆盖真实常驻 CLI 与失败后重试。
+  - PR #53 实现、本地门禁、远端 Workbench/三平台 CLI 与 Windows CU T1–T4 已通过；待用户单批验收，暂不勾选。
+- [ ] b2 / 反馈 2、5、6：已安装技能/技能组/子技能/MCP/插件展开显示具体功能简介；修复裁切、遮挡和详情蓝框；去掉来源/权限核对模板简介。
+- [ ] b3 / 反馈 3：默认安装 GitHub MCP，接入既有双引擎默认配置，认证状态如实展示，不内置凭据。
+- [ ] b4 / 反馈 4、9：退出更新启动交互式 setup.exe，安装成功后清理此次下载包；实测对比旧/新安装包组成并减少冗余体积。
+- [ ] b5 / 反馈 7、8：修复 Work Record 分支会话失败及失败标签回收；移除单会话右键新建，记录/未归档分组“重命名”左侧增加新建加号，新会话归属对应工作记录。
+- [ ] b6 / 反馈 10.1–10.3：文件管理 Ctrl+C/V 与右键粘贴、Delete/右键删除、Ctrl/Shift 多选、文件/目录及多选路径拖入 Bash/CLI。

@@ -3018,6 +3018,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser._aisc_format = "json" if json_requested else None
     parser._aisc_command = cmd_hint
 
+    # Subparsers otherwise print only to stderr; serve captures empty stdout
+    # and hides the actual invalid-choice/missing-argument failure.
+    if cmd_hint == "extensions":
+        def _extension_parse_context(p: argparse.ArgumentParser) -> None:
+            p._aisc_format = "json" if json_requested else None
+            p._aisc_command = "extensions"
+            for action in p._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for child in action.choices.values():
+                        _extension_parse_context(child)
+
+        choices = next(a.choices for a in parser._actions
+                       if isinstance(a, argparse._SubParsersAction))
+        _extension_parse_context(choices["extensions"])
+
     # Propagate json format to config subparser for unknown-subcommand errors
     if "config" in args_list:
         try:
