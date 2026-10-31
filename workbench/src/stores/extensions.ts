@@ -78,6 +78,32 @@ function errorText(e: unknown): string {
 
 export const useExtensionsStore = defineStore("extensions", () => {
   const toast = useToastStore();
+  const descriptions = ref<Record<string, { description?: string; loading: boolean; error?: string }>>({});
+  function descriptionKey(item: ExtensionsItem): string {
+    return skillUpdateSpec(item);
+  }
+  function describedItem(item: ExtensionsItem): ExtensionsItem {
+    const description = descriptions.value[descriptionKey(item)]?.description;
+    return description ? { ...item, description } : item;
+  }
+  function descriptionState(item: ExtensionsItem) {
+    return descriptions.value[descriptionKey(item)];
+  }
+  async function describeSkill(item: ExtensionsItem): Promise<void> {
+    if (!context.value || !["skills", "market-skill"].includes(item.kind) || item.description?.trim()) return;
+    const id = descriptionKey(item);
+    if (!id.includes(":") || descriptions.value[id]?.loading || descriptions.value[id]?.description) return;
+    const token = contextToken();
+    descriptions.value[id] = { loading: true };
+    try {
+      const result = await call<{ items?: ExtensionsItem[] }>("skill-describe", { id });
+      if (!isCurrentContext(token)) return;
+      const description = result.items?.find(row => row.id === id)?.description?.trim();
+      descriptions.value[id] = { loading: false, ...(description ? { description } : {}) };
+    } catch (error) {
+      if (isCurrentContext(token)) descriptions.value[id] = { loading: false, error: errorText(error) };
+    }
+  }
   const kind = ref<ExtensionsKind>("skills");
   const context = ref<{ workspace: string; runtimeId: string } | null>(null);
   let contextGeneration = 0;
@@ -188,6 +214,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     skillReposUnsupported.value = false;
     skillReposBusy.value = false;
     skillReposGeneration += 1;
+    descriptions.value = {};
     marketCacheByKind.value = kindRecord<MarketCacheState | null>(null);
     updateItemsByKind.value = emptyUpdateItems();
     updatesError.value = null;
@@ -683,6 +710,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   return {
+    describeSkill, describedItem, descriptionState,
     kind, itemsByKind, items, loading, busy, error, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,

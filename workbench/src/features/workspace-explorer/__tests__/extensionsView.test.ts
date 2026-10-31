@@ -63,7 +63,8 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
 
     await child.get("[data-testid=ext-skill-child-header-caveman]").trigger("click");
     await flushPromises();
-    expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("极简");
+    expect(child.get("[data-testid='extension-detail-panel']").text()).toContain("Ultra-compressed agent communication");
+    expect(group.get("[data-testid=installed-group-summary]").text()).toContain("Ultra-compressed agent communication");
     expect(wrapper.get("[data-testid='extension-detail-panel']").text()).toContain("caveman");
 
     await child.get("[data-testid=ext-skill-child-header-caveman]").trigger("click");
@@ -320,4 +321,21 @@ describe("v2.1.17 b2 update signals", () => {
     expect(zh["extensions.detail.updatedAt"]).toBeTruthy();
     expect(en["extensions.detail.updatedAt"]).toBeTruthy();
   });
+});
+
+it.each(["mcp", "plugins"])("keeps %s details inside their own card and collapses on second click", async kind => {
+  setActivePinia(createPinia());
+  i18n.global.locale.value = "zh-CN";
+  vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind).map(item => ({ ...item, description: "Manage project resources" })) }));
+  const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
+  await flushPromises();
+  await wrapper.get(`[data-testid=ext-tab-${kind}]`).trigger("click"); await flushPromises();
+  const card = wrapper.get("[data-testid^=ext-item-]");
+  const header = card.get(".row-main");
+  await header.trigger("click");
+  expect(card.get("[data-testid=extension-detail-summary]").text()).toBe("Manage project resources");
+  expect(header.attributes("aria-expanded")).toBe("true");
+  await header.trigger("click");
+  expect(card.find("[data-testid=extension-detail-panel]").exists()).toBe(false);
+  wrapper.unmount();
 });

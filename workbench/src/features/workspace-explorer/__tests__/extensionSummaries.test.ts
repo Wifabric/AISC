@@ -78,7 +78,7 @@ describe("extension summaries", () => {
       { kind: "market-mcp", id: "unknown/server", name: "Unknown Server", description: "" },
       "zh-CN",
     );
-    expect(result.summary).toContain("MCP 服务");
+    expect(result.summary).toContain("暂无功能介绍");
     expect(result.summary).not.toContain("技能 Unknown Server");
   });
 
@@ -93,10 +93,10 @@ describe("extension summaries", () => {
       },
       "zh-CN",
     );
-    expect(result.source).toBe("fallback");
-    expect(result.summary).toMatch(/^这是一个/);
-    expect(result.summary).toContain("Unknown Server");
-    expect(result.marketOriginal).toBe("English market description");
+    expect(result.source).toBe("upstream");
+    expect(result.summary).toBe("English market description");
+    expect(result.summary).not.toContain("安装前");
+    expect(result.marketOriginal).toBeUndefined();
   });
 
   it("does not invent an empty market original", () => {
@@ -105,7 +105,21 @@ describe("extension summaries", () => {
       "en-US",
     );
     expect(result.source).toBe("fallback");
-    expect(result.summary).toContain("Unknown");
+    expect(result.summary).toContain("No functional description");
     expect(result.marketOriginal).toBeUndefined();
   });
+});
+
+it("does not assign catalog or caveman capabilities by name alone", () => {
+  for (const name of ["research", "code-review", "caveman", "frontend-design"]) {
+    const result = extensionSummary({ kind: "skills", id: name, name,
+      directory: name, repo: "someone/unrelated", description: "My actual function" }, "zh-CN");
+    expect(result.summary).toBe("My actual function");
+    expect(result.source).toBe("upstream");
+  }
+});
+it("matches marketplace kinds by exact source identity", () => {
+  const result = extensionSummary({ kind: "market-skill", id: "mattpocock/skills:research",
+    name: "research", repo: "mattpocock/skills", directory: "research" }, "zh-CN");
+  expect(result.source).toBe("first-party");
 });

@@ -9,6 +9,7 @@ from aisc.cli.main import _cmd_extensions
 class ExtensionsDispatchTests(unittest.TestCase):
     def test_market_ops_are_dispatched(self):
         cases = [
+            ("skill-describe", "cmd_extensions_skill_describe"),
             ("mcp-search", "cmd_extensions_mcp_search"),
             ("mcp-market-install", "cmd_extensions_mcp_market_install"),
             ("plugin-update", "cmd_extensions_plugin_update"),

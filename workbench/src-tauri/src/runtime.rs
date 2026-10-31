@@ -47,11 +47,11 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 23] = [
+const EXTENSIONS_OPS: [&str; 24] = [
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
-    "skill-search", "deeplink", "skill-repo-add",
+    "skill-search", "skill-describe", "deeplink", "skill-repo-add",
     "skill-repos-list", "skill-repo-remove",
     "plugin-market-list", "plugin-market-add", "plugin-market-remove",
     "plugin-search", "mcp-search", "mcp-market-install", "updates-check",

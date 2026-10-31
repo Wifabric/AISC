@@ -780,6 +780,8 @@ export const enUS: Record<string, string> = {
   "extensions.marketRefreshed": "Refreshed",
   "extensions.marketCacheAt": "Last success: ",
   "extensions.updatesCheckFailedWithDetail": "Update check failed: {message}",
+  "extensions.detail.loading": "Loading upstream description…",
+  "extensions.detail.retry": "Retry description",
   "extensions.detail.marketOriginal": "Market text",
   "extensions.detail.panel": "Extension details",
   "extensions.detail.openSource": "View source",

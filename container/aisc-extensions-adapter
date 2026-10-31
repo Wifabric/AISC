@@ -187,7 +187,7 @@ def _mcp_items() -> list[dict[str, Any]]:
     conn = _connect_ro(path)
     try:
         rows = conn.execute(
-            "SELECT id, name, server_config, enabled_claude, enabled_codex, tags "
+            "SELECT id, name, server_config, enabled_claude, enabled_codex, tags, description "
             "FROM mcp_servers ORDER BY name ASC"
         ).fetchall()
     finally:
@@ -201,9 +201,28 @@ def _mcp_items() -> list[dict[str, Any]]:
             "enabled_claude": _bool_col(ec),
             "enabled_codex": _bool_col(ex),
             "tags": (tags or "").split(",") if tags else [],
+            "description": description or "",
         }
-        for (sid, name, server_config, ec, ex, tags) in rows
+        for (sid, name, server_config, ec, ex, tags, description) in rows
     ]
+
+
+def _plugin_description(root: Path, entry: dict, name: str) -> str:
+    """Read only this installed version's manifest, never a same-name plugin."""
+    try:
+        location = Path(str(entry.get("installPath") or "")).resolve()
+        if not any(location.is_relative_to((root / folder).resolve())
+                   for folder in ("cache", "marketplaces")):
+            return ""
+        manifest = location / ".claude-plugin" / "plugin.json"
+        if manifest.stat().st_size > 65536:
+            return ""
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("name", name) != name:
+            return ""
+        return str(data.get("description") or "")[:4000]
+    except (OSError, ValueError, TypeError):
+        return ""
 
 
 def _plugin_items() -> list[dict[str, Any]]:
@@ -226,6 +245,7 @@ def _plugin_items() -> list[dict[str, Any]]:
                     "id": full_id,
                     "name": name,
                     "marketplace": marketplace or "",
+                    "description": _plugin_description(root, entry, name),
                     "scope": entry.get("scope", ""),
                     "version": entry.get("version", ""),
                     "git_commit_sha": entry.get("gitCommitSha", ""),
@@ -975,6 +995,7 @@ def _parse_skills_api(data: dict[str, Any]) -> list[dict[str, Any]]:
             "installs": str(item.get("installs", "")),
             "repo": source,
             "updated_at": str(item.get("updatedAt") or item.get("updatedAtISO") or ""),
+            "description": str(item.get("description") or "")[:4000],
         })
     return out[:20]
 
@@ -995,6 +1016,75 @@ def _skill_search_remote(query: str) -> list[dict[str, Any]]:
         f"https://www.skills.sh/api/search?q={encoded}",
     ], timeout=15.0)
     return _parse_skills_api(data)
+
+
+def _skill_description(text: str, directory: str) -> str:
+    """Extract frontmatter text, not instructions from the skill body.
+
+    This deliberately small YAML string reader handles literal/folded and quoted
+    scalar descriptions without evaluating tags or requiring another dependency.
+    """
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")
+    parts = text.split("\n---", 2)
+    if not text.startswith("---\n") or len(parts) < 2:
+        return ""
+    front = parts[0][4:]
+    name = re.search(r"(?m)^name:\s*(.+)$", front)
+    if name and name.group(1).strip().strip("\"'") != directory.rsplit("/", 1)[-1]:
+        return ""
+    match = re.search(r"(?m)^description:[ \t]*(.*)$", front)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    continuation = []
+    for line in front[match.end():].splitlines():
+        if line and not line[0].isspace():
+            break
+        continuation.append(line.strip())
+    if value in ("", ">", "|", ">-", "|-", ">+", "|+"):
+        value = " ".join(continuation)
+    elif value.startswith('"') and value.endswith('"'):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = value[1:-1]
+    elif value.startswith("'") and value.endswith("'"):
+        value = value[1:-1].replace("''", "'")
+    elif continuation:
+        value += " " + " ".join(continuation)
+    return " ".join(value.split())[:4000]
+
+
+def _read_skill_url(url: str) -> str:
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "AISC/2.1.17"})
+    with urllib.request.urlopen(req, timeout=4.0) as response:
+        raw = response.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("SKILL.md exceeds 64 KiB")
+    return raw.decode("utf-8-sig")
+
+
+def skill_describe(spec: str) -> list[dict[str, Any]]:
+    repo, separator, directory = spec.partition(":")
+    if (not separator or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
+            or not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", directory)
+            or any(part in (".", "..") for part in directory.split("/"))):
+        raise AdapterError(ERR_BAD_REQUEST, "skill description requires owner/repo:directory")
+    paths = [f"skills/{directory}/SKILL.md", f"{directory}/SKILL.md", "SKILL.md"]
+    failures = 0
+    for path in paths:
+        url = f"https://raw.githubusercontent.com/{repo}/HEAD/{path}"
+        try:
+            description = _skill_description(_read_skill_url(url), directory)
+            if description:
+                return [{"kind": "market-skill", "id": spec, "name": directory,
+                         "description": description, "description_url": url}]
+        except (OSError, ValueError):
+            failures += 1
+    if failures == len(paths):
+        raise AdapterError(ERR_CLI, "Cannot read upstream SKILL.md; retry or open the source repository")
+    raise AdapterError(ERR_NOT_FOUND, "No matching skill description found in upstream SKILL.md")
 
 
 def skill_search(query: str) -> list[dict[str, Any]]:
@@ -1297,7 +1387,7 @@ def main(argv: list[str] | None = None) -> int:
                                        "skill-install-group", "mcp-add",
                                        "plugin-install",
                                        "plugin-uninstall", "plugin-update",
-                                       "skill-search", "deeplink",
+                                       "skill-search", "skill-describe", "deeplink",
                                        "skill-repo-add", "skill-update", "skill-update-group",
                                        "skill-repos-list", "skill-repo-remove",
                                        "plugin-market-list",
@@ -1398,6 +1488,9 @@ def main(argv: list[str] | None = None) -> int:
             envelope = _envelope("updates-check", True)
             envelope.update(result)
             print(json.dumps(envelope))
+            return 0
+        if args.op == "skill-describe":
+            print(json.dumps(_envelope(args.op, True, items=skill_describe(args.id or ""))))
             return 0
         if args.op == "skill-search":
             if not args.query:

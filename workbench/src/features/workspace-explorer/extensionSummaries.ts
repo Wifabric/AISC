@@ -12,7 +12,7 @@ export type ExtensionSummaryItem = Pick<
 export interface ExtensionSummaryResult {
   summary: string;
   marketOriginal?: string;
-  source: "first-party" | "fallback";
+  source: "first-party" | "upstream" | "fallback";
 }
 
 const CAVEMAN_SUMMARIES = new Map<string, { zh: string; en: string }>([
@@ -21,96 +21,86 @@ const CAVEMAN_SUMMARIES = new Map<string, { zh: string; en: string }>([
     en: "Uses terse, high-fidelity agent instructions for workflows that prefer brief output.",
   }],
   ["caveman-commit", {
-    zh: "把变更整理成清晰、可审阅的提交说明，突出动机和边界。",
+    zh: "按 Conventional Commits 格式编写简洁的提交说明，突出修改动机和必要的兼容性变化。",
     en: "Shapes changes into clear, reviewable commit messages with motive and scope.",
   }],
   ["caveman-compress", {
-    zh: "压缩冗长输出并保留关键结论、限制和下一步行动。",
-    en: "Compresses verbose output while retaining conclusions, constraints, and next actions.",
+    zh: "将 CLAUDE.md、记忆文件或待办清单压缩成简洁格式，保留规则、约束和可执行信息。",
+    en: "Compresses memory files and to-do lists while preserving rules and actionable information.",
   }],
   ["caveman-review", {
-    zh: "审查代码与文档的一致性、边界条件和可维护性。",
-    en: "Reviews code and documentation for consistency, edge cases, and maintainability.",
+    zh: "精简审查代码或 PR 差异，每条问题用一行列出位置、问题和修复建议。",
+    en: "Reviews code or PR diffs with one line per finding: location, problem, and fix.",
   }],
   ["caveman-help", {
     zh: "提供 caveman 技能组的用法速查和常见场景指引。",
     en: "Provides usage guidance and common scenarios for the caveman skill group.",
   }],
   ["caveman-stats", {
-    zh: "统计任务、输出和行为指标，帮助量化工作流变化。",
-    en: "Summarizes task, output, and behavior metrics to quantify workflow changes.",
+    zh: "展示当前 Claude Code 会话记录的输出、缓存读取 token 用量及模式归属，或定位宿主用量报告。",
+    en: "Shows recorded output and cache-read token usage and mode attribution for the current session.",
   }],
   ["caveman-explore", {
-    zh: "以短周期探索资料和代码路径，快速收敛到有价值线索。",
-    en: "Explores material and code paths in short cycles to converge on useful leads.",
+    zh: "只读探索代码仓库，定位跨文件实现与入口，以文件路径和行号返回线索。",
+    en: "Explores repositories read-only and returns path:line citations for cross-file implementation.",
   }],
   ["caveman-learn", {
-    zh: "把新材料拆成渐进学习步骤、检查点和练习。",
-    en: "Breaks new material into progressive study steps, checkpoints, and exercises.",
+    zh: "分析 Caveman learn 报告中的 token 开销，逐项征求同意后降低上下文成本并核对收益。",
+    en: "Reviews token sinks in Caveman learn reports and applies cost reductions with per-edit consent.",
   }],
   ["caveman-optimize", {
-    zh: "定位流程瓶颈并提出可验证的优化实验。",
-    en: "Identifies workflow bottlenecks and proposes verifiable optimization experiments.",
+    zh: "根据 Caveman 优化报告选择候选方案，经明确同意后与基线成对评估。",
+    en: "Evaluates an operator-selected Caveman optimization candidate against a paired baseline.",
   }],
   ["caveman-evidence-review", {
-    zh: "审查证据链、来源和推断强度，标出未证实结论。",
-    en: "Reviews evidence chains, sources, and inference strength while flagging unproven claims.",
+    zh: "只读审查 Caveman Cloud 的费用、Cave Score、工作流、调用链、延迟、错误和节省证据。",
+    en: "Reviews Caveman Cloud cost, Cave Score, workflows, traces, latency, errors, and savings read-only.",
   }],
   ["caveman-discover", {
-    zh: "发现相关资料、工具和替代方案，并比较适用条件。",
-    en: "Discovers relevant material, tools, and alternatives, then compares applicability.",
+    zh: "发现并标注仓库中的 LLM 工作流，使 Caveman Cloud 能按工作流归集费用。",
+    en: "Finds and labels repository LLM workflows so Caveman Cloud can group spending by workflow.",
   }],
   ["caveman-manage", {
-    zh: "管理任务清单、优先级和状态，保持执行过程可追踪。",
-    en: "Manages tasks, priorities, and status so execution remains traceable.",
+    zh: "审查 Caveman Cloud 实验的启动、批准、取消、推广和回滚条件，阻止不满足评估要求的操作。",
+    en: "Inspects the Caveman experiment lifecycle and blocks execution that lacks evaluation safeguards.",
   }],
   ["caveman-setup", {
-    zh: "完成 caveman 技能组的初始配置、启用和验证。",
-    en: "Handles initial configuration, enabling, and verification for the caveman skill group.",
+    zh: "将仓库接入 Caveman Cloud 网关，以保持请求行为的记录模式测量 LLM 用量与费用。",
+    en: "Connects a repository to the Caveman Cloud gateway in record mode to measure LLM costs.",
   }],
 ]);
 
-const FIRST_PARTY = new Map(
-  CATEGORIZED_EXTENSION_RECOMMENDATIONS.flatMap((entry) => [
-    [entry.identity.toLowerCase(), entry] as const,
-    [`${entry.kind}:${entry.name.toLowerCase()}`, entry] as const,
-  ]),
-);
-
-function keysFor(item: ExtensionSummaryItem): string[] {
-  const id = item.id.trim();
-  const name = item.name.trim();
-  const repo = item.repo?.trim() ?? "";
-  const directory = item.directory?.trim() ?? name;
-  return [
-    id,
-    repo && directory ? `${repo}:${directory}` : "",
-    directory,
-    name,
-  ].map((value) => value.toLowerCase()).filter(Boolean);
+function normalizedKind(kind: string): string {
+  return ({ "market-skill": "skills", "market-mcp": "mcp", "market-plugin": "plugins" } as Record<string, string>)[kind] ?? kind;
 }
 
-function firstPartySummary(
-  item: ExtensionSummaryItem,
-  locale: ExtensionSummaryLocale,
-): ExtensionSummaryResult | null {
-  const cavemanDirectory = item.directory?.trim() || (item.repo === "JuliusBrussee/caveman" ? item.name : "");
-  const caveman = CAVEMAN_SUMMARIES.get(cavemanDirectory);
-  if (caveman) {
-    return {
-      summary: locale === "zh-CN" ? caveman.zh : caveman.en,
-      source: "first-party",
-    };
-  }
+const FIRST_PARTY = new Map<string, (typeof CATEGORIZED_EXTENSION_RECOMMENDATIONS)[number]>(
+  CATEGORIZED_EXTENSION_RECOMMENDATIONS.map((entry) =>
+    [`${entry.kind}:${entry.identity.toLowerCase()}`, entry] as const),
+);
 
-  for (const key of keysFor(item)) {
-    const entry = FIRST_PARTY.get(key);
-    if (entry) {
-      return {
-        summary: locale === "zh-CN" ? entry.summaryZh : entry.summaryEn,
-        source: "first-party",
-      };
-    }
+function firstPartySummary(item: ExtensionSummaryItem, locale: ExtensionSummaryLocale): ExtensionSummaryResult | null {
+  const kind = normalizedKind(item.kind);
+  const repo = item.repo?.trim().toLowerCase() ?? "";
+  const directory = item.directory?.trim() || item.name.trim();
+  const id = item.id.trim().toLowerCase();
+  const cavemanRepo = repo === "juliusbrussee/caveman" || id.startsWith("juliusbrussee/caveman:");
+  const caveman = kind === "skills" && cavemanRepo
+    ? CAVEMAN_SUMMARIES.get(directory) : undefined;
+  const original = item.description?.trim();
+  if (caveman) return {
+    summary: locale === "zh-CN" ? caveman.zh : caveman.en,
+    source: "first-party", ...(original ? { marketOriginal: original } : {}),
+  };
+  // Exact kind and repository identity only: an unrelated skill with the same
+  // display name must never inherit another author's capabilities.
+  const keys = [id, repo && directory ? `${repo}:${directory.toLowerCase()}` : ""];
+  for (const key of keys.filter(Boolean)) {
+    const entry = FIRST_PARTY.get(`${kind}:${key}`);
+    if (entry) return {
+      summary: locale === "zh-CN" ? entry.summaryZh : entry.summaryEn,
+      source: "first-party", ...(original ? { marketOriginal: original } : {}),
+    };
   }
   return null;
 }
@@ -119,16 +109,13 @@ function fallbackSummary(
   item: ExtensionSummaryItem,
   locale: ExtensionSummaryLocale,
 ): ExtensionSummaryResult {
-  const name = item.name.trim() || item.id.trim();
-  const kind = item.kind.replace(/^market-/, "");
-  const source = item.repo?.trim() || (kind === "mcp" ? "Smithery" : "market");
-  const marketOriginal = item.description?.trim();
+  const original = item.description?.trim();
+  if (original) return { source: "upstream", summary: original };
   return {
     source: "fallback",
     summary: locale === "zh-CN"
-      ? `这是一个来自 ${source} 的${kind === "mcp" ? " MCP 服务" : kind === "plugins" ? "插件" : "技能"} ${name}；安装前请核对市场原文、仓库说明和权限需求。`
-      : `${name} is a ${kind === "mcp" ? "MCP server" : kind === "plugins" ? "plugin" : "skill"} from ${source}; verify the market text, repository, and permissions before installing.`,
-    ...(marketOriginal ? { marketOriginal } : {}),
+      ? "暂无功能介绍，可查看来源说明。"
+      : "No functional description is available. See the source for details.",
   };
 }
 
@@ -137,4 +124,15 @@ export function extensionSummary(
   locale: ExtensionSummaryLocale,
 ): ExtensionSummaryResult {
   return firstPartySummary(item, locale) ?? fallbackSummary(item, locale);
+}
+
+export function skillGroupSummary(
+  group: { repo: string; items: ExtensionSummaryItem[] }, locale: ExtensionSummaryLocale,
+): string {
+  const rootName = group.repo.split("/").pop()?.toLowerCase();
+  const root = group.items.find(item => (item.directory || item.name).toLowerCase() === rootName);
+  if (root) return extensionSummary(root, locale).summary;
+  const descriptions = group.items.slice(0, 3).map(item =>
+    `${item.name}：${extensionSummary(item, locale).summary}`);
+  return descriptions.join(" ");
 }

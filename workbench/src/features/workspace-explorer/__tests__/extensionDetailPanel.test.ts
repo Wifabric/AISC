@@ -48,10 +48,8 @@ describe("ExtensionDetailPanel", () => {
         },
       },
     });
-    expect(wrapper.get("[data-testid='extension-detail-summary']").text()).toMatch(/^这是一个/);
-    expect(wrapper.get("[data-testid='extension-detail-original']").text()).toContain(
-      "Original English copy",
-    );
+    expect(wrapper.get("[data-testid='extension-detail-summary']").text()).toBe("Original English copy");
+    expect(wrapper.find("[data-testid='extension-detail-original']").exists()).toBe(false);
   });
 
   it("renders update, install count and source metadata without fake values", () => {
