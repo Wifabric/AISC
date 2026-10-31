@@ -51,7 +51,15 @@ def build_bundle_files(base: Path, version: str) -> None:
     (b / "README.md").write_text("# T\n", encoding="utf-8")
     (b / "LICENSE").write_text("MIT\n", encoding="utf-8")
     (b / ".dockerignore").write_text("*\n", encoding="utf-8")
-    (b / "config" / "versions.env").write_text("NODE_IMAGE=node:20-slim\n", encoding="utf-8")
+    yazi = b"target-yazi-payload"
+    yazi_name = "yazi-x86_64-unknown-linux-musl-v26.9.1.zip"
+    (b / "container" / "downloads" / yazi_name).write_bytes(yazi)
+    yazi_digest = hashlib.sha256(yazi).hexdigest()
+    (b / "config" / "versions.env").write_text(
+        "NODE_IMAGE=node:20-slim\nYAZI_VERSION=26.9.1\n"
+        f"YAZI_X86_64_SHA256={yazi_digest}\nYAZI_X86_64_BYTES={len(yazi)}\n"
+        f"YAZI_ARM64_SHA256={'c' * 64}\nYAZI_ARM64_BYTES=1\n",
+        encoding="utf-8")
     (b / "container" / "Dockerfile").write_text(
         "FROM node:20-slim\nCOPY container/_bundle/ /home/\n", encoding="utf-8")
     (b / "container" / "_bundle" / "plugins" / ".keep").write_text("", encoding="utf-8")
@@ -80,14 +88,21 @@ def build_release_zip(version: str, plat: str = _PLAT_TAG, arch: str = ARCH_TAG,
     bv = bundle_version or version
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr(_reg_entry(f"{top}/aisc", 0o755), "#!/bin/sh\n")
+        yazi = b"target-yazi-payload"
+        yazi_name = "yazi-x86_64-unknown-linux-musl-v26.9.1.zip"
+        yazi_digest = hashlib.sha256(yazi).hexdigest()
         for rel, content in (
             ("VERSION", bv + "\n"),
             ("README.md", "# T\n"),
             ("LICENSE", "MIT\n"),
             (".dockerignore", "*\n"),
-            ("config/versions.env", "NODE_IMAGE=node:20-slim\n"),
+            ("config/versions.env",
+             "NODE_IMAGE=node:20-slim\nYAZI_VERSION=26.9.1\n"
+             f"YAZI_X86_64_SHA256={yazi_digest}\nYAZI_X86_64_BYTES={len(yazi)}\n"
+             f"YAZI_ARM64_SHA256={'c' * 64}\nYAZI_ARM64_BYTES=1\n"),
             ("container/Dockerfile", "FROM node:20-slim\nCOPY container/_bundle/ /home/\n"),
             ("container/_bundle/plugins/.keep", ""),
+            (f"container/downloads/{yazi_name}", yazi),
             ("vendor/checksums.txt",
              hashlib.sha256(b"").hexdigest() + "  container/_bundle/plugins/.keep\n"),
         ):
