@@ -39,6 +39,22 @@ const currentVersion = computed(() =>
 const latestVersion = computed(() =>
   props.update?.update_available ? (props.update.latest_version?.trim() || "") : "",
 );
+const authText = computed(() => {
+  if (!props.item.auth_required) return "";
+  if (props.item.auth_configured) return t("extensions.detail.authConfigured");
+  const claude = props.item.auth_claude_configured;
+  const codex = props.item.auth_codex_configured;
+  if (claude || codex) {
+    return t("extensions.detail.authPartial", {
+      claude: claude ? t("extensions.detail.authConfigured") : t("extensions.detail.authMissing"),
+      codex: codex ? t("extensions.detail.authConfigured") : t("extensions.detail.authMissing"),
+    });
+  }
+  return t("extensions.detail.authRequired", {
+    env: props.item.auth_env_var || "GITHUB_PAT_TOKEN",
+  });
+});
+
 const sourceUrl = computed(() => {
   const explicit = props.recommendation?.sourceUrl ?? "";
   if (explicit) return explicit;
@@ -104,6 +120,10 @@ const sourceUrl = computed(() => {
       <div v-if="item.updated_at">
         <dt>{{ t("extensions.detail.updatedAt") }}</dt>
         <dd>{{ item.updated_at }}</dd>
+      </div>
+      <div v-if="item.auth_required" data-testid="extension-detail-auth">
+        <dt>{{ t("extensions.detail.auth") }}</dt>
+        <dd>{{ authText }}</dd>
       </div>
       <div v-if="currentVersion">
         <dt>{{ t("extensions.detail.currentVersion") }}</dt>

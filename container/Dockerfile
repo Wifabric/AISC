@@ -597,6 +597,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/cc-switch \
 
 COPY container/cc_switch_skills.py /usr/local/bin/lib/cc_switch_skills.py
 COPY container/lib/cc_switch_preset_providers.py /usr/local/bin/lib/cc_switch_preset_providers.py
+COPY container/lib/default_mcp.py /usr/local/bin/lib/default_mcp.py
 # Stage 8c (D8-06): the DeepSeek preset consumes this official-docs fixture
 # at runtime — models/endpoints/[1m] rules never live in code.
 COPY container/lib/deepseek-official-facts.json /usr/local/bin/lib/deepseek-official-facts.json

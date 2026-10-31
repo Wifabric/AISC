@@ -108,3 +108,49 @@ $repo = 'C:/Users/wangyu/.codex/worktrees/217-b1-proxyless-extension-reliability
 
 异常判定：详情缺失/被盖住、按钮或焦点框裁切、同名技能套用别人的简介、点击其它
 条目仍出现上一个介绍、失败清空列表，均反馈具体页签/条目名与操作步骤，b2不通过。
+
+- 2026-11-01 用户批次验收：用户明确回复「b3测试通过，进入下一个批次开发」。B3-T1–T3 关闭；生产候选、真实容器数据面与用户实机验收通过。
+
+## b3：默认 GitHub MCP
+
+### 前置准备
+
+Docker Desktop 已运行。候选 `release-staging/2.1.17-preview-b3/`，独立数据根
+`C:/pt/aisc217pfb3-data`，测试工作区 `C:/pt/aisc217pfb3-workspace`；镜像
+`super-claude:2.1.17-preview-b3`（精确标识见 b3-artifacts.json）。校验并打开：
+
+```powershell
+$repo = 'C:/Users/wangyu/.codex/worktrees/217-b1-proxyless-extension-reliability/AISC'
+& "$repo/release-staging/2.1.17-preview-b3/start-handtest.ps1"
+```
+
+若启动摘要仍选默认 `super-claude:latest`，先点「更改设置」把镜像改为
+`super-claude:2.1.17-preview-b3`；不要用旧镜像复核。隔离环境不提供 GitHub PAT。
+
+### B3-T1：默认安装与认证状态
+
+1. 新工作区启动 ready 后，左侧「扩展」→「MCP」。
+2. 展开 `GitHub` 条目并等待详情读取完成。
+3. 理想结果：列表默认有 GitHub，Claude/Codex 均开启；详情显示官方功能介绍、
+   HTTP URL `https://api.githubcopilot.com/mcp/`，认证为
+   “未配置（需要 GitHub PAT：GITHUB_PAT_TOKEN）”。不显示任何 token/Authorization 值，
+   也不把未认证写成可调用成功。
+
+### B3-T2：用户开关与重启保留
+
+1. 关闭 GitHub 的 Claude 开关，等待列表刷新。
+2. 重启工作区/runtime，再进入「扩展」→「MCP」。
+3. 理想结果：GitHub 仍在；Claude 保持关闭、Codex 保持开启。容器内 Claude 项目
+   MCP 配置不再包含 AISC 默认 `github` 键，Codex `[mcp_servers.github]` 仍为官方
+   URL 与 `bearer_token_env_var = "GITHUB_PAT_TOKEN"`。其它 MCP 配置不变。
+
+### B3-T3：自定义同名不被覆盖
+
+1. 仅在已有自定义 `github` MCP 的隔离测试环境中执行；不要改真实用户配置。
+2. 重启工作区后展开 GitHub。
+3. 理想结果：自定义 URL、名称、启停状态和 live 配置原样保留；AISC 不把其改回
+   官方 URL，也不写入 token。若不存在该环境，此项以 PRETEST 的真实容器证据为准，
+   不要求用户手工改数据库。
+
+异常判定：默认 GitHub 缺失、双引擎未默认开启、重启后覆盖用户开关、自定义同名被
+改写、认证状态误报“已配置”或泄露凭据，均判 b3 失败。

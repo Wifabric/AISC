@@ -76,6 +76,42 @@ describe("ExtensionDetailPanel", () => {
     expect(wrapper.text()).not.toContain("undefined");
   });
 
+  it("distinguishes partial GitHub MCP authentication by agent", () => {
+    const wrapper = mount(ExtensionDetailPanel, {
+      global: { plugins: [i18n] },
+      props: {
+        item: {
+          kind: "mcp", id: "github", name: "GitHub",
+          transport: "http", url: "https://api.githubcopilot.com/mcp/",
+          auth_required: true, auth_configured: false,
+          auth_claude_configured: false, auth_codex_configured: true,
+          auth_env_var: "GITHUB_PAT_TOKEN",
+        },
+      },
+    });
+    const auth = wrapper.get("[data-testid='extension-detail-auth']");
+    expect(auth.text()).toContain("部分配置");
+    expect(auth.text()).toContain("Claude：未配置");
+    expect(auth.text()).toContain("Codex：已配置");
+  });
+
+  it("shows GitHub MCP authentication state without pretending unauthenticated is callable", () => {
+    const wrapper = mount(ExtensionDetailPanel, {
+      global: { plugins: [i18n] },
+      props: {
+        item: {
+          kind: "mcp", id: "github", name: "GitHub",
+          transport: "http", url: "https://api.githubcopilot.com/mcp/",
+          auth_required: true, auth_configured: false, auth_env_var: "GITHUB_PAT_TOKEN",
+        },
+      },
+    });
+    const auth = wrapper.get("[data-testid='extension-detail-auth']");
+    expect(auth.text()).toContain("认证");
+    expect(auth.text()).toContain("未配置");
+    expect(auth.text()).toContain("需要 GitHub PAT");
+  });
+
   it("uses a labelled complementary region and emits close on Escape", async () => {
     const wrapper = mount(ExtensionDetailPanel, {
       global: { plugins: [i18n] },

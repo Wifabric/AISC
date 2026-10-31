@@ -693,6 +693,11 @@ export interface ExtensionsItem {
   url?: string;
   command?: string;
   env_keys?: string[];
+  auth_required?: boolean;
+  auth_configured?: boolean;
+  auth_claude_configured?: boolean;
+  auth_codex_configured?: boolean;
+  auth_env_var?: string;
   marketplace?: string;
   version?: string;
   directory?: string;
