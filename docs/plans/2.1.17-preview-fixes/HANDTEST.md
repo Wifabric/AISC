@@ -45,7 +45,8 @@ $repo = 'C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability
 请反馈“b1 通过”或 T 编号与实际文案。依 DEVELOP_WIKI §1.4，单批验收/明确放行后才进入 b2。
 其它批次精确步骤在对应批实施前补齐。
 
-- 2026-10-31 用户批次验收：用户明确回复「b1 通过，进入 b2」。b1 关闭；PR #53 已合入 develop `cb60cd4`，最新提交 Workbench CI SUCCESS。随后进入 b2，当前按下方 B2-T1–T3 验收。
+- 2026-10-31 用户批次验收：用户明确回复「b1 通过，进入 b2」。b1 关闭；PR #53 已合入 develop `cb60cd4`，最新提交 Workbench CI SUCCESS。
+- 2026-10-31 用户批次验收：用户明确回复「b2 通过，进入 b3」。B2-T1–T3 关闭；PR #54 的实现、门禁、CU 与用户验收均通过。
 
 ## b2：功能简介与内联详情
 

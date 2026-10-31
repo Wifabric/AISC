@@ -69,7 +69,7 @@ Codex/Claude 终端 UI 输入命令。依赖故障通过工具命令在自有隔
 
 ## b2（2026-10-31）
 
-结论：本地门禁、真实 adapter/镜像数据面、生产候选与 Windows CU **PASS**；用户单批验收 **PENDING**。
+结论：本地门禁、真实 adapter/镜像数据面、生产候选与 Windows CU **PASS**；2026-10-31 用户验收 B2-T1–T3 **PASS**。
 
 ### 产物与环境
 
