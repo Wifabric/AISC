@@ -230,3 +230,4 @@ PR #56 docs head `89605875e62ea037d271c8006d10be95a1757a93` 的 Workbench CI 三
 - 门禁：Python 1723 passed / 53 skipped / 201 subtests；Rust 410 passed / 2 ignored；
   Vitest 98 files / 837 passed；vue-tsc 与生产 Tauri `--no-bundle` 通过。
 - 真实 preview 安装/更新后的整体用户实测延后到 b6 合入与 preview.N 发布后。
+- PR #57 head `48081c592b2f819328ab6179e7c3507d5713e61d` 的 Workbench CI frontend/Rust/CLI 全部 SUCCESS；合并 develop `aef1d5a00e6b949164695761d54d56b5c796381a`。

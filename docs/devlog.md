@@ -2,6 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 preview 修复 b5（2026-11-01，合入待整体实测）
+
+- Work Record 分支会话保留原 conversation preflight/fork 链路，只新增独立 fork；Claude/Codex覆盖。
+- fork/new session 启动失败保存脱敏可读错误，只回收本次失败新标签；其他标签、成功 fork 和原成员不变。
+- 移除单会话右键通用新建；活动工作记录标题新增“＋”，按最近成员引擎建新会话。pending association 记录 collectionId，唯一识别新 conversation 后自动加入来源记录。
+- Python 1723 / Rust 410 / Vitest 837 / vue-tsc 通过；生产 Workbench 构建通过。PR #57 三项 CI SUCCESS，合入 develop `aef1d5a`；按 preview 迭代模式延后到 preview.N 整体实测。
+
 # v2.1.17 preview 修复 b4（2026-11-01，待用户验收）
 
 - 显式更新下载校验后写入 receipt；新版本启动复验 size/hash 后仅清理自有安装包，取消/失败/同版本/字节变化均保留，不触碰用户手动下载。
