@@ -16,4 +16,4 @@
 - 2026-11-01 用户批次验收：用户明确回复「b3测试通过，进入下一个批次开发」。b3 关闭；PR #55 远端 Workbench CI 三项 SUCCESS，已合入 develop `bf886f2`；进入 b4。
 - 2026-11-01：b4 从 develop `b9f1dcf` 开工。初步归因确认 preview.1 安装包 698,809,734 字节比 2.1.16 增 405,685,606 字节，双架构离线 payload 是主要来源；显式更新清理与目标架构打包规格落档。
 - 2026-11-01：b4 实现完成。下载校验后写入 receipt，新版本启动时复验 size/hash 并仅清理自有安装包；取消/失败/字节变化保留。三个打包 workflow 改为目标架构 staging，yazi 官方双架构 digest/size 入 pin 并由 bundle verify 强校验。全门禁 Python 1722 / Rust 410 / Vitest 833 / vue-tsc 通过，vendor 1533、x64 bundle/NSIS 与真实启动清理 PASS；实测安装包 384,516,079 字节，比 preview.1 减少 314,293,655 字节。
-- 2026-11-01：修复 yazi staging 对 GitHub API 的依赖，改为消费版本 pin 直接下载固定 release asset；最终 head `9f13847` 的 Workbench/Bundle/NSIS/Artifact 四条远端流水线全部 SUCCESS。
+- 2026-11-01：修复 yazi staging 对 GitHub API 的依赖，改为消费版本 pin 直接下载固定 release asset；PR #56 最终 head `8960587` 的四条远端流水线全部 SUCCESS，已合入 develop `7c154cd`。

@@ -209,4 +209,6 @@ yazi +6,778,413 B、Mihomo +5,009,561 B 与 Workbench +1,233,920 B；geodata 合
 | NSIS installer | 41226975807 | NSIS、安装/PATH/数据保留冒烟 |
 | Artifact | 41226978184 | linux x64 / windows x64 / macOS arm64 目标架构 staging/verify |
 
+PR #56 docs head `89605875e62ea037d271c8006d10be95a1757a93` 的 Workbench CI 三项 SUCCESS；合入 develop `7c154cd4609a1d5ac6adfe882570b7714579d7a5`。此前 Rust job 一次因 GitHub apt 下载超时失败，重跑通过，已保留原始失败记录。
+
 修复过程中的 yazi GitHub API 限流失败保留为历史证据；最终实现改用 pinned release URL 后全绿。
