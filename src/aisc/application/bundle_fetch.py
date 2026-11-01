@@ -353,6 +353,7 @@ def verify_staged_bundle(bundle_root: Path) -> List[str]:
         errors.append("container/Dockerfile missing")
     errors.extend(_verify_vendor_checksums(bundle_root))
     errors.extend(_verify_npm_presets(bundle_root))
+    errors.extend(_verify_yazi_payload(bundle_root))
     errors.extend(_audit_forbidden(bundle_root))
     if not (bundle_root / "container" / "_bundle" / "plugins").exists():
         errors.append("container/_bundle/plugins missing")
@@ -425,6 +426,73 @@ def _verify_npm_presets(bundle_root: Path) -> List[str]:
                     errors.append(f"npm preset metadata mismatch: {path.name}")
         except (OSError, EOFError, zlib.error, tarfile.TarError, KeyError, ValueError, AttributeError) as exc:
             errors.append(f"npm preset {prefix} invalid: {exc}")
+    return errors
+
+
+def _verify_yazi_payload(bundle_root: Path) -> List[str]:
+    """Require exactly one officially pinned yazi payload for the target arch."""
+    from aisc.application.tool_versions import _parse_env_file
+
+    pins = _parse_env_file(bundle_root / "config" / "versions.env")
+    version = str(pins.get("YAZI_VERSION", "")).removeprefix("v").strip()
+    expected = {
+        f"yazi-{arch}-unknown-linux-musl-v{version}.zip": (
+            str(pins.get(hash_key, "")).strip().lower(),
+            str(pins.get(size_key, "")).strip(),
+            arch,
+        )
+        for arch, hash_key, size_key in (
+            ("x86_64", "YAZI_X86_64_SHA256", "YAZI_X86_64_BYTES"),
+            ("aarch64", "YAZI_ARM64_SHA256", "YAZI_ARM64_BYTES"),
+        )
+    }
+    errors: List[str] = []
+    if not version or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        errors.append("yazi payload version pin invalid")
+        return errors
+    for name, (digest, size, _arch) in expected.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            errors.append(f"yazi payload digest pin invalid: {name}")
+        if not size.isdigit():
+            errors.append(f"yazi payload size pin invalid: {name}")
+    if errors:
+        return errors
+
+    downloads = bundle_root / "container" / "downloads"
+    found = {
+        path.name
+        for path in downloads.glob("yazi-*.zip")
+        if path.is_file()
+    }
+    targets = sorted(found & expected.keys())
+    if len(targets) != 1:
+        errors.append(
+            "bundle target yazi payload missing"
+            if not targets
+            else "bundle must contain exactly one target-architecture yazi payload"
+        )
+        if len(targets) > 1:
+            errors.append(f"duplicate target yazi payloads: {', '.join(targets)}")
+    for name in sorted(found - expected.keys()):
+        errors.append(f"unexpected yazi payload: {name}")
+    for name in targets:
+        path = downloads / name
+        digest, size, _arch = expected[name]
+        actual_digest = _sha256_file(path)
+        if actual_digest != digest:
+            errors.append(
+                f"yazi payload hash mismatch: {name}: expected {digest[:16]}..., "
+                f"got {actual_digest[:16]}..."
+            )
+        try:
+            actual_size = str(path.stat().st_size)
+        except OSError as exc:
+            errors.append(f"yazi payload unreadable: {name}: {exc}")
+            continue
+        if actual_size != size:
+            errors.append(
+                f"yazi payload size mismatch: {name}: expected {size}, got {actual_size}"
+            )
     return errors
 
 

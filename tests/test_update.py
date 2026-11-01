@@ -45,15 +45,21 @@ def build_update_zip(version: str, exe_payload: bytes = b"NEW-EXE") -> bytes:
     exe_name = "aisc.exe" if os.name == "nt" else "aisc"
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr(_reg_entry(f"{top}/{exe_name}", 0o755), exe_payload.decode("latin-1"))
+        yazi = b"target-yazi-payload"
+        yazi_digest = hashlib.sha256(yazi).hexdigest()
         for rel, content in (
             ("VERSION", version + "\n"),
             ("README.md", "# T\n"),
             ("LICENSE", "MIT\n"),
             (".dockerignore", "*\n"),
-            ("config/versions.env", "NODE_IMAGE=node:20-slim\n"),
+            ("config/versions.env",
+             "NODE_IMAGE=node:20-slim\nYAZI_VERSION=26.9.1\n"
+             f"YAZI_X86_64_SHA256={yazi_digest}\nYAZI_X86_64_BYTES={len(yazi)}\n"
+             f"YAZI_ARM64_SHA256={'c' * 64}\nYAZI_ARM64_BYTES=1\n"),
             ("container/Dockerfile", "FROM node:20-slim\nCOPY container/_bundle/ /home/\n"),
             ("container/_bundle/plugins/.keep", ""),
             ("container/downloads/.keep", ""),
+            ("container/downloads/yazi-x86_64-unknown-linux-musl-v26.9.1.zip", yazi),
             ("vendor/checksums.txt",
              hashlib.sha256(b"").hexdigest() + "  container/_bundle/plugins/.keep\n"),
         ):

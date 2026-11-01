@@ -17,10 +17,11 @@
 //! Transport: reqwest + system proxy (WinINET probe, subscription.rs
 //! pattern — same-stack reuse, no new deps).
 
-use std::path::PathBuf;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri::Emitter;
 
@@ -632,6 +633,156 @@ pub struct DownloadResult {
     pub size: u64,
 }
 
+
+/// Receipt for an installer that this app downloaded and SHA256-verified.
+/// Cleanup happens only after a later app version starts; a cancelled or failed
+/// installer leaves both files intact for retry/diagnosis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StagedUpdateReceipt {
+    schema_version: u32,
+    target: String,
+    installer: String,
+    sha256: String,
+    size: u64,
+}
+
+fn installer_receipt_path(installer: &Path) -> PathBuf {
+    let name = installer
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    installer.with_file_name(format!("{name}.receipt.json"))
+}
+
+fn valid_update_version(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-'))
+}
+
+fn write_staged_update_receipt(
+    installer: &Path,
+    target_version: &str,
+    result: &DownloadResult,
+) -> std::io::Result<()> {
+    let target = target_version.trim().trim_start_matches('v');
+    let installer_name = installer
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let expected_name = format!("workbench-setup-{target}.exe");
+    if !valid_update_version(target) || installer_name != expected_name {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "update receipt target/installer mismatch",
+        ));
+    }
+    if result.sha256.len() != 64 || !result.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "update receipt digest invalid",
+        ));
+    }
+    let receipt = StagedUpdateReceipt {
+        schema_version: 1,
+        target: target.to_string(),
+        installer: installer_name.to_string(),
+        sha256: result.sha256.to_ascii_lowercase(),
+        size: result.size,
+    };
+    let bytes = serde_json::to_vec_pretty(&receipt)?;
+    crate::storage::atomic_replace(&installer_receipt_path(installer), &bytes)
+}
+
+fn sha256_file_sync(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = sha2_compatible::Hasher::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.hex())
+}
+
+/// Return installer paths deleted after a verified successful upgrade.
+/// Receipt paths are deliberately constrained to this staging directory.
+fn cleanup_completed_update_staging(dir: &Path, current_version: &str) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut deleted = Vec::new();
+    for entry in entries.flatten() {
+        let receipt_path = entry.path();
+        if !receipt_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.ends_with(".exe.receipt.json"))
+        {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&receipt_path) else {
+            continue;
+        };
+        let Ok(receipt) = serde_json::from_slice::<StagedUpdateReceipt>(&bytes) else {
+            continue;
+        };
+        let target = receipt.target.trim().trim_start_matches('v');
+        if receipt.schema_version != 1
+            || !valid_update_version(target)
+            || receipt.installer != format!("workbench-setup-{target}.exe")
+            || !receipt.installer.chars().all(|ch| {
+                ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_')
+            })
+            || !version_gt(current_version, target)
+        {
+            continue;
+        }
+        let installer = dir.join(&receipt.installer);
+        if !installer.is_file() {
+            let _ = std::fs::remove_file(&receipt_path);
+            continue;
+        }
+        let Ok(metadata) = installer.metadata() else {
+            continue;
+        };
+        if metadata.len() != receipt.size
+            || sha256_file_sync(&installer)
+                .map(|digest| digest != receipt.sha256)
+                .unwrap_or(true)
+        {
+            continue;
+        }
+        if std::fs::remove_file(&installer).is_ok() {
+            let _ = std::fs::remove_file(&receipt_path);
+            deleted.push(installer);
+        }
+    }
+    deleted
+}
+
+pub(crate) fn cleanup_completed_updates(app: &AppHandle) {
+    let current = current_version(app);
+    let deleted = cleanup_completed_update_staging(&update_staging_dir(), &current);
+    if !deleted.is_empty() {
+        crate::logging::append_event(
+            "info",
+            "app",
+            "update_staging_cleanup",
+            None,
+            serde_json::json!({
+                "currentVersion": current,
+                "deletedCount": deleted.len(),
+            }),
+        );
+    }
+}
+
 /// Owns just one request's temporary file. Never remove the shared destination:
 /// a concurrent request may already have published a verified installer there.
 struct UpdateStaging {
@@ -767,10 +918,20 @@ pub async fn app_download_update(
         )));
     }
     let dest = staging_path(&app, &target_version);
-    stage_update_response(resp, &dest, &expected, request_id.as_deref(), |progress| {
-        let _ = app.emit("update://progress", progress);
-    })
-    .await
+    let result = stage_update_response(
+        resp,
+        &dest,
+        &expected,
+        request_id.as_deref(),
+        |progress| {
+            let _ = app.emit("update://progress", progress);
+        },
+    )
+    .await?;
+    if let Err(e) = write_staged_update_receipt(&dest, &target_version, &result) {
+        return Err(update_error(format!("update receipt write failed: {e}")));
+    }
+    Ok(result)
 }
 
 /// Injectable launch sequence. Errors retain the app, including shell/UAC
@@ -1002,6 +1163,95 @@ mod tests {
             !install.contains("Command::new(\"cmd\")"),
             "use the Windows Shell API"
         );
+    }
+
+    #[test]
+    fn update_receipt_cleanup_only_after_verified_successful_upgrade() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = b"verified installer";
+        let installer = dir.path().join("workbench-setup-2.1.17-preview.1.exe");
+        std::fs::write(&installer, body).unwrap();
+        write_staged_update_receipt(
+            &installer,
+            "2.1.17-preview.1",
+            &DownloadResult {
+                path: installer.to_string_lossy().to_string(),
+                sha256: body_hash(body),
+                size: body.len() as u64,
+            },
+        )
+        .unwrap();
+        let receipt = installer_receipt_path(&installer);
+
+        assert_eq!(
+            cleanup_completed_update_staging(dir.path(), "2.1.17-preview.1"),
+            Vec::<PathBuf>::new()
+        );
+        assert!(installer.is_file());
+        assert!(receipt.is_file());
+
+        assert_eq!(
+            cleanup_completed_update_staging(dir.path(), "2.1.18"),
+            vec![installer.clone()]
+        );
+        assert!(!installer.exists());
+        assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn update_receipt_cleanup_preserves_changed_bytes_and_unrelated_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("workbench-setup-2.1.17-preview.1.exe");
+        std::fs::write(&installer, b"verified").unwrap();
+        write_staged_update_receipt(
+            &installer,
+            "2.1.17-preview.1",
+            &DownloadResult {
+                path: installer.to_string_lossy().to_string(),
+                sha256: body_hash(b"verified"),
+                size: 8,
+            },
+        )
+        .unwrap();
+        std::fs::write(&installer, b"changed").unwrap();
+        let unrelated = dir.path().join("user-download.exe");
+        std::fs::write(&unrelated, b"keep").unwrap();
+
+        assert_eq!(
+            cleanup_completed_update_staging(dir.path(), "2.1.18"),
+            Vec::<PathBuf>::new()
+        );
+        assert!(installer.is_file());
+        assert!(unrelated.is_file());
+        assert!(installer_receipt_path(&installer).is_file());
+    }
+
+    #[test]
+    fn update_receipt_cleanup_rejects_paths_outside_owned_staging_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let victim = outside.path().join("victim.exe");
+        std::fs::write(&victim, b"keep").unwrap();
+        let receipt = dir.path().join("workbench-setup-2.1.17-preview.1.exe.receipt.json");
+        std::fs::write(
+            &receipt,
+            serde_json::to_vec(&StagedUpdateReceipt {
+                schema_version: 1,
+                target: "2.1.17-preview.1".into(),
+                installer: format!("..\\..\\{}", victim.file_name().unwrap().to_string_lossy()),
+                sha256: body_hash(b"keep"),
+                size: 4,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            cleanup_completed_update_staging(dir.path(), "2.1.18"),
+            Vec::<PathBuf>::new()
+        );
+        assert!(victim.is_file());
+        assert!(receipt.is_file());
     }
 
     #[test]

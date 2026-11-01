@@ -6,6 +6,7 @@ missing `paths` entry fails the test instead of silently skipping CI.
 """
 
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
@@ -103,8 +104,8 @@ def test_all_workflows_are_valid_yaml():
 
 
 @pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml", "artifact.yml"])
-def test_release_staging_keeps_both_linux_architectures(name):
-    """An arm64 host must retain the x64 yazi file required by vendor checksums."""
+def test_release_staging_targets_runner_architecture_only(name):
+    """Each artifact carries its runner's Linux payload, not both architectures."""
     data = yaml.safe_load((WORKFLOW_DIR / name).read_text(encoding="utf-8"))
     invocations = [
         line for job in data["jobs"].values() for step in job.get("steps", [])
@@ -113,7 +114,30 @@ def test_release_staging_keeps_both_linux_architectures(name):
     ]
     assert invocations, f"{name} must stage the offline resource closure"
     for line in invocations:
-        assert "--all-arches" in line and "--yazi" in line, (name, line)
+        assert "--yazi" in line, (name, line)
+        assert "--all-arches" not in line, (name, line)
+
+
+def test_artifact_macos_runner_follows_supported_bundle_runner():
+    """Artifact must use the currently supported macOS runner label."""
+    data = yaml.safe_load((WORKFLOW_DIR / "artifact.yml").read_text(encoding="utf-8"))
+    mac = next(row for row in data["jobs"]["build"]["strategy"]["matrix"]["include"] if row["arch"] == "arm64")
+    assert mac["runner"] == "macos-latest"
+
+
+def test_yazi_distribution_payload_is_staged_not_tracked():
+    """Yazi is integrity-pinned and staged per target, not committed twice."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "container/downloads/yazi-*.zip"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tracked == ""
+    versions = (REPO_ROOT / "config" / "versions.env").read_text(encoding="utf-8")
+    assert "YAZI_X86_64_SHA256=" in versions
+    assert "YAZI_ARM64_SHA256=" in versions
 
 
 @pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml"])

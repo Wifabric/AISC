@@ -35,6 +35,7 @@ from aisc.application.bundle_fetch import (  # noqa: E402
     _validate_archive_path,
     _verify_dockerfile_sources,
     _verify_vendor_checksums,
+    _verify_yazi_payload,
     _write_manifest,
     bundle_version,
     safe_extract_archive,

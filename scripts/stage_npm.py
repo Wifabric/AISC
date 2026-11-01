@@ -253,41 +253,41 @@ class Stager:
         if not arches or any(arch not in ARCHES for arch in arches) or len(set(arches)) != len(arches):
             raise StageError("architectures must be unique x64/arm64 values")
 
-    def stage_yazi(self, version, arches):
+    def stage_yazi(self, version, arches, pins):
         version = _exact_version(version.removeprefix("v"))
         self._arches(arches)
         tag = f"v{version}"
-        release = self.get_json(f"https://api.github.com/repos/sxyazi/yazi/releases/tags/{tag}")
-        if not isinstance(release, dict) or release.get("tag_name") != tag or release.get("draft") or release.get("prerelease"):
-            raise StageError("official yazi release is not the pinned stable tag")
-        assets = release.get("assets")
-        if not isinstance(assets, list):
-            raise StageError("official yazi asset list missing")
         owned = re.compile(rf"yazi-(?:x86_64|aarch64)-unknown-linux-musl-v{VERSION_PATTERN}\.zip\Z")
         with tempfile.TemporaryDirectory(prefix=".stage-yazi-", dir=self.downloads) as directory:
             temporary = Path(directory)
             desired = {}
             for arch in arches:
-                name = f"yazi-{ARCHES[arch]}.zip"
-                matching = [asset for asset in assets if isinstance(asset, dict) and asset.get("name") == name]
-                if len(matching) != 1:
-                    raise StageError(f"official yazi asset missing or duplicated: {name}")
-                asset = matching[0]
-                checksum = asset.get("digest")
-                if not isinstance(checksum, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", checksum):
-                    raise StageError(f"official yazi SHA256 digest missing: {name}")
-                expected = bytes.fromhex(checksum[len("sha256:"):])
-                filename = f"yazi-{ARCHES[arch]}-{tag}.zip"
+                triple = ARCHES[arch]
+                asset = f"yazi-{triple}.zip"
+                pin_arch = "X86_64" if arch == "x64" else "ARM64"
+                digest = str(pins.get(f"YAZI_{pin_arch}_SHA256", "")).strip().lower()
+                size = str(pins.get(f"YAZI_{pin_arch}_BYTES", "")).strip()
+                if not re.fullmatch(r"[0-9a-f]{64}", digest) or not size.isdigit():
+                    raise StageError(f"official yazi SHA256/size pin missing or invalid for {arch}")
+                expected = bytes.fromhex(digest)
+                url = f"https://github.com/sxyazi/yazi/releases/download/{tag}/{asset}"
+                filename = f"yazi-{triple}-{tag}.zip"
                 current = self.downloads / filename
                 if matches(current, "sha256", expected):
                     desired[filename] = current
                 else:
-                    url = _https(asset.get("browser_download_url"))
                     urls = [mirror + url for mirror in self.mirrors]
                     if url not in urls:
                         urls.append(url)
-                    desired[filename] = self._verified_download(urls, temporary / filename, "sha256", expected)
+                    path = self._verified_download(urls, temporary / filename, "sha256", expected)
+                    actual_size = path.stat().st_size
+                    if actual_size != int(size):
+                        raise StageError(
+                            f"official yazi size mismatch for {asset}: expected {size}, got {actual_size}"
+                        )
+                    desired[filename] = path
             self._publish(temporary, desired, owned.fullmatch)
+
 
 
 def versions_env(path):
@@ -322,7 +322,8 @@ def main(argv=None):
                 raise StageError("official npm latest is not a stable release")
         stager.stage_family(package, version, arches, no_companions=args.no_companions)
     if args.yazi:
-        stager.stage_yazi(values.get("YAZI_VERSION", ""), arches)
+        yazi_pins = {key: value for key, value in values.items() if key.startswith("YAZI_")}
+        stager.stage_yazi(values.get("YAZI_VERSION", ""), arches, yazi_pins)
     return 0
 
 

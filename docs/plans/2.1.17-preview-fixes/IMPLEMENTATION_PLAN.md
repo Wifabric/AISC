@@ -104,3 +104,31 @@ GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实
 - [x] b3 用户单批验收（2026-11-01 用户明确回复「b3测试通过，进入下一个批次开发」）。
 - [ ] b3 Windows CU 完整自动预测试（多窗口/坐标点击受阻，未冒充 PASS；用户实机验收放行）。
 - [x] b3 远端 CI（PR #55 三项 Workbench CI SUCCESS，develop 集成 `bf886f2`）。
+
+## b4 实施范围（2026-11-01，基线 b9f1dcf）
+
+工作分支 `codex/2.1.17-preview-b4-update-package-size`。对应用户反馈 4、9。
+
+1. 显式更新清理：下载成功并校验 SHA256 后原子写入 secret-free receipt
+   （目标版本、安装包文件名、hash、大小）。启动时后台读取应用自更新临时目录；
+   仅当当前版本大于 receipt 目标、文件仍在本目录、文件名受控且 size/hash 复验一致时，
+   删除该安装包与 receipt。取消安装、安装失败、仍在旧版本或字节变化时保留。
+   不读取/写入凭据，不清理用户 Downloads 或手动选择的 exe。
+2. 包体积根因与优化：preview.1 相比 2.1.16 增加 405,685,606 字节，主要来自
+   x64+arm64 双架构离线 payload 同时进入 NSIS。三个打包 workflow 改为按目标 runner
+   原生架构执行 `stage-npm --yazi`（Windows/Linux x64、macOS arm64），移除双架构合并。
+3. yazi 从 Git/vendor checksum 改为发布时按架构获取，不再用旧 x64 zip 作为仓库保底；
+   `versions.env` 固定 x64/arm64 官方 SHA256，bundle verify 要求恰好一个目标架构 zip
+   且 hash/大小匹配。npm 主包/伴生包配对校验保持不变，不降低 checksum 或离线完整性。
+4. 重新构建本批 x64 NSIS，报告 2.1.16、preview.1、b4 的压缩安装包与展开 bundle 体积、
+   删除的最大离线 payload 与剩余增长归因；离线安装、bundle verify、升级/卸载语义不得回退。
+5. 回归覆盖 workflow 架构选择、yazi 单架构强校验、Git/vendor 不再跟踪分发 zip、
+   receipt 写入/启动清理、取消保留、hash/size 拒删、路径逃逸拒绝和仅清理自有目录。
+   完成本地门禁、生产候选、真实 Windows CU 与用户单批验收。
+
+- [x] b3 用户验收及集成。
+- [x] b4 规格与准确实施范围落档。
+- [x] b4 RED 回归与实现。
+- [x] b4 本地门禁、真实数据面和生产候选。
+- [x] b4 远端 CI（最终 head `9f13847` 的 Workbench/Bundle/NSIS/Artifact 全部 SUCCESS）。
+- [ ] b4 Windows CU 完整下载安装链路、用户单批验收（真实启动清理预测试已 PASS）。

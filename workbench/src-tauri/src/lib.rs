@@ -302,6 +302,13 @@ pub fn run(cli_arg: Option<String>) {
                 None,
                 serde_json::json!({ "app_version": app.package_info().version.to_string() }),
             );
+            // preview fixes b4: remove a verified downloaded installer only after
+            // a newer installed version starts. Cancelled/failed upgrades keep it.
+            {
+                let cleanup_app = app.handle().clone();
+                std::thread::spawn(move || update::cleanup_completed_updates(&cleanup_app));
+            }
+
             // G-10: restore window geometry on startup (before the window
             // is shown, so the user sees the saved position immediately).
             let app_handle = app.handle().clone();

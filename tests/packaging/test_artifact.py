@@ -1,6 +1,6 @@
 """Tests for packaging artifact module — staging, verification, archive, safety, aggregate."""
 
-import gzip, hashlib, io, json, os, shutil, stat, struct, subprocess, sys, tarfile, tempfile, unittest, zipfile
+import gzip, hashlib, io, json, os, re, shutil, stat, struct, subprocess, sys, tarfile, tempfile, unittest, zipfile
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -10,6 +10,25 @@ import importlib.util as _iu
 def _lm(n,p):
     s=_iu.spec_from_file_location(n,p); m=_iu.module_from_spec(s); s.loader.exec_module(m); return m
 _art = _lm("artifact", _PROJECT_ROOT/"packaging"/"artifact.py")
+
+
+def _write_yazi_fixture(bundle: Path, arch: str = "x86_64") -> None:
+    body = b"target-yazi-payload"
+    name = f"yazi-{arch}-unknown-linux-musl-v26.9.1.zip"
+    downloads = bundle / "container" / "downloads"
+    downloads.mkdir(parents=True, exist_ok=True)
+    (downloads / name).write_bytes(body)
+    digest = hashlib.sha256(body).hexdigest()
+    env = (
+        "YAZI_VERSION=26.9.1\n"
+        f"YAZI_X86_64_SHA256={digest if arch == 'x86_64' else 'a' * 64}\n"
+        f"YAZI_X86_64_BYTES={len(body) if arch == 'x86_64' else 1}\n"
+        f"YAZI_ARM64_SHA256={digest if arch == 'aarch64' else 'b' * 64}\n"
+        f"YAZI_ARM64_BYTES={len(body) if arch == 'aarch64' else 1}\n"
+    )
+    cfg = bundle / "config"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "versions.env").write_text(env, encoding="utf-8")
 
 
 class TestContainerCheckoutContract(unittest.TestCase):
@@ -253,6 +272,7 @@ class TestZipArchiveMeta(unittest.TestCase):
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); (v/"checksums.txt").write_text("# e\n")
         vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("# lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]})
         (b/"VERSION").write_text("2.0.0-dev\n")
         exe=d/"aisc.exe"; exe.write_bytes(b"fake"); exe.chmod(0o755)
@@ -507,6 +527,7 @@ class TestManifestValidation(unittest.TestCase):
         c=b/"container"; c.mkdir(); (c/"Dockerfile").write_text("FROM node\n"); (c/"_bundle"/"plugins"/"d").mkdir(parents=True); (c/"_bundle"/"plugins"/"d"/"x.txt").write_text("x\n"); (c/"downloads").mkdir(); (c/"downloads"/"x.dat").write_text("x\n")
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); (v/"checksums.txt").write_text("#e\n"); vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("#lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]})
         return b
     def test_valid(self): b=self._mb(); self.assertEqual(_art.verify_staged_bundle(b),[])
@@ -528,6 +549,7 @@ class TestTarArchive(unittest.TestCase):
         (c/"downloads").mkdir(); (c/"downloads"/"x.dat").write_text("d\n"); (c/"_bundle"/"plugins"/"d").mkdir(parents=True); (c/"_bundle"/"plugins"/"d"/"x.txt").write_text("x\n")
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); (v/"checksums.txt").write_text("#e\n"); vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("#lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]}); (b/"VERSION").write_text("2.0.0-dev\n")
         exe=d/"aisc"; exe.write_bytes(b"fake"); exe.chmod(0o755)
     def test_determinism(self):
@@ -573,6 +595,7 @@ class TestZipArchive(unittest.TestCase):
         (c/"downloads").mkdir(); (c/"downloads"/"x.dat").write_text("d\n"); (c/"_bundle"/"plugins"/"d").mkdir(parents=True); (c/"_bundle"/"plugins"/"d"/"x.txt").write_text("x\n")
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); (v/"checksums.txt").write_text("#e\n"); vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("#lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]}); (b/"VERSION").write_text("2.0.0-dev\n")
         exe=d/"aisc.exe"; exe.write_bytes(b"fake"); exe.chmod(0o755)
     def test_no_backslashes(self):
@@ -601,6 +624,7 @@ class TestChecksumParsing(unittest.TestCase):
         (c/"downloads").mkdir(); (c/"downloads"/"x.dat").write_text("x\n")
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("#lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]})
         (v/"checksums.txt").write_text(cs,encoding="utf-8")
         for rel,data in fs.items(): fp=b/rel; fp.parent.mkdir(parents=True,exist_ok=True); fp.write_bytes(data)
@@ -650,6 +674,7 @@ class TestArchiveVerification(unittest.TestCase):
         (c/"downloads").mkdir(); (c/"downloads"/"x.dat").write_text("x\n")
         ab=b/"apps"/"ai-brief"; ab.mkdir(parents=True); (ab/"brief.py").write_text("ok\n")
         v=b/"vendor"; v.mkdir(); (v/"manifest.json").write_text("{}"); (v/"checksums.txt").write_text("#e\n"); vl=v/"licenses"; vl.mkdir(); (vl/"README.md").write_text("#lic\n")
+        _write_yazi_fixture(b)
         _art._write_manifest(b/"manifest.json",{"schema_version":1,"compatible_cli_versions":["2.0.0-dev"]}); (b/"VERSION").write_text("2.0.0-dev\n")
         exe=d/"aisc"; exe.write_bytes(b"fake"); exe.chmod(0o755)
     def test_passes(self): self._ms(self.td); o=self.td/"out"; o.mkdir(); a,_=_art.create_tar_archive(self.td,"2.0.0-dev","linux","x86_64",o); self.assertEqual(_art.verify_archive(a),[])
@@ -769,3 +794,51 @@ class TestCiSmokeLoading(unittest.TestCase):
         with self.assertRaises(SystemExit): cs._smoke_onedir(fe,vf)
 
 if __name__=="__main__": unittest.main()
+
+
+class TestYaziPayloadVerification(unittest.TestCase):
+    def setUp(self):
+        self.td = Path(tempfile.mkdtemp(prefix="yazi-verify-"))
+        self.addCleanup(shutil.rmtree, self.td, ignore_errors=True)
+        (self.td / "container" / "downloads").mkdir(parents=True)
+        (self.td / "config").mkdir()
+        (self.td / "config" / "versions.env").write_text(
+            "YAZI_VERSION=26.9.1\n"
+            "YAZI_X86_64_SHA256=" + "a"*64 + "\n"
+            "YAZI_X86_64_BYTES=7\n"
+            "YAZI_ARM64_SHA256=" + "b"*64 + "\n"
+            "YAZI_ARM64_BYTES=7\n",
+            encoding="utf-8",
+        )
+
+    def put(self, arch, body=b"payload", digest=None):
+        name = f"yazi-{arch}-unknown-linux-musl-v26.9.1.zip"
+        path = self.td / "container" / "downloads" / name
+        path.write_bytes(body)
+        expected = digest or hashlib.sha256(body).hexdigest()
+        text = (self.td / "config" / "versions.env").read_text(encoding="utf-8")
+        key = "YAZI_X86_64_SHA256" if arch == "x86_64" else "YAZI_ARM64_SHA256"
+        size_key = "YAZI_X86_64_BYTES" if arch == "x86_64" else "YAZI_ARM64_BYTES"
+        text = re.sub(rf"(?m)^{key}=.*$", f"{key}={expected}", text)
+        text = re.sub(rf"(?m)^{size_key}=.*$", f"{size_key}={len(body)}", text)
+        (self.td / "config" / "versions.env").write_text(text, encoding="utf-8")
+
+    def test_accepts_exactly_one_verified_target_payload(self):
+        self.put("x86_64")
+        self.assertEqual(_art._verify_yazi_payload(self.td), [])
+
+    def test_rejects_missing_both_and_duplicate_architectures(self):
+        self.assertTrue(any("missing" in e for e in _art._verify_yazi_payload(self.td)))
+        self.put("x86_64")
+        self.put("aarch64")
+        errors = _art._verify_yazi_payload(self.td)
+        self.assertTrue(any("exactly one" in e for e in errors))
+        self.assertTrue(any("duplicate" in e for e in errors))
+
+    def test_rejects_wrong_digest_and_stale_yazi_family(self):
+        self.put("x86_64", digest="0"*64)
+        errors = _art._verify_yazi_payload(self.td)
+        self.assertTrue(any("hash mismatch" in e for e in errors))
+        (self.td / "container" / "downloads" / "yazi-x86_64-unknown-linux-musl-v25.2.26.zip").write_bytes(b"old")
+        errors = _art._verify_yazi_payload(self.td)
+        self.assertTrue(any("unexpected yazi payload" in e for e in errors))

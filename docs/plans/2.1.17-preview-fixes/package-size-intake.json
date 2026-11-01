@@ -1,106 +1,48 @@
 {
+  "measurement_date": "2026-11-01",
   "assets": [
     {
       "version": "2.1.16",
-      "bytes": 293124128
+      "bytes": 293124128,
+      "source": "GitHub v2.1.16 release asset"
     },
     {
       "version": "2.1.17-preview.1",
-      "bytes": 698809734
+      "bytes": 698809734,
+      "source": "GitHub v2.1.17-preview.1 release asset"
+    },
+    {
+      "version": "2.1.17-preview-b4-x64",
+      "bytes": 384516079,
+      "source": "local target-release NSIS, source worktree before product commit"
     }
   ],
-  "growth_bytes": 405685606,
-  "top_tracked_payload_growth": [
-    {
-      "path": "vendor/checksums.txt",
-      "delta_bytes": 109,
-      "old_bytes": 262187,
-      "new_bytes": 262296
-    },
-    {
-      "path": "vendor/manifest.json",
-      "delta_bytes": 102,
-      "old_bytes": 3174,
-      "new_bytes": 3276
-    },
-    {
-      "path": "vendor/licenses/README.md",
-      "delta_bytes": 0,
-      "old_bytes": 2465,
-      "new_bytes": 2465
-    },
-    {
-      "path": "container/_bundle/skills/gstack/plan-eng-review/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 101409,
-      "new_bytes": 101409
-    },
-    {
-      "path": "container/_bundle/skills/gstack/plan-devex-review/dx-hall-of-fame.md",
-      "delta_bytes": 0,
-      "old_bytes": 7285,
-      "new_bytes": 7285
-    },
-    {
-      "path": "container/_bundle/skills/gstack/plan-devex-review/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 104571,
-      "new_bytes": 104571
-    },
-    {
-      "path": "container/_bundle/skills/gstack/plan-design-review/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 105592,
-      "new_bytes": 105592
-    },
-    {
-      "path": "container/_bundle/skills/gstack/plan-ceo-review/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 130891,
-      "new_bytes": 130891
-    },
-    {
-      "path": "container/_bundle/skills/gstack/office-hours/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 110915,
-      "new_bytes": 110915
-    },
-    {
-      "path": "container/_bundle/skills/gstack/autoplan/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 89274,
-      "new_bytes": 89274
-    },
-    {
-      "path": "container/_bundle/skills/gstack/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 47785,
-      "new_bytes": 47785
-    },
-    {
-      "path": "container/_bundle/skills/artifact/SKILL.md",
-      "delta_bytes": 0,
-      "old_bytes": 3128,
-      "new_bytes": 3128
-    },
-    {
-      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/utils.py",
-      "delta_bytes": 0,
-      "old_bytes": 1708,
-      "new_bytes": 1708
-    },
-    {
-      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/run_loop.py",
-      "delta_bytes": 0,
-      "old_bytes": 13933,
-      "new_bytes": 13933
-    },
-    {
-      "path": "container/_bundle/plugins/marketplaces/claude-plugins-official/plugins/skill-creator/skills/skill-creator/scripts/run_eval.py",
-      "delta_bytes": 0,
-      "old_bytes": 11774,
-      "new_bytes": 11774
-    }
+  "preview_growth_bytes": 405685606,
+  "b4_reduction_from_preview_bytes": 314293655,
+  "b4_remaining_growth_from_2_1_16_bytes": 91391951,
+  "root_cause": "preview packaging staged both Linux x64 and arm64 offline payloads into every artifact",
+  "remaining_x64_growth_bytes": 90804023,
+  "remaining_growth_attribution_bytes": {
+    "codex-linux-x64": 42670811,
+    "claude-code-linux-x64": 35570393,
+    "mihomo": 5009561,
+    "yazi-x64": 6778413,
+    "workbench-exe": 1233920,
+    "cc-switch": 236798,
+    "geodata-total": -697521
+  },
+  "b4_bundle_expanded_bytes": 397386330,
+  "b4_bundle_payloads": [
+    "codex-linux-x64-0.166.0-linux-x64.tgz",
+    "claude-code-linux-x64-2.1.314.tgz",
+    "yazi-x86_64-unknown-linux-musl-v26.9.1.zip"
   ],
-  "boundary": "read-only preliminary attribution; compressed installer savings not measured"
+  "b4_installer_sha256": "1f07d5e09c5fd6b8bc1ea1b98d26743d28d30d85ab8e15e3a361e07121332d8a",
+  "evidence": {
+    "v2_1_16_installer": "C:/pt/aisc-pfb4-2-1-16/AISC-Workbench-2.1.16-setup.exe",
+    "v2_1_16_7z_listing": "C:/pt/aisc-pfb4-2-1-16-7z.txt",
+    "b4_7z_listing": "C:/pt/aisc-pfb4-2-1-17-b4-7z.txt",
+    "b4_bundle": "workbench/src-tauri/nsis/bundle/aisc-bundle"
+  },
+  "boundary": "Actual local compressed NSIS and expanded staged bundle sizes; 7-Zip listing confirms no arm64 payload in b4 x64 installer. Preview.1 contents were attributed from workflow pins/build records without re-downloading its 698MB asset."
 }

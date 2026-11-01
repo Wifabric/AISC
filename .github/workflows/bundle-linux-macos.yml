@@ -73,8 +73,7 @@ jobs:
         run: |
           # b6 (D-16 C-混合): companion tgz are NOT in git — stage them here
           # so the NSIS/deb/dmg bundles carry the full offline preset set.
-          # Resource bundles serve both Linux image architectures, regardless of host.
-          bash scripts/stage-npm.sh --yazi --all-arches
+          bash scripts/stage-npm.sh --yazi
           python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
 
       - name: Set up Node

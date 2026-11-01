@@ -2,6 +2,13 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 preview 修复 b4（2026-11-01，待用户验收）
+
+- 显式更新下载校验后写入 receipt；新版本启动复验 size/hash 后仅清理自有安装包，取消/失败/同版本/字节变化均保留，不触碰用户手动下载。
+- x64/arm64离线 payload 分开进入目标架构安装包，preview.1 的双架构打包膨胀根因消除。x64 NSIS 实测 384,516,079 字节，比 preview.1 减少 314,293,655 字节；剩余增长主要来自新版 Codex/Claude x64 离线包。
+- yazi 改为按架构从 pinned release URL staging，官方 SHA256/size 由 bundle verify 强校验，不再依赖共享 IP 易限流的 GitHub API。
+- 最终 Python 1722 / Rust 410 / Vitest 833 / vue-tsc 通过；vendor 1533、bundle verify、生产 NSIS、真实启动清理通过。最终 head `9f13847` 的 Workbench/Bundle/NSIS/Artifact 远端流水线全部 SUCCESS。完整下载安装 CU 与用户验收待执行。
+
 # v2.1.17 preview 修复 b2–b3（2026-11-01，b3 用户验收通过）
 
 - b2 补齐已安装/市场/子技能真实功能简介与卡片内联详情，修复杂乱来源模板、窄栏布局和键盘焦点；PR #54 已合入 develop `66d9549`。
