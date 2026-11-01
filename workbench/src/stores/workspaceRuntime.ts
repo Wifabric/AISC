@@ -36,6 +36,7 @@ import type {
   WorkspaceRecord,
 } from "../types";
 import * as ipc from "../lib/ipc";
+import { useWorkRecordsStore } from "./workRecords";
 import { i18n } from "../i18n";
 import {
   AGENT_TITLE,
@@ -246,8 +247,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   type PendingConversationAssociation = {
     knownConversationIds: Set<string>;
     startedAt: string;
+    collectionId?: string | null;
   };
   const pendingConversationAssociations = new Map<string, PendingConversationAssociation>();
+  const lastCreatedTabId = ref<string | null>(null);
 
   const pendingChunks: Record<string, StreamChunk[]> = {};
   const paneByteCounts: Record<string, number> = {};
@@ -1316,9 +1319,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         p.sessionState = "running";
         syncProjection(tab);
       }
-    } catch {
+    } catch (error) {
       if (p.sessionId === sid && p.sessionState === "starting") {
         p.sessionState = "failed";
+        p.launchError = error instanceof Error ? error.message : String(error);
         syncProjection(tab);
       }
     }
@@ -1489,6 +1493,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     agent: LaunchAgent,
     resumeConversationId?: string | null,
     forkSession = false,
+    collectionId?: string | null,
   ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
@@ -1499,8 +1504,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       createdPane.resumeConversationId = resumeConversationId;
       createdPane.resumeForkSession = forkSession;
     }
+    lastCreatedTabId.value = tabId;
     activeTabId.value = tabId;
-    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession);
+    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession, collectionId);
     scheduleSave();
     return tabId;
   }
@@ -1514,6 +1520,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * directly - the spec now requires the conservative flow). */
   async function startNewConversationAssociation(
     agent: LaunchAgent,
+    collectionId?: string | null,
   ): Promise<PendingConversationAssociation | null> {
     if (agent !== "claude" && agent !== "codex") return null;
     try {
@@ -1525,6 +1532,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
             .map((item) => item.conversation_id.toLowerCase()),
         ),
         startedAt: new Date().toISOString(),
+        collectionId: collectionId ?? null,
       };
     } catch {
       return null;
@@ -1536,6 +1544,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     agent: LaunchAgent,
     resumeConversationId?: string | null,
     forkSession = false,
+    collectionId?: string | null,
   ) {
     if (agent === "claude" || agent === "codex") {
       const outcome = await loadProviderStatus(agent);
@@ -1548,11 +1557,52 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         return;
       }
       if (!resumeConversationId) {
-        const association = await startNewConversationAssociation(agent);
+        const association = await startNewConversationAssociation(agent, collectionId);
         if (association) pendingConversationAssociations.set(tabId, association);
       }
     }
     openTab(tabId, resumeConversationId, forkSession);
+  }
+
+  /** b5: await the newly created tab's first launch result. A failed tracked
+   * launch is removed so Work Records does not leave a dead label behind. */
+  async function createTrackedTab(
+    agent: LaunchAgent,
+    collectionId?: string | null,
+  ): Promise<{ tabId?: string; error?: string }> {
+    const tabId = createTab(agent, null, false, collectionId);
+    if (!tabId) return { error: "tab-limit" };
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const tab = findTab(tabId);
+      const pane = tab ? activePane(tab) : null;
+      if (!tab || !pane) break;
+      if (pane.sessionState === "running") return { tabId };
+      if (pane.sessionState === "failed") {
+        const error = pane.launchError || "session open failed";
+        await removeTab(tabId);
+        return { error };
+      }
+      if (pane.sessionState === "guide") return { tabId, error: "provider-not-configured" };
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { tabId };
+  }
+
+  async function waitForTabSession(tabId: string | null): Promise<{ tabId?: string; error?: string }> {
+    if (!tabId) return { error: "tab-missing" };
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const tab = findTab(tabId);
+      const pane = tab ? activePane(tab) : null;
+      if (!tab || !pane) return { tabId, error: "tab-missing" };
+      if (pane.sessionState === "running") return { tabId };
+      if (pane.sessionState === "failed") {
+        return { tabId, error: pane.launchError || "session open failed" };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { tabId };
   }
 
   /** v2.1.8 T4: a LIVE tab that already resumed this conversation. The
@@ -1674,7 +1724,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       if (panes.length !== 1) continue;
       tab.resumeConversationId = candidates[0].conversation_id;
       panes[0][1].resumeConversationId = candidates[0].conversation_id;
+      const collectionId = association.collectionId;
       pendingConversationAssociations.delete(tab.tabId);
+      if (collectionId && (tab.agent === "claude" || tab.agent === "codex")) {
+        const records = useWorkRecordsStore();
+        await records.addMember(collectionId, tab.agent, candidates[0].conversation_id, runtimeId.value);
+      }
       resolved += 1;
     }
     return resolved;
@@ -2180,6 +2235,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     closeTab,
     reopenTab,
     createTab,
+    createTrackedTab,
+    waitForTabSession,
+    lastCreatedTabId,
     findLiveResumeTab,
     findRecoverableResumePane,
     prepareConversationResume,

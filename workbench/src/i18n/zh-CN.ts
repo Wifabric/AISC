@@ -909,6 +909,8 @@ export const zhCN = {
   "workRecords.missing": "引用缺失",
   "workRecords.preview": "预览",
   "workRecords.newSession": "新建会话",
+  "workRecords.newSessionInRecord": "工作记录内新建会话",
+  "workRecords.providerNotConfigured": "该引擎尚未登录或未配置，请先完成 Provider 配置。",
   "workRecords.forkSession": "分支会话",
   "workRecords.deleteConversationConfirm": "确定删除「{title}」？将永久删除 {count} 个同名会话（含未显示会话）。",
   "workRecords.resume": "恢复",
