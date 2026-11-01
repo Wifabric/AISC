@@ -793,6 +793,8 @@ export interface PaneRuntime {
   sessionId: string | null;
   sessionState: TabSessionState;
   exit: TabExit | null;
+  /** b5: user-readable launch failure retained for inline recovery UI. */
+  launchError?: string;
 }
 
 export interface WorkspaceRecord {

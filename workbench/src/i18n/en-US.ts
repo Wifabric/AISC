@@ -909,6 +909,8 @@ export const enUS: Record<string, string> = {
   "workRecords.missing": "Missing reference",
   "workRecords.preview": "Preview",
   "workRecords.newSession": "New session",
+  "workRecords.newSessionInRecord": "New session in Work Record",
+  "workRecords.providerNotConfigured": "This engine is not signed in or configured. Configure the Provider first.",
   "workRecords.forkSession": "Fork session",
   "workRecords.deleteConversationConfirm": "Delete \"{title}\"? {count} same-titled conversation(s) will be permanently deleted (including hidden ones).",
   "workRecords.resume": "Resume",

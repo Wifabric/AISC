@@ -17,3 +17,5 @@
 - 2026-11-01：b4 从 develop `b9f1dcf` 开工。初步归因确认 preview.1 安装包 698,809,734 字节比 2.1.16 增 405,685,606 字节，双架构离线 payload 是主要来源；显式更新清理与目标架构打包规格落档。
 - 2026-11-01：b4 实现完成。下载校验后写入 receipt，新版本启动时复验 size/hash 并仅清理自有安装包；取消/失败/字节变化保留。三个打包 workflow 改为目标架构 staging，yazi 官方双架构 digest/size 入 pin 并由 bundle verify 强校验。全门禁 Python 1722 / Rust 410 / Vitest 833 / vue-tsc 通过，vendor 1533、x64 bundle/NSIS 与真实启动清理 PASS；实测安装包 384,516,079 字节，比 preview.1 减少 314,293,655 字节。
 - 2026-11-01：修复 yazi staging 对 GitHub API 的依赖，改为消费版本 pin 直接下载固定 release asset；PR #56 最终 head `8960587` 的四条远端流水线全部 SUCCESS，已合入 develop `7c154cd`。
+- 2026-11-01：b5 实现完成。分支会话沿用原 conversation preflight 并只创建 fork；启动失败保存可读错误、只回收失败新标签。移除单会话右键新建，工作记录标题操作区新增按既有引擎的“＋”，新 provider 会话唯一识别后自动加入来源记录。前端 98 files / 837 tests 通过。
+- 2026-11-01：b5 最终全门禁 Python 1723 / Rust 410 / Vitest 837 / vue-tsc 通过，生产 Workbench 构建通过；按 §1.4.2 不做逐批 CU，用户验收延后到 preview 发布。

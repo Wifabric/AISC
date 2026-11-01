@@ -234,6 +234,28 @@ describe("fork resume (b8 R2)", () => {
   });
 });
 
+describe("createTrackedTab (preview b5)", () => {
+  it("removes a failed launch and returns a readable error", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    mockIpc.openSession.mockRejectedValueOnce(new Error("provider launch failed"));
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const result = await s.createTrackedTab("claude", "record-1");
+    expect(result.error).toBe("provider launch failed");
+    expect(s.tabs).toHaveLength(0);
+  });
+
+  it("resolves a successful tracked launch without removing the tab", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const result = await s.createTrackedTab("claude", "record-1");
+    expect(result.tabId).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(s.tabs).toHaveLength(1);
+  });
+});
+
 describe("removeTab (A-G08-6)", () => {
   async function threeTabs() {
     const s = useRuntimeStore();

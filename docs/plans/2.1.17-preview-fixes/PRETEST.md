@@ -212,3 +212,21 @@ yazi +6,778,413 B、Mihomo +5,009,561 B 与 Workbench +1,233,920 B；geodata 合
 PR #56 docs head `89605875e62ea037d271c8006d10be95a1757a93` 的 Workbench CI 三项 SUCCESS；合入 develop `7c154cd4609a1d5ac6adfe882570b7714579d7a5`。此前 Rust job 一次因 GitHub apt 下载超时失败，重跑通过，已保留原始失败记录。
 
 修复过程中的 yazi GitHub API 限流失败保留为历史证据；最终实现改用 pinned release URL 后全绿。
+
+## b5（2026-11-01）
+
+结论：实现、前端/本地全门禁与生产 Workbench 构建 **PASS**。按 DEVELOP_WIKI §1.4.2，
+本 preview 修复阶段不做逐批 Computer Use 预测试和逐批用户验收；真实用户实测延后到全部
+批次合入并发布 preview.N 后整体执行。
+
+- 分支 `codex/2.1.17-preview-b5-work-record-sessions`，基线 develop `725a7f7`。
+- 保留分支上下文：preflight → prepareConversationResume → createTab(fork) 链路不变；
+  fork 不回写原 conversation id，原记录不改。
+- 失败回收：openPane 保存脱敏 launchError；tracked fork 失败后只 `removeTab` 新标签，
+  UI 显示可读错误；其他标签/成功 fork/原成员保留。
+- 分组新建：记录标题“＋”按最近成员引擎调用 `createTrackedTab(collection.id)`；
+  pending association 记录 collectionId，唯一识别新 conversation 后自动 `addMember`。
+- 单会话右键移除通用“新建会话”，避免误导；记录标题“＋”成为分组新建入口。
+- 门禁：Python 1723 passed / 53 skipped / 201 subtests；Rust 410 passed / 2 ignored；
+  Vitest 98 files / 837 passed；vue-tsc 与生产 Tauri `--no-bundle` 通过。
+- 真实 preview 安装/更新后的整体用户实测延后到 b6 合入与 preview.N 发布后。

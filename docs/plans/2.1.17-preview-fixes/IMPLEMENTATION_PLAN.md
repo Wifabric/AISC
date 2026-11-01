@@ -132,3 +132,27 @@ GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实
 - [x] b4 本地门禁、真实数据面和生产候选。
 - [x] b4 远端 CI（PR #56 最终 head `8960587` 的 Workbench/Bundle/NSIS/Artifact 全部 SUCCESS；合入 `7c154cd`）。
 - [ ] b4 Windows CU 完整下载安装链路、用户单批验收（真实启动清理预测试已 PASS）。
+
+## b5 实施范围（2026-11-01，基线 725a7f7）
+
+工作分支 `codex/2.1.17-preview-b5-work-record-sessions`。对应用户反馈 7、8；
+按 DEVELOP_WIKI §1.4.2 preview 迭代模式连续开发，不做逐批 CU/用户验收门。
+
+1. 分支会话沿用所选原生会话的 conversation preflight → runtime resume/fork 链路，
+   Claude/Codex 都只创建新的 fork 标签，不写入或改写原会话。fork 启动失败时保留
+   可读错误，关闭并移除本次失败标签，其他标签与原 Work Record 成员不变。
+2. 单会话右键移除通用“新建会话”；工作记录和未归档分组的重命名左侧新增“＋”。
+   “＋”按记录内最近成员的既有 Claude/Codex 引擎创建新会话；记录为空时默认 Codex。
+3. 新建 provider 会话携带 Work Record 归属意图。provider 快照唯一识别新
+   conversation 后，自动加入来源工作记录；不落入未归档，也不因刷新丢归属。
+   快照歧义时保持未归属并显式刷新，不猜测成员。
+4. 启动失败保存在 pane 的脱敏错误字段，失败标签由运行时移除；不关闭其他标签，
+   不误删原会话或成功标签。UI 显示可读错误并支持再次操作。
+5. 回归覆盖 group plus、context menu 移除旧入口、fork 成功/失败、失败标签回收、
+   新会话自动归属、集合空态默认引擎与多标签上限；完成本地门禁和生产构建。
+
+- [x] b4 用户验收及集成。
+- [x] b4 wiki 验收模式更新。
+- [x] b5 规格与准确实施范围落档。
+- [x] b5 RED 回归与实现。
+- [x] b5 本地全门禁和生产构建。
