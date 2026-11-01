@@ -325,4 +325,5 @@
 - 追加（v2.1.17 preview 反馈 #10；preview-fixes b6）
   - [ ] 文件/目录真实 CF_HDROP 复制粘贴、多选删除与目录/多路径终端拖入已实现；待 preview.N 统一实机验收后关闭
 - 发布
-  - [ ] `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布准备与统一手测（B1–B6 已合入 develop `7ffe39b`）
+  - [x] `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布完成（Workbench NSIS、CLI Artifact/TestPyPI 全绿；B1–B6 已合入）
+  - [ ] 用户从 preview.2 统一手测 B1–B6；反馈站保持未 resolved

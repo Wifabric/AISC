@@ -18,4 +18,4 @@ DEVELOP_WIKI §1.2 先入 todo、先计划后代码，按 §1.4 逐批验证和�
 原阶段 D-7 仅保留为原阶段免补测记录，不将本次用户报告的问题视作已通过。
 不因登记后续批次而提前实现；preview 发布、统一回归和正式 final 按既有阶段门执行。
 
-2026-11-01：B6 合入后进入 `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布准备；发布分支 `codex/2.1.17-preview.2-release`。
+2026-11-01：B6 合入后进入 `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布准备；发布已完成：Workbench `v2.1.17-preview.2` / CLI `0.1.10.dev1` GitHub prerelease 与 CLI TestPyPI 均成功，等待用户统一更新实测。
