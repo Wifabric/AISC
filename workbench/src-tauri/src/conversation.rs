@@ -211,6 +211,12 @@ pub struct ConversationRenameResult {
 /// 批 2 聊天式 UI wire types (mirror of `aisc.conversation-read/v1`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationReadMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub result_attachments: Vec<Value>,
     #[serde(default)]
     pub ordinal: u64,
     #[serde(default)]
@@ -231,6 +237,8 @@ pub struct ConversationReadMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationReadResult {
+    #[serde(default)]
+    pub omitted_entries: u64,
     #[serde(default)]
     pub schema: String,
     #[serde(default)]

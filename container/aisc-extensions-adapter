@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import sqlite3
@@ -156,8 +157,31 @@ def _skill_items() -> list[dict[str, Any]]:
     return out_list
 
 
+def _mcp_auth_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Secret-free, per-engine auth signal for official hosted GitHub MCP."""
+    url = cfg.get("url")
+    if not isinstance(url, str) or url.rstrip("/") != "https://api.githubcopilot.com/mcp":
+        return {}
+    headers = cfg.get("headers")
+    claude_ready = (
+        isinstance(headers, dict)
+        and isinstance(headers.get("Authorization"), str)
+        and bool(headers["Authorization"].strip())
+    )
+    declared = cfg.get("bearer_token_env_var")
+    env_name = declared if isinstance(declared, str) and declared.strip() else "GITHUB_PAT_TOKEN"
+    codex_ready = bool(os.environ.get(env_name, "").strip())
+    return {
+        "auth_required": True,
+        "auth_configured": claude_ready and codex_ready,
+        "auth_claude_configured": claude_ready,
+        "auth_codex_configured": codex_ready,
+        "auth_env_var": env_name,
+    }
+
+
 def _mcp_summary(server_config: str) -> dict[str, Any]:
-    """Transport summary WITHOUT env values (key names only — secret-free)."""
+    """Transport/auth summary WITHOUT env, header, or token VALUES."""
     try:
         cfg = json.loads(server_config) if server_config else {}
     except json.JSONDecodeError:
@@ -176,8 +200,8 @@ def _mcp_summary(server_config: str) -> dict[str, Any]:
         out = {"transport": "unknown"}
     if env_keys:
         out["env_keys"] = env_keys
+    out.update(_mcp_auth_summary(cfg))
     return out
-
 
 def _mcp_items() -> list[dict[str, Any]]:
     path = _db_path()
@@ -186,7 +210,7 @@ def _mcp_items() -> list[dict[str, Any]]:
     conn = _connect_ro(path)
     try:
         rows = conn.execute(
-            "SELECT id, name, server_config, enabled_claude, enabled_codex, tags "
+            "SELECT id, name, server_config, enabled_claude, enabled_codex, tags, description "
             "FROM mcp_servers ORDER BY name ASC"
         ).fetchall()
     finally:
@@ -200,9 +224,28 @@ def _mcp_items() -> list[dict[str, Any]]:
             "enabled_claude": _bool_col(ec),
             "enabled_codex": _bool_col(ex),
             "tags": (tags or "").split(",") if tags else [],
+            "description": description or "",
         }
-        for (sid, name, server_config, ec, ex, tags) in rows
+        for (sid, name, server_config, ec, ex, tags, description) in rows
     ]
+
+
+def _plugin_description(root: Path, entry: dict, name: str) -> str:
+    """Read only this installed version's manifest, never a same-name plugin."""
+    try:
+        location = Path(str(entry.get("installPath") or "")).resolve()
+        if not any(location.is_relative_to((root / folder).resolve())
+                   for folder in ("cache", "marketplaces")):
+            return ""
+        manifest = location / ".claude-plugin" / "plugin.json"
+        if manifest.stat().st_size > 65536:
+            return ""
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("name", name) != name:
+            return ""
+        return str(data.get("description") or "")[:4000]
+    except (OSError, ValueError, TypeError):
+        return ""
 
 
 def _plugin_items() -> list[dict[str, Any]]:
@@ -225,6 +268,7 @@ def _plugin_items() -> list[dict[str, Any]]:
                     "id": full_id,
                     "name": name,
                     "marketplace": marketplace or "",
+                    "description": _plugin_description(root, entry, name),
                     "scope": entry.get("scope", ""),
                     "version": entry.get("version", ""),
                     "git_commit_sha": entry.get("gitCommitSha", ""),
@@ -327,29 +371,85 @@ def _github_repo_identity(source: str) -> tuple[tuple[str, str, Optional[str]], 
 
 
 def _github_git_env(source: str) -> dict[str, str]:
-    """Probe direct GitHub first, then mirrors, with short bounded timeouts.
+    """Probe direct GitHub first, then mirrors, with bounded diagnostics.
 
-    ``cc-switch`` downloads skill archives over HTTP and does not honor Git's
-    ``insteadOf`` environment. The probe therefore selects a reachable Git
-    source for explicit staging; it never asks ``cc-switch`` to wait on an
-    unreachable direct connection first.
+    Returns an empty environment for the reachable direct source. Mirror
+    environments rewrite only GitHub URLs. Every failed probe is retained so
+    group callers can report which transport failed instead of collapsing all
+    network errors to a generic CLI failure.
     """
     identity = _github_repo_identity(source)
     if identity is None:
         return {}
     url = identity[1]
+    failures: list[str] = []
     for mirror in (None, *_GIT_MIRRORS):
         env = {} if mirror is None else _git_mirror_env(mirror)
+        label = "direct" if mirror is None else mirror
         try:
             _run_cli(["git", "ls-remote", url, "HEAD"],
                      timeout=8.0, env_overrides=env)
-        except AdapterError:
+        except AdapterError as exc:
+            failures.append(f"{label}: {exc.message}")
             continue
         return env
     raise AdapterError(
         ERR_CLI,
-        f"github unreachable after direct and mirror probes: {url}",
+        f"github unreachable after direct and mirror probes: {url}; "
+        + "; ".join(failures),
     )
+
+
+def _skill_spec_parts(spec: str) -> tuple[str, str]:
+    """Parse and validate the ``repo:directory`` shape before any I/O."""
+    normalized = spec.strip()
+    if not normalized or any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    repo, separator, directory = normalized.rpartition(":")
+    if not separator:
+        repo, directory = normalized, normalized
+    if not repo or not directory or "\\" in directory:
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill spec: {spec!r}")
+    parts = directory.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory!r}")
+    return repo, directory
+
+
+def _registered_repo_for_directory(directory: str) -> Optional[str]:
+    path = _db_path()
+    if not path.is_file():
+        return None
+    try:
+        connection = _connect_ro(path)
+        try:
+            row = connection.execute(
+                "SELECT repo_owner, repo_name FROM skills "
+                "WHERE lower(directory) = lower(?) "
+                "ORDER BY id LIMIT 1",
+                (directory,),
+            ).fetchone()
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, AdapterError):
+        return None
+    if not row or not row[0] or not row[1]:
+        return None
+    return f"{row[0]}/{row[1]}"
+
+
+def _canonical_skill_spec(spec: str) -> str:
+    """Align a market repo's casing with an already registered directory.
+
+    cc-switch treats repository identity case-sensitively while skills.sh can
+    return different casing. Reusing the registered owner/name avoids a false
+    SKILL_DIRECTORY_CONFLICT when refreshing an installed group.
+    """
+    repo, directory = _skill_spec_parts(spec)
+    registered = _registered_repo_for_directory(directory)
+    if registered and registered.casefold() == repo.casefold():
+        return f"{registered}:{directory}"
+    return spec
 
 
 def _github_branch(url: str) -> str:
@@ -444,6 +544,112 @@ def _http_json(urls: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
     raise AdapterError(ERR_CLI, f"remote request failed: {last}")
 
 
+MARKET_CACHE_SCHEMA = "aisc.extensions.market-cache/v1"
+MARKET_CACHE_MAX_ENTRIES = 50
+
+
+def _normalized_market_query(query: str) -> str:
+    return " ".join(query.casefold().split())
+
+
+def _market_cache_path(kind: str, query: str) -> Path:
+    root = Path(os.environ.get(
+        "AISC_EXTENSION_CACHE_DIR", str(_db_path().parent / "market-cache")
+    ))
+    digest = hashlib.sha256(
+        f"{kind}\0{_normalized_market_query(query)}".encode("utf-8")
+    ).hexdigest()
+    return root / f"{kind}-{digest}.json"
+
+
+CACHE_FILE_RE = re.compile(r"(?:skills|mcp|plugins)-[0-9a-f]{64}\.json")
+
+
+def _trim_market_cache(root: Path, limit: int = MARKET_CACHE_MAX_ENTRIES) -> None:
+    """Keep only files owned by this cache schema; never touch unrelated JSON."""
+    try:
+        files = [path for path in root.iterdir()
+                 if CACHE_FILE_RE.fullmatch(path.name) and path.is_file()]
+        files.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        for path in files[limit:]:
+            path.unlink(missing_ok=True)
+    except OSError:
+        return
+
+
+def _write_market_cache(path: Path, kind: str, query: str,
+                        items: list[dict[str, Any]]) -> int:
+    fetched_at = int(time.time())
+    document = {
+        "schema": MARKET_CACHE_SCHEMA,
+        "kind": kind,
+        "query": _normalized_market_query(query),
+        "fetched_at": fetched_at,
+        "items": items,
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+        _trim_market_cache(path.parent)
+        return fetched_at
+    except OSError:
+        # A successful remote refresh remains authoritative when persistence is
+        # unavailable (read-only root, cache path occupied, disk full, etc.).
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return fetched_at
+
+
+def _read_market_cache(path: Path, kind: str, query: str) -> dict[str, Any] | None:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (not isinstance(document, dict)
+            or document.get("schema") != MARKET_CACHE_SCHEMA
+            or document.get("kind") != kind
+            or document.get("query") != _normalized_market_query(query)
+            or not isinstance(document.get("items"), list)):
+        return None
+    return document
+
+
+def _market_search_with_cache(
+    kind: str, query: str, remote,
+) -> dict[str, Any]:
+    """Refresh first, then fall back to the last normalized-query success."""
+    try:
+        items = remote()
+        fetched_at = _write_market_cache(
+            _market_cache_path(kind, query), kind, query, items
+        )
+        return {
+            "items": items,
+            "cache": {
+                "source": "remote", "cached": False,
+                "query": _normalized_market_query(query),
+                "fetched_at": fetched_at, "error": "",
+            },
+        }
+    except AdapterError as exc:
+        cached = _read_market_cache(_market_cache_path(kind, query), kind, query)
+        if cached is None:
+            raise
+        return {
+            "items": cached.get("items") or [],
+            "cache": {
+                "source": "cache", "cached": True,
+                "query": _normalized_market_query(query),
+                "fetched_at": int(cached.get("fetched_at") or 0),
+                "error": exc.message,
+            },
+        }
+
+
 def toggle(kind: str, item_id: str, agent: str, on: bool) -> None:
     if kind not in ("skills", "mcp"):
         raise AdapterError(ERR_BAD_REQUEST, f"toggle unsupported for kind: {kind}")
@@ -489,15 +695,14 @@ def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
     return {"claude": bool(row[0]), "codex": bool(row[1])}
 
 
-def _stage_skill_from_git_mirror(spec: str, repo: str,
-                                 git_env: dict[str, str]) -> None:
-    """Stage a skill through Git when cc-switch's direct archive URL fails.
+def _stage_skills_from_git_source(specs: list[str], repo: str,
+                                  git_env: dict[str, str]) -> list[str]:
+    """Stage a repository's requested skills through one selected Git source.
 
-    cc-switch 5.11 builds ``https://github.com/<owner>/<repo>/archive/...``
-    itself and ignores Git mirror configuration. A shallow Git clone through
-    the selected mirror, followed by staging into cc-switch's skills source
-    directory, lets the official ``skills install`` command complete offline
-    from its SSOT and retain normal registration/sync semantics.
+    cc-switch builds GitHub archive URLs itself and ignores Git mirror config.
+    A group must clone its repository once, resolve every requested child, and
+    only then copy sources; a missing child is therefore found before any skill
+    is staged or installed.
     """
     import shutil
     import tempfile
@@ -506,38 +711,82 @@ def _stage_skill_from_git_mirror(spec: str, repo: str,
     if identity is None:
         raise AdapterError(ERR_BAD_REQUEST, f"not a GitHub skill repo: {repo}")
     (owner, name, requested_branch), url = identity
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
-    relative = Path(directory)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise AdapterError(ERR_BAD_REQUEST, f"invalid skill directory: {directory}")
+    relatives: list[Path] = []
+    for spec in specs:
+        _, directory = _skill_spec_parts(spec)
+        relatives.append(Path(directory))
 
     with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
         clone = Path(temporary) / "repo"
-        clone_argv = ["git", "clone", "--depth", "1"]
-        if requested_branch:
-            clone_argv.extend(["--branch", requested_branch])
-        clone_argv.extend([url, str(clone)])
-        _run_cli(clone_argv, timeout=120.0, env_overrides=git_env)
+        candidate_envs: list[dict[str, str]] = []
+        for candidate in (git_env, {}, *(_git_mirror_env(mirror)
+                                          for mirror in _GIT_MIRRORS)):
+            marker = candidate.get("GIT_CONFIG_KEY_0", "")
+            if marker not in [item.get("GIT_CONFIG_KEY_0", "")
+                              for item in candidate_envs]:
+                candidate_envs.append(candidate)
+
+        clone_failures: list[str] = []
+        selected_env: dict[str, str] = {}
+        for candidate in candidate_envs:
+            label = "direct"
+            key = candidate.get("GIT_CONFIG_KEY_0", "")
+            for mirror in _GIT_MIRRORS:
+                if mirror in key:
+                    label = mirror
+                    break
+            if clone.exists():
+                shutil.rmtree(clone)
+            clone_argv = ["git", "clone", "--depth", "1"]
+            if requested_branch:
+                clone_argv.extend(["--branch", requested_branch])
+            clone_argv.extend([url, str(clone)])
+            try:
+                _run_cli(clone_argv, timeout=120.0, env_overrides=candidate)
+            except AdapterError as exc:
+                clone_failures.append(f"clone {label}: {exc.message}")
+                continue
+            selected_env = candidate
+            break
+        else:
+            raise AdapterError(
+                ERR_CLI,
+                f"github skill repository clone failed for all sources: {url}; "
+                + "; ".join(clone_failures),
+            )
+
         branch = _run_cli(
             ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
-            timeout=10.0, env_overrides=git_env,
+            timeout=10.0, env_overrides=selected_env,
         ).strip() or requested_branch or "main"
         _run_cli(["cc-switch", "skills", "repos", "add",
                   f"{owner}/{name}@{branch}"], timeout=30.0)
 
-        candidates = [clone / "skills" / relative, clone / relative]
-        source = next((candidate for candidate in candidates
-                       if (candidate / "SKILL.md").is_file()), None)
-        if source is None:
-            raise AdapterError(
-                ERR_NOT_FOUND,
-                f"SKILL.md not found for {spec} in mirrored repository",
-            )
-        destination = _db_path().parent / "skills" / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination)
+        sources: list[tuple[Path, Path]] = []
+        missing: list[str] = []
+        for spec, relative in zip(specs, relatives):
+            candidates = [clone / "skills" / relative, clone / relative]
+            source = next((candidate for candidate in candidates
+                           if (candidate / "SKILL.md").is_file()), None)
+            if source is None:
+                missing.append(spec)
+            else:
+                sources.append((source, relative))
+        if missing:
+            return missing
+
+        for source, relative in sources:
+            destination = _db_path().parent / "skills" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination)
+    return []
+
+
+def _stage_skill_from_git_source_one(spec: str, repo: str,
+                                     git_env: dict[str, str]) -> None:
+    _stage_skills_from_git_source([spec], repo, git_env)
 
 
 def _install_skill(spec: str, *, enable_both: bool,
@@ -545,12 +794,11 @@ def _install_skill(spec: str, *, enable_both: bool,
     # b9 手测 #2: 市场安装的 key 是 owner/name:directory——若仓库尚未注册，
     # install 直接 SKILL_DIR_NOT_FOUND。先 best-effort repos add（已注册时
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
-    repo = spec.split(":", 1)[0]
-    directory = spec.rsplit(":", 1)[1] if ":" in spec else spec
+    repo, directory = _skill_spec_parts(spec)
     previous_state = _skill_enable_states(directory) if restore_state else None
     git_env = _github_skill_env(repo)
     if git_env:
-        _stage_skill_from_git_mirror(spec, repo, git_env)
+        _stage_skill_from_git_source_one(spec, repo, git_env)
         _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     else:
         if "/" in repo and not Path(repo).exists() and not repo.startswith("."):
@@ -567,7 +815,7 @@ def _install_skill(spec: str, *, enable_both: bool,
             mirror_env = _github_skill_env(repo, allow_direct=False)
             if not mirror_env:
                 raise
-            _stage_skill_from_git_mirror(spec, repo, mirror_env)
+            _stage_skill_from_git_source_one(spec, repo, mirror_env)
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     if enable_both:
         for agent in AGENTS:
@@ -587,6 +835,116 @@ def skill_update(spec: str) -> None:
     # official install command defaults Claude on, so restore both states after
     # refreshing the source.
     _install_skill(spec, enable_both=False, restore_state=True)
+
+
+def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise AdapterError(ERR_BAD_REQUEST, "non-empty skill specs are required")
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for spec in specs:
+        normalized = _canonical_skill_spec(spec.strip())
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(normalized)
+
+    grouped: dict[str, list[str]] = {}
+    for spec in unique:
+        repo, _ = _skill_spec_parts(spec)
+        grouped.setdefault(repo, []).append(spec)
+
+    items: list[dict[str, Any]] = [
+        {"spec": spec, "status": "pending", "error": ""} for spec in unique
+    ]
+    previous_states: dict[str, dict[str, bool]] = {}
+    if update:
+        state_errors: dict[str, str] = {}
+        for spec in unique:
+            _, directory = _skill_spec_parts(spec)
+            state = _skill_enable_states(directory)
+            if state is None:
+                state_errors[spec] = "enable state unavailable in cc-switch SSOT"
+            else:
+                previous_states[spec] = state
+        if state_errors:
+            for item in items:
+                if item["spec"] in state_errors:
+                    item["status"] = "state_unavailable"
+                    item["error"] = state_errors[item["spec"]]
+                else:
+                    item["status"] = "blocked"
+                    item["error"] = "skill group enable-state preflight failed"
+            return {"total": len(items), "completed": 0, "items": items}
+
+    source_errors: dict[str, str] = {}
+    missing_errors: dict[str, str] = {}
+    for repo, group_specs in grouped.items():
+        try:
+            if _github_repo_identity(repo) is None:
+                continue
+            git_env = _github_git_env(repo)
+            missing = _stage_skills_from_git_source(group_specs, repo, git_env)
+            for spec in missing:
+                missing_errors[spec] = (
+                    f"SKILL.md not found for {spec} in selected repository source"
+                )
+        except AdapterError as exc:
+            for spec in group_specs:
+                source_errors[spec] = f"repo {repo}: {exc.message}"
+
+    if source_errors or missing_errors:
+        for item in items:
+            spec = item["spec"]
+            if spec in missing_errors:
+                item["status"] = "missing"
+                item["error"] = missing_errors[spec]
+            elif spec in source_errors:
+                item["status"] = "source_failed"
+                item["error"] = source_errors[spec]
+            else:
+                item["status"] = "blocked"
+                item["error"] = "skill group source preflight failed"
+        return {"total": len(items), "completed": 0, "items": items}
+
+    final_status = "updated" if update else "installed"
+    for item in items:
+        spec = item["spec"]
+        repo, directory = _skill_spec_parts(spec)
+        try:
+            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+            if update:
+                previous = previous_states.get(spec)
+                if previous is None:
+                    raise AdapterError(
+                        ERR_CLI, f"enable state lost before update: {spec}")
+                for agent in AGENTS:
+                    verb = "enable" if previous[agent] else "disable"
+                    _run_cli(["cc-switch", "skills", verb, directory,
+                              "-a", agent])
+            else:
+                for agent in AGENTS:
+                    _run_cli(["cc-switch", "skills", "enable", directory,
+                              "-a", agent])
+            item["status"] = final_status
+        except AdapterError as exc:
+            item["status"] = "failed"
+            item["error"] = exc.message
+
+    completed = sum(item["status"] == final_status for item in items)
+    return {"total": len(items), "completed": completed, "items": items}
+
+
+def skill_install_group(specs: list[str]) -> dict[str, Any]:
+    """Install a repository group with one source fetch and itemized results."""
+    return _skill_group_operation(specs, update=False)
+
+
+def skill_update_group(specs: list[str]) -> dict[str, Any]:
+    """Update a group while preserving each child's enable/disable choices."""
+    return _skill_group_operation(specs, update=True)
 
 
 def mcp_add(config_json: str, apps: list[str]) -> str:
@@ -659,14 +1017,13 @@ def _parse_skills_api(data: dict[str, Any]) -> list[dict[str, Any]]:
             "directory": directory,
             "installs": str(item.get("installs", "")),
             "repo": source,
+            "updated_at": str(item.get("updatedAt") or item.get("updatedAtISO") or ""),
+            "description": str(item.get("description") or "")[:4000],
         })
     return out[:20]
 
 
-def skill_search(query: str) -> list[dict[str, Any]]:
-    import urllib.parse
-    if not query.strip():
-        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+def _skill_search_remote(query: str) -> list[dict[str, Any]]:
     try:
         raw = _run_cli(
             ["cc-switch", "skills", "market", query, "--limit", "20"], timeout=60.0
@@ -684,6 +1041,157 @@ def skill_search(query: str) -> list[dict[str, Any]]:
     return _parse_skills_api(data)
 
 
+def _skill_description(text: str, directory: str) -> str:
+    """Extract frontmatter text, not instructions from the skill body.
+
+    This deliberately small YAML string reader handles literal/folded and quoted
+    scalar descriptions without evaluating tags or requiring another dependency.
+    """
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")
+    parts = text.split("\n---", 2)
+    if not text.startswith("---\n") or len(parts) < 2:
+        return ""
+    front = parts[0][4:]
+    name = re.search(r"(?m)^name:\s*(.+)$", front)
+    if name and name.group(1).strip().strip("\"'") != directory.rsplit("/", 1)[-1]:
+        return ""
+    match = re.search(r"(?m)^description:[ \t]*(.*)$", front)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    continuation = []
+    for line in front[match.end():].splitlines():
+        if line and not line[0].isspace():
+            break
+        continuation.append(line.strip())
+    if value in ("", ">", "|", ">-", "|-", ">+", "|+"):
+        value = " ".join(continuation)
+    elif value.startswith('"') and value.endswith('"'):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = value[1:-1]
+    elif value.startswith("'") and value.endswith("'"):
+        value = value[1:-1].replace("''", "'")
+    elif continuation:
+        value += " " + " ".join(continuation)
+    return " ".join(value.split())[:4000]
+
+
+def _read_skill_url(url: str) -> str:
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "AISC/2.1.17"})
+    with urllib.request.urlopen(req, timeout=4.0) as response:
+        raw = response.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("SKILL.md exceeds 64 KiB")
+    return raw.decode("utf-8-sig")
+
+
+def skill_describe(spec: str) -> list[dict[str, Any]]:
+    repo, separator, directory = spec.partition(":")
+    if (not separator or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
+            or not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", directory)
+            or any(part in (".", "..") for part in directory.split("/"))):
+        raise AdapterError(ERR_BAD_REQUEST, "skill description requires owner/repo:directory")
+    paths = [f"skills/{directory}/SKILL.md", f"{directory}/SKILL.md", "SKILL.md"]
+    failures = 0
+    for path in paths:
+        url = f"https://raw.githubusercontent.com/{repo}/HEAD/{path}"
+        try:
+            description = _skill_description(_read_skill_url(url), directory)
+            if description:
+                return [{"kind": "market-skill", "id": spec, "name": directory,
+                         "description": description, "description_url": url}]
+        except (OSError, ValueError):
+            failures += 1
+    if failures == len(paths):
+        raise AdapterError(ERR_CLI, "Cannot read upstream SKILL.md; retry or open the source repository")
+    raise AdapterError(ERR_NOT_FOUND, "No matching skill description found in upstream SKILL.md")
+
+
+def skill_search(query: str) -> list[dict[str, Any]]:
+    return skill_search_result(query)["items"]
+
+
+def skill_search_result(query: str) -> dict[str, Any]:
+    if not query.strip():
+        raise AdapterError(ERR_BAD_REQUEST, "search query is required")
+    return _market_search_with_cache(
+        "skills", query, lambda: _skill_search_remote(query)
+    )
+
+
+def _plugin_available_index(raw: str) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AdapterError(ERR_CLI, f"invalid plugin marketplace JSON: {exc}")
+    available = data.get("available", []) if isinstance(data, dict) else []
+    out: dict[str, dict[str, Any]] = {}
+    for item in available:
+        if isinstance(item, dict) and item.get("pluginId"):
+            out[str(item["pluginId"])] = item
+    return out
+
+
+def updates_check() -> dict[str, Any]:
+    """Check updates only where a market exposes a comparable version field."""
+    items: list[dict[str, Any]] = []
+    for item in list_items("skills") + list_items("mcp"):
+        items.append({
+            "kind": item["kind"],
+            "id": item["id"],
+            "name": item.get("name") or item["id"],
+            "status": "unsupported",
+            "update_available": False,
+            "latest_version": "",
+            "reason": "market does not expose a comparable version field",
+        })
+
+    installed = list_items("plugins")
+    available: dict[str, dict[str, Any]] = {}
+    if installed:
+        raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
+                       timeout=120.0)
+        available = _plugin_available_index(raw)
+    for item in installed:
+        market = available.get(item["id"], {})
+        latest_version = str(market.get("version") or "")
+        latest_sha = str(market.get("gitCommitSha") or "")
+        current_version = str(item.get("version") or "")
+        current_sha = str(item.get("git_commit_sha") or "")
+        comparable = bool(latest_version and current_version) or bool(
+            latest_sha and current_sha
+        )
+        changed = (
+            (bool(latest_version and current_version)
+             and latest_version != current_version)
+            or (bool(latest_sha and current_sha) and latest_sha != current_sha)
+        )
+        items.append({
+            "kind": "plugins",
+            "id": item["id"],
+            "name": item.get("name") or item["id"],
+            "status": "ok" if comparable else "unsupported",
+            "update_available": changed,
+            "current_version": current_version,
+            "current_git_commit_sha": current_sha,
+            "latest_version": latest_version,
+            "latest_git_commit_sha": latest_sha,
+            "reason": "" if comparable else (
+                "marketplace metadata unavailable" if not market else
+                "market does not expose a comparable version field"
+            ),
+        })
+    return {
+        "schema": MARKET_CACHE_SCHEMA,
+        "total": len(items),
+        "completed": len(items),
+        "items": items,
+    }
+
+
 def deeplink_import(url: str) -> None:
     if not url.startswith("ccswitch://"):
         raise AdapterError(ERR_BAD_REQUEST, "url must start with ccswitch://")
@@ -695,6 +1203,56 @@ def skill_repo_add(source: str) -> None:
         raise AdapterError(ERR_BAD_REQUEST, "repo source is required")
     _run_cli(["cc-switch", "skills", "repos", "add", source],
              timeout=120.0, env_overrides=_github_git_env(source))
+
+
+def skill_repos_list() -> list[dict[str, Any]]:
+    path = _db_path()
+    if not path.is_file():
+        return []
+    conn = _connect_ro(path)
+    try:
+        rows = conn.execute(
+            "SELECT owner, name, branch, enabled FROM skill_repos "
+            "ORDER BY owner COLLATE NOCASE ASC, name COLLATE NOCASE ASC"
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise AdapterError(
+            ERR_SNAPSHOT,
+            "skill repository table is unavailable; upgrade the runtime image",
+        ) from exc
+    finally:
+        conn.close()
+    return [
+        {
+            "kind": "skill-repo",
+            "id": f"{owner}/{name}",
+            "name": f"{owner}/{name}",
+            "repo": f"{owner}/{name}",
+            "branch": branch,
+            "enabled": bool(enabled),
+        }
+        for owner, name, branch, enabled in rows
+    ]
+
+
+def _skill_repo_identity(source: str) -> str:
+    value = source.strip()
+    if "://" in value:
+        parsed = urllib.parse.urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise AdapterError(ERR_BAD_REQUEST, f"invalid repository URL: {source}")
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 2:
+            raise AdapterError(ERR_BAD_REQUEST, f"repository URL has no owner/name: {source}")
+        value = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid repository identity: {source}")
+    return value
+
+
+def skill_repo_remove(source: str) -> None:
+    identity = _skill_repo_identity(source)
+    _run_cli(["cc-switch", "skills", "repos", "remove", identity], timeout=60.0)
 
 
 def _parse_plugin_marketplaces(raw: str) -> list[dict[str, Any]]:
@@ -742,16 +1300,25 @@ def _parse_plugin_available(raw: str, query: str) -> list[dict[str, Any]]:
             "marketplace": str(item.get("marketplaceName") or item["pluginId"].partition("@")[2]),
             "repo": str(source_url),
             "installs": str(item.get("installCount", "")),
+            "updated_at": str(item.get("lastUpdated") or item.get("updatedAt") or ""),
+            "latest_version": str(item.get("version") or ""),
+            "latest_git_commit_sha": str(item.get("gitCommitSha") or ""),
         })
     return out[:20]
 
 
 def plugin_search(query: str) -> list[dict[str, Any]]:
+    return plugin_search_result(query)["items"]
+
+
+def plugin_search_result(query: str) -> dict[str, Any]:
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
-                   timeout=120.0)
-    return _parse_plugin_available(raw, query.strip())
+    def remote() -> list[dict[str, Any]]:
+        raw = _run_cli(["claude-real", "plugin", "list", "--available", "--json"],
+                       timeout=120.0)
+        return _parse_plugin_available(raw, query.strip())
+    return _market_search_with_cache("plugins", query, remote)
 
 
 def plugin_market_add(source: str) -> None:
@@ -761,31 +1328,47 @@ def plugin_market_add(source: str) -> None:
              timeout=180.0)
 
 
+def plugin_market_remove(name: str) -> None:
+    value = name.strip()
+    if not value or any(ch.isspace() for ch in value):
+        raise AdapterError(ERR_BAD_REQUEST, "marketplace name is required")
+    _run_cli(["claude-real", "plugin", "marketplace", "remove", value], timeout=60.0)
+
+
 def mcp_search(query: str) -> list[dict[str, Any]]:
+    return mcp_search_result(query)["items"]
+
+
+def mcp_search_result(query: str) -> dict[str, Any]:
     """Search Smithery; registry is primary and api.smithery.ai is a fallback."""
     import urllib.parse
     if not query.strip():
         raise AdapterError(ERR_BAD_REQUEST, "search query is required")
-    encoded = urllib.parse.quote(query)
-    data = _http_json([
-        f"https://registry.smithery.ai/servers?q={encoded}&pageSize=10",
-        f"https://api.smithery.ai/servers?q={encoded}&pageSize=10",
-    ], timeout=15.0)
-    servers = data.get("servers", []) if isinstance(data, dict) else []
-    out: list[dict[str, Any]] = []
-    for s in servers:
-        if not isinstance(s, dict):
-            continue
-        out.append({
-            "kind": "market-mcp",
-            "id": s.get("qualifiedName") or s.get("name") or "",
-            "name": s.get("displayName") or s.get("name") or "",
-            "description": (s.get("description") or "")[:200],
-            "repo": s.get("repository", {}).get("url", "") if isinstance(s.get("repository"), dict) else "",
-            "source": "smithery",
-            "installs": str(s.get("useCount", "")),
-        })
-    return out
+    def remote() -> list[dict[str, Any]]:
+        encoded = urllib.parse.quote(query)
+        data = _http_json([
+            f"https://registry.smithery.ai/servers?q={encoded}&pageSize=10",
+            f"https://api.smithery.ai/servers?q={encoded}&pageSize=10",
+        ], timeout=15.0)
+        servers = data.get("servers", []) if isinstance(data, dict) else []
+        out: list[dict[str, Any]] = []
+        for server in servers:
+            if not isinstance(server, dict):
+                continue
+            out.append({
+                "kind": "market-mcp",
+                "id": server.get("qualifiedName") or server.get("name") or "",
+                "name": server.get("displayName") or server.get("name") or "",
+                "description": (server.get("description") or "")[:200],
+                "repo": server.get("repository", {}).get("url", "")
+                        if isinstance(server.get("repository"), dict) else "",
+                "source": "smithery",
+                "installs": str(server.get("useCount", "")),
+                "created_at": str(server.get("createdAt", "")),
+                "updated_at": str(server.get("updatedAt") or server.get("createdAt") or ""),
+            })
+        return out
+    return _market_search_with_cache("mcp", query, remote)
 
 
 def mcp_market_install(market_id: str) -> str:
@@ -824,13 +1407,17 @@ def mcp_market_install(market_id: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aisc-extensions-adapter")
     parser.add_argument("op", choices=["list", "toggle", "delete", "skill-install",
-                                       "mcp-add", "plugin-install",
+                                       "skill-install-group", "mcp-add",
+                                       "plugin-install",
                                        "plugin-uninstall", "plugin-update",
-                                       "skill-search", "deeplink",
-                                       "skill-repo-add", "skill-update",
+                                       "skill-search", "skill-describe", "deeplink",
+                                       "skill-repo-add", "skill-update", "skill-update-group",
+                                       "skill-repos-list", "skill-repo-remove",
                                        "plugin-market-list",
-                                       "plugin-market-add", "plugin-search",
-                                       "mcp-search", "mcp-market-install"])
+                                       "plugin-market-add", "plugin-market-remove",
+                                       "plugin-search",
+                                       "mcp-search", "mcp-market-install",
+                                       "updates-check"])
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
     parser.add_argument("--url", help="deeplink: ccswitch://… URL")
     parser.add_argument("--kind", choices=list(KINDS))
@@ -838,6 +1425,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent", choices=list(AGENTS))
     parser.add_argument("--on", choices=["true", "false"], default="true")
     parser.add_argument("--spec", help="skill-install: owner/name:directory")
+    parser.add_argument("--specs", help="group ops: JSON array of specs")
     parser.add_argument("--apps", default="claude,codex",
                         help="mcp-add: comma-separated agent list")
     args = parser.parse_args(argv)
@@ -865,6 +1453,26 @@ def main(argv: list[str] | None = None) -> int:
                 raise AdapterError(ERR_BAD_REQUEST, "--spec required")
             skill_install(args.spec)
             print(json.dumps(_envelope("skill-install", True)))
+            return 0
+        if args.op in ("skill-install-group", "skill-update-group"):
+            if not args.specs:
+                raise AdapterError(ERR_BAD_REQUEST, "--specs required")
+            try:
+                parsed_specs = json.loads(args.specs)
+            except json.JSONDecodeError as exc:
+                raise AdapterError(ERR_BAD_REQUEST, f"invalid --specs JSON: {exc}")
+            if not isinstance(parsed_specs, list) or not all(
+                isinstance(spec, str) and spec.strip() for spec in parsed_specs
+            ):
+                raise AdapterError(ERR_BAD_REQUEST, "--specs must be a JSON string array")
+            specs = parsed_specs
+            if args.op == "skill-install-group":
+                result = skill_install_group(specs)
+            else:
+                result = skill_update_group(specs)
+            envelope = _envelope(args.op, True)
+            envelope.update(result)
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-add":
             config_json = sys.stdin.read().strip()
@@ -897,11 +1505,23 @@ def main(argv: list[str] | None = None) -> int:
             skill_update(args.spec)
             print(json.dumps(_envelope("skill-update", True)))
             return 0
+        if args.op == "updates-check":
+            result = updates_check()
+            result.pop("schema", None)
+            envelope = _envelope("updates-check", True)
+            envelope.update(result)
+            print(json.dumps(envelope))
+            return 0
+        if args.op == "skill-describe":
+            print(json.dumps(_envelope(args.op, True, items=skill_describe(args.id or ""))))
+            return 0
         if args.op == "skill-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope(
-                "skill-search", True, items=skill_search(args.query))))
+            result = skill_search_result(args.query)
+            envelope = _envelope("skill-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "deeplink":
             if not args.url:
@@ -915,6 +1535,16 @@ def main(argv: list[str] | None = None) -> int:
             skill_repo_add(args.id)
             print(json.dumps(_envelope("skill-repo-add", True)))
             return 0
+        if args.op == "skill-repos-list":
+            print(json.dumps(_envelope(
+                "skill-repos-list", True, items=skill_repos_list())))
+            return 0
+        if args.op == "skill-repo-remove":
+            if not args.id:
+                raise AdapterError(ERR_BAD_REQUEST, "--id required")
+            skill_repo_remove(args.id)
+            print(json.dumps(_envelope("skill-repo-remove", True)))
+            return 0
         if args.op == "plugin-market-list":
             print(json.dumps(_envelope(
                 "plugin-market-list", True, items=plugin_market_list())))
@@ -925,16 +1555,27 @@ def main(argv: list[str] | None = None) -> int:
             plugin_market_add(args.id)
             print(json.dumps(_envelope("plugin-market-add", True)))
             return 0
+        if args.op == "plugin-market-remove":
+            if not args.id:
+                raise AdapterError(ERR_BAD_REQUEST, "--id required")
+            plugin_market_remove(args.id)
+            print(json.dumps(_envelope("plugin-market-remove", True)))
+            return 0
         if args.op == "plugin-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope(
-                "plugin-search", True, items=plugin_search(args.query))))
+            result = plugin_search_result(args.query)
+            envelope = _envelope("plugin-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-search":
             if not args.query:
                 raise AdapterError(ERR_BAD_REQUEST, "--query required")
-            print(json.dumps(_envelope("mcp-search", True, items=mcp_search(args.query))))
+            result = mcp_search_result(args.query)
+            envelope = _envelope("mcp-search", True, items=result["items"])
+            envelope["cache"] = result["cache"]
+            print(json.dumps(envelope))
             return 0
         if args.op == "mcp-market-install":
             if not args.id:

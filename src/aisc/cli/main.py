@@ -364,6 +364,13 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extsi)
     extsi.add_argument("--spec", required=True)
 
+    extsig = extsub.add_parser("skill-install-group",
+                               help="Install a skill group with preflight and itemized results",
+                               allow_abbrev=False)
+    _extensions_common(extsig)
+    extsig.add_argument("--specs", required=True,
+                        help="JSON array of owner/name:directory specs")
+
     extma = extsub.add_parser("mcp-add",
                               help="Add MCP servers (config JSON on stdin)",
                               allow_abbrev=False)
@@ -398,11 +405,27 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extss)
     extss.add_argument("--query", required=True)
 
+    extsd = extsub.add_parser("skill-describe", help="Read upstream skill description", allow_abbrev=False)
+    _extensions_common(extsd)
+    extsd.add_argument("--id", required=True)
+
     extsu = extsub.add_parser("skill-update",
                               help="Update a skill while preserving enable/disable choices",
                               allow_abbrev=False)
     _extensions_common(extsu)
     extsu.add_argument("--spec", required=True)
+
+    extsug = extsub.add_parser("skill-update-group",
+                               help="Update a skill group while preserving enable choices",
+                               allow_abbrev=False)
+    _extensions_common(extsug)
+    extsug.add_argument("--specs", required=True,
+                        help="JSON array of owner/name:directory specs")
+
+    extuc = extsub.add_parser("updates-check",
+                              help="Check extension updates with reliable version metadata",
+                              allow_abbrev=False)
+    _extensions_common(extuc)
 
     extdl = extsub.add_parser("deeplink",
                               help="Import a resource from a ccswitch:// link",
@@ -415,6 +438,17 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extsr)
     extsr.add_argument("--id", required=True)
+
+    extsrl = extsub.add_parser("skill-repos-list",
+                               help="List configured skill repositories",
+                               allow_abbrev=False)
+    _extensions_common(extsrl)
+
+    extsrr = extsub.add_parser("skill-repo-remove",
+                               help="Remove a configured skill repository",
+                               allow_abbrev=False)
+    _extensions_common(extsrr)
+    extsrr.add_argument("--id", required=True)
 
     extms = extsub.add_parser("mcp-search",
                               help="Search the Smithery MCP marketplace",
@@ -443,6 +477,12 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _extensions_common(extma)
     extma.add_argument("--id", required=True)
+
+    extmr = extsub.add_parser("plugin-market-remove",
+                              help="Remove a configured Claude plugin marketplace",
+                              allow_abbrev=False)
+    _extensions_common(extmr)
+    extmr.add_argument("--id", required=True)
 
     # --- cc-switch (Stage 8d: provider data plane, aisc.cc-switch-provider/v1) ---
     csp = sub.add_parser(
@@ -2019,8 +2059,12 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_delete(args)
     elif sub == "skill-install":
         data = ext_cmd.cmd_extensions_skill_install(args)
+    elif sub == "skill-install-group":
+        data = ext_cmd.cmd_extensions_skill_install_group(args)
     elif sub == "skill-update":
         data = ext_cmd.cmd_extensions_skill_update(args)
+    elif sub == "skill-update-group":
+        data = ext_cmd.cmd_extensions_skill_update_group(args)
     elif sub == "mcp-add":
         data = ext_cmd.cmd_extensions_mcp_add(args)
     elif sub == "plugin-install":
@@ -2029,6 +2073,8 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_plugin_uninstall(args)
     elif sub == "plugin-update":
         data = ext_cmd.cmd_extensions_plugin_update(args)
+    elif sub == "skill-describe":
+        data = ext_cmd.cmd_extensions_skill_describe(args)
     elif sub == "skill-search":
         data = ext_cmd.cmd_extensions_skill_search(args)
     elif sub == "deeplink":
@@ -2037,10 +2083,18 @@ def _cmd_extensions(
         data = ext_cmd.cmd_extensions_skill_repo_add(args)
     elif sub == "plugin-market-list":
         data = ext_cmd.cmd_extensions_plugin_market_list(args)
+    elif sub == "skill-repos-list":
+        data = ext_cmd.cmd_extensions_skill_repos_list(args)
+    elif sub == "skill-repo-remove":
+        data = ext_cmd.cmd_extensions_skill_repo_remove(args)
     elif sub == "plugin-market-add":
         data = ext_cmd.cmd_extensions_plugin_market_add(args)
+    elif sub == "plugin-market-remove":
+        data = ext_cmd.cmd_extensions_plugin_market_remove(args)
     elif sub == "plugin-search":
         data = ext_cmd.cmd_extensions_plugin_search(args)
+    elif sub == "updates-check":
+        data = ext_cmd.cmd_extensions_updates_check(args)
     elif sub == "mcp-search":
         data = ext_cmd.cmd_extensions_mcp_search(args)
     elif sub == "mcp-market-install":
@@ -2969,6 +3023,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     cmd_hint = _detect_command(args_list) or "aisc"
     parser._aisc_format = "json" if json_requested else None
     parser._aisc_command = cmd_hint
+
+    # Subparsers otherwise print only to stderr; serve captures empty stdout
+    # and hides the actual invalid-choice/missing-argument failure.
+    if cmd_hint == "extensions":
+        def _extension_parse_context(p: argparse.ArgumentParser) -> None:
+            p._aisc_format = "json" if json_requested else None
+            p._aisc_command = "extensions"
+            for action in p._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    for child in action.choices.values():
+                        _extension_parse_context(child)
+
+        choices = next(a.choices for a in parser._actions
+                       if isinstance(a, argparse._SubParsersAction))
+        _extension_parse_context(choices["extensions"])
 
     # Propagate json format to config subparser for unknown-subcommand errors
     if "config" in args_list:

@@ -26,7 +26,7 @@ class BuildNetworkContracts(unittest.TestCase):
 
         mihomo = (ROOT / "tools" / "stage-mihomo.sh").read_text(encoding="utf-8")
         self.assertIn('MIRRORS=("https://ghfast.top/" "https://gh-proxy.com/"', mihomo)
-        self.assertIn('for m in "${MIRRORS[@]}" ""', mihomo)
+        self.assertIn('for mirror in "${MIRRORS[@]}" ""', mihomo)
 
     def test_cc_switch_api_resolver_has_tested_mirror_fallback(self):
         resolver = (ROOT / "src" / "aisc" / "application" / "cc_switch_resolver.py").read_text(encoding="utf-8")

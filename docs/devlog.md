@@ -2,6 +2,159 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+# v2.1.17 preview 修复 b5（2026-11-01，合入待整体实测）
+
+- Work Record 分支会话保留原 conversation preflight/fork 链路，只新增独立 fork；Claude/Codex覆盖。
+- fork/new session 启动失败保存脱敏可读错误，只回收本次失败新标签；其他标签、成功 fork 和原成员不变。
+- 移除单会话右键通用新建；活动工作记录标题新增“＋”，按最近成员引擎建新会话。pending association 记录 collectionId，唯一识别新 conversation 后自动加入来源记录。
+- Python 1723 / Rust 410 / Vitest 837 / vue-tsc 通过；生产 Workbench 构建通过。PR #57 三项 CI SUCCESS，合入 develop `aef1d5a`；按 preview 迭代模式延后到 preview.N 整体实测。
+
+# v2.1.17 preview 修复 b4（2026-11-01，待用户验收）
+
+- 显式更新下载校验后写入 receipt；新版本启动复验 size/hash 后仅清理自有安装包，取消/失败/同版本/字节变化均保留，不触碰用户手动下载。
+- x64/arm64离线 payload 分开进入目标架构安装包，preview.1 的双架构打包膨胀根因消除。x64 NSIS 实测 384,516,079 字节，比 preview.1 减少 314,293,655 字节；剩余增长主要来自新版 Codex/Claude x64 离线包。
+- yazi 改为按架构从 pinned release URL staging，官方 SHA256/size 由 bundle verify 强校验，不再依赖共享 IP 易限流的 GitHub API。
+- 最终 Python 1722 / Rust 410 / Vitest 833 / vue-tsc 通过；vendor 1533、bundle verify、生产 NSIS、真实启动清理通过。最终 head `9f13847` 的 Workbench/Bundle/NSIS/Artifact 远端流水线全部 SUCCESS；PR #56 合入 develop `7c154cd`。完整下载安装 CU 与用户验收待执行。
+
+# v2.1.17 preview 修复 b2–b3（2026-11-01，b3 用户验收通过）
+
+- b2 补齐已安装/市场/子技能真实功能简介与卡片内联详情，修复杂乱来源模板、窄栏布局和键盘焦点；PR #54 已合入 develop `66d9549`。
+- b3 默认安装 GitHub 官方 hosted MCP：cc-switch SSOT 默认双端开启，AISC marker 保留用户启停与自定义同名配置；Claude/Codex live 配置精确合并，避免 cc-switch 5.11.3 将 HTTP MCP 错写成 Codex stdio。未内置或代管 PAT。
+- 认证状态按 Claude Authorization header 与 Codex `GITHUB_PAT_TOKEN` 分别显示，双侧可用才整体已配置；无凭据时明确需要 GitHub PAT，快照永不泄露 header/env 值。
+- 最终门禁 Python 1718 / Rust 407 / Vitest 833 / vue-tsc 通过，vendor 1534 校验通过。真实容器覆盖默认首装、关闭 Claude 后重启保留、自定义同名不覆盖、官方端点 401 与生产候选；用户 2026-11-01 明确验收 b3 通过。CU 自动预测试未完整完成，保留 NOT RUN，不以用户验收冒充 CU PASS。b3 产品提交 `cc508da`；PR #55 三项 Workbench CI SUCCESS，合入 develop `bf886f2`，进入 b4。
+
+# v2.1.17 preview 修复 b1（2026-10-31，待用户验收）
+
+- 本轮十项手测反馈登记为六个顺序批次，独立活动计划 `docs/plans/2.1.17-preview-fixes/`；按 DEVELOP_WIKI §1.4 逐批验收，原阶段免补测裁定不复用。
+- 空 envelope 实为旧宿主 CLI 0.1.9.dev0 pin 不支持 updates-check。补全 extensions 参数错误的 JSON 出口；Workbench 只有在同目标 stderr 确认旧 op 不支持时才用兼容随附 sidecar 重试只读检查，成功后更新旧 pin；显式 CLI、Remote 和未知失败保持原边界。
+- Python 1699/53/195 subtests、Rust 407/2 ignored、Vitest 822、vue-tsc 通过；真实旧/新冻结 CLI 恢复与显式覆盖测试另执行通过。生产 Tauri UI、冻结 CLI 与匹配镜像完成。
+- Windows CU T1–T4 PASS：旧 pin 自愈、技能/MCP/插件搜索及详情、真实插件参与更新、重复检查和服务读取、双工作区隔离、适配器不可用后恢复重试。模板简介、蓝框和长错误文案布局问题留已授权 b2。
+- draft PR #53，产品 SHA `7c01bac` 的远端 Workbench CI（frontend/rust/cli）和三平台 CLI sidecar 全部 SUCCESS。当前 b1 待用户单批验收，b2–b6 未实施；未发布新 preview 或正式 final。
+
+# v2.1.17 preview 收尾发布（2026-10-31，已完成）
+
+- 用户 D-7 明确“没有测试通过的也不测试了，直接进入收尾阶段”，取消剩余补测并放行收尾；保留 NOT RUN、历史失败和修正证据，不把免补测伪装为实测通过。
+- 同提交 `2c0088d` 已推 annotated `v2.1.17.dev0` / `v0.1.10.dev0`，分别启动 Workbench NSIS 和 CLI 三平台 Artifact 发布；CLI tag 意外匹配的重复 Workbench NSIS 已主动取消，避免错误版本和同名 Release 竞争。
+- 已发布 Workbench `v2.1.17-preview.1` 与 CLI `v0.1.10.dev0` GitHub prerelease，三平台 CLI archive/setup/pkg、Workbench NSIS 与 checksum 完整，checksum 文本匹配 GitHub 官方资产 digest。TestPyPI wheel/sdist 与真实 index 安装验证通过；正式 PyPI job skipped。
+- 初次 Workbench 标签误用 dot-dev 后缀导致 Tauri SemVer 校验失败；改用现有 `-preview.1` 合同后发布成功，旧标签与失败日志保留，无产品源码变更。
+- 阶段计划已归档 `docs/archive/2.1.17-dev-plans/`，todo 目标完成/用户免补测闭环；正式 main/final 及最终反馈/Release/分支清理保持独立门。
+
+# v2.1.17 收尾统一预回归（2026-10-31）
+
+- PR #51 集成 `81c43e7` 四条 CI 全 SUCCESS。依赖刷新 PR #52 集成 develop `bc189a3`；分支产品 SHA `cf25671` 及精确集成 SHA 的四条构建、三平台 sidecar parity/clean-room/SBOM、deb/dmg 非 checkout smoke、NSIS 安装/PATH/升级/卸载保留数据全部成功，逐步/资产证据已回写。
+- 最终干净 bundle 的 frozen CLI 无缓存镜像 `7f82194edeed…` 实测六工具版本及 geodata checksum 一致；三轮 Skills/MCP/Plugins 9/9、全部 12 phases、caveman 首装双开/升级保留 off、部分失败仅失败重试全 PASS（exit 0，532.736 秒）。CLI wheel/sdist/pipx/重复安装/off-checkout 全 PASS。
+- 收尾 CU：独立分类市场、整宽推荐卡片内联详情、来源列表、中文搜索详情、MCP 空态无多余按钮、Services 分组/排序与真实 3000/5173 网关 PASS；静态阅读单折叠/公式/表格/代码/图片降级与补齐后加载、Codex/Claude 真实旧记录各两轮四条 PASS。新锁版已认证恢复、全局 Docker/Remote/真实大历史等 NOT RUN 保留。
+- 当前隔离 Workbench 与校验式启动器已准备，HANDTEST 文首 C0–C5 为最新统一回归入口；等待用户整体回归/剩余项裁定后再 preview/TestPyPI，未归档、未 final/main。
+
+# v2.1.17 收尾启动（2026-10-30）
+
+- 用户宣布“开始收尾”，并确认“R3、R4 已手测通过，未测项留统一回归”；裁定 D-6 与 CLOSEOUT.md 已记录。既有 NOT RUN 不改成 PASS。
+- 开始最终集成、发布依赖重查与统一回归准备；preview、计划归档与正式 final 依各自门推进。
+- R4 PR #51 合入 develop `81c43e7`，集成 Workbench/三平台 sidecar/Bundle/NSIS 全部通过（10-31 已核对最终状态）。
+- D-4 发布前刷新 Codex 0.166.0、Claude 2.1.314、Active LTS Node 26.13.0（固定 Bookworm slim index digest）、geodata 20261030 固定 commit；cc-switch/Mihomo/Yazi 重查无新稳定版。四份 npm SHA512 与三份 geodata 官方 SHA256 校验通过，默认 ARG/BuildPlan/vendor 同步。
+- 全门禁 Python 1697/53/191 subtests、Rust 405/1 ignored、Vitest 822、vue-tsc 通过；冻结 CLI、vendor 1533 项、bundle stage/verify、版本检查与文档检查 39 项通过。统一实机回归与最终发布构建仍按 CLOSEOUT.md 推进。
+
+# v2.1.17 R4 Work Record 阅读与中断恢复（2026-10-30）
+
+- 静态阅读页重新排版：每轮单一“思考与执行”折叠、逐项工具证据、Markdown/LaTeX/高亮/脚注/图片附件/受限文件与网址链接；实时终端继续原字节穿透。增加分页/迟到响应守卫、键盘关闭与焦点回归，修复深色阅读对比度。
+- 保留 provider-native resume ID 到 pane，跨认证引导/失败/断连重开保持；恢复前检查 Docker，重启同一 stopped runtime；新会话自动关联补齐 pane 身份，分屏激活正确 pane。损坏尾行与列表扫描预算不再让恢复按钮永久禁用，文件保持只读。
+- 全门禁 Python 1697/53/191 subtests、Rust 405/1 ignored、Vitest 822、vue-tsc 通过；自审 pane 关联 RED→GREEN，最终前端全测/targeted 29 和生产构建通过。冻结 CLI 两提供商读取/附件/损坏尾行/原文件不变验证 PASS。
+- Windows CU 真阅读/折叠/数学/图片 PASS；用户配置两提供商并处理 Claude 首次信任后，FINAL 分别从 Codex/Claude 真实记录恢复、进程强制中止后重开、同一隔离容器/runtime 停止后恢复均保留 native ID。CLI 追加不含标记的问题均答原标记，确认原生上下文连续；未在 GUI Codex 终端自动输入。真实阅读器两者均完整显示两轮问答（共 4 条），Claude 运行时自更新 2.1.311→2.1.314 的验证边界已记 PRETEST。
+- 修复 WebView2 公式内部多余竖滚动条，最终三宽视觉检查 0 FAIL/1 阅读留白 WARN；原生代码复制、txt 打开、网站打开和 Escape PASS。最终 CSS 后 targeted 29/vue-tsc/生产构建通过；draft PR #51 首轮 Workbench CI SUCCESS。R4 待用户单批验收/剩余项裁定，不开始新批次；R3 原待验收状态保留。
+
+# v2.1.17 R3 扩展市场批次修复（2026-10-30）
+
+- 按 DEVELOP_WIKI 修订后的逐批验收门开题 R3：旧 adapter argparse usage 被收敛为稳定“来源维护不支持”错误；已安装空态移除第二个市场按钮；推荐页改为整宽卡片并在卡片内展开详情，搜索页保留右侧详情。
+- 根因取证发现 R2 手测实际误用 b7 `latest` 镜像。真实冻结 CLI/容器双路径验证通过：旧镜像返回 `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP` 与升级提示，新 adapter 镜像返回 4 条技能仓库。
+- 验证：审查修复源 Python 1694/53/191 subtests、Rust 404/1、Vitest 808、vue-tsc 全绿；ARIA 收敛后 targeted 22/22、vue-tsc 与最终生产 Tauri build 通过。独立审查最终 Critical=0/Important=0；PR #50 合入 develop `c3b297b`，Workbench、三平台 sidecar、deb/dmg、NSIS 全部成功；NSIS 首轮 npm 403 限流仅重跑失败 job 后通过。当前会话缺 `node_repl`，GUI CU 保持 NOT RUN；本批等待用户验收后再进入下一批。
+
+# v2.1.17 R2 集成验证与来源删除修正（2026-10-30）
+
+- PR #49 四轮独立审查通过，Workbench CI、三平台 CLI sidecar、Linux/macOS 安装包与 NSIS 安装/升级/卸载 smoke 初轮全部成功。
+- 使用最终冻结 CLI/adapter 在隔离真实容器验证：技能仓库 4→5→4；本地插件市场 2→3→2。发现官方 CLI 删除市场会同时卸载来源插件，推翻了此前 agent 方案的保留假设。按开发手册先修正规格，再将中英确认文案明确为级联卸载；增加两语取消/确认和安装列表刷新回归，Vitest 803、vue-tsc/Vite/Tauri release 及增量独立审查通过。修正版 PR Workbench CI、deb/dmg、NSIS 安装/升级/卸载 smoke 均成功；PR #49 已合入 develop `6133eef`，合入后的 Workbench/三平台 sidecar/deb/dmg/NSIS CI 最终全绿；macOS 首轮依赖 staging 遇 HTTP 403 限流，单独重跑失败 job 后成功，源码未改。真实交叉市场测试另确认删除市场 A 后只卸载 A 的插件，B 市场和插件保留。
+- 同步统一手测到 R2 的独立市场与最近失败 UI，准备校验 hash 的隔离启动器、当前 bundle 及派生最终镜像。全镜像重建未执行；当前会话缺 `node_repl`，没有新增 CU 操作，来源 add→delete/窄屏/键盘焦点等 UI 仍 NOT RUN，用户统一验收保持未完成。
+
+# v2.1.17 R2 扩展 UI 重设计（2026-10-29）
+
+- 扩展主视图收敛为已安装资产管理：内嵌精选推荐、市场表单与操作日志移除；当前进度与最近失败恢复保留在紧凑状态区。
+- 新扩展市场弹窗提供六类各 10 条推荐、技能/MCP/插件搜索、详情面板与来源管理；60 条目录基于 skills.sh/Smithery 热榜与官方插件目录选取，不伪造插件热度。
+- 详情优先显示本地中文简介并保留市场原文；技能仓库与插件市场新增 list/remove 数据面和确认式维护 UI，MCP 明确 Smithery 内置、已安装 MCP 从列表维护。
+- 验证：Vitest 802、Python 1691/69/186 subtests、Rust 404/1 ignored、vue-tsc/Vite/Tauri release、vendor 1533 checksums 与文档检查通过；真实 CU 覆盖主视图、六类目录、推荐/搜索详情、来源列表与删除确认。独立审查三轮问题已补测试修复，最终行级 native identity/sibling 修复以自动化与 direct build 验证，复审修复 direct binary 另复测 native 组头、推荐→市场结果状态切换与中文/市场证据，Arrow 键与焦点恢复仍留自动化及用户手测边界。
+
+# v2.1.17 R1 修复验证（2026-10-29）
+
+- 根因确认 Python resident serve 串行执行长扩展组操作，阻塞 Services 控制面。Rust 路由层让 `skill-install-group` / `skill-update-group` Local 与 Remote 均走 per-op direct transport，普通短请求保留 pooled serve，Local `--events` 保持 direct、Remote `--events` 保持 pooled，并在 Remote direct 命令前缀传播 `AISC_RUN_ID`；TDD、Rust lib 400/1 ignored、Vitest 770 与文档检查 39/0/0 通过。
+- R1 专用 Workbench 生产构建通过。真实 UI 13 项组安装期间 direct 子进程可见，Services 立即显示宿主工具/注册服务与 3000/5173，runtime services 轮询 250–297ms，无 30 秒超时；安装 exit 0，13 项默认双开。独立审查复审 Critical/Important 均为 0；Remote 真实 SSH UI 未复测，统一用户手测仍未发生。
+- PR #48 合并 develop `157473d`。Workbench CI、Bundle Linux/macOS 与 NSIS 最终全绿；Bundle macOS 首轮因上游 npm registry 403 rate limit 失败，单独重跑该 job 后通过，源码未改。
+
+# v2.1.17 Computer Use 补测（2026-10-29，部分完成）
+
+- 最终产物真实 UI 补测取得关键路径：Skills/MCP/Plugins 三类真实搜索、caveman 组安装进度与 13 项终态、H4 组更新保留显式 off、Services 中英文分组/顺序/复制/打开、b6 开关重启保留与重装默认双开、诊断健康报告，以及 b5 0.0.0 副本下载→取消→缺文件失败→确认后 Explorer 选中安装包并打开正常 NSIS（无 `/S`）后取消。
+- 本轮发现本机 `super-claude:latest` 曾被 Node 22 镜像覆盖且 b7 标签丢失；已保留覆盖镜像 `super-claude:cu-overwrite-628502`，用 b7 bundle 无缓存重建并重指 `latest` / `2.1.17-b7`。新镜像 ID `610cd7ebfa39…` 与原始 `25f42e51…` 不同，但六项工具版本逐项实测匹配。保存的 Workbench/CLI 产物未变。
+- 仍有真实 NOT RUN：故障网络 H2/H3、b2 断网缓存回退与清空竞态、b3 可重试失败的第二attempt、b4 离线禁用、b5 诊断竞态、b6 A→B→A 隔离、b7 三轮完整 UI 冒烟。不能声称全批 CU PASS；统一用户手测仍需按 HANDTEST 复核。
+
+# v2.1.17 b7 开发验证（2026-10-27）
+
+- 刷新 Node 24.22.1（D-5）、Codex 0.164.0、Claude Code 2.1.311、cc-switch 5.11.3、Mihomo 1.19.33、yazi 26.9.1；geodata 固定 commit/日期快照与 checksum。Node digest 真正用于构建，npm 主包/伴生包精确配对、官方完整性验证、失败回滚，损坏包验证失败关闭。
+- 最终全门禁 Python 1650 / Rust 398 / Vitest 770 通过，vue-tsc、vendor 1533、sidecar/bundle verify、无缓存镜像及 Workbench 2.1.17/NSIS 构建通过。
+- 新镜像真实三轮 Skills/MCP/Plugins 分类阶段 9/9 通过；受控夹具原始裸名称大小写冲突保留，完整身份独立重跑验证部分失败/仅失败项重试通过，不宣称原主运行 exit 0。Services 3000/5173 网关请求与 caveman 五条安装/升级路径通过。
+- 已准备一次统一手测的常规构建与 0.0.0 专用更新测试副本、隔离启动器及 hash 清单。当前 agent 无 CU，b3–b7 真 UI 保留 NOT RUN；全部批次统一手测待执行，未发布或宣布阶段收尾。
+- PR #46 合入后修正跨平台出包门禁：doctor 仅归一化不同入口的两个来源路径，继续比较配对语义；三个出包流程显式准备双 Linux 架构，NSIS 立即传递 staging 失败。PR #47 `b0e7b73` 的 Workbench CI/三平台 sidecar/deb/dmg/NSIS 全部成功，合并 develop `1c43091`；原失败记录保留。既有 Windows 手测产物与产品源码字节不变。
+
+# v2.1.17 b6 开发验证（2026-10-27）
+
+- Services 增加“注册服务”分组、双语协议/状态、空名称回退和端口排序；上下文代际隔离旧轮询，保留等价 Windows 路径的有效观察，清缓存后可继续轮询。
+- caveman 真实容器首次安装、重启、内容升级、缺行、重装验证通过：新行双开、已有 off 保留；原安装实现无需改动，补防回归覆盖。
+- Python 1540 / Rust 398 / Vitest 770 全部通过，vue-tsc、前端生产/debug Workbench 构建及文档检查通过。CU 不可用，真实 UI 保留 NOT RUN，待 b7 后统一手测。
+
+# v2.1.17 b5 开发验证（2026-10-27）
+
+- 下载只进入 ready；用户确认退出更新后，Explorer 选中包、正常启动 NSIS、两动作成功才退出。取消/缺包/UAC 拒绝保留应用与安装包状态。
+- 更新请求/确认身份使用 generation 与 requestId 守卫；网络错误显示脱敏具体原因，未知 CLI 不能误报已最新。
+- Doctor 分开显示本机更新请求响应头观测和诊断目标 CLI/bundle 配对；精确 manifest schema/allowlist 与未知版本检查，报告脱敏、迟到响应保护。
+- 验证：Python 1528 / Rust 398 / Vitest 747 全部通过，vue-tsc、sidecar/bundle verify、Workbench 构建通过；冻结 CLI 配对 PASS。CU 不可用，真实 Explorer/NSIS UI 保留 NOT RUN，统一手测待后续批次。
+
+# v2.1.17 b2–b4 开发验证（2026-10-27）
+
+- b2 市场缓存注明来源、时间与回退原因；插件使用可靠版本/SHA 标识更新，Skills/MCP 缺少比较源时明确 unsupported。PR #41 已合并。
+- b3 操作日志记录逐项失败与诊断，已知失败可单项重试，超时/结果未知不盲重试；上下文切换阻断旧结果覆盖。PR #42 已合并。
+- b4 三类本地精选统一进入既有搜索、详情与安装管线，双语理由/来源可见；搜索、清空、上下文切换及插件市场列表使用独立 generation 防止旧响应覆盖。
+- 本地验证：Python 1498 passed / 57 skipped / 140 subtests；Rust 368 passed / 1 ignored；b4 最终 Vitest 699 passed，vue-tsc 通过。b4 无 CLI/container 改动。
+- 预测试：b2 早期 CU 通过，最终补丁及 b3/b4 当前 CU 不可用；Docker 引擎不可用，真实容器验证未执行。具体证据见 PRETEST，全部批次后统一用户手测。
+
+# v2.1.17 b1 审查修正（2026-10-26）
+
+- 组操作全链路改为 JSON specs 与集中路径校验；direct/mirror 均一次克隆预检全部子技能，clone 体失败跨源重试并返回逐项来源诊断。
+- 本地组安装默认双引擎开启，组更新使用预检捕获的 Claude/Codex 状态；Python/Rust 使用同公式组级超时预算，避免 Workbench 30 秒 generic timeout。
+- 当前验证：targeted Python 56 + subtests、extensions Vitest 21、vue-tsc、Rust 366、vendor 1532、sidecar/bundle 重建、真实容器 H2/H4 数据面 PASS；全门禁 Python 1486 / Rust 366 / Vitest 644 / vue-tsc 全绿。Workbench UI 手测仍待执行。
+- Draft PR #40 Workbench CI run `40294095282` attempt 2 success；attempt 1 仅既有 Linux PTY stderr 流用例瞬时失败，failed-job 重跑通过。Workbench UI 手测仍待执行。
+
+# v2.1.17 b1 收口（2026-10-26）
+
+- Computer Use 预测试发现并修复 explicit CLI 被 saved pin 抢占、skills.sh repo 大小写漂移两类真实 UI 问题；13 子技能组安装与状态保留复测通过。
+- PR #40 合入 develop（merge `bf27d619`）；最终 Workbench CI run `40356713055` CLI/Rust/frontend 全绿。用户统一手测按新裁定延后到全部批次预测试完成后。
+
+# v2.1.17 b1 开发验证（2026-10-26）
+
+- 撤销误触 market-cache 提交并保留阶段开题；新增 `skill-install-group` / `skill-update-group` 数据面，组操作一次预检镜像源、逐项安装/更新并返回 itemized result。
+- Workbench 市场与已安装父组改用组级调用，保留逐项错误详情与进度总数；更新后逐子技能恢复原 Claude/Codex 启用状态。
+- 验证：adapter/bridge 42、Vitest extensions 21、Rust 365、全门禁 Python 1473 / Vitest 644 / vue-tsc 全绿；sidecar 与 bundle 重建，vendor 1532 checksum 通过。
+- 真实容器：直连 GitHub 失败且 ghfast/gh-proxy 可用时，caveman 两子技能安装 2/2 并默认双引擎开启；显式关闭 caveman Codex 后组更新仍保持 off。Workbench 真窗口 UI 手测未执行，b1 不标记完成。
+
+# v2.1.17 反馈驱动重启（2026-10-26）
+
+- 读取反馈站新增 5 条：N1 无代理 skill 安装/更新 blocker、N2 已安装项更新标识、N3 统一推荐、N4 详情中文化、N5 CLI 富文本体验。N1–N4 纳入本阶段，N5 转后续专项。
+- 用户裁定保留阶段开题与 CLI `0.1.10.dev0`，撤销误触 market-cache b1 实现，从 b1 无代理扩展完整性重新开始。
+- 同步新增裁定：自更新改为显式运行安装包；Services 注册服务补标签；caveman 安装即默认开启；发布前刷新 cc-switch / Codex / Claude / Node 等内置工具稳定最新版。
+
+# v2.1.16 final 收口完成 / v2.1.17 开题（2026-10-26）
+
+- **Workbench final**：PR #39 经用户批准合入 `main`，tag `v2.1.16` 的 Workbench / CLI sidecar / Bundle / NSIS CI 全绿；NSIS 安装包与 SHA256 完整下载校验通过。
+- **CLI final**：`cli-v0.1.9` PyPI workflow 的 build / TestPyPI 守卫通过；用户为当前 token 账号追加 `pypi` environment 代批权后完成人工审批，正式 PyPI workflow success。干净 venv 安装 `aisc-cli==0.1.9` 后 `aisc version --format json` 返回 `0.1.9`。
+- **Release 清理**：删除 `v2.1.16-preview.1`–`preview.4` 四条 prerelease Release 与资产；Releases 页当前无 prerelease，git tag 保留不可变历史。
+- **反馈站结案**：2026-10-17 的 4 条反馈均追加 `v2.1.16 final` 解决回复并置 `resolved`；反馈仓库 `main` 推送完成。
+- **分支清理**：本地与远端 12 条 `2.1.16-*` 临时分支全部删除，仅保留 `main` / `develop`（另有历史 detached Codex worktree，不属于本阶段活动分支）。
+- **下一阶段**：按默认方案 A 开题 `v2.1.17-dev-plans`，范围为市场元数据缓存、扩展操作恢复、网络健康报告、升级配对检查与高频链路自动化冒烟；CLI 开发版本 bump 至 `0.1.10.dev0`。
 
 # v2.1.16 final 收口（2026-10-25）
 
@@ -4205,3 +4358,35 @@ bash 3.2 两连修（间接展开→防御初始化→Apple 多字节怪癖 ASCI
 测试 CI 兼容×2。preview.2 发布后：用户装机 preview.1→preview.2（手动），
 此后应用内更新链（b12 超时+T1-1 命名清场+T1-2 /R 拉起）在下一跳全验。
 观察项：T6-4/5/6 断网模拟挂起（需窗口）；T5/T2-A/T4-1·3·4·5 随日常使用。
+
+## 2026-10-27 v2.1.17 b2 收口：市场缓存与更新信号
+
+- b2 按 TDD 交付 adapter 市场缓存、`updates-check`、CLI/Rust 透传与
+  Workbench 更新状态 UI；Plugins 使用 marketplace version/commit SHA 可靠比较，
+  Skills/MCP 因上游无可比版本明确显示“暂无可靠版本源”。
+- Computer Use 预测试发现并修复 updates-check envelope schema 覆盖、MCP
+  cache metadata 缺失；最终真实 UI 验证更新检查、Skills/MCP 市场刷新与
+  “已刷新”缓存标识通过。
+- 全量本地门禁、vendor verify、sidecar / NSIS bundle / Docker image 重建完成；
+  预测试容器已清理。用户统一手测按规则等待 b2–b7 全部预测试后集中执行。
+- b2 最终复核：Python 1498 / Rust 368 / Vitest 657 / vue-tsc 通过，vendor 1532 与 debug 构建通过；修复缓存持久化、无插件更新检查超时、上下文隔离与单项徽标失效。当前会话未暴露 Computer Use，最终补丁 UI NOT RUN，保留此前实际 UI PASS 的产物标识。
+
+## 2026-10-27 v2.1.17 b3 操作恢复
+
+- 三类扩展操作失败保留原错误，组成功项不重复执行，失败项按原参数单独重试；结果未知先核对 SSOT。操作日志限内存 100 条、诊断 8 KiB 并脱敏，提供双语日志和复制。
+- 修复结构化中文超时误判、旧上下文 catch 污染、预检失败分类与引号凭据泄露；审查复核通过。全门禁 Python 1498 / Rust 368 / Vitest 679 / vue-tsc 通过，debug 构建通过。Computer Use/Docker 不可用导致实机 NOT RUN，已记 PRETEST；统一手测不逐批发起。
+
+## 2026-10-31 preview 修复 b1 用户验收与 b2 启动
+
+用户确认 b1 通过。PR #53 在最新 head CI SUCCESS 后合入 develop `cb60cd4`。
+b2 从该基线独立分支实施功能简介及内联详情布局，范围/回归见活动 IMPLEMENTATION_PLAN。
+
+## 2026-10-31 preview 修复 b2 预测试完成
+
+b2 完成功能简介数据出口、按需上游 skill 描述、精确仓库中文简介和市场卡片内联详情；修复窄栏换行、
+鼠标焦点外框、长错误与 Escape 后焦点恢复。全门禁及生产候选通过，Windows Computer Use 已按
+HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。
+
+- 2026-11-01：preview-fixes b6 完成文件管理实现：Windows CF_HDROP 双向兼容、受控应用剪贴板回退、Explorer 多选/删除/批量粘贴、稳定顺序终端拖拽。批量操作逐项聚合失败；Rust 继续承担来源/目标 containment 与不覆盖暂存。全门禁和生产 Workbench 构建通过，CU/用户实测延后到 preview.N。
+- 2026-11-01：发布 Workbench `v2.1.17-preview.2` 与 CLI `v0.1.10.dev1`。release PR #59 CI SUCCESS 并合入 develop `5076fb2`；CLI Artifact/TestPyPI、Workbench NSIS 全绿，误触的 CLI tag 重复 NSIS 已取消。GitHub prerelease 资产完整，等待用户按 HANDTEST 统一实测 B1–B6。
+- 2026-11-01：进入 v2.1.17 final 收口。用户确认 preview.2 B1–B6 统一实测无问题；CLI 版本升至 0.1.10，新增 Workbench/CLI final release notes，preview-fixes 计划集归档。全门禁、版本/docs、vendor 工作树校验与 bundle stage/verify 通过；main/final 发布流程执行中。

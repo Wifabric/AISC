@@ -24,6 +24,7 @@ const mockIpc = vi.hoisted(() => ({
   ackSessionExit: vi.fn().mockResolvedValue("acknowledged"),
   stopRuntime: vi.fn().mockResolvedValue({ state: "stopped" }),
   runtimeInspect: vi.fn().mockResolvedValue({ state: "stopped" }),
+  runtimeRestart: vi.fn().mockResolvedValue({ state: "running" }),
   runtimeStatus: vi.fn().mockResolvedValue({ snapshot: { state: "stopped" }, services: null }),
 }));
 
@@ -56,6 +57,44 @@ beforeEach(() => {
 });
 
 describe("createTab (A-G08-1/8)", () => {
+  it("recovers only the stopped runtime before a history resume and invalidates dead exec attachments", async () => {
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const id = s.createTab("bash")!; await tick();
+    await s.prepareConversationResume();
+    expect(mockIpc.runtimeRestart).toHaveBeenCalledWith("/ws", "rid");
+    expect(s.runtimeState).toBe("running");
+    expect(s.tabs.find(t => t.tabId === id)?.sessionState).toBe("disconnected");
+  });
+  it("preserves resume identity through a disconnected pane reopen", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const id = s.createTab("claude", "original")!; await tick(); await tick();
+    const tab = s.tabs.find(t => t.tabId === id)!;
+    s.onTabSessionExit(tab.activePaneId, "transport_error", null);
+    expect(s.findLiveResumeTab("original")).toBeNull();
+    s.reopenTab(id); await tick();
+    const calls = mockIpc.openSession.mock.calls;
+    expect(calls[calls.length - 1]?.[5]).toBe("original");
+    expect(s.findLiveResumeTab("original")?.tabId).toBe(id);
+  });
+  it("does not restart or create tabs when Docker inspect fails", async () => {
+    const s = useRuntimeStore(); s.runtimeId = "rid"; s.workspace = "/ws";
+    mockIpc.runtimeInspect.mockRejectedValueOnce(new Error("Docker offline"));
+    await expect(s.prepareConversationResume()).rejects.toThrow("Docker offline");
+    expect(mockIpc.runtimeRestart).not.toHaveBeenCalled();
+    expect(s.tabs).toHaveLength(0);
+  });
+  it("cannot report a live resume because an unrelated split pane is running", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    const s = useRuntimeStore(); s.runtimeId = "rid"; s.runtimeState = "running"; s.workspace = "/ws";
+    const id = s.createTab("codex", "original")!; await tick(); await tick();
+    const tab = s.tabs.find(t => t.tabId === id)!;
+    tab.panes[tab.activePaneId].sessionState = "disconnected";
+    tab.panes.other = { sessionId: "other", sessionState: "running", exit: null };
+    expect(s.findLiveResumeTab("original")).toBeNull();
+  });
   it("adds an activated tab and opens the session immediately (bash)", async () => {
     const s = useRuntimeStore();
     s.runtimeState = "running"; s.runtimeId = "rid";
@@ -87,6 +126,18 @@ describe("createTab (A-G08-1/8)", () => {
 });
 
 describe("provider gate (A-G08-2)", () => {
+  it("keeps the original conversation when a provider guide is retried after interruption", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "unknown" });
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const tabId = s.createTab("codex", "original-conversation")!;
+    await tick(); await tick();
+    expect(s.tabs.find(t => t.tabId === tabId)?.sessionState).toBe("guide");
+    s.openTab(tabId);
+    await tick();
+    const calls = mockIpc.openSession.mock.calls;
+    expect(calls[calls.length - 1]?.[5]).toBe("original-conversation");
+  });
   it("routes unconfigured claude to the guide state without open_session", async () => {
     mockIpc.getProviderStatus.mockResolvedValue({
       provider_name: null,
@@ -183,6 +234,28 @@ describe("fork resume (b8 R2)", () => {
   });
 });
 
+describe("createTrackedTab (preview b5)", () => {
+  it("removes a failed launch and returns a readable error", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    mockIpc.openSession.mockRejectedValueOnce(new Error("provider launch failed"));
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const result = await s.createTrackedTab("claude", "record-1");
+    expect(result.error).toBe("provider launch failed");
+    expect(s.tabs).toHaveLength(0);
+  });
+
+  it("resolves a successful tracked launch without removing the tab", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const result = await s.createTrackedTab("claude", "record-1");
+    expect(result.tabId).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(s.tabs).toHaveLength(1);
+  });
+});
+
 describe("removeTab (A-G08-6)", () => {
   async function threeTabs() {
     const s = useRuntimeStore();
@@ -264,6 +337,10 @@ describe("pending new provider conversation association (b6)", () => {
     expect(mockIpc.conversationList).toHaveBeenCalledWith("/ws");
     expect(resolved).toBe(1);
     expect(s.tabs.find((tab) => tab.tabId === tabId)?.resumeConversationId).toBe("new");
+    expect(s.findLiveResumeTab("new")?.tabId).toBe(tabId);
+    const associated = s.tabs.find((tab) => tab.tabId === tabId)!;
+    s.onTabSessionExit(associated.activePaneId, "transport_error", null);
+    expect(s.findRecoverableResumePane("new")).toEqual({ tabId, paneId: associated.activePaneId });
   });
 
   it("does not link when new provider conversations are ambiguous", async () => {

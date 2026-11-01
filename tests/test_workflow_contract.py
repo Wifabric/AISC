@@ -6,6 +6,7 @@ missing `paths` entry fails the test instead of silently skipping CI.
 """
 
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
@@ -100,6 +101,59 @@ def test_all_workflows_are_valid_yaml():
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         assert isinstance(data, dict), f"{path.name} must parse to a mapping"
         assert "jobs" in data, f"{path.name} must define jobs"
+
+
+@pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml", "artifact.yml"])
+def test_release_staging_targets_runner_architecture_only(name):
+    """Each artifact carries its runner's Linux payload, not both architectures."""
+    data = yaml.safe_load((WORKFLOW_DIR / name).read_text(encoding="utf-8"))
+    invocations = [
+        line for job in data["jobs"].values() for step in job.get("steps", [])
+        for line in step.get("run", "").splitlines()
+        if "bash scripts/stage-npm.sh" in line and not line.lstrip().startswith("#")
+    ]
+    assert invocations, f"{name} must stage the offline resource closure"
+    for line in invocations:
+        assert "--yazi" in line, (name, line)
+        assert "--all-arches" not in line, (name, line)
+
+
+def test_artifact_macos_runner_follows_supported_bundle_runner():
+    """Artifact must use the currently supported macOS runner label."""
+    data = yaml.safe_load((WORKFLOW_DIR / "artifact.yml").read_text(encoding="utf-8"))
+    mac = next(row for row in data["jobs"]["build"]["strategy"]["matrix"]["include"] if row["arch"] == "arm64")
+    assert mac["runner"] == "macos-latest"
+
+
+def test_yazi_distribution_payload_is_staged_not_tracked():
+    """Yazi is integrity-pinned and staged per target, not committed twice."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "container/downloads/yazi-*.zip"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tracked == ""
+    versions = (REPO_ROOT / "config" / "versions.env").read_text(encoding="utf-8")
+    assert "YAZI_X86_64_SHA256=" in versions
+    assert "YAZI_ARM64_SHA256=" in versions
+
+
+@pytest.mark.parametrize("name", ["bundle-linux-macos.yml", "nsis-installer.yml"])
+def test_bundle_push_filters_cover_staging_implementation(name):
+    assert {"scripts/stage-npm.sh", "scripts/stage_npm.py"} <= _push_paths(name)
+
+
+def test_windows_staging_propagates_failure_before_packaging():
+    """pwsh must not let a later successful native command hide staging failure."""
+    data = yaml.safe_load((WORKFLOW_DIR / "nsis-installer.yml").read_text(encoding="utf-8"))
+    steps = data["jobs"]["nsis"]["steps"]
+    staging = next(step for step in steps if "bash scripts/stage-npm.sh" in step.get("run", ""))
+    assert staging["shell"] == "pwsh"
+    script = staging["run"]
+    between = script.split("bash scripts/stage-npm.sh", 1)[1].split("python packaging/artifact.py", 1)[0]
+    assert "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }" in between
 
 
 def test_pypi_publish_is_dispatch_only_with_oidc_gates():

@@ -92,6 +92,7 @@
   --border-2: #3c3c3c;           /* menu/dialog edges */
   --border-strong: #555;         /* buttons, input edges */
   --accent: #0e639c;             /* primary action */
+  --record-link: #75bfff;        /* readable links/code on dark record surfaces */
   --accent-hover: #1177bb;
   --accent-fg: #ffffff;          /* text on accent */
   --accent-soft: rgba(74, 158, 255, 0.25); /* tinted accent bg (badges, segmented on) */
@@ -145,6 +146,7 @@
   --border-2: #c8c8c8;
   --border-strong: #b0b0b0;
   --accent: #0e639c;
+  --record-link: #0e639c;
   --accent-hover: #1177bb;
   --accent-fg: #ffffff;
   --accent-soft: rgba(14, 99, 156, 0.12);

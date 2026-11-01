@@ -14,7 +14,7 @@
 //! report so the UI shows exactly which check failed and why; only transport /
 //! protocol failures (timeout, invalid JSON, stdout overflow, missing host)
 //! become a `WorkbenchError` - the original error page facts are preserved
-//! (A-G13-1). Each check's `detail`/`hint` is passed through `redact()` before
+//! (A-G13-1). Each check's `message`/`detail`/`hint` is passed through `redact()` before
 //! it reaches the UI (A-G13-4).
 
 use std::time::Duration;
@@ -92,6 +92,7 @@ pub fn doctor_report_from_envelope(env: Envelope) -> Result<DoctorReport, Workbe
                 .checks
                 .into_iter()
                 .map(|mut c| {
+                    c.message = redact(&c.message);
                     c.detail = redact_opt(c.detail);
                     c.hint = redact_opt(c.hint);
                     c
@@ -413,6 +414,7 @@ mod tests {
         let report = doctor_report_from_envelope(env(host(checks, summary))).expect("ok");
         assert_eq!(report.checks.len(), 2);
         assert_eq!(report.checks[0].status, "pass");
+        assert_eq!(report.checks[0].message, "found");
         assert_eq!(report.checks[1].hint.as_deref(), Some("run install"));
         assert_eq!(report.summary.failures, 1);
         assert_eq!(report.summary.passed, 1);
@@ -462,6 +464,25 @@ mod tests {
         let d = report.checks[0].detail.as_deref().unwrap();
         assert!(d.contains("ANTHROPIC_API_KEY=<redacted>"));
         assert!(!d.contains("sk-ant-abc123def456"));
+    }
+
+    #[test]
+    fn redacts_manifest_credentials_from_messages_in_copied_report() {
+        let checks = json!([
+            {"name": "cli-bundle-pairing", "status": "warn",
+             "message": "CLI/bundle pairing: incompatible (bundle 0.1.10.dev0 requires CLI token=pairing-allowlist-secret (running 0.1.10.dev0))"},
+            {"name": "cli-bundle-pairing", "status": "warn",
+             "message": "CLI/bundle pairing: incompatible (manifest schema_version='token=pairing-schema-secret', expected integer 1)"}
+        ]);
+        let summary = json!({"passed": 0, "warnings": 2, "failures": 0, "skipped": 0});
+        let report = doctor_report_from_envelope(env(host(checks, summary))).expect("ok");
+        for check in &report.checks {
+            assert!(check.message.starts_with("CLI/bundle pairing: incompatible"));
+            assert!(check.message.contains("token=<redacted>"));
+        }
+        let copied = serde_json::to_string(&report).expect("serialize copied report");
+        assert!(!copied.contains("pairing-allowlist-secret"));
+        assert!(!copied.contains("pairing-schema-secret"));
     }
 
     #[test]

@@ -4,42 +4,43 @@
 // S1.3: PTY supervisor + session data-plane commands.
 // See docs/gui-planning/06-implementation-plan.md §四.
 
+pub mod artifact;
 pub mod cache;
 pub mod cli;
 pub mod conversation;
-pub mod work_record;
 pub mod data_root;
 pub mod docker_admin;
+pub mod docker_api;
 pub mod docker_ownership;
 pub mod doctor;
-pub mod host_mcp;
-pub mod lease;
 pub mod env;
 pub mod error;
 pub mod history;
+pub mod host_mcp;
 pub mod identity;
 pub mod installer;
-pub mod logging;
-pub mod onboarding;
+pub mod lease;
 pub mod locale;
+pub mod logging;
+pub mod low_spec;
+pub mod onboarding;
 pub mod pty;
 pub mod runtime;
+pub mod serve;
 pub mod session;
 pub mod settings;
-pub mod subscription;
-pub mod docker_api;
-pub mod low_spec;
-pub mod serve;
-pub mod target;
-pub mod tunnel;
-pub mod update;
-pub mod artifact;
 pub mod storage;
+pub mod subscription;
+pub mod target;
 pub mod trace;
 pub mod tray;
+pub mod tunnel;
+pub mod update;
+pub mod update_health;
 pub mod watcher;
 pub mod web_services;
 pub mod window;
+pub mod work_record;
 pub mod workspace;
 
 /// 2.1.9 hotfix r3 (nairong #61): force Python UTF-8 mode for every sidecar
@@ -58,61 +59,60 @@ pub fn ensure_sidecar_utf8() {
 }
 
 use artifact::{artifact_inspect, artifact_list, artifact_refresh};
-use tauri::Emitter;
+use cache::{cache_cleanup, cache_inspect, cache_usage, container_action, image_rm, image_tag};
 use cli::{cli_clear_pin, cli_discover, cli_pin, negotiate_capabilities, CliArg};
-use serve::remote_cli_info;
-use watcher::{workspace_rescan, workspace_watch_start, workspace_watch_stop, WatcherState};
-use workspace::{
-    remote_browse,
-    workspace_copy_entry, workspace_copy_path, workspace_create_dir, workspace_create_file,
-    workspace_forget, workspace_forget_preview, workspace_history_remove, workspace_list,
-    workspace_git_diff, workspace_git_info, workspace_git_status,
-    workspace_export_lifecycle, workspace_import_lifecycle,
-    workspace_open, workspace_path_exists, workspace_rename, workspace_reveal,
-    workspace_upload_image,
-    workspace_reveal_data_file,
-};
-use doctor::{diagnostic_bundle, logs_tail, run_doctor};
-use logging::log_ui_event;
-use history::{load_history, save_history};
-use trace::op_traces;
-use locale::resolve_locale;
-use env::{env_poll_engine, env_readiness};
-use installer::installer_handoff;
 use conversation::{
     conversation_delete, conversation_list, conversation_preflight, conversation_read,
     conversation_rename,
 };
-use work_record::{
-    work_record_activate, work_record_add_member, work_record_archive, work_record_create,
-    work_record_deactivate, work_record_delete, work_record_list, work_record_reconcile,
-    work_record_move_member, work_record_reorder_collections,
-    work_record_reorder_members, work_record_reorder_unfiled, work_record_remove_member, work_record_rename, work_record_restore,
-};
+use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
+use doctor::{diagnostic_bundle, logs_tail, run_doctor};
+use env::{env_poll_engine, env_readiness};
+use history::{load_history, save_history};
+use installer::installer_handoff;
+use lease::{lease_claim, lease_release, lease_supervisor_info, LeaseSupervisor};
+use locale::resolve_locale;
+use logging::log_ui_event;
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
     build_image, cancel_build, cancel_runtime_start, cc_switch_add, cc_switch_delete,
     cc_switch_edit, cc_switch_fetch_models, cc_switch_providers, cc_switch_switch,
-    cc_switch_templates, extensions_call,
-    get_provider_status, list_runtimes,
+    cc_switch_templates, extensions_call, get_provider_status, list_runtimes,
     network_subscription_clear, network_subscription_import, network_subscription_import_file,
-    network_subscription_refresh, network_subscription_show, usage_overview,
-    open_runtime_service_url, remove_runtime, runtime_inspect, runtime_preflight, runtime_status,
-    runtime_reconcile, runtime_restart, runtime_services, start_docker, start_runtime,
-    stop_runtime,
+    network_subscription_refresh, network_subscription_show, open_runtime_service_url,
+    remove_runtime, runtime_inspect, runtime_preflight, runtime_reconcile, runtime_restart,
+    runtime_services, runtime_status, start_docker, start_runtime, stop_runtime, usage_overview,
     BuildOps, OpMutexes, StartOps,
 };
-use lease::{lease_claim, lease_release, lease_supervisor_info, LeaseSupervisor};
+use serve::remote_cli_info;
 use session::{
     ack_session_exit, close_session, open_session, resize_session, session_read_spool,
     shutdown_workbench, shutdown_workbench_v2, write_session, SessionRegistry,
 };
-use cache::{cache_cleanup, cache_inspect, cache_usage, container_action, image_rm, image_tag};
-use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
-use update::{app_check_update, app_download_update, app_install_update};
 use settings::{load_settings, reset_gui_settings, save_settings};
+use tauri::Emitter;
+use trace::op_traces;
 use tray::{build_tray, tray_available, tray_remove};
+use update::{app_check_update, app_download_update, app_install_update};
+use update_health::app_update_health;
+use watcher::{workspace_rescan, workspace_watch_start, workspace_watch_stop, WatcherState};
 use window::{capture_window_geometry, restore_window_geometry};
+use work_record::{
+    work_record_activate, work_record_add_member, work_record_archive, work_record_create,
+    work_record_deactivate, work_record_delete, work_record_list, work_record_move_member,
+    work_record_reconcile, work_record_remove_member, work_record_rename,
+    work_record_reorder_collections, work_record_reorder_members, work_record_reorder_unfiled,
+    work_record_restore,
+};
+use workspace::{
+    remote_browse, workspace_copy_entries_to_system_clipboard, workspace_copy_entry,
+    workspace_copy_path, workspace_create_dir, workspace_create_file, workspace_delete_entry,
+    workspace_export_lifecycle, workspace_forget, workspace_forget_preview, workspace_git_diff,
+    workspace_git_info, workspace_git_status, workspace_history_remove, workspace_import_lifecycle,
+    workspace_list, workspace_open, workspace_paste_entries, workspace_paste_system_clipboard,
+    workspace_path_exists, workspace_read_image, workspace_rename, workspace_reveal,
+    workspace_reveal_data_file, workspace_upload_image,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli_arg: Option<String>) {
@@ -180,6 +180,7 @@ pub fn run(cli_arg: Option<String>) {
             app_check_update,
             app_download_update,
             app_install_update,
+            app_update_health,
             cache_cleanup,
             cache_inspect,
             container_action,
@@ -249,6 +250,7 @@ pub fn run(cli_arg: Option<String>) {
             artifact_refresh,
             workspace_list,
             workspace_open,
+            workspace_read_image,
             workspace_reveal,
             workspace_forget_preview,
             workspace_forget,
@@ -266,7 +268,12 @@ pub fn run(cli_arg: Option<String>) {
             workspace_create_file,
             workspace_create_dir,
             workspace_copy_entry,
-            workspace_rename, workspace_upload_image,
+            workspace_copy_entries_to_system_clipboard,
+            workspace_delete_entry,
+            workspace_paste_entries,
+            workspace_paste_system_clipboard,
+            workspace_rename,
+            workspace_upload_image,
             workspace_rescan,
             workspace_watch_start,
             workspace_watch_stop,
@@ -298,6 +305,13 @@ pub fn run(cli_arg: Option<String>) {
                 None,
                 serde_json::json!({ "app_version": app.package_info().version.to_string() }),
             );
+            // preview fixes b4: remove a verified downloaded installer only after
+            // a newer installed version starts. Cancelled/failed upgrades keep it.
+            {
+                let cleanup_app = app.handle().clone();
+                std::thread::spawn(move || update::cleanup_completed_updates(&cleanup_app));
+            }
+
             // G-10: restore window geometry on startup (before the window
             // is shown, so the user sees the saved position immediately).
             let app_handle = app.handle().clone();
@@ -311,7 +325,10 @@ pub fn run(cli_arg: Option<String>) {
             // connects before any settings round-trip still sees the gate.
             {
                 use tauri::Manager;
-                let state = app.state::<std::sync::Arc<host_mcp::HostMcpState>>().inner().clone();
+                let state = app
+                    .state::<std::sync::Arc<host_mcp::HostMcpState>>()
+                    .inner()
+                    .clone();
                 if let Ok(dir) = crate::session::config_dir(app.handle()) {
                     if let Ok(doc) = settings::load_settings_document(&dir) {
                         state.set_whitelist(doc.host_tools);

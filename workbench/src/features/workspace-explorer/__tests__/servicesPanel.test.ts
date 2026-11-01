@@ -44,8 +44,8 @@ const PAYLOAD: RuntimeServicesResult = {
   runtime_id: RID,
   gateway: { state: "ready", container_port: 45871, host_port: 47831, host: "127.0.0.1" },
   services: [
-    { port: 3000, protocol: "http", name: "docs preview", state: "registered", url: "http://p3000.localhost:47831/" },
     { port: 5173, protocol: "http", name: "", state: "registered", url: "http://p5173.localhost:47831/" },
+    { port: 3000, protocol: "http", name: "docs preview", state: "registered", url: "http://p3000.localhost:47831/" },
   ],
   observed_at: "2026-08-25T00:00:00Z",
 };
@@ -56,7 +56,7 @@ function setup(capability: boolean) {
   runtime.runtimeId = RID;
   runtime.runtimeState = "running";
   runtime.capability = { runtime_services: capability } as never;
-  runtime.webServices = PAYLOAD;
+  runtime.webServices = structuredClone(PAYLOAD);
   const explorer = useWorkspaceExplorerStore();
   explorer.activeKind = "services";
   return { runtime, explorer };
@@ -71,6 +71,89 @@ afterEach(() => {
 });
 
 describe("svc-4+ explorer services tab", () => {
+  it.each(["zh-CN", "en-US"] as const)("groups registered services after host tools in %s", (locale) => {
+    setup(true);
+    i18n.global.locale.value = locale;
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      expect(wrapper.findAll(".services-panel h3").map((h) => h.text())).toEqual(locale === "zh-CN"
+        ? ["宿主工具（F2）", "注册服务"] : ["Host tools (F2)", "Registered services"]);
+      const section = wrapper.find("section.registered-services");
+      expect(section.findAll(".service-row")).toHaveLength(2);
+    } finally { wrapper.unmount(); }
+  });
+
+  it("sorts numeric ports without mutating the runtime array", () => {
+    const { runtime } = setup(true);
+    runtime.webServices!.services.splice(1, 0, {
+      port: 10000, protocol: "http", name: "api", state: "registered", url: "http://p10000.localhost:47831/",
+    });
+    Object.freeze(runtime.webServices!.services);
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      expect(wrapper.findAll(".service-port").map((p) => p.text())).toEqual(["3000", "5173", "10000"]);
+      expect(runtime.webServices!.services.map((s) => s.port)).toEqual([5173, 10000, 3000]);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(["zh-CN", "en-US"] as const)("trims names and localizes empty names, protocol and status in %s", (locale) => {
+    const { runtime } = setup(true);
+    runtime.webServices!.services[0]!.name = " \t\n ";
+    runtime.webServices!.services[1]!.name = "  docs preview  ";
+    i18n.global.locale.value = locale;
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      const rows = wrapper.findAll(".service-row");
+      expect(rows[0]!.find(".explorer-name").element.textContent).toBe("docs preview");
+      expect(rows[1]!.find(".explorer-name").text()).toBe(locale === "zh-CN" ? "端口 5173" : "Port 5173");
+      expect(rows[0]!.find(".service-protocol").text()).toBe("HTTP");
+      expect(rows[0]!.find(".service-protocol").attributes("title")).toBe(locale === "zh-CN" ? "协议" : "Protocol");
+      expect(rows[0]!.find(".service-state").text()).toBe(locale === "zh-CN" ? "已注册" : "Registered");
+      expect(rows[0]!.find(".service-state").attributes("title")).toBe(locale === "zh-CN" ? "状态" : "Status");
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(["zh-CN", "en-US"] as const)("keeps both sections and an explicit empty state for zero services in %s", (locale) => {
+    const { runtime } = setup(true);
+    runtime.webServices!.services = [];
+    i18n.global.locale.value = locale;
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      expect(wrapper.find("[data-testid='host-tools-service']").exists()).toBe(true);
+      const section = wrapper.find("section.registered-services");
+      expect(section.find("h3").text()).toBe(locale === "zh-CN" ? "注册服务" : "Registered services");
+      expect(section.text()).toContain(i18n.global.t("sidebar.webServicesNone"));
+      expect(section.findAll(".service-row")).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(["zh-CN", "en-US"] as const)("hides stale registered rows when the gateway is not ready in %s", (locale) => {
+    const { runtime } = setup(true);
+    runtime.webServices!.gateway.state = "unavailable";
+    runtime.webServices!.gateway.reason = "gateway_unreachable";
+    i18n.global.locale.value = locale;
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      expect(wrapper.find("[data-testid='host-tools-service']").exists()).toBe(true);
+      const section = wrapper.find("section.registered-services");
+      expect(section.text()).toContain(locale === "zh-CN" ? "网关不可达" : "Gateway unreachable");
+      expect(section.findAll(".service-row")).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(["zh-CN", "en-US"] as const)("shows unsupported within its section when capability is missing in %s", (locale) => {
+    const { runtime } = setup(true);
+    runtime.capability = {} as never;
+    i18n.global.locale.value = locale;
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    try {
+      expect(wrapper.find("[data-testid='host-tools-service']").exists()).toBe(true);
+      const section = wrapper.find("section.registered-services");
+      expect(section.text()).toContain(locale === "zh-CN" ? "当前 CLI 不支持服务访问（需升级 CLI）" : "Service access unsupported (CLI upgrade required)");
+      expect(section.findAll(".service-row")).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
   it("renders rows with label fallback and gateway port", () => {
     setup(true);
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });

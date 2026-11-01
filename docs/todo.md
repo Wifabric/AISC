@@ -282,3 +282,50 @@
 - 发布
   - [x] Workbench `v2.1.16` final；CLI `0.1.9` final
   - [x] `2.1.16-dev-plans` 与 `2.1.16-preview-fixes` 均归档
+
+# v2.1.17（preview 收尾完成，2026-10-31）
+> D-7（2026-10-31）：用户取消剩余批次/统一手测与环境补测并放行收尾；NOT RUN 不改为 PASS。preview/TestPyPI 已发布并归档，正式 final/main 另走批准门。
+（2026-10-26 反馈驱动重启；方案 A = 生态与可靠性；计划 docs/archive/2.1.17-dev-plans/）
+- 反馈站 2026-10-26
+  - [x] N1 / b1：无代理 skill 安装/更新完整性与逐项诊断（CU H4/安装进度与终态通过；H1 toast、H2/H3 故障网络D-7 用户免补测放行）
+  - [x] N2 + N4 / b2：市场元数据、已安装项更新标识与详情中文化（CU 三类市场搜索/详情通过；断网缓存与隔离D-7 用户免补测放行）
+  - [x] N3 / b4：Skills / MCP / Plugins 统一推荐与发现（CU 中英文推荐与搜索路由通过；离线禁用态D-7 用户免补测放行）
+  - [x] N5 / R4：Work Record 友好阅读、每轮思考/命令合并折叠、Markdown/LaTeX/图片附件/可点击文件与网址；实时终端继续字节穿透（2026-10-30 用户明确纳入 R4；实现/门禁/真实阅读 CU 已通过，公式滚动修复/最终构建通过，D-6 用户手测通过）
+- 可靠性
+  - [x] R4：Docker 意外断连 / bash 中止后从 Work Record 恢复原 Codex/Claude 会话；配置引导与重试保留会话身份（2026-10-30 用户追加；已认证 Codex/Claude 进程/容器中断 CU 恢复同 native ID、CLI 追加召回及真实阅读器完整两轮问答 PASS；D-6 用户手测通过；全局 Docker 引擎断连/真实大历史/Remote 等未测项按 D-7 免补测放行）
+  - [x] b3：扩展安装 / 更新 / 卸载失败恢复、单项重试与操作日志（CU 超时日志/复制诊断通过；第二次可重试失败D-7 用户免补测放行）
+  - [x] b5：网络 / 显式自更新 / CLI 与 bundle 版本配对健康报告（实现/自动化/CI/CU 显式更新主路径与健康报告通过；诊断竞态D-7 用户免补测放行）
+- 默认体验
+  - [x] b6：Services 注册服务标签补齐；caveman 安装即默认开启（实现/自动化/真实容器/CI/CU Services 与默认态通过；A→B→A D-7 用户免补测放行）
+- 发布
+  - [x] b7：镜像内置 cc-switch / Codex / Claude / Node 稳定最新版刷新（b7 Node 24.22.1 依 D-5；收尾依 D-4 刷新至 Active LTS Node 26.13.0、Codex 0.166.0、Claude 2.1.314、geodata 20261030，PR #52 与精确集成 CI/最终镜像验证通过）
+  - [x] R1：CU 预手测修复轮——长扩展组操作改为独立 direct 传输，避免占用 serial serve 导致 Services 控制面 30 秒超时（代码/TDD/审查复审通过/Rust 门禁/生产构建通过；Local CU 组安装期间 Services PASS；Remote 真实 SSH UI NOT RUN；PR #48 已合并且远端 CI 最终全绿；D-7 用户免补测放行）
+  - [x] R2：扩展 UI 重设计——删除主视图操作日志、分类扩展市场（六类各 10 条）、中文详情、整体布局优化与技能仓库/插件市场维护（PR #49 已合入 develop `6133eef`；审查/增量复审、803 前端测试、既有完整门禁、最终 PR/develop CI、三平台 sidecar/deb/dmg/NSIS 通过；来源维护与跨市场保留真容器通过，已修正插件市场级联卸载双语警告；早期 CU 工具阻塞，收尾关键 CU 已通过；来源最终删除与窄屏等 UI 仍 NOT RUN，D-7 用户免补测放行）
+  - [x] R3：扩展市场批次修复——旧 runtime 来源维护稳定提示、已安装空态移除“打开扩展市场”按钮、推荐卡片内联展开详情（TDD/完整门禁/最终生产构建/真实数据面通过；独立审查最终 Critical=0/Important=0；PR #50 已合入 develop `c3b297b`，合入后 Workbench/三平台 sidecar/deb/dmg/NSIS 全绿；早期 CU 阻塞记录保留；D-6 用户已确认本批手测通过）
+  - [x] 高频链路自动化冒烟与 v2.1.17 preview 准备（10-31 发布依赖刷新 PR #52 合入 `bc189a3`；最终干净镜像三轮数据面 9/9、12 phases 全 PASS，完整门禁/clean-room/三平台出包与分支及精确集成四条 CI 全 SUCCESS，CU 市场/Services/阅读关键路径通过；剩余手测依 D-7 免除；Workbench 2.1.17-preview.1 / CLI 0.1.10.dev0 GitHub preview 与 TestPyPI 已发布，计划归档）
+  - [x] CLI `0.1.10.dev0` GitHub preview / TestPyPI 已发布并通过真实 index 安装验证；正式 PyPI job skipped。
+  - 正式 final/main 发布与最终反馈、Release、临时分支清理不属于本次 preview 收尾，按独立批准门处理。
+
+# v2.1.17-preview-fixes-target（2026-10-31 用户手测追加）
+
+用户本轮明确授权以下十项反馈进入 preview 修复，计划见 `docs/archive/2.1.17-preview-fixes/`。
+按 DEVELOP_WIKI §1.4 逐批实现、验证、CU 预测试及用户验收，再进入下一批；原阶段 D-7 不冒充本轮验收。
+
+- [x] b1 / 反馈 1：修复扩展/技能市场检查更新 `cli op got non-envelope output: ''`，覆盖真实常驻 CLI 与失败后重试。
+- [x] b2 / 反馈 2、5、6：已安装/市场/子技能功能简介、内联详情与布局修复。
+  - 实现、本地门禁、真实数据面、生产候选、Windows CU 与用户验收已通过；preview.2 统一实测通过，PR #54 已合入。
+  - PR #53 实现、本地门禁、远端 Workbench/三平台 CLI 与 Windows CU T1–T4 已通过；用户已确认 b1 通过并合入 develop。
+- [x] b3 / 反馈 3：默认安装 GitHub MCP，接入既有双引擎默认配置，认证状态如实展示，不内置凭据。（实现、门禁、真实数据面、生产候选、远端 CI 与用户验收通过；PR #55 已合入）
+- [x] b4 / 反馈 4、9：退出更新启动交互式 setup.exe，安装成功后清理此次下载包；实测对比旧/新安装包组成并减少冗余体积。（实现、门禁、NSIS 优化、远端 CI、真实启动清理与 preview.2 统一实测通过，PR #56 已合入）
+- [x] b5 / 反馈 7、8：修复 Work Record 分支会话失败及失败标签回收；移除单会话右键新建，记录/未归档分组“重命名”左侧增加新建加号，新会话归属对应工作记录。（实现、门禁、生产构建、远端 CI 与 preview.2 统一实测通过，PR #57 已合入）
+- [x] b6 / 反馈 10.1–10.3：文件管理 Ctrl+C/V 与右键粘贴、Delete/右键删除、Ctrl/Shift 多选、文件/目录及多选路径拖入 Bash/CLI。（实现、门禁、远端 CI 与 preview.2 统一实测通过，PR #58 已合入）
+
+验收：2026-11-01 用户先确认 b1/b2/b3 通过；preview.2 发布后统一实测 B1–B6 结论无问题，全部批次关闭。
+
+- 追加（v2.1.17 preview 反馈 #10；preview-fixes b6）
+  - [x] 文件/目录真实 CF_HDROP 复制粘贴、多选删除与目录/多路径终端拖入已实现；preview.2 统一实机验收通过
+- 发布
+  - [x] `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布完成（Workbench NSIS、CLI Artifact/TestPyPI 全绿；B1–B6 已合入）
+  - [x] 用户从 preview.2 统一手测 B1–B6，结论无问题；final 收口进行中
+- 发布
+  - [ ] `v2.1.17` / CLI `0.1.10` final 收口、main 同步与发布验证

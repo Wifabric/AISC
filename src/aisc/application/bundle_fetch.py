@@ -23,6 +23,7 @@ Two halves:
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
 import os
 import re
@@ -35,6 +36,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -350,11 +352,147 @@ def verify_staged_bundle(bundle_root: Path) -> List[str]:
     else:
         errors.append("container/Dockerfile missing")
     errors.extend(_verify_vendor_checksums(bundle_root))
+    errors.extend(_verify_npm_presets(bundle_root))
+    errors.extend(_verify_yazi_payload(bundle_root))
     errors.extend(_audit_forbidden(bundle_root))
     if not (bundle_root / "container" / "_bundle" / "plugins").exists():
         errors.append("container/_bundle/plugins missing")
     if not (bundle_root / "container" / "downloads").exists():
         errors.append("container/downloads missing")
+    return errors
+
+
+def _verify_npm_presets(bundle_root: Path) -> List[str]:
+    """Check ignored native payloads too: filenames alone cannot prove pairing.
+
+    Companions may be absent (the pinned online fallback remains supported),
+    but every payload included in a bundle must match its factory main package.
+    """
+    from aisc.application.tool_versions import _parse_env_file
+
+    pins = _parse_env_file(bundle_root / "config" / "versions.env")
+    dl = bundle_root / "container" / "downloads"
+    errors: List[str] = []
+
+    def metadata(path: Path) -> dict:
+        # tarfile can stop at the tar EOF before gzip validates its trailer.
+        # Drain the compression stream so truncated/CRC-damaged companions
+        # cannot pass merely because their package.json is still readable.
+        with gzip.open(path, "rb") as compressed:
+            while compressed.read(1024 * 1024):
+                pass
+        with tarfile.open(path, "r:gz") as archive:
+            member = archive.getmember("package/package.json")
+            if not member.isfile() or member.size > 1024 * 1024:
+                raise ValueError("invalid package metadata member")
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise ValueError("missing package metadata")
+            data = json.load(stream)
+            if not isinstance(data, dict):
+                raise ValueError("package metadata must be an object")
+            return data
+
+    for prefix, name, key in (("codex", "@openai/codex", "CODEX_VERSION"),
+                              ("claude-code", "@anthropic-ai/claude-code", "CLAUDE_CODE_VERSION")):
+        payloads = list(dl.glob(f"{prefix}-*.tgz"))
+        if not payloads:
+            continue
+        version = pins.get(key, "")
+        main = dl / f"{prefix}-{version}.tgz"
+        try:
+            meta = metadata(main)
+            if (meta.get("name"), meta.get("version")) != (name, version):
+                raise ValueError("main metadata differs from factory pin")
+            allowed = {main.name: (name, version)}
+            optional = meta.get("optionalDependencies") or {}
+            for arch in ("x64", "arm64"):
+                dependency = f"{name}-linux-{arch}"
+                spec = optional.get(dependency)
+                if not isinstance(spec, str) or not spec:
+                    continue
+                if spec.startswith("npm:"):
+                    package_name, _, package_version = spec[4:].rpartition("@")
+                else:
+                    package_name, package_version = dependency, spec
+                allowed[f"{prefix}-linux-{arch}-{package_version}.tgz"] = (package_name, package_version)
+            for path in payloads:
+                expected = allowed.get(path.name)
+                if expected is None:
+                    errors.append(f"npm preset stale or unexpected: {path.name}")
+                    continue
+                actual = meta if path == main else metadata(path)
+                if (actual.get("name"), actual.get("version")) != expected:
+                    errors.append(f"npm preset metadata mismatch: {path.name}")
+        except (OSError, EOFError, zlib.error, tarfile.TarError, KeyError, ValueError, AttributeError) as exc:
+            errors.append(f"npm preset {prefix} invalid: {exc}")
+    return errors
+
+
+def _verify_yazi_payload(bundle_root: Path) -> List[str]:
+    """Require exactly one officially pinned yazi payload for the target arch."""
+    from aisc.application.tool_versions import _parse_env_file
+
+    pins = _parse_env_file(bundle_root / "config" / "versions.env")
+    version = str(pins.get("YAZI_VERSION", "")).removeprefix("v").strip()
+    expected = {
+        f"yazi-{arch}-unknown-linux-musl-v{version}.zip": (
+            str(pins.get(hash_key, "")).strip().lower(),
+            str(pins.get(size_key, "")).strip(),
+            arch,
+        )
+        for arch, hash_key, size_key in (
+            ("x86_64", "YAZI_X86_64_SHA256", "YAZI_X86_64_BYTES"),
+            ("aarch64", "YAZI_ARM64_SHA256", "YAZI_ARM64_BYTES"),
+        )
+    }
+    errors: List[str] = []
+    if not version or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        errors.append("yazi payload version pin invalid")
+        return errors
+    for name, (digest, size, _arch) in expected.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            errors.append(f"yazi payload digest pin invalid: {name}")
+        if not size.isdigit():
+            errors.append(f"yazi payload size pin invalid: {name}")
+    if errors:
+        return errors
+
+    downloads = bundle_root / "container" / "downloads"
+    found = {
+        path.name
+        for path in downloads.glob("yazi-*.zip")
+        if path.is_file()
+    }
+    targets = sorted(found & expected.keys())
+    if len(targets) != 1:
+        errors.append(
+            "bundle target yazi payload missing"
+            if not targets
+            else "bundle must contain exactly one target-architecture yazi payload"
+        )
+        if len(targets) > 1:
+            errors.append(f"duplicate target yazi payloads: {', '.join(targets)}")
+    for name in sorted(found - expected.keys()):
+        errors.append(f"unexpected yazi payload: {name}")
+    for name in targets:
+        path = downloads / name
+        digest, size, _arch = expected[name]
+        actual_digest = _sha256_file(path)
+        if actual_digest != digest:
+            errors.append(
+                f"yazi payload hash mismatch: {name}: expected {digest[:16]}..., "
+                f"got {actual_digest[:16]}..."
+            )
+        try:
+            actual_size = str(path.stat().st_size)
+        except OSError as exc:
+            errors.append(f"yazi payload unreadable: {name}: {exc}")
+            continue
+        if actual_size != size:
+            errors.append(
+                f"yazi payload size mismatch: {name}: expected {size}, got {actual_size}"
+            )
     return errors
 
 
@@ -452,10 +590,13 @@ def bundle_compatible(bundle_root: Path, cli_version: str) -> Tuple[bool, str]:
     mp = bundle_root / "manifest.json"
     try:
         m = json.loads(mp.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return False, f"manifest unreadable: {exc}"
-    if m.get("schema_version") != 1:
-        return False, f"manifest schema_version={m.get('schema_version')!r}, expected 1"
+    if not isinstance(m, dict):
+        return False, "manifest must be a JSON object"
+    schema = m.get("schema_version")
+    if type(schema) is not int or schema != 1:
+        return False, f"manifest schema_version={schema!r}, expected integer 1"
     compat = m.get("compatible_cli_versions")
     if not isinstance(compat, list) or not all(isinstance(v, str) for v in compat):
         return False, "manifest compatible_cli_versions malformed"

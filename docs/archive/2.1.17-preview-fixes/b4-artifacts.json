@@ -1,0 +1,28 @@
+{
+  "source_base": "b9f1dcfcdd0eae32f5b0ebc35d9ee023c72c16d4",
+  "branch": "codex/2.1.17-preview-b4-update-package-size",
+  "bundle": "C:\\Users\\wangyu\\.codex\\worktrees\\217-b1-proxyless-extension-reliability\\AISC\\release-staging\\2.1.17-preview-b4\\aisc-bundle",
+  "data_root": "C:\\pt\\aisc217pfb4-data",
+  "image": "not-rebuilt-for-b4-workbench-update-batch",
+  "installer_bytes": 384516079,
+  "installer_sha256": "1f07d5e09c5fd6b8bc1ea1b98d26743d28d30d85ab8e15e3a361e07121332d8a",
+  "expanded_bundle_bytes": 397386330,
+  "files": [
+    {
+      "name": "AISC-Workbench-2.1.17-PREVIEW-B4.exe",
+      "sha256": "8d59ec8283bb62213a1f826073a97f7bd2cff1f5881f6be475a5bd8d385f97e9",
+      "bytes": 25943040
+    },
+    {
+      "name": "AISC-Workbench-2.1.17-PREVIEW-B4-setup.exe",
+      "sha256": "1f07d5e09c5fd6b8bc1ea1b98d26743d28d30d85ab8e15e3a361e07121332d8a",
+      "bytes": 384516079
+    },
+    {
+      "name": "aisc.exe",
+      "sha256": "2bc2feb32bcee9b18376e107c7ed822e5a97d7102e741652dc379cc98c3ecbeb",
+      "bytes": 13365785
+    }
+  ],
+  "source_commit": "f39618ab0d97365c68547d603ed4c790a2eb3cd0"
+}

@@ -73,14 +73,23 @@ jobs:
         run: npm test -- --run
 
   rust:
-    runs-on: ubuntu-latest
+    # 2026-10-26/27: ubuntu-latest apt twice hung without output for hours.
+    # Pin the known-good LTS runner and keep package transport bounded.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux system dependencies
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get update \
+            -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
+            -o Acquire::Retries=3
+          sudo apt-get install -y \
+            -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
+            -o Acquire::Retries=3 \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable

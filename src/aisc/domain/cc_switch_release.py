@@ -115,7 +115,7 @@ def select_release(
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Pure selection: (release, asset) for the channel/version/arch/libc.
 
-    ``version="latest"`` takes the newest eligible release that HAS a usable
+    ``version="latest"`` takes the highest stable semver that HAS a usable
     asset (skipping empty releases); an explicit ``vX.Y.Z`` must exist and
     have the asset (fail closed otherwise).
     """
@@ -139,7 +139,7 @@ def select_release(
 
     ordered = sorted(
         (r for r in releases if _eligible(r)),
-        key=lambda r: str(r.get("published_at") or r.get("created_at") or ""),
+        key=lambda r: tuple(int(part) for part in str(r["tag_name"])[1:].split(".")),
         reverse=True,
     )
 

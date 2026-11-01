@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -36,6 +36,7 @@ import type {
   WorkspaceRecord,
 } from "../types";
 import * as ipc from "../lib/ipc";
+import { useWorkRecordsStore } from "./workRecords";
 import { i18n } from "../i18n";
 import {
   AGENT_TITLE,
@@ -158,6 +159,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // S2.3.a: freshness + in-flight inspect dedupe (04 §六.1, §五 dedupe).
   const freshness = ref<Freshness>("unknown");
   const inspectInFlight = ref(false);
+  /** Only explicit refreshes surface the refresh button's busy label. */
+  const userRefreshInFlight = ref(false);
 
   // S3.1: request_seq / revision anti-revert (04 §六.2). Each observation
   // request gets a monotonic seq; stale (low-seq) responses never overwrite
@@ -181,6 +184,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   const webServices = ref<RuntimeServicesResult | null>(null);
   const webServicesError = ref<WorkbenchError | null>(null);
   const webServicesInFlight = ref(false);
+  let webServicesGeneration = 0;
+  const stopServicesContext = watch(
+    () => [workspace.value, runtimeId.value] as const,
+    ([path, runtime], [oldPath, oldRuntime]) => {
+      if (runtime !== oldRuntime || !sameWorkspace(path, oldPath)) clearWebServices();
+    },
+    { flush: "sync" },
+  );
 
   // S2.4.a: workbench history (02 §九) is SHELL-owned (IDEA-3 3a): the shared
   // doc + revision + recents live in the facade; the instance keeps only its
@@ -236,8 +247,10 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   type PendingConversationAssociation = {
     knownConversationIds: Set<string>;
     startedAt: string;
+    collectionId?: string | null;
   };
   const pendingConversationAssociations = new Map<string, PendingConversationAssociation>();
+  const lastCreatedTabId = ref<string | null>(null);
 
   const pendingChunks: Record<string, StreamChunk[]> = {};
   const paneByteCounts: Record<string, number> = {};
@@ -342,6 +355,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * a workspace bounds the memory it held (buffers were never GC'd before).
    * The instance itself is dropped from the workspaces list right after. */
   function dispose(): void {
+    stopServicesContext();
+    clearWebServices();
     stopTimer();
     if (dockerRetryTimer !== null) {
       window.clearTimeout(dockerRetryTimer);
@@ -793,27 +808,29 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   /** G-05 (Step 8): only user-initiated refreshes surface the 刷新中 label -
    * background poll cycles must not flip the button every 5s (user report
    * 2026-08-10). */
-  const userRefreshInFlight = ref(false);
-
   async function refreshRuntime(userInitiated = false) {
     if (!runtimeId.value || !workspace.value.trim()) return;
     if (inspectInFlight.value) return;
     if (userInitiated) userRefreshInFlight.value = true;
     inspectInFlight.value = true;
     const seq = ++requestSeq.value;
+    const generation = webServicesGeneration;
     try {
       // PERF P1: one invocation carries both halves — the 5s poll tick used
       // to pay the ~750ms sidecar spawn twice (inspect + a fire-and-forget
       // services refresh). One observation = one seq = one observed_at; a
       // null services (server-side 3s deadline) keeps the last good payload.
       const merged = await ipc.runtimeStatus(workspace.value.trim(), runtimeId.value);
+      if (generation !== webServicesGeneration) return;
       applyRuntimeSnapshot(merged.snapshot, seq);
-      if (merged.services) applyWebServices(merged.services);
+      if (generation === webServicesGeneration && merged.services) applyWebServices(merged.services);
     } catch {
-      markStale();
+      if (generation === webServicesGeneration) markStale();
     } finally {
-      inspectInFlight.value = false;
-      if (userInitiated) userRefreshInFlight.value = false;
+      if (generation === webServicesGeneration) {
+        inspectInFlight.value = false;
+        if (userInitiated) userRefreshInFlight.value = false;
+      }
     }
   }
 
@@ -827,8 +844,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (inspectInFlight.value) return false;
     inspectInFlight.value = true;
     const seq = ++requestSeq.value;
+    const generation = webServicesGeneration;
+    const requestWorkspace = workspace.value.trim();
+    const requestRuntime = runtimeId.value;
     try {
-      const snap = await ipc.runtimePollLight(workspace.value.trim(), runtimeId.value);
+      const snap = await ipc.runtimePollLight(requestWorkspace, requestRuntime);
+      if (generation !== webServicesGeneration) return false;
       const prev = runtimeSnapshot.value;
       const merged: RuntimeSnapshot = { ...snap };
       if (merged.web_access === undefined && prev?.web_access !== undefined) {
@@ -843,18 +864,20 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       applyRuntimeSnapshot(merged, seq);
       return true;
     } catch {
+      if (generation !== webServicesGeneration) return false;
       // Light path unavailable (transport trouble): fall through to the full
       // CLI observation below (worst case = today's behavior).
       try {
-        const merged = await ipc.runtimeStatus(workspace.value.trim(), runtimeId.value);
+        const merged = await ipc.runtimeStatus(requestWorkspace, requestRuntime);
+        if (generation !== webServicesGeneration) return false;
         applyRuntimeSnapshot(merged.snapshot, seq);
-        if (merged.services) applyWebServices(merged.services);
+        if (generation === webServicesGeneration && merged.services) applyWebServices(merged.services);
       } catch {
-        markStale();
+        if (generation === webServicesGeneration) markStale();
       }
       return false;
     } finally {
-      inspectInFlight.value = false;
+      if (generation === webServicesGeneration) inspectInFlight.value = false;
     }
   }
 
@@ -920,15 +943,16 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (!runtimeId.value || !workspace.value.trim()) return;
     if (webServicesInFlight.value) return;
     webServicesInFlight.value = true;
+    const generation = webServicesGeneration;
     try {
       const result = await ipc.runtimeServices(workspace.value.trim(), runtimeId.value);
-      applyWebServices(result);
+      if (generation === webServicesGeneration) applyWebServices(result);
     } catch (e) {
       // Old CLI (no runtime services capability) or transport failure — keep
       // the last good payload; the panel gates on the capability anyway.
-      webServicesError.value = e as WorkbenchError;
+      if (generation === webServicesGeneration) webServicesError.value = e as WorkbenchError;
     } finally {
-      webServicesInFlight.value = false;
+      if (generation === webServicesGeneration) webServicesInFlight.value = false;
     }
   }
 
@@ -953,15 +977,21 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * re-resolves, validates and hands the URL to the OS opener. */
   async function openWebService(port: number): Promise<void> {
     if (!runtimeId.value || !workspace.value.trim()) return;
+    const generation = webServicesGeneration;
     try {
       await ipc.openRuntimeServiceUrl(workspace.value.trim(), runtimeId.value, port);
-      await refreshWebServices();
+      if (generation === webServicesGeneration) await refreshWebServices();
     } catch (e) {
-      webServicesError.value = e as WorkbenchError;
+      if (generation === webServicesGeneration) webServicesError.value = e as WorkbenchError;
     }
   }
 
   function clearWebServices() {
+    webServicesGeneration += 1;
+    // Invalidation releases the old poll; its generation-guarded finally
+    // cannot release a newer request that starts after this point.
+    inspectInFlight.value = false;
+    userRefreshInFlight.value = false;
     webServices.value = null;
     webServicesError.value = null;
     webServicesInFlight.value = false;
@@ -1211,6 +1241,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   ) {
     const p = tab.panes[paneId];
     if (!p || p.sessionState === "starting" || p.sessionState === "running") return;
+    resumeConversationId ??= p.resumeConversationId;
+    if (resumeConversationId) {
+      forkSession = p.resumeForkSession ?? forkSession;
+      p.resumeConversationId = resumeConversationId;
+      p.resumeForkSession = forkSession;
+    }
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
     if (!agent || !runtimeId.value) return;
     const sid = uuid();
@@ -1266,6 +1302,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         resumeConversationId ?? null,
         forkSession,
       );
+      if (p.sessionId !== sid || !tab.panes[paneId]) return;
       // v2.1.8 T4: remember the conversation this tab resumed so the
       // History panel can activate the live tab instead of re-resuming
       // (a second provider resume on a live session fails).
@@ -1274,13 +1311,18 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       if (resumeConversationId && !forkSession) {
         tab.resumeConversationId = resumeConversationId;
       }
+      if (forkSession) {
+        delete p.resumeConversationId;
+        delete p.resumeForkSession;
+      }
       if (p.sessionState === "starting") {
         p.sessionState = "running";
         syncProjection(tab);
       }
-    } catch {
-      if (p.sessionState === "starting") {
+    } catch (error) {
+      if (p.sessionId === sid && p.sessionState === "starting") {
         p.sessionState = "failed";
+        p.launchError = error instanceof Error ? error.message : String(error);
         syncProjection(tab);
       }
     }
@@ -1451,13 +1493,20 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     agent: LaunchAgent,
     resumeConversationId?: string | null,
     forkSession = false,
+    collectionId?: string | null,
   ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
+    const createdPane = activePane(tabs.value[tabs.value.length - 1]);
+    if (resumeConversationId) {
+      createdPane.resumeConversationId = resumeConversationId;
+      createdPane.resumeForkSession = forkSession;
+    }
+    lastCreatedTabId.value = tabId;
     activeTabId.value = tabId;
-    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession);
+    void maybeOpenCreated(tabId, agent, resumeConversationId, forkSession, collectionId);
     scheduleSave();
     return tabId;
   }
@@ -1471,6 +1520,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * directly - the spec now requires the conservative flow). */
   async function startNewConversationAssociation(
     agent: LaunchAgent,
+    collectionId?: string | null,
   ): Promise<PendingConversationAssociation | null> {
     if (agent !== "claude" && agent !== "codex") return null;
     try {
@@ -1482,6 +1532,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
             .map((item) => item.conversation_id.toLowerCase()),
         ),
         startedAt: new Date().toISOString(),
+        collectionId: collectionId ?? null,
       };
     } catch {
       return null;
@@ -1493,6 +1544,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     agent: LaunchAgent,
     resumeConversationId?: string | null,
     forkSession = false,
+    collectionId?: string | null,
   ) {
     if (agent === "claude" || agent === "codex") {
       const outcome = await loadProviderStatus(agent);
@@ -1505,11 +1557,52 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         return;
       }
       if (!resumeConversationId) {
-        const association = await startNewConversationAssociation(agent);
+        const association = await startNewConversationAssociation(agent, collectionId);
         if (association) pendingConversationAssociations.set(tabId, association);
       }
     }
     openTab(tabId, resumeConversationId, forkSession);
+  }
+
+  /** b5: await the newly created tab's first launch result. A failed tracked
+   * launch is removed so Work Records does not leave a dead label behind. */
+  async function createTrackedTab(
+    agent: LaunchAgent,
+    collectionId?: string | null,
+  ): Promise<{ tabId?: string; error?: string }> {
+    const tabId = createTab(agent, null, false, collectionId);
+    if (!tabId) return { error: "tab-limit" };
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const tab = findTab(tabId);
+      const pane = tab ? activePane(tab) : null;
+      if (!tab || !pane) break;
+      if (pane.sessionState === "running") return { tabId };
+      if (pane.sessionState === "failed") {
+        const error = pane.launchError || "session open failed";
+        await removeTab(tabId);
+        return { error };
+      }
+      if (pane.sessionState === "guide") return { tabId, error: "provider-not-configured" };
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { tabId };
+  }
+
+  async function waitForTabSession(tabId: string | null): Promise<{ tabId?: string; error?: string }> {
+    if (!tabId) return { error: "tab-missing" };
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const tab = findTab(tabId);
+      const pane = tab ? activePane(tab) : null;
+      if (!tab || !pane) return { tabId, error: "tab-missing" };
+      if (pane.sessionState === "running") return { tabId };
+      if (pane.sessionState === "failed") {
+        return { tabId, error: pane.launchError || "session open failed" };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return { tabId };
   }
 
   /** v2.1.8 T4: a LIVE tab that already resumed this conversation. The
@@ -1517,13 +1610,49 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * the provider refuses a second resume of a live session (手测). */
   function findLiveResumeTab(conversationId: string): Tab | null {
     for (const tab of tabs.value) {
-      if (tab.resumeConversationId !== conversationId) continue;
-      const live = Object.values(tab.panes).some(
-        (p) => p.sessionState === "running" || p.sessionState === "starting"
-      );
+      const live = Object.values(tab.panes).some((p) =>
+        p.resumeConversationId === conversationId && !p.resumeForkSession &&
+        (p.sessionState === "running" || p.sessionState === "starting"));
       if (live) return tab;
     }
     return null;
+  }
+
+  function findRecoverableResumePane(conversationId: string): { tabId: string; paneId: string } | null {
+    for (const tab of tabs.value) for (const [paneId, pane] of Object.entries(tab.panes)) {
+      if (pane.resumeConversationId === conversationId && !pane.resumeForkSession &&
+          ["idle", "guide", "failed", "disconnected", "exited"].includes(pane.sessionState)) return { tabId: tab.tabId, paneId };
+    }
+    return null;
+  }
+
+  /** A local transcript can outlive Docker and its PTY. Inspect before the
+   * provider gate; restart only this existing stopped runtime, never delete it. */
+  async function prepareConversationResume(): Promise<void> {
+    const requestWorkspace = workspace.value.trim();
+    const requestRuntime = runtimeId.value;
+    const generation = webServicesGeneration;
+    if (!requestRuntime || !requestWorkspace) throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+    let seq = ++requestSeq.value;
+    let snap = await ipc.runtimeInspect(requestWorkspace, requestRuntime);
+    if (workspace.value.trim() !== requestWorkspace || runtimeId.value !== requestRuntime || generation !== webServicesGeneration) throw new Error(i18n.global.t("history.viewer.workspaceChanged"));
+    if (snap.state !== "running") {
+      // A confirmed stopped container invalidates every old exec attachment.
+      for (const tab of tabs.value) for (const pane of Object.values(tab.panes)) {
+        if (["running", "starting"].includes(pane.sessionState)) {
+          pane.sessionState = "disconnected";
+          pane.exit = { reason: "transport_error", exitCode: null };
+        }
+        syncProjection(tab);
+      }
+      if (snap.state !== "stopped") throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+      snap = await ipc.runtimeRestart(requestWorkspace, requestRuntime);
+      if (workspace.value.trim() !== requestWorkspace || runtimeId.value !== requestRuntime || generation !== webServicesGeneration) throw new Error(i18n.global.t("history.viewer.workspaceChanged"));
+      seq = ++requestSeq.value;
+    }
+    if (snap.state !== "running") throw new Error(i18n.global.t("history.viewer.runtimeUnavailable"));
+    applyRuntimeSnapshot(snap, seq);
+    runtimeReady.value = true;
   }
 
   /** G-12 (Step 8): activate an existing cc-switch tab or create one -
@@ -1589,8 +1718,18 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
           && !association.knownConversationIds.has(item.conversation_id.toLowerCase()),
       );
       if (candidates.length !== 1) continue;
+      const panes = Object.entries(tab.panes).filter(([paneId, pane]) =>
+        findLeaf(tab.tree, paneId)?.sessionType === tab.agent &&
+        (pane.sessionState === "starting" || pane.sessionState === "running"));
+      if (panes.length !== 1) continue;
       tab.resumeConversationId = candidates[0].conversation_id;
+      panes[0][1].resumeConversationId = candidates[0].conversation_id;
+      const collectionId = association.collectionId;
       pendingConversationAssociations.delete(tab.tabId);
+      if (collectionId && (tab.agent === "claude" || tab.agent === "codex")) {
+        const records = useWorkRecordsStore();
+        await records.addMember(collectionId, tab.agent, candidates[0].conversation_id, runtimeId.value);
+      }
       resolved += 1;
     }
     return resolved;
@@ -2096,7 +2235,12 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     closeTab,
     reopenTab,
     createTab,
+    createTrackedTab,
+    waitForTabSession,
+    lastCreatedTabId,
     findLiveResumeTab,
+    findRecoverableResumePane,
+    prepareConversationResume,
     resolvePendingConversationAssociations,
     closeLiveConversationSessions,
     removeTab,

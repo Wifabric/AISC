@@ -39,6 +39,10 @@ vi.mock("../../lib/ipc", () => ({
     relative_path: "newdir",
     kind: "dir",
   }),
+  workspaceCopyEntriesToSystemClipboard: vi.fn().mockResolvedValue({ schema_version: 1, count: 1, explorer_compatible: false }),
+  workspacePasteSystemClipboard: vi.fn().mockResolvedValue({ schema_version: 1, operation: "paste", results: [], failures: [] }),
+  workspaceDeleteEntry: vi.fn().mockResolvedValue({ schema_version: 1, operation: "delete", relative_path: "a.md", kind: "file" }),
+  workspacePasteEntries: vi.fn().mockResolvedValue({ schema_version: 1, operation: "copy", results: [], failures: [] }),
   workspaceCopyEntry: vi.fn().mockResolvedValue({
     schema_version: 1,
     operation: "copy",
@@ -170,13 +174,15 @@ describe("workspaceExplorer mutations (Stage 11, 11c)", () => {
     });
   });
 
-  it("in-app clipboard: set, canPaste, cleared on workspace switch", async () => {
+  it("multi-entry clipboard writes the controlled app list and falls back without Explorer compatibility", async () => {
+    const { workspaceCopyEntriesToSystemClipboard } = await import("../../lib/ipc");
     const s = useWorkspaceExplorerStore();
     s.setWorkspace("/ws");
     expect(s.canPaste()).toBe(false);
-    s.setClipboardEntry("src/a.md", "file");
+    await s.setClipboardEntries([{ relativePath: "src/a.md", kind: "file" }, { relativePath: "src", kind: "dir" }]);
+    expect(workspaceCopyEntriesToSystemClipboard).toHaveBeenCalledWith("/ws", ["src/a.md", "src"]);
     expect(s.canPaste()).toBe(true);
-    expect(s.clipboard).toMatchObject({ workspace: "/ws", sourceRelativePath: "src/a.md", kind: "file" });
+    expect(s.clipboard).toMatchObject({ workspace: "/ws", explorerCompatible: false, entries: [{ relativePath: "src/a.md" }, { relativePath: "src" }] });
 
     s.setWorkspace("/other");
     expect(s.clipboard).toBeNull();
@@ -186,19 +192,37 @@ describe("workspaceExplorer mutations (Stage 11, 11c)", () => {
   it("pasteEntry refuses a clipboard from another workspace", async () => {
     const s = useWorkspaceExplorerStore();
     s.setWorkspace("/ws");
-    s.clipboard = { workspace: "/other", sourceRelativePath: "a.md", kind: "file", generation: 1 };
+    s.clipboard = { workspace: "/other", entries: [{ relativePath: "a.md", kind: "file" }], generation: 1, explorerCompatible: false };
     await expect(s.pasteEntry("")).rejects.toMatchObject({ code: "WB_ERR_WORKSPACE_INVALID" });
   });
 
-  it("pasteEntry copies and refreshes the destination", async () => {
-    const { workspaceCopyEntry } = await import("../../lib/ipc");
+  it("pasteEntry batches app clipboard sources and refreshes the destination", async () => {
+    const { workspacePasteEntries } = await import("../../lib/ipc");
+    vi.mocked(workspacePasteEntries).mockResolvedValueOnce({
+      schema_version: 1,
+      operation: "copy",
+      results: [{ schema_version: 1, operation: "copy", relative_path: "src/a.md", kind: "file" }],
+      failures: [{ relative_path: "gone.md", code: "WB_ERR_WORKSPACE_NOT_FOUND", detail: "missing" }],
+    });
     const s = useWorkspaceExplorerStore();
     s.setWorkspace("/ws");
     await s.loadDir("");
-    s.setClipboardEntry("a.md", "file");
+    s.clipboard = { workspace: "/ws", entries: [{ relativePath: "a.md", kind: "file" }], generation: 1, explorerCompatible: false };
     const result = await s.pasteEntry("src");
-    expect(workspaceCopyEntry).toHaveBeenCalledWith("/ws", "a.md", "src");
-    expect(result.kind).toBe("file");
+    expect(workspacePasteEntries).toHaveBeenCalledWith("/ws", ["a.md"], "src");
+    expect(result.results[0].relative_path).toBe("src/a.md");
+    expect(result.failures[0].relative_path).toBe("gone.md");
+  });
+
+  it("deleteEntry removes cache and refreshes parent", async () => {
+    const { workspaceDeleteEntry, workspaceList } = await import("../../lib/ipc");
+    const s = useWorkspaceExplorerStore();
+    s.setWorkspace("/ws");
+    await s.loadDir("");
+    vi.mocked(workspaceList).mockClear();
+    await s.deleteEntry("a.md");
+    expect(workspaceDeleteEntry).toHaveBeenCalledWith("/ws", "a.md");
+    expect(workspaceList).toHaveBeenCalledWith("/ws", "", null);
   });
 
   it("renameEntry re-keys a renamed dir's expansion and unattributed children", async () => {

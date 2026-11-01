@@ -16,8 +16,11 @@ import {
   conversationPreflight,
   conversationRead,
   conversationRename,
-  workspaceCopyEntry,
+  workspaceCopyEntriesToSystemClipboard,
   workspaceCopyPath,
+  workspaceDeleteEntry,
+  workspacePasteEntries,
+  workspacePasteSystemClipboard,
   workspaceGitDiff,
   workspaceGitInfo,
   workspaceGitStatus,
@@ -25,16 +28,22 @@ import {
   workspaceCreateFile,
   workspaceList,
   workspaceOpen,
+  workspaceReadImage,
   workspaceRename,
   workspaceReveal,
   workspaceWatchStart,
   workspaceWatchStop,
 } from "../lib/ipc";
 import { useSettingsStore } from "./settings";
+import { i18n } from "../i18n";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { recordLink } from "../features/history/conversationReading";
 import type {
   ArtifactRecord,
   ConversationSummary,
   WorkspaceMutationResult,
+  WorkspaceBatchResult,
   WorkspaceNode,
 } from "../types";
 
@@ -72,11 +81,17 @@ export type ExplorerKind = "explorer" | "work-records" | "conversations" | "arti
 /** Stage 11 (D11-02/D11-03): the in-app file clipboard. Short-lived store
  *  state — copy never touches the OS text clipboard. Single source entry
  *  only; invalidated on workspace switch or when the source disappears. */
+export interface ExplorerClipboardEntry {
+  relativePath: string;
+  kind: "file" | "dir";
+}
+
 export interface ExplorerClipboard {
   workspace: string;
-  sourceRelativePath: string;
-  kind: "file" | "dir";
+  entries: ExplorerClipboardEntry[];
   generation: number;
+  /** True only after the native Windows CF_HDROP write succeeded. */
+  explorerCompatible: boolean;
 }
 
 /** Extract the stable WB_ERR_* code from an invoke rejection. The Rust side
@@ -194,6 +209,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     /** Per-conversation inline resume error (preflight failure keeps the
      *  layout — no tab is created; design §1c). */
     resumeErrors: {} as Record<string, string>,
+    resumePending: {} as Record<string, boolean>,
     /** 批 2 聊天式 UI: the conversation the read-only viewer overlay is
      *  open on (null = closed). The viewer component owns its own paging
      *  state; this only anchors the overlay + its title. */
@@ -754,31 +770,47 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
      *  Returns true when the resume tab was created. */
     async resumeConversation(c: ConversationSummary, forkSession = false): Promise<boolean> {
       if (!this.workspace) return false;
+      const requestWorkspace = this.workspace;
+      const pendingKey = `${requestWorkspace}:${c.agent}:${c.conversation_id}`;
+      if (this.resumePending[pendingKey]) return false;
+      this.resumePending[pendingKey] = true;
       delete this.resumeErrors[c.conversation_id];
       try {
         await conversationPreflight(this.workspace, c.conversation_id, c.agent);
+        const { useRuntimeStore } = await import("./runtime");
+        const runtime = useRuntimeStore();
+        if (this.workspace !== requestWorkspace || runtime.workspace !== requestWorkspace) return false;
+        await runtime.prepareConversationResume();
+        if (this.workspace !== requestWorkspace || runtime.workspace !== requestWorkspace) return false;
+        const live = !forkSession ? runtime.findLiveResumeTab?.(c.conversation_id) : null;
+        if (live) {
+          const matching = Object.entries(live.panes).find(([, pane]) =>
+            pane.resumeConversationId === c.conversation_id && !pane.resumeForkSession &&
+            ["running", "starting"].includes(pane.sessionState));
+          runtime.activateTab(live.tabId);
+          if (matching) runtime.setActivePane(live.tabId, matching[0]);
+          return true;
+        }
+        const recoverable = !forkSession ? runtime.findRecoverableResumePane?.(c.conversation_id) : null;
+        if (recoverable) {
+          runtime.setActivePane(recoverable.tabId, recoverable.paneId);
+          runtime.openTab(recoverable.tabId, c.conversation_id);
+          return true;
+        }
+        const created = runtime.createTab(c.agent, c.conversation_id, forkSession);
+        if (!created) this.resumeErrors[c.conversation_id] = i18n.global.t("history.viewer.tabLimit");
+        return created !== null;
       } catch (e) {
         // WorkbenchError serializes { code, message }; prefer its message.
         const msg =
           e && typeof e === "object" && "message" in e
             ? String((e as { message?: unknown }).message)
             : String(e);
-        this.resumeErrors[c.conversation_id] = msg;
+        if (this.workspace === requestWorkspace) this.resumeErrors[c.conversation_id] = msg;
         return false;
+      } finally {
+        delete this.resumePending[pendingKey];
       }
-      const { useRuntimeStore } = await import("./runtime");
-      const runtime = useRuntimeStore();
-      // A live tab that already resumed this conversation: activate it
-      // instead of spawning a duplicate resume — the provider refuses a
-      // second resume of a live session (手测反馈).
-      // A fork intentionally creates a new provider session, so a live tab
-      // resuming the source conversation must not hijack the action.
-      const live = !forkSession ? runtime.findLiveResumeTab?.(c.conversation_id) : null;
-      if (live) {
-        runtime.activateTab(live.tabId);
-        return true;
-      }
-      return runtime.createTab(c.agent, c.conversation_id, forkSession) !== null;
     },
 
     /** Rename a conversation (手测反馈 #2): persists a title override in the
@@ -805,6 +837,36 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       await workspaceOpen(this.workspace, relativePath);
     },
 
+    async readRecordImage(relativePath: string, workspace?: string): Promise<string> {
+      const root = workspace ?? this.workspace;
+      if (!root) throw new Error("no workspace");
+      return workspaceReadImage(root, relativePath);
+    },
+
+    async openRecordLink(url: string, workspace: string): Promise<void> {
+      const link = recordLink(url, workspace);
+      if (!link || link.kind === "anchor") throw new Error(i18n.global.t("history.viewer.linkUnavailable"));
+      if (link.kind === "web") await openUrl(link.url);
+      else await workspaceOpen(workspace, link.path);
+    },
+
+    async copyRecordText(text: string): Promise<void> { await writeText(text); },
+
+  /** Delete one contained file/dir. The UI batches and aggregates failures. */
+  async deleteEntry(relativePath: string): Promise<WorkspaceMutationResult> {
+    if (!this.workspace) throw { code: "WB_ERR_WORKSPACE_INVALID" };
+    const result = await workspaceDeleteEntry(this.workspace, relativePath);
+    const parent = parentDirOf(relativePath);
+    delete this.tree[relativePath];
+    this.expanded.delete(relativePath);
+    delete this.nextCursors[relativePath];
+    for (const path of Object.keys(this.unattributed)) {
+      if (path === relativePath || path.startsWith(`${relativePath}/`)) delete this.unattributed[path];
+    }
+    await this.loadDir(parent, true);
+    return result;
+  },
+
     async revealFile(relativePath: string) {
       if (!this.workspace) return;
       await workspaceReveal(this.workspace, relativePath);
@@ -822,35 +884,52 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     // directed refresh of the affected parent directory. The watcher stays a
     // supplementary signal (02 §3, 05 §2).
 
-    /** Copy action: only records the in-app clipboard (D11-02). */
-    setClipboardEntry(sourceRelativePath: string, kind: "file" | "dir") {
-      if (!this.workspace) return;
+    /** Copy selected entries into the app clipboard and, for local Windows
+     *  workspaces, the native CF_HDROP clipboard. The app list remains a
+     *  controlled fallback; Explorer compatibility is never faked. */
+    async setClipboardEntries(entries: ExplorerClipboardEntry[]) {
+      if (!this.workspace || entries.length === 0) return;
       this.clipboardGeneration += 1;
+      let explorerCompatible = false;
+      try {
+        const result = await workspaceCopyEntriesToSystemClipboard(
+          this.workspace,
+          entries.map((entry) => entry.relativePath),
+        );
+        explorerCompatible = result.explorer_compatible;
+      } catch {
+        // Remote/non-Windows/native-failure falls through to the contained
+        // app clipboard; `explorerCompatible` stays false.
+      }
       this.clipboard = {
         workspace: this.workspace,
-        sourceRelativePath,
-        kind,
+        entries,
         generation: this.clipboardGeneration,
+        explorerCompatible,
       };
     },
 
     /** True when the clipboard holds a pasteable entry for THIS workspace. */
     canPaste(): boolean {
       const c = this.clipboard;
-      return !!c && !!this.workspace && c.workspace === this.workspace;
+      return !!c && !!this.workspace && c.workspace === this.workspace && c.entries.length > 0;
     },
 
-    /** Paste: copy the clipboard entry into `destinationDir`. Rejects when
-     *  the buffer is empty, from another workspace, or the source vanished.
-     *  Never overwrites — conflicts surface as WB_ERR_WORKSPACE_CONFLICT. */
-    async pasteEntry(destinationDir: string): Promise<WorkspaceMutationResult> {
+    /** Paste through native CF_HDROP when present; otherwise contained app
+     *  paths. Both legs revalidate every source and destination in Rust. */
+    async pasteEntry(destinationDir: string): Promise<WorkspaceBatchResult> {
       const c = this.clipboard;
       if (!c || !this.workspace || c.workspace !== this.workspace) {
         throw { code: "WB_ERR_WORKSPACE_INVALID" };
       }
-      const result = await workspaceCopyEntry(
+      if (c.explorerCompatible) {
+        const result = await workspacePasteSystemClipboard(this.workspace, destinationDir);
+        await this.loadDir(destinationDir, true);
+        return result;
+      }
+      const result = await workspacePasteEntries(
         this.workspace,
-        c.sourceRelativePath,
+        c.entries.map((entry) => entry.relativePath),
         destinationDir,
       );
       await this.loadDir(destinationDir, true);

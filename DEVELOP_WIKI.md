@@ -23,12 +23,12 @@ git status --short
 
 每个大阶段（以 Workbench 版本号命名，见 §8.4 双轨约定）按以下流程运转：
 
-1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（最近一阶段 = 2.1.13，已归档 `docs/archive/2.1.13-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
 2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
    - 全部开发与远程同步：develop 已推送、工作树干净、推送后远程 CI 全绿（补充）；
-   - 本阶段成果发布为 **preview 版本**：CLI tag 用 `.devN` 后缀 → GitHub 自动标 prerelease 的 Release（三平台 + NSIS 随附）+ TestPyPI；pypi-publish 的 final-only 门使其不触碰正式 PyPI（补充：preview 形态具体化）；
+   - 本阶段成果发布为 **preview 版本**：CLI tag 用 `v<CLI版本>.devN`，Artifact workflow 在 tag 上手动 dispatch → 三平台 CLI archive/安装包 GitHub prerelease + TestPyPI；Workbench tag 用 `v<Workbench版本>-preview.N` → NSIS workflow 发布 Workbench prerelease。CLI/Workbench 保持双轨，pypi-publish 的 final-only 门使 dev 不触碰正式 PyPI；
    - `docs/todo.md` 当前版本条目全部标记完成；未完成项显式转期，不强制打勾（补充）；
    - `docs/devlog.md` 更新到位；
    - 已完成的 plans 文件夹移入 `docs/archive/` 按版本归档；
@@ -47,7 +47,11 @@ git status --short
 5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
-注：`-rc` 后缀 tag 当前不会被 artifact.yml 标为 prerelease（release job 仅命中 `-dev`/`.dev`）；preview 统一用 `.devN` 形态，如需 rc 形态先补该 workflow 的后缀判断。
+注（2026-10-31 发布验证补充）：CLI Artifact preview 用 `.devN`；Workbench 用既有
+`-preview.N`。Tauri 的 version 必须是 SemVer，Workbench 更新器也只识别 final / preview
+标签，不能把 CLI 的 `.devN` 直接套在 Workbench 上。CLI 的 v* tag 会额外匹配 NSIS 的
+宽泛 tag 触发器，独立发布 CLI Artifact 时须停止该重复 NSIS run，避免生成错误 Workbench
+版本或争用同一 Release。`-rc` 当前不会被 Artifact 正确标 prerelease，使用前须先补规则。
 
 ### 1.2 开工纪律（2026-09-19 用户裁定）
 
@@ -65,6 +69,51 @@ git status --short
 4. **异常判定口径**：写明什么情况算异常、「记下来告诉 Claude」的具体触发条件（例：正在使用的会话被 reconcile 收容进未归档）。
 
 范本：`docs/archive/2.1.13-dev-plans/HANDTEST.md` 批 8 节（T1–T4）。
+
+### 1.4 批次验收模式：开发阶段逐批门 vs preview 迭代批量门（2026-11-01 用户裁定）
+
+批次验收分两种模式；进入阶段或 preview 修复迭代时必须在计划 README/IMPLEMENTATION
+中声明使用哪一种，不得混用。
+
+#### 1.4.1 开发阶段：逐批实现、CU 预测试、用户验收、再进下一批
+
+适用于一个新开发阶段的常规 `b*` 批次。宿主系统是 **Windows** 且当前 agent 可用
+**Computer Use** 时，每个批次必须按以下顺序闭环：
+
+1. 批次实现、targeted 验证、本地门禁与必要的真实容器/数据面验证完成。
+2. agent 先按该批次 `HANDTEST.md` 操作真实 Workbench / Windows UI，记录实际点击
+   路径、文案、状态、窗口树或截图证据，结论写 `PASS / FAIL / NOT RUN`。
+3. 单批 CU 预测试通过后，立即向用户发起该批手测窗口；用户确认通过（或明确记录
+   放行/延后项）后，回写该批计划、PRETEST、HANDTEST、devlog 与 todo。
+4. 用户裁定进入下一批后，才可开始下一批实施。不得把多个未验收批次连续堆给用户
+   一次性补测。
+
+非 Windows 或 Computer Use 不可用时，仍执行逐批节奏：记录 CU `NOT RUN` 与阻塞原因；
+agent 不得把自动化、数据面或注入测试冒充 CU PASS，也不得静默把逐批验收合并。
+
+#### 1.4.2 preview 修复/迭代阶段：全批开发、发布 preview、用户整体实测
+
+适用于已发布 `preview.*` 之后由用户手测反馈驱动的修复/迭代阶段。此模式不使用
+agent Computer Use 预测试门，也不要求每个 `b*` 单独等用户验收：
+
+1. 阶段计划登记全部分批；各 `b*` 仍按 §1.2 分支先行，完成实现、自动化回归、必要
+   的真实数据面/构建/安装验证，并更新 HANDTEST 与证据记录。
+2. 各批通过分支/PR/远端 CI 后合入 develop；不得把发布材料当成已完成用户验收。
+3. 全部计划批次合入并完成发布准备后，发布新的 `preview.N`。
+4. 用户直接从发布的 preview 更新/安装，然后按 HANDTEST 做整体实测；发现的问题
+   转入下一轮 preview 修复批次。
+5. 本模式下不需要逐批 CU PRETEST 记录；若某批已有普通脚本/自动化/真实环境证据，
+   可记录为该批的实现验证，但不得写成 CU PASS。用户的整体实测结论才是进入下一轮
+   或收尾的裁定依据。
+
+#### 1.4.3 共同底线
+
+- `HANDTEST.md` 仍必须写明操作、字段级理想结果、前置准备和异常判定。
+- 实施与验证证据必须可追溯：分支/PR、CI、本地门禁、产物标识、镜像/二进制标识、
+  失败原始输出和 NOT RUN 原因都要回写计划或 PRETEST。
+- 任何验证失败先修复并重跑相关验证；不得把失败项伪装成通过，也不得未经用户裁定
+  将未测项转为通过。
+- 用户手测是实际功能验收门；CU、自动化、数据面与打包验证只是前置证据。
 
 ## 2. 开发环境
 
@@ -756,10 +805,10 @@ CI 矩阵及唯一官方平台集合：
 
 ### 11.1b Artifact workflow
 
-`.github/workflows/artifact.yml` 是当前唯一 GitHub Actions workflow：
+`.github/workflows/artifact.yml` 是 CLI 独立发布资产流水线（非唯一 workflow）：
 
 ```text
-触发：push develop | PR -> main | push v* tag | workflow_dispatch
+触发：workflow_dispatch（branch ref 只构建；CLI version tag ref 执行 aggregate/release）
 
 build matrix（三平台）
   -> Python 3.12 + editable install
@@ -783,11 +832,17 @@ tag only release
   -> 上传 archive、installer、sidecar、SHA256SUMS
 ```
 
-tag 名包含 `-dev` 时 GitHub Release 标为 Pre-release；其他 `v*` tag 为普通 Release。workflow 没有 Docker image build job，也没有运行完整 unittest、`check-docs.sh` 或 `vendor-verify.sh`，这些仍是本地/合入门禁。
+tag 名包含 `-dev` 或 `.dev` 时该 CLI GitHub Release 标为 Pre-release；其他适用 `v*` tag 为普通 Release。workflow 没有 Docker image build job，也没有运行完整 unittest、`check-docs.sh` 或 `vendor-verify.sh`，这些仍是本地/合入门禁。
 
 仓库有 `.gitleaks.toml`，但当前 Artifact workflow 没有 gitleaks step；不要把配置文件存在误写成 CI 已强制扫描。
 
 ### 11.2 发布步骤
+
+> **2026-10-31 当前双轨执行说明：** preview 从已验证 `develop` 提交发布，正式 final
+> 才走 main 合并批准门。Workbench `v2.1.x-preview.N` 由 NSIS workflow 发布；CLI
+> `v0.x.y.devN` 在该 tag 上 dispatch Artifact，再 dispatch PyPI publish 到 TestPyPI。
+> CLI SSOT 是 `src/aisc/VERSION`，Workbench 是 `workbench/src-tauri/tauri.conf.json`，
+> 下文旧的根 VERSION/共版本步骤不能直接套到 Workbench。既有 v* tag 不覆盖、不删除。
 
 > **D-8 发布模型重构（2026-09-19 裁定，实施批进行中）**：release 版本号**以 Workbench 为准**（tag = `v2.1.12` 线），每个 release 附**双安装器**——`AISC-Workbench-<版本>-setup.exe`（Workbench NSIS，自带打包时最新 CLI，装 UI 顺带装 CLI）+ `aisc-cli-<CLI版本>-installer.exe`（CLI 包，让出 `-setup.exe` 后缀）。自更新资产匹配 =「`AISC-Workbench-` 前缀 + `-setup.exe` 后缀」双条件。**PyPI 解耦**：CLI 版本发布走 pip 独立节奏，tag 用 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`）。下方步骤为旧形态（CLI 版本号 tag），D-8 实施批落地时同步重写。
 

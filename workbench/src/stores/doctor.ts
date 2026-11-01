@@ -23,24 +23,50 @@ export const useDoctorStore = defineStore("doctor", () => {
   const traces = ref<OpTrace[]>([]);
   /** lifecycle-logging (P3): recent tail of the shared JSONL timeline. */
   const logs = ref<LogEvent[]>([]);
+  const updateHealth = ref<ipc.UpdateHealth | null>(null);
+  let contextKey = "";
+  let contextGeneration = 0;
+  let runGeneration = 0;
+  let healthGeneration = 0;
 
   const running = computed(() => status.value === "running");
   /** Non-zero failed checks / any warning - drives the summary styling. */
   const hasFailures = computed(() => (report.value?.summary.failures ?? 0) > 0);
   const hasWarnings = computed(() => (report.value?.summary.warnings ?? 0) > 0);
 
+  function setContext(key: string): void {
+    if (contextKey === key) return;
+    contextKey = key;
+    contextGeneration += 1;
+    runGeneration += 1;
+    healthGeneration += 1;
+    updateHealth.value = null;
+    report.value = null;
+    error.value = null;
+    status.value = "idle";
+    if (open.value) {
+      void run();
+      void loadUpdateHealth();
+    }
+  }
+
   /** Run `aisc doctor --format json`. A-G13-3: never starts a second doctor
    * while one is in flight; repeated clicks are no-ops. */
   async function run(): Promise<void> {
     if (status.value === "running") return;
+    const context = contextGeneration;
+    const generation = ++runGeneration;
     status.value = "running";
     error.value = null;
     report.value = null;
     try {
-      report.value = await ipc.runDoctor();
+      const result = await ipc.runDoctor();
+      if (context !== contextGeneration || generation !== runGeneration) return;
+      report.value = result;
       status.value = "done";
       void ipc.logUiEvent?.("doctor_run", "ok");
     } catch (e) {
+      if (context !== contextGeneration || generation !== runGeneration) return;
       error.value = (e as WorkbenchError) ?? {
         code: "WB_ERR_UNKNOWN",
         message: String(e),
@@ -62,6 +88,10 @@ export const useDoctorStore = defineStore("doctor", () => {
   /** Close the dialog. Does not alter startup state (A-G13-3). */
   function closeDialog(): void {
     open.value = false;
+    runGeneration += 1;
+    healthGeneration += 1;
+    updateHealth.value = null;
+    if (status.value === "running") status.value = "idle";
   }
 
   /** Stage 6 (REL-01): refresh the recent-operation trace ring. */
@@ -72,6 +102,17 @@ export const useDoctorStore = defineStore("doctor", () => {
   /** lifecycle-logging (P3): refresh the recent log tail (100 events). */
   async function loadLogs(): Promise<void> {
     logs.value = await ipc.logsTail(100).then((r) => r.lines).catch(() => []);
+  }
+
+  async function loadUpdateHealth(): Promise<void> {
+    const context = contextGeneration;
+    const generation = ++healthGeneration;
+    const current = () => context === contextGeneration && generation === healthGeneration;
+    updateHealth.value = null;
+    try {
+      const snapshot = await ipc.appUpdateHealth();
+      if (current()) updateHealth.value = snapshot;
+    } catch { if (current()) updateHealth.value = null; }
   }
 
   /** Stage 6 (REL-01): export the redacted diagnostic bundle to `path`.
@@ -90,6 +131,7 @@ export const useDoctorStore = defineStore("doctor", () => {
 
   return {
     open,
+    updateHealth,
     status,
     report,
     error,
@@ -99,10 +141,12 @@ export const useDoctorStore = defineStore("doctor", () => {
     hasFailures,
     hasWarnings,
     run,
+    setContext,
     openDialog,
     closeDialog,
     loadTraces,
     loadLogs,
+    loadUpdateHealth,
     exportDiagnostic,
   };
 });

@@ -122,8 +122,7 @@ class TestConversationList:
         data = list_conversations(str(ws))
         for conv_id in (CLAUDE_ID, CODEX_ID):
             entry = _by_id(data, conv_id)
-            assert entry["resumable"] is False
-            assert entry["unavailable_reason"] == "malformed"
+            assert entry["resumable"] is True  # an interrupted tail must not disable native resume
             assert entry["message_count"] == 1  # user line survived the corruption
         assert _by_id(data, CODEX_ID)["title"] == "Help me sort an array"
 
@@ -158,8 +157,7 @@ class TestConversationList:
                 fh.write(pad)
         assert target.stat().st_size > MAX_JSONL_BYTES
         entry = _by_id(list_conversations(str(ws)), CLAUDE_ID)
-        assert entry["resumable"] is False
-        assert entry["unavailable_reason"] == "file_too_large"
+        assert entry["resumable"] is True  # list scan budget is not a provider resume limit
         assert entry["message_count"] is None  # head scan took no full count
         assert entry["title"] == "oversized head title"
         assert entry["file_size"] == target.stat().st_size
@@ -349,6 +347,47 @@ class TestConversationRename:
 # ---------------------------------------------------------------------------
 
 class TestConversationRead:
+    @pytest.mark.parametrize("agent", ["codex", "claude"])
+    def test_multimodal_blocks_survive_projection(self, ws_env, agent):
+        ws, ws_dir = ws_env
+        image = "data:image/png;base64,aGVsbG8="
+        if agent == "codex":
+            _install_codex(ws_dir, "codex_normal.jsonl")
+            path = next((ws_dir / "codex").rglob("*.jsonl"))
+            row = {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
+                {"type": "input_text", "text": "看看这张图"},
+                {"type": "input_image", "image_url": image},
+                {"type": "input_file", "filename": "报告.pdf", "file_url": "reports/a.pdf"}]}}
+        else:
+            _install_claude(ws_dir, "claude_normal.jsonl")
+            path = next((ws_dir / "claude").rglob("*.jsonl"))
+            row = {"type": "user", "message": {"content": [
+                {"type": "text", "text": "看看这张图"},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "aGVsbG8="}},
+                {"type": "document", "source": {"type": "url", "url": "reports/a.pdf"}, "title": "报告.pdf"}]}}
+        path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+        data = self._read(ws, CODEX_ID if agent == "codex" else CLAUDE_ID, agent)
+        blocks = data["messages"][0]["attachments"]
+        assert blocks[0]["kind"] == "image" and blocks[0]["url"] == image
+        assert blocks[1]["name"] == "报告.pdf" and blocks[1]["url"] == "reports/a.pdf"
+
+    def test_codex_commentary_and_custom_tools_are_preserved(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        path = next((ws_dir / "codex").rglob("*.jsonl"))
+        payloads = [
+            {"type": "message", "role": "assistant", "phase": "commentary", "content": [{"type": "output_text", "text": "正在检查"}]},
+            {"type": "custom_tool_call", "call_id": "c", "name": "apply_patch", "input": "patch"},
+            {"type": "custom_tool_call_output", "call_id": "c", "output": "ok"},
+            {"type": "message", "role": "assistant", "phase": "final_answer", "content": [{"type": "output_text", "text": "x" * 12000}]},
+        ]
+        path.write_text("\n".join(json.dumps({"type": "response_item", "payload": p}) for p in payloads), encoding="utf-8")
+        data = self._read(ws)
+        assert data["messages"][0]["phase"] == "commentary"
+        assert data["messages"][1]["kind"] == "tool_use"
+        assert data["messages"][1]["result"] == "ok"
+        assert len(data["messages"][-1]["text"]) == 12000
+
     def _read(self, ws, conv_id=CODEX_ID, agent="codex", **kw):
         from aisc.application.conversation import read_conversation
         return read_conversation(str(ws), conv_id, agent, **kw)
@@ -411,7 +450,7 @@ class TestConversationRead:
         _install_codex(ws_dir, "codex_normal.jsonl")
         data = self._read(ws)
         call = data["messages"][2]
-        assert call["result"].endswith("字符]") or len(call["result"]) <= 4000
+        assert call["result"].endswith("字符]") or len(call["result"]) <= 32000
 
     def test_missing_and_invalid_inputs(self, ws_env):
         ws, _ws_dir = ws_env
@@ -514,7 +553,7 @@ class TestParentThreadTree:
         result = list_conversations(str(ws))
         by_id = {e["conversation_id"]: e for e in result["conversations"]}
         assert by_id[self.CHILD_ID]["parent_thread_id"] == self.PARENT_ID
-        assert by_id[self.CHILD_ID]["resumable"] is False
+        assert by_id[self.CHILD_ID]["resumable"] is True
 
     def test_claude_resumed_file_carries_parent_thread_id(self, ws_env):
         ws, ws_dir = ws_env

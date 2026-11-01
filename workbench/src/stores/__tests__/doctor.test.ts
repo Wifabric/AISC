@@ -8,10 +8,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { DoctorReport, WorkbenchError } from "../../types";
 import { useDoctorStore } from "../doctor";
+import type { UpdateHealth } from "../../lib/ipc";
 
 const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   runDoctor: vi.fn(),
+  appUpdateHealth: vi.fn(),
   opTraces: vi.fn(),
   logsTail: vi.fn(),
   diagnosticBundle: vi.fn(),
@@ -127,5 +129,129 @@ describe("loadLogs (lifecycle-logging P3)", () => {
     const s = useDoctorStore();
     await s.loadLogs();
     expect(s.logs).toEqual([]);
+  });
+});
+
+
+it("invalidates late doctor responses across context changes including A to B to A", async () => {
+  let finish!:(r:DoctorReport)=>void;
+  mockIpc.runDoctor.mockImplementationOnce(()=>new Promise(r=>{finish=r;})).mockResolvedValue(report);
+  const s=useDoctorStore();s.setContext("A");const old=s.run();
+  s.setContext("B");s.setContext("A");await s.run();finish({...report,checks:[]});await old;
+  expect(s.report?.checks).toEqual(report.checks);expect(s.status).toBe("done");
+});
+it("closing an in-flight doctor prevents it overwriting a reopened dialog", async () => {
+  let finish!:(r:DoctorReport)=>void;
+  mockIpc.runDoctor.mockImplementationOnce(()=>new Promise(r=>{finish=r;})).mockResolvedValue(report);
+  const s=useDoctorStore();s.openDialog();s.closeDialog();s.openDialog();
+  await vi.waitFor(()=>expect(s.status).toBe("done"));finish({...report,checks:[]});await Promise.resolve();
+  expect(s.report?.checks).toEqual(report.checks);
+});
+it("reads local updater observations without changing target doctor facts", async () => {
+  const snapshot={workbenchVersion:"2.1.17", observations:[],containerExtensions:{status:"unknown",reason:"not-probed"}};
+  mockIpc.appUpdateHealth.mockResolvedValue(snapshot);const s=useDoctorStore();s.report=report;
+  await s.loadUpdateHealth();expect(s.updateHealth).toEqual(snapshot);expect(s.report).toEqual(report);
+});
+
+describe("update health snapshot lifecycle", () => {
+  const snapshot: UpdateHealth = {
+    workbenchVersion: "2.1.17",
+    observations: [],
+    containerExtensions: { status: "unknown", reason: "not-probed" },
+  };
+  const newer: UpdateHealth = {
+    ...snapshot,
+    observations: [{
+      scope: "host-update", endpoint: "https://github.com", route: "direct",
+      transport: "direct", status: "success", latencyMs: 20,
+      errorCode: null, checkedAt: 200,
+    }],
+  };
+
+  function deferHealth() {
+    let resolve!: (value: UpdateHealth) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<UpdateHealth>((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  }
+
+  it.each(["success", "failure"])("ignores an older load's %s after a newer snapshot", async (outcome) => {
+    const old = deferHealth();
+    mockIpc.appUpdateHealth.mockReturnValueOnce(old.promise).mockResolvedValue(newer);
+    const s = useDoctorStore();
+    const pending = s.loadUpdateHealth();
+    await s.loadUpdateHealth();
+    if (outcome === "success") old.resolve(snapshot);
+    else old.reject(new Error("old failure"));
+    await pending;
+    expect(s.updateHealth).toEqual(newer);
+  });
+
+  it.each(["success", "failure"])("ignores a closed dialog's late %s after reopening", async (outcome) => {
+    const old = deferHealth();
+    mockIpc.runDoctor.mockResolvedValue(report);
+    mockIpc.appUpdateHealth.mockReturnValueOnce(old.promise).mockResolvedValue(newer);
+    const s = useDoctorStore();
+    s.openDialog();
+    const pending = s.loadUpdateHealth();
+    s.closeDialog();
+    s.openDialog();
+    await s.loadUpdateHealth();
+    if (outcome === "success") old.resolve(snapshot);
+    else old.reject(new Error("closed dialog failure"));
+    await pending;
+    expect(s.updateHealth).toEqual(newer);
+  });
+
+  it("clears the obsolete snapshot while reloading and on close", async () => {
+    const next = deferHealth();
+    mockIpc.appUpdateHealth.mockResolvedValueOnce(snapshot).mockReturnValueOnce(next.promise);
+    const s = useDoctorStore();
+    await s.loadUpdateHealth();
+    const pending = s.loadUpdateHealth();
+    expect(s.updateHealth).toBeNull();
+    next.resolve(newer);
+    await pending;
+    s.closeDialog();
+    expect(s.updateHealth).toBeNull();
+  });
+
+  it("prevents a pending snapshot from populating a closed dialog", async () => {
+    const old = deferHealth();
+    mockIpc.appUpdateHealth.mockReturnValueOnce(old.promise);
+    const s = useDoctorStore();
+    const pending = s.loadUpdateHealth();
+    s.closeDialog();
+    old.resolve(snapshot);
+    await pending;
+    expect(s.updateHealth).toBeNull();
+  });
+
+  it.each(["success", "failure"])("refreshes an open dialog across A-B-A and ignores old %s", async (outcome) => {
+    const old = deferHealth();
+    mockIpc.runDoctor.mockResolvedValue(report);
+    mockIpc.appUpdateHealth.mockReturnValueOnce(old.promise).mockResolvedValue(newer);
+    const s = useDoctorStore();
+    s.setContext("A");
+    s.openDialog();
+    const pending = s.loadUpdateHealth();
+    s.setContext("B");
+    s.setContext("A");
+    await Promise.resolve();
+    expect(s.updateHealth).toEqual(newer);
+    if (outcome === "success") old.resolve(snapshot);
+    else old.reject(new Error("old context failure"));
+    await pending;
+    expect(s.updateHealth).toEqual(newer);
+  });
+
+  it("clears a closed dialog's old context snapshot without loading another", async () => {
+    mockIpc.appUpdateHealth.mockResolvedValueOnce(snapshot);
+    const s = useDoctorStore();
+    s.setContext("A");
+    await s.loadUpdateHealth();
+    s.setContext("B");
+    expect(s.updateHealth).toBeNull();
+    expect(mockIpc.appUpdateHealth).toHaveBeenCalledTimes(1);
   });
 });

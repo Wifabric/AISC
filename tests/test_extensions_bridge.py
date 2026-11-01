@@ -63,6 +63,147 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn("mcpServers", rendered)
         self.assertEqual(json.loads(calls[0]["input"]), config)
 
+    def test_skill_install_group_builds_exec_and_parses_itemized_envelope(self):
+        calls = []
+        payload = [
+            {"spec": "owner/repo:a", "status": "installed", "error": ""},
+            {"spec": "owner/repo:b", "status": "failed", "error": "cli exit 1"},
+        ]
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "group-op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 2, "completed": 1, "items": payload,
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_skill_install_group(
+                "rid", ["owner/repo:a", "owner/repo:b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 1:i + 3], ["skill-install-group", "--specs"])
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
+        self.assertEqual(data["kind"], "skills")
+        self.assertEqual(data["total"], 2)
+        self.assertEqual(data["completed"], 1)
+        self.assertEqual(data["items"], payload)
+        self.assertEqual(data["operation_id"], "group-op")
+    def test_skill_update_group_builds_exec_and_parses_itemized_envelope(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text, "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "group-update",
+                    "op": "skill-update-group", "ok": True,
+                    "total": 2, "completed": 2,
+                    "items": [
+                        {"spec": "owner/repo:a", "status": "updated", "error": ""},
+                        {"spec": "owner/repo:b", "status": "updated", "error": ""},
+                    ],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            data = ext.extensions_skill_update_group(
+                "rid", ["owner/repo:a", "owner/repo:b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 1:i + 3], ["skill-update-group", "--specs"])
+        self.assertEqual(argv[i + 3], '["owner/repo:a","owner/repo:b"]')
+        self.assertEqual(data["kind"], "skills")
+        self.assertEqual(data["completed"], 2)
+        self.assertEqual(data["operation_id"], "group-update")
+
+    def test_skill_group_timeout_derives_from_repos_and_children(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 2, "completed": 2, "items": [],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        specs = ["owner/repo:a", "owner/repo:b"]
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group("rid", specs, "/ws", executor)
+
+        self.assertEqual(calls[0]["timeout"], 960.0)
+
+    def test_skill_search_cache_and_updates_check_are_transported(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "op": argv[argv.index("--") + 1]
+                          if "--" in argv else argv[0]})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-search", "ok": True,
+                    "items": [{"id": "owner/repo:skill"}],
+                    "cache": {"source": "cache", "cached": True,
+                              "query": "skill", "error": "network down"},
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            search = ext.extensions_call_raw("rid", "skill-search", "/ws", executor,
+                                             query="skill")
+            updates = ext.extensions_call_raw("rid", "updates-check", "/ws", executor)
+
+        self.assertTrue(search["cache"]["cached"])
+        self.assertIn("network down", search["cache"]["error"])
+        self.assertEqual(updates["op"], "updates-check")
+        self.assertEqual(calls[-1]["argv"][-1], "updates-check")
+
+    def test_group_specs_json_transport_preserves_commas(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "input": input_text})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op",
+                    "op": "skill-install-group", "ok": True,
+                    "total": 1, "completed": 1,
+                    "items": [{"spec": "owner/repo:a,b", "status": "installed", "error": ""}],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            ext.extensions_skill_install_group(
+                "rid", ["owner/repo:a,b"], "/ws", executor)
+
+        argv = calls[0]["argv"]
+        i = argv.index("/usr/local/bin/aisc-extensions-adapter")
+        self.assertEqual(argv[i + 3], '["owner/repo:a,b"]')
+
     def test_adapter_error_maps_to_cli_error(self):
         def run_captured(argv, timeout=0.0, input_text=""):
             return SimpleNamespace(
@@ -81,6 +222,126 @@ class BridgeTests(unittest.TestCase):
             with self.assertRaises(CliError) as ctx:
                 ext.extensions_delete("rid", "skills", "x", "/ws", executor)
         self.assertEqual(ctx.exception.error_code, "AISC_ERR_EXTENSIONS_CLI_ERROR")
+
+
+    def test_legacy_source_maintenance_becomes_stable_unsupported_code(self):
+        cases = [
+            ("skill-repos-list", "AISC_ERR_USAGE",
+             "unhandled op: skill-repos-list"),
+            ("skill-repos-list", "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED",
+             "skill repository table is unavailable; upgrade the runtime image"),
+        ]
+        from aisc.domain.models import CliError
+        for op, code, message in cases:
+            with self.subTest(op=op, code=code):
+                executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+                    exit_code=1,
+                    stdout=json.dumps({
+                        "schema": ext.PROTOCOL, "operation_id": "op", "op": op,
+                        "ok": False, "error": {"code": code, "message": message},
+                    }),
+                    stderr="",
+                ))
+                with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+                    with self.assertRaises(CliError) as ctx:
+                        ext.extensions_call_raw("rid", op, "/ws", executor)
+                self.assertEqual(ctx.exception.error_code,
+                                 "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP")
+
+    def test_legacy_adapter_argparse_source_ops_become_stable_unsupported_code(self):
+        for op in sorted(ext._SOURCE_MAINTENANCE_OPS):
+            with self.subTest(op=op):
+                legacy_stderr = (
+                    "usage: aisc-extensions-adapter [-h] [--query QUERY] [--url URL] "
+                    "[--kind {skills,mcp,plugins}] [--id ID] "
+                    "[--agent {claude,codex}] [--on {true,false}]\n"
+                    f"aisc-extensions-adapter: error: argument --op: invalid choice: '{op}'\n"
+                )
+                executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+                    exit_code=2, stdout="", stderr=legacy_stderr,
+                ))
+                from aisc.domain.models import CliError
+                with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+                    with self.assertRaises(CliError) as ctx:
+                        ext.extensions_call_raw("rid", op, "/ws", executor)
+                self.assertEqual(ctx.exception.error_code, ext.UNSUPPORTED_OP)
+                self.assertIn("不支持扩展来源维护", ctx.exception.message)
+                self.assertNotIn("usage: aisc-extensions-adapter", ctx.exception.message)
+
+    def test_neighboring_adapter_argparse_op_remains_execution_failure(self):
+        op = "skill-repo-add"
+        legacy_stderr = (
+            "usage: aisc-extensions-adapter [-h]\n"
+            f"aisc-extensions-adapter: error: argument --op: invalid choice: '{op}'\n"
+        )
+        executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+            exit_code=2, stdout="", stderr=legacy_stderr,
+        ))
+        from aisc.domain.models import CliError
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            with self.assertRaises(CliError) as ctx:
+                ext.extensions_call_raw("rid", op, "/ws", executor)
+        self.assertEqual(ctx.exception.error_code, "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+
+    def test_transient_source_failure_keeps_adapter_error_code(self):
+        executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+            exit_code=1,
+            stdout=json.dumps({
+                "schema": ext.PROTOCOL, "operation_id": "op",
+                "op": "skill-repos-list", "ok": False,
+                "error": {"code": "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED",
+                          "message": "database is locked"},
+            }),
+            stderr="",
+        ))
+        from aisc.domain.models import CliError
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            with self.assertRaises(CliError) as ctx:
+                ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
+        self.assertEqual(ctx.exception.error_code,
+                         "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED")
+
+    def test_non_argparse_adapter_stderr_remains_execution_failure(self):
+        executor = SimpleNamespace(run_captured=lambda *args, **kwargs: SimpleNamespace(
+            exit_code=1, stdout="",
+            stderr="aisc-extensions-adapter: database is locked",
+        ))
+        from aisc.domain.models import CliError
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            with self.assertRaises(CliError) as ctx:
+                ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
+        self.assertEqual(ctx.exception.error_code,
+                         "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+        self.assertIn("database is locked", ctx.exception.message)
+
+    def test_r2_source_maintenance_ops_are_transportable(self):
+        calls = []
+
+        def run_captured(argv, timeout=0.0, input_text=""):
+            calls.append({"argv": list(argv), "timeout": timeout})
+            return SimpleNamespace(
+                exit_code=0,
+                stdout=json.dumps({
+                    "schema": ext.PROTOCOL, "operation_id": "op", "op": "ok",
+                    "ok": True, "items": [],
+                }) + "\n",
+                stderr="",
+            )
+
+        executor = SimpleNamespace(run_captured=run_captured)
+        with mock.patch.object(ext, "resolve_running_container", return_value="ct-1"):
+            listed = ext.extensions_call_raw("rid", "skill-repos-list", "/ws", executor)
+            ext.extensions_call_raw("rid", "skill-repo-remove", "/ws", executor,
+                                    item_id="owner/repo")
+            ext.extensions_call_raw("rid", "plugin-market-remove", "/ws", executor,
+                                    item_id="market")
+
+        self.assertEqual(listed["op"], "skill-repos-list")
+        adapter_args = [argv[argv.index("/usr/local/bin/aisc-extensions-adapter") + 1:]
+                        for argv in [call["argv"] for call in calls]]
+        self.assertIn(["skill-repos-list"], adapter_args)
+        self.assertIn(["skill-repo-remove", "--id", "owner/repo"], adapter_args)
+        self.assertIn(["plugin-market-remove", "--id", "market"], adapter_args)
 
 
 if __name__ == "__main__":

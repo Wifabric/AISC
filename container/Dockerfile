@@ -1,12 +1,12 @@
 # Version pins: see config/versions.env for all dependency versions
 # Override via: docker build --build-arg MIHOMO_VERSION=v1.20.0 ...
-# NODE_IMAGE_DIGEST is documented in config/versions.env but not consumed by FROM:
-# pin the digest in NODE_IMAGE itself, e.g. node:20-slim@sha256:...
+# Manual builds pin the official digest in NODE_IMAGE; host builds override it
+# with their verified local alias. FROM does not append NODE_IMAGE_DIGEST.
 
 # 使用官方轻量级 Node 镜像；国内网络可通过 --build-arg NODE_IMAGE=... 替换拉取源
 # USE_CN_MIRROR=1 时自动使用国内镜像加速（docker.1ms.run）
 ARG USE_CN_MIRROR=1
-ARG NODE_IMAGE=node:22-slim
+ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9
 FROM ${NODE_IMAGE}
 
 # 是否使用国内镜像源（apt 清华 / npm 淘宝）。1=用（默认），0=用官方源。
@@ -18,7 +18,7 @@ ARG USE_CN_MIRROR=1
 #   - MIHOMO_VERSION: pin 版本（可 --build-arg 覆盖）；asset = mihomo-linux-<arch>-<ver>.gz
 #   - GH_PROXY: GitHub release 加速前缀。留空=直连；USE_CN_MIRROR=1 时自动用 ghproxy（可显式覆盖）
 # ==========================================
-ARG MIHOMO_VERSION=v1.19.27
+ARG MIHOMO_VERSION=v1.19.33
 ARG GH_PROXY=
 # b6 (F5): single source for the GitHub mirror chain — the four download
 # segments used to drift (5/4/3 sites; yazi had none at all).
@@ -34,7 +34,7 @@ ARG GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://github.moeyy.x
 # cannot even OPEN a db the desktop cc-switch has migrated (daemon dead,
 # provider add/switch/edit all refused). Asset names carry the version tag
 # since ~5.10 — the old pattern 404s.
-ARG CC_SWITCH_VERSION=v5.10.5
+ARG CC_SWITCH_VERSION=v5.11.3
 ARG CC_SWITCH_RESOLVED_VERSION=
 ARG CC_SWITCH_RELEASE_COMMIT=
 ARG CC_SWITCH_ASSET_URL=
@@ -43,13 +43,14 @@ ARG CC_SWITCH_ASSET_NAME=
 ARG CC_SWITCH_BUILD_MANIFEST=
 
 # Claude Code npm 版本（@anthropic-ai/claude-code）——A5：随 versions.env 出厂 pin（node>=22）
-ARG CLAUDE_CODE_VERSION=2.1.273
+ARG CLAUDE_CODE_VERSION=2.1.314
 
 # Codex CLI npm 版本（@openai/codex）——A5：随 versions.env 出厂 pin
-ARG CODEX_VERSION=0.154.0
+ARG CODEX_VERSION=0.166.0
 
-# Geodata 发布版本（MetaCubeX/meta-rules-dat release tag）
-ARG GEODATA_VERSION=latest  # TODO: pin to dated release tag
+# AISC geodata snapshot date (not an upstream tag); immutable payload commit.
+ARG GEODATA_VERSION=20261030
+ARG GEODATA_COMMIT=10f120b9f0cd1bcae8b8ff88b3f999237b919702
 
 # ==========================================
 # 1. 网络环境优化：按 USE_CN_MIRROR 决定 apt 源
@@ -104,12 +105,12 @@ USER root
 COPY container/downloads/ /tmp/dl/
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
-    case "$arch" in amd64) mih_arch=amd64;; arm64|aarch64) mih_arch=arm64;; *) mih_arch=amd64;; esac; \
+    case "$arch" in amd64) mih_arch=amd64;; arm64|aarch64) mih_arch=arm64;; *) echo "unsupported arch $arch for mihomo"; exit 1;; esac; \
     # 1) 优先本地预置
-    if ls /tmp/dl/mihomo-linux-${mih_arch}-*.gz >/dev/null 2>&1; then \
-        echo "📦 使用本地预置 mihomo: $(ls /tmp/dl/mihomo-linux-${mih_arch}-*.gz)"; \
-        cp /tmp/dl/mihomo-linux-${mih_arch}-*.gz /tmp/mihomo.gz; \
-        rm -f /tmp/dl/mihomo-linux-${mih_arch}-*.gz; \
+    if [ -f "/tmp/dl/mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz" ]; then \
+        echo "📦 使用本地预置 mihomo: mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz"; \
+        cp "/tmp/dl/mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz" /tmp/mihomo.gz; \
+        rm -f "/tmp/dl/mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz"; \
     else \
         base="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-${mih_arch}-${MIHOMO_VERSION}.gz"; \
         if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
@@ -130,22 +131,30 @@ RUN set -eux; \
 
 RUN set -eux; \
     mkdir -p /opt/aisc/mihomo; \
+    checksums="/tmp/dl/geodata-${GEODATA_VERSION}.sha256"; \
+    test -f "$checksums"; \
+    [ "${#GEODATA_COMMIT}" = 40 ]; \
+    case "$GEODATA_COMMIT" in *[!0-9a-fA-F]*) echo "invalid geodata commit"; exit 1;; esac; \
     if [ -n "${GH_PROXY:-}" ]; then mirrors="${GH_PROXY}"; \
     elif [ "$USE_CN_MIRROR" = "1" ]; then mirrors="${GH_MIRRORS}"; \
     else mirrors=""; fi; \
     for f in geoip.metadb geosite.dat country.mmdb; do \
-        if [ -f /tmp/dl/$f ]; then \
-            echo "📦 使用本地预置 geodata: $f"; cp /tmp/dl/$f /opt/aisc/mihomo/$f; rm -f /tmp/dl/$f; \
+        expected="$(awk -v file="$f" '$2 == file { n++; digest=$1 } END { if (n != 1 || length(digest) != 64) exit 1; print digest }' "$checksums")"; \
+        case "$expected" in *[!0-9a-fA-F]*) echo "invalid geodata checksum"; exit 1;; esac; \
+        if [ -f "/tmp/dl/$f" ]; then \
+            echo "📦 使用本地预置 geodata: $f"; cp "/tmp/dl/$f" "/opt/aisc/mihomo/$f"; \
         else \
-            url="https://github.com/MetaCubeX/meta-rules-dat/releases/download/${GEODATA_VERSION}/$f"; \
+            url="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/${GEODATA_COMMIT}/$f"; \
             ok=0; \
             for m in $mirrors ""; do \
                 u="${m}${url}"; \
                 if curl -fSL --http1.1 --retry 2 --retry-delay 1 --retry-all-errors \
                         --connect-timeout 8 --max-time 120 "$u" -o "/opt/aisc/mihomo/$f"; then ok=1; break; fi; \
             done; \
-            [ "$ok" = "1" ] || echo "⚠️  geodata $f 下载失败（mihomo 仍可启动，GEO 规则可能受限）"; \
+            [ "$ok" = "1" ] || { echo "geodata $f download failed"; exit 1; }; \
         fi; \
+        printf '%s  %s\n' "$expected" "/opt/aisc/mihomo/$f" | sha256sum -c -; \
+        rm -f "/tmp/dl/$f"; \
     done
     # T8c (2.1.9 D-9): 这里原来的 rm -rf /tmp/dl 会删掉尚未消费的 npm/yazi
     #   预置包——各段改为只删自己消费的文件，最终清场挪到 yazi 段。
@@ -183,29 +192,50 @@ RUN set -eux; \
     if [ "$USE_CN_MIRROR" = "1" ]; then \
         npm config set registry https://registry.npmmirror.com/ ; echo "npm: 淘宝镜像" ; \
     else echo "npm: 官方源" ; fi ; \
-    npm_arch=""; \
-    case "$(dpkg --print-architecture)" in amd64) npm_arch=x64;; arm64|aarch64) npm_arch=arm64;; *) npm_arch=x64;; esac; \
-    claude_tgz="$(ls /tmp/dl/claude-code-[0-9]*.tgz 2>/dev/null | head -1 || true)"; \
-    claude_comp="$(ls /tmp/dl/claude-code-linux-${npm_arch}-*.tgz 2>/dev/null | head -1 || true)"; \
-    codex_tgz="$(ls /tmp/dl/codex-[0-9]*.tgz 2>/dev/null | head -1 || true)"; \
-    codex_comp="$(ls /tmp/dl/codex-linux-${npm_arch}-*.tgz 2>/dev/null | head -1 || true)"; \
-    if [ -n "$claude_tgz" ] && [ -n "$claude_comp" ] && [ -n "$codex_tgz" ] && [ -n "$codex_comp" ]; then \
-        echo "📦 使用本地预置 npm 包: $(basename "$claude_tgz") + $(basename "$claude_comp") + $(basename "$codex_tgz") + $(basename "$codex_comp")"; \
+    case "$(dpkg --print-architecture)" in amd64) npm_arch=x64;; arm64|aarch64) npm_arch=arm64;; *) echo "unsupported npm arch"; exit 1;; esac; \
+    if node -e ' \
+        const fs = require("fs"), cp = require("child_process"); \
+        const [claudePin, codexPin, arch] = process.argv.slice(1); \
+        const deps = {}; \
+        const read = file => JSON.parse(cp.execFileSync("tar", ["-xzOf", file, "package/package.json"], {encoding:"utf8"})); \
+        const exact = version => typeof version === "string" && /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(version); \
+        try { \
+            for (const [name, prefix, pin] of [["@anthropic-ai/claude-code", "claude-code", claudePin], ["@openai/codex", "codex", codexPin]]) { \
+                if (!exact(pin)) throw Error("online version selection required"); \
+                const mainFile = `/tmp/dl/${prefix}-${pin}.tgz`, main = read(mainFile); \
+                if (main.name !== name || main.version !== pin || Object.keys(main.dependencies || {}).length) throw Error("main identity/closure mismatch"); \
+                const key = `${name}-linux-${arch}`, spec = (main.optionalDependencies || {})[key]; \
+                if (typeof spec !== "string") throw Error("platform companion not declared"); \
+                let nativeName = key, nativeVersion = spec; \
+                if (spec.startsWith("npm:")) { \
+                    const at = spec.lastIndexOf("@"); \
+                    nativeName = spec.slice(4, at); nativeVersion = spec.slice(at + 1); \
+                    if (nativeName !== name) throw Error("unexpected alias package"); \
+                } \
+                if (!exact(nativeVersion)) throw Error("companion is not an exact version"); \
+                const nativeFile = `/tmp/dl/${prefix}-linux-${arch}-${nativeVersion}.tgz`, native = read(nativeFile); \
+                if (native.name !== nativeName || native.version !== nativeVersion || Object.keys(native.dependencies || {}).length) throw Error("companion identity/closure mismatch"); \
+                if (native.cpu && (!Array.isArray(native.cpu) || !native.cpu.includes(arch))) throw Error("companion CPU mismatch"); \
+                if (native.os && (!Array.isArray(native.os) || !native.os.includes("linux"))) throw Error("companion OS mismatch"); \
+                deps[name] = `file:${mainFile}`; deps[key] = `file:${nativeFile}`; \
+            } \
+            fs.writeFileSync("/tmp/aisc-offline-npm.json", JSON.stringify({name:"aisc-offline-npm", private:true, dependencies:deps})); \
+        } catch (error) { console.error(`Offline closure unavailable: ${error.message}`); process.exit(1); } \
+    ' "$CLAUDE_CODE_VERSION" "$CODEX_VERSION" "$npm_arch"; then \
+        echo "📦 使用版本及架构匹配的 npm 离线闭包"; \
         mkdir -p /opt/aisc/npm && cd /opt/aisc/npm; \
-        printf '{"name":"aisc-offline-npm","private":true,"dependencies":{"@anthropic-ai/claude-code":"file:%s","@anthropic-ai/claude-code-linux-%s":"file:%s","@openai/codex":"file:%s","@openai/codex-linux-%s":"file:%s"}}' \
-            "$claude_tgz" "$npm_arch" "$claude_comp" "$codex_tgz" "$npm_arch" "$codex_comp" \
-            > package.json; \
+        cp /tmp/aisc-offline-npm.json package.json; \
         npm install --offline --no-audit --no-fund --loglevel=warn; \
         ln -sf /opt/aisc/npm/node_modules/.bin/claude /usr/local/bin/claude; \
         ln -sf /opt/aisc/npm/node_modules/.bin/codex /usr/local/bin/codex; \
-        rm -f "$claude_tgz" "$claude_comp" "$codex_tgz" "$codex_comp"; \
+        rm -f /tmp/aisc-offline-npm.json; \
         cd /; \
     else \
         npm_ok=0; \
         for npm_try in 1 2; do \
             if NPM_CONFIG_PREFIX=/opt/aisc/factory-npm npm install -g --fetch-retries=5 --fetch-retry-mintimeout=10000 \
-                    @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
-                    @openai/codex@${CODEX_VERSION}; then \
+                    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+                    "@openai/codex@${CODEX_VERSION}"; then \
                 npm_ok=1; break; \
             fi; \
             echo "⚠️  npm 安装第 ${npm_try} 次失败，重试..."; sleep 3; \
@@ -470,12 +500,16 @@ ENV PATH="/opt/aisc/venv/bin:${PATH}"
 # ==========================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
-    case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) cs_arch=x64;; esac; \
+    case "$arch" in amd64) cs_arch=x64;; arm64|aarch64) cs_arch=arm64;; *) echo "unsupported cc-switch arch $arch"; exit 1;; esac; \
     ccs_preset=""; \
     if [ -n "${CC_SWITCH_ASSET_URL}" ]; then \
+        case "${CC_SWITCH_ASSET_NAME}" in *-linux-${cs_arch}-musl.tar.gz) ;; *) echo "cc-switch resolver asset architecture mismatch"; exit 1;; esac; \
+        test -n "${CC_SWITCH_ASSET_SHA256}"; \
         if [ -f "/tmp/dl/${CC_SWITCH_ASSET_NAME}" ]; then ccs_preset="/tmp/dl/${CC_SWITCH_ASSET_NAME}"; fi; \
     else \
-        ccs_preset="$(ls /tmp/dl/cc-switch-cli-*-linux-${cs_arch}-musl.tar.gz 2>/dev/null | sort -V | tail -1 || true)"; \
+        if [ -f "/tmp/dl/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz" ]; then \
+            ccs_preset="/tmp/dl/cc-switch-cli-${CC_SWITCH_VERSION}-linux-${cs_arch}-musl.tar.gz"; \
+        fi; \
     fi; \
     if [ -n "$ccs_preset" ]; then \
         echo "📦 使用本地预置 cc-switch: $ccs_preset"; \
@@ -527,12 +561,12 @@ RUN set -eux; \
 # T8e (2.1.9 D-9): 对齐 mihomo 的 downloads/ 预置模式；本段是 /tmp/dl 的最后
 #   消费者，负责最终清场（geodata 段不再整删，见 T8c 注）。
 # ==========================================
-ARG YAZI_VERSION=25.2.26
+ARG YAZI_VERSION=26.9.1
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) yazi_arch=x86_64-unknown-linux-musl;; arm64|aarch64) yazi_arch=aarch64-unknown-linux-musl;; *) echo "unsupported arch $arch for yazi"; exit 1 ;; esac; \
-    yazi_preset="$(ls /tmp/dl/yazi-*.zip 2>/dev/null | head -1 || true)"; \
-    if [ -n "$yazi_preset" ]; then \
+    yazi_preset="/tmp/dl/yazi-${yazi_arch}-v${YAZI_VERSION}.zip"; \
+    if [ -f "$yazi_preset" ]; then \
         echo "📦 使用本地预置 yazi: $(basename "$yazi_preset")（期望 arch: ${yazi_arch}）"; \
         cp "$yazi_preset" /tmp/yazi.zip; \
         rm -f "$yazi_preset"; \
@@ -563,6 +597,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/cc-switch \
 
 COPY container/cc_switch_skills.py /usr/local/bin/lib/cc_switch_skills.py
 COPY container/lib/cc_switch_preset_providers.py /usr/local/bin/lib/cc_switch_preset_providers.py
+COPY container/lib/default_mcp.py /usr/local/bin/lib/default_mcp.py
 # Stage 8c (D8-06): the DeepSeek preset consumes this official-docs fixture
 # at runtime — models/endpoints/[1m] rules never live in code.
 COPY container/lib/deepseek-official-facts.json /usr/local/bin/lib/deepseek-official-facts.json

@@ -35,6 +35,8 @@ on:
       - 'VERSION'
       - 'pyproject.toml'
       - 'vendor/**'
+      - 'scripts/stage-npm.sh'
+      - 'scripts/stage_npm.py'
 
 jobs:
   nsis:
@@ -75,6 +77,7 @@ jobs:
           # the NSIS bundle carries the full offline preset set (parity with
           # artifact.yml/bundle-linux-macos.yml).
           bash scripts/stage-npm.sh --yazi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python packaging/artifact.py stage --root . --output workbench/src-tauri/nsis/bundle
           Get-ChildItem workbench/src-tauri/nsis/bundle/aisc-bundle | Select-Object -First 5 Name
 

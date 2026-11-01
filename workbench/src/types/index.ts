@@ -180,6 +180,16 @@ export interface ConversationReadMessage {
   call_id?: string | null;
   result?: string | null;
   ts?: string | null;
+  phase?: string | null;
+  attachments?: ConversationAttachment[];
+  result_attachments?: ConversationAttachment[];
+}
+
+export interface ConversationAttachment {
+  kind: "image" | "audio" | "video" | "file";
+  name: string;
+  url?: string;
+  detail?: string;
 }
 
 export interface ConversationReadResult {
@@ -192,6 +202,7 @@ export interface ConversationReadResult {
   messages: ConversationReadMessage[];
   malformed_lines: number;
   degraded_reason: "malformed" | null;
+  omitted_entries?: number;
 }
 
 /** Result of the unified exit coordinator (03 §4.3; runtime-lifecycle-ux
@@ -776,9 +787,14 @@ export interface SplitLayout {
 /** Live per-pane session state (pane tree leaf runtime; the pane's static
  * session type lives in the leaf, not here). */
 export interface PaneRuntime {
+  /** Resume intent survives provider guide and failed PTY opens. */
+  resumeConversationId?: string;
+  resumeForkSession?: boolean;
   sessionId: string | null;
   sessionState: TabSessionState;
   exit: TabExit | null;
+  /** b5: user-readable launch failure retained for inline recovery UI. */
+  launchError?: string;
 }
 
 export interface WorkspaceRecord {
@@ -1147,9 +1163,28 @@ export interface WorkspaceCopyResult {
 
 /** Stage 11 (11b): result of a contained Explorer mutation. The UI routes
  *  errors by the stable WB_ERR_* code, never by message text. */
+export interface WorkspaceBatchFailure {
+  relative_path: string;
+  code: string;
+  detail: string;
+}
+
+export interface WorkspaceBatchResult {
+  schema_version: number;
+  operation: "copy" | "paste" | "delete";
+  results: WorkspaceMutationResult[];
+  failures: WorkspaceBatchFailure[];
+}
+
+export interface WorkspaceClipboardResult {
+  schema_version: number;
+  count: number;
+  explorer_compatible: boolean;
+}
+
 export interface WorkspaceMutationResult {
   schema_version: number;
-  operation: "create_file" | "create_dir" | "copy" | "rename";
+  operation: "create_file" | "create_dir" | "copy" | "rename" | "delete" | "paste" | "upload";
   relative_path: string;
   kind: "dir" | "file";
 }

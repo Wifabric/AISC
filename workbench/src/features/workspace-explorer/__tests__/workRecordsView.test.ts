@@ -59,12 +59,18 @@ vi.mock("../../../lib/ipc", () => ({
   workRecordMoveMember: vi.fn(),
 }));
 const runtimeMock = vi.hoisted(() => ({
+  workspace: "/ws",
+  prepareConversationResume: vi.fn().mockResolvedValue(undefined),
   tabs: [] as unknown[],
   activeTabId: null as string | null,
   activateTab: vi.fn(),
   createTab: vi.fn(() => ({ id: "tab-1" })),
   closeLiveConversationSessions: vi.fn(async () => {}),
   resolvePendingConversationAssociations: vi.fn(async () => 0),
+  createTrackedTab: vi.fn(async () => ({ tabId: "tab-1" })),
+  waitForTabSession: vi.fn(),
+  removeTab: vi.fn(async () => {}),
+  lastCreatedTabId: null as string | null,
 }));
 
 vi.mock("../../../stores/runtime", () => ({
@@ -124,6 +130,7 @@ beforeEach(() => {
   vi.mocked(workRecordList).mockResolvedValue(listResult());
   vi.mocked(conversationList).mockResolvedValue({ schema_version: 1, conversations: [provider] });
   vi.mocked(confirm).mockResolvedValue(true);
+  runtimeMock.waitForTabSession.mockResolvedValue({ tabId: "tab-1" });
 });
 
 async function mountView() {
@@ -139,6 +146,12 @@ async function mountView() {
 }
 
 describe("WorkRecordsView", () => {
+  it("shows a failed resume inline instead of silently doing nothing", async () => {
+    const { wrapper, explorer } = await mountView();
+    explorer.resumeErrors[conversationId] = "Docker not ready";
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[role=alert]').text()).toContain("Docker not ready");
+  });
   it("hides archived collections by default and shows them with the switch", async () => {
     const { wrapper } = await mountView();
     expect(wrapper.findAll("[data-testid=collection]").map((w) => w.attributes("data-id")))
@@ -610,7 +623,44 @@ describe("WorkRecordsView", () => {
     ]);
   });
 
-  it("offers new and fork session actions from the context menu and refreshes", async () => {
+  it("creates a tracked session from a Work Record plus button", async () => {
+    const { wrapper } = await mountView();
+    runtimeMock.createTrackedTab.mockClear();
+    vi.mocked(workRecordList).mockClear();
+    await wrapper.find("[data-testid=new-session-active-1]").trigger("click");
+    await flushPromises();
+    expect(runtimeMock.createTrackedTab).toHaveBeenCalledWith("codex", "active-1");
+    expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(wrapper.find("[data-testid=work-record-session-error]").exists()).toBe(false);
+  });
+
+  it("retains a readable error and closes only a failed fork tab", async () => {
+    const { wrapper } = await mountView();
+    const explorer = useWorkspaceExplorerStore();
+    const resumeSpy = vi.spyOn(explorer, "resumeConversation").mockImplementation(async () => {
+      runtimeMock.lastCreatedTabId = "failed-tab";
+      return true;
+    });
+    runtimeMock.waitForTabSession.mockResolvedValueOnce({
+      tabId: "failed-tab", error: "provider launch failed",
+    });
+    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("contextmenu");
+    await flushPromises();
+    const menuNode = document.querySelector<HTMLElement>("[data-testid=work-record-context-menu]");
+    const forkButton = Array.from(menuNode!.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "分支会话",
+    );
+    forkButton!.click();
+    await flushPromises();
+    expect(resumeSpy).toHaveBeenCalledWith(provider, true);
+    expect(runtimeMock.waitForTabSession).toHaveBeenCalledWith("failed-tab");
+    expect(runtimeMock.removeTab).toHaveBeenCalledWith("failed-tab");
+    expect(wrapper.find("[data-testid=work-record-session-error]").text()).toContain("provider launch failed");
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).exists()).toBe(true);
+    resumeSpy.mockRestore();
+  });
+
+  it("offers fork from the context menu but scopes new sessions to record controls", async () => {
     const { wrapper } = await mountView();
     const explorer = useWorkspaceExplorerStore();
     const resumeSpy = vi.spyOn(explorer, "resumeConversation").mockResolvedValue(true);
@@ -625,22 +675,12 @@ describe("WorkRecordsView", () => {
     const forkButton = menuButtons.find((b) => b.textContent?.trim() === "分支会话");
     const newButton = menuButtons.find((b) => b.textContent?.trim() === "新建会话");
     expect(forkButton).toBeTruthy();
-    expect(newButton).toBeTruthy();
+    expect(newButton).toBeUndefined();
     forkButton!.click();
     await flushPromises();
     expect(resumeSpy).toHaveBeenCalledWith(provider, true);
     expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
     resumeSpy.mockRestore();
-    runtimeMock.createTab.mockClear();
-    vi.mocked(workRecordList).mockClear();
-    await wrapper.find(`[data-testid="member-${member.member_key}"]`).trigger("contextmenu");
-    await flushPromises();
-    const menuNode2 = document.querySelector<HTMLElement>("[data-testid=work-record-context-menu]");
-    const newButton2 = Array.from(menuNode2!.querySelectorAll("button")).find((b) => b.textContent?.trim() === "新建会话");
-    newButton2!.click();
-    await flushPromises();
-    expect(runtimeMock.createTab).toHaveBeenCalledWith("codex");
-    expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows a loading placeholder instead of missing reference while conversations load", async () => {

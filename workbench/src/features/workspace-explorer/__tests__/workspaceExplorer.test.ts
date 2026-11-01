@@ -42,6 +42,10 @@ vi.mock("../../../lib/ipc", () => ({
     relative_path: "newdir",
     kind: "dir",
   }),
+  workspaceCopyEntriesToSystemClipboard: vi.fn().mockResolvedValue({ schema_version: 1, count: 1, explorer_compatible: false }),
+  workspacePasteSystemClipboard: vi.fn().mockResolvedValue({ schema_version: 1, operation: "paste", results: [], failures: [] }),
+  workspaceDeleteEntry: vi.fn().mockResolvedValue({ schema_version: 1, operation: "delete", relative_path: "a.md", kind: "file" }),
+  workspacePasteEntries: vi.fn().mockResolvedValue({ schema_version: 1, operation: "copy", results: [], failures: [] }),
   workspaceCopyEntry: vi.fn().mockResolvedValue({
     schema_version: 1,
     operation: "copy",
@@ -431,6 +435,7 @@ describe("WorkspaceExplorer context menus (11c)", () => {
       "paste",
       "copy-entry",
       "rename",
+      "delete",
       "refresh",
     ]);
     wrapper.unmount();
@@ -441,7 +446,7 @@ describe("WorkspaceExplorer context menus (11c)", () => {
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const menu = await openRowMenu(wrapper, 1); // a.md
     const ids = menu.findAll("button").map((b) => b.attributes("data-action"));
-    expect(ids).toEqual(["open", "reveal", "copy-entry", "copy-path", "rename"]);
+    expect(ids).toEqual(["open", "reveal", "copy-entry", "copy-path", "paste", "delete", "rename"]);
     wrapper.unmount();
   });
 
@@ -449,13 +454,13 @@ describe("WorkspaceExplorer context menus (11c)", () => {
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
-    const menu = await openRowMenu(wrapper, 1);
-    await menu.find('[data-action="copy-entry"]').trigger("click");
+    await wrapper.findAll("[role=treeitem]")[1].trigger("contextmenu");
+    await wrapper.find('[data-action="copy-entry"]').trigger("click");
     const explorer = useWorkspaceExplorerStore();
     expect(explorer.clipboard).toMatchObject({
       workspace: "/ws",
-      sourceRelativePath: "a.md",
-      kind: "file",
+      explorerCompatible: false,
+      entries: [{ relativePath: "a.md", kind: "file" }],
     });
     expect(writeText).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -473,18 +478,24 @@ describe("WorkspaceExplorer context menus (11c)", () => {
   });
 
   it("paste copies the clipboard entry into the target dir and reports success", async () => {
-    const { workspaceCopyEntry } = await import("../../../lib/ipc");
+    const { workspacePasteEntries } = await import("../../../lib/ipc");
+    vi.mocked(workspacePasteEntries).mockResolvedValueOnce({
+      schema_version: 1,
+      operation: "copy",
+      results: [{ schema_version: 1, operation: "copy", relative_path: "src/a.md", kind: "file" }],
+      failures: [],
+    });
     await setup();
     const explorer = useWorkspaceExplorerStore();
-    explorer.setClipboardEntry("a.md", "file");
+    explorer.clipboard = { workspace: "/ws", entries: [{ relativePath: "a.md", kind: "file" }], generation: 1, explorerCompatible: false };
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const menu = await openRowMenu(wrapper, 0); // src dir target
     await menu.find('[data-action="paste"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(workspaceCopyEntry).toHaveBeenCalledWith("/ws", "a.md", "src");
+    expect(workspacePasteEntries).toHaveBeenCalledWith("/ws", ["a.md"], "src");
     const status = wrapper.find(".explorer-status");
     expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("已粘贴");
+    expect(status.text()).toContain("已粘贴 1");
     wrapper.unmount();
   });
 });
@@ -626,15 +637,18 @@ describe("WorkspaceExplorer drag & icons (11d)", () => {
     wrapper.unmount();
   });
 
-  it("dir rows never drag into the terminal", async () => {
+  it("files and dirs both drag through the controlled MIME", async () => {
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const rows = wrapper.findAll("[role=treeitem]");
-    expect(rows[0].attributes("draggable")).toBe("false"); // src (dir)
+    expect(rows[0].attributes("draggable")).toBe("true"); // src (dir)
     expect(rows[1].attributes("draggable")).toBe("true"); // a.md (file)
-    const dt = { setData: vi.fn(), effectAllowed: "", types: [] as string[] };
-    await rows[0].trigger("dragstart", { dataTransfer: dt });
-    expect(dt.setData).not.toHaveBeenCalled();
+    const dirDt = { setData: vi.fn(), effectAllowed: "", types: [] as string[] };
+    const fileDt = { setData: vi.fn(), effectAllowed: "", types: [] as string[] };
+    await rows[0].trigger("dragstart", { dataTransfer: dirDt });
+    await rows[1].trigger("dragstart", { dataTransfer: fileDt });
+    expect(dirDt.setData).toHaveBeenCalledWith("application/x-aisc-workspace-path", "src");
+    expect(fileDt.setData).toHaveBeenCalledWith("application/x-aisc-workspace-path", "a.md");
     wrapper.unmount();
   });
 
@@ -694,6 +708,58 @@ describe("conversations store (v2.1.8 T4)", () => {
 // --- b6 handtest #2/#4: providers/extensions views must not leak the
 // services panel's empty state (bare v-else used to catch unknown kinds) ---
 
+describe("WorkspaceExplorer B6 file management", () => {
+  it("ctrl-click selects multiple rows and drags all paths in stable order", async () => {
+    await setup();
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    const rows = wrapper.findAll("[role=treeitem]");
+    await rows[1].trigger("click");
+    await rows[0].trigger("click", { ctrlKey: true });
+    expect(rows[0].attributes("aria-selected")).toBe("true");
+    expect(rows[1].attributes("aria-selected")).toBe("true");
+    const dt = { setData: vi.fn(), effectAllowed: "", types: [] as string[] };
+    await rows[1].trigger("dragstart", { dataTransfer: dt });
+    expect(dt.setData).toHaveBeenCalledWith("application/x-aisc-workspace-path", "src\na.md");
+    wrapper.unmount();
+  });
+
+  it("copy invokes the native CF_HDROP bridge while retaining app clipboard", async () => {
+    const { workspaceCopyEntriesToSystemClipboard } = await import("../../../lib/ipc");
+    await setup();
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await wrapper.findAll("[role=treeitem]")[1].trigger("contextmenu");
+    await wrapper.find('[data-action="copy-entry"]').trigger("click");
+    await flushPromises();
+    expect(workspaceCopyEntriesToSystemClipboard).toHaveBeenCalledWith("/ws", ["a.md"]);
+    const explorer = useWorkspaceExplorerStore();
+    expect(explorer.canPaste()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("Delete asks once, deletes every selected entry, and reports partial failures", async () => {
+    const { workspaceDeleteEntry } = await import("../../../lib/ipc");
+    vi.mocked(workspaceDeleteEntry)
+      .mockResolvedValueOnce({ schema_version: 1, operation: "delete", relative_path: "a.md", kind: "file" })
+      .mockRejectedValueOnce({ code: "WB_ERR_WORKSPACE_IO", message: "locked" });
+    await setup();
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    const rows = wrapper.findAll("[role=treeitem]");
+    await rows[1].trigger("click");
+    await rows[0].trigger("click", { ctrlKey: true });
+    await wrapper.find("[role=tree]").trigger("keydown", { key: "Delete" });
+    expect(wrapper.find("[data-testid=explorer-delete-dialog]").exists()).toBe(true);
+    await wrapper.find("[data-testid=explorer-delete-confirm]").trigger("click");
+    await flushPromises();
+    expect(workspaceDeleteEntry).toHaveBeenCalledTimes(2);
+    const report = wrapper.find("[data-testid=explorer-batch-report]");
+    expect(report.exists()).toBe(true);
+    expect(report.text()).toContain("成功 1 项，失败 1 项");
+    expect(report.text()).toContain("a.md");
+    expect(report.text()).toContain("src");
+    wrapper.unmount();
+  });
+});
+
 describe("WorkspaceExplorer rail views (b6 handtest)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -721,3 +787,4 @@ describe("WorkspaceExplorer rail views (b6 handtest)", () => {
     wrapper.unmount();
   });
 });
+

@@ -18,6 +18,7 @@ a bundle refresh) is structurally impossible under this split.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -147,7 +148,7 @@ def _npm_latest(pkg: str, opener: Callable[[str], dict]) -> Optional[dict]:
     if not isinstance(d, dict):
         return None
     latest = d.get("dist-tags", {}).get("latest")
-    if not latest:
+    if not isinstance(latest, str) or not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", latest):
         return None
     engines = (d.get("versions", {}) or {}).get(latest, {}).get("engines") or {}
     return {"latest": latest, "node": engines.get("node") or ""}

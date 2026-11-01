@@ -167,10 +167,21 @@ pub(crate) fn pinned_cli(settings: &Settings) -> Option<PathBuf> {
 /// lose that race. Round 3: `resolve_pin` now also fails on a STALE pin
 /// (pinned file deleted by uninstall/upgrade), so the same fallback re-heals
 /// it. Use from async commands.
+fn resolve_cli_choice(
+    explicit: Option<PathBuf>,
+    pin: Result<PathBuf, WorkbenchError>,
+) -> Option<PathBuf> {
+    explicit.or_else(|| pin.ok())
+}
+
 pub async fn resolve_cli(app: &AppHandle) -> Result<PathBuf, WorkbenchError> {
-    match resolve_pin(app) {
-        Ok(pin) => Ok(pin),
-        Err(_) => {
+    let choice = resolve_cli_choice(
+        crate::cli::explicit_cli_path(app, None),
+        resolve_pin(app),
+    );
+    match choice {
+        Some(path) => Ok(path),
+        None => {
             // lifecycle-logging: pre-spawn resolution failure — without this
             // line a "无法沟通 aisc CLI" state (stale pin + zero valid
             // candidates) would leave the timeline completely silent, since
@@ -1321,6 +1332,16 @@ mod tests {
     use super::*;
     use crate::pty::REASON_PROCESS_EXIT;
     use tempfile::tempdir;
+
+    #[test]
+    fn explicit_cli_path_outranks_saved_pin() {
+        let explicit = PathBuf::from("/explicit/aisc.exe");
+        let saved = PathBuf::from("/saved/aisc.exe");
+        assert_eq!(
+            resolve_cli_choice(Some(explicit.clone()), Ok(saved.clone())),
+            Some(explicit)
+        );
+    }
 
     #[test]
     fn pinned_cli_requires_existing_file() {

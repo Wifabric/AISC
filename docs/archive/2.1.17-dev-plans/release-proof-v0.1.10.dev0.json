@@ -1,0 +1,40 @@
+{
+  "tag": "v0.1.10.dev0",
+  "url": "https://github.com/Wifabric/AISC/releases/tag/v0.1.10.dev0",
+  "prerelease": true,
+  "draft": false,
+  "assets": [
+    {
+      "name": "AISC-0.1.10.dev0-linux-x86_64.tar.gz",
+      "size": 711215855,
+      "official_sha256": "1905012902fb6f4f795947c8031f7f090754725aba7c7f380aa744c9a32003c8",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v0.1.10.dev0/AISC-0.1.10.dev0-linux-x86_64.tar.gz"
+    },
+    {
+      "name": "AISC-0.1.10.dev0-windows-x86_64.zip",
+      "size": 699295177,
+      "official_sha256": "93ed52d686ff810467c504b7a3a840b4d357008870f2e2492af6388fc85a3255",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v0.1.10.dev0/AISC-0.1.10.dev0-windows-x86_64.zip"
+    },
+    {
+      "name": "AISC-0.1.10.dev0-macos-arm64.tar.gz",
+      "size": 697340411,
+      "official_sha256": "6cd2960bc9621ab4d7addfbad525f52012773c37b71f79238b655fcbe0e70e9d",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v0.1.10.dev0/AISC-0.1.10.dev0-macos-arm64.tar.gz"
+    },
+    {
+      "name": "AISC-0.1.10.dev0-windows-x86_64-setup.exe",
+      "size": 689937459,
+      "official_sha256": "fd7d4dd169b667b8f17b6bc3b16a96d18c0080d9e5a94572c99b9f1a0b1731f7",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v0.1.10.dev0/AISC-0.1.10.dev0-windows-x86_64-setup.exe"
+    },
+    {
+      "name": "AISC-0.1.10.dev0-macos-arm64.pkg",
+      "size": 697476752,
+      "official_sha256": "a52e222cec909f40f6a8ad432b0dec7d9905d626abd54b96075d92cb936f5f17",
+      "url": "https://github.com/Wifabric/AISC/releases/download/v0.1.10.dev0/AISC-0.1.10.dev0-macos-arm64.pkg"
+    }
+  ],
+  "checksum_asset": "SHA256SUMS",
+  "verification": "downloaded checksum text matched GitHub asset digests; installers/archives not downloaded or run locally"
+}

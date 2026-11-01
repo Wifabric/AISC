@@ -67,12 +67,20 @@ async function exportBundle() {
 
 onMounted(async () => {
   panel.value?.focus();
-  await Promise.all([store.loadTraces(), store.loadLogs()]);
+  await Promise.all([store.loadTraces(), store.loadLogs(), store.loadUpdateHealth()]);
 });
 
 // --- lifecycle-logging (P3): recent log tail, collapsed by default ---
 const logs = computed(() => store.logs);
 const copied = ref(false);
+const healthCopyResult = ref<"copied" | "copyFailed" | null>(null);
+
+async function copyHealth(): Promise<void> {
+  try {
+    await writeText(JSON.stringify({ targetDoctor: store.report, localUpdateHealth: store.updateHealth }, null, 2));
+    healthCopyResult.value = "copied";
+  } catch { healthCopyResult.value = "copyFailed"; }
+}
 
 /** One compact line per event (same shape as `aisc logs show --format text`). */
 function logLine(e: LogEvent): string {
@@ -154,6 +162,24 @@ function onOverlayDown(e: MouseEvent) {
         <p class="muted">{{ t("doctor.idle") }}</p>
       </div>
 
+      <details class="update-health">
+        <summary>{{ t("doctor.updateHealth.title") }}</summary>
+        <p>{{ t("doctor.updateHealth.hint") }}</p>
+        <p>{{ t("doctor.updateHealth.workbenchVersion") }}: {{ store.updateHealth?.workbenchVersion ?? "?" }}</p>
+        <p>{{ t("doctor.updateHealth.containerUnknown") }}</p>
+        <p v-if="!store.updateHealth?.observations.length">{{ t("doctor.updateHealth.unknown") }}</p>
+        <ul v-else>
+          <li v-for="(observation, index) in store.updateHealth.observations" :key="index">
+            <code>{{ observation.endpoint }}</code>
+            <p>{{ observation.route }} / {{ observation.transport }} · {{ observation.status }} · {{ observation.latencyMs }} ms</p>
+            <time>{{ new Date(observation.checkedAt).toLocaleString() }}</time>
+            <code v-if="observation.errorCode">{{ observation.errorCode }}</code>
+          </li>
+        </ul>
+        <button class="copy-health" @click="copyHealth">{{ t("doctor.updateHealth.copy") }}</button>
+        <span v-if="healthCopyResult" role="status">{{ t(`doctor.updateHealth.${healthCopyResult}`) }}</span>
+      </details>
+
       <!-- Stage 6 (REL-01): recent operation timings (dev layer) -->
       <details v-if="traces.length" class="traces">
         <summary>{{ t("doctor.traces") }}</summary>
@@ -206,6 +232,10 @@ function onOverlayDown(e: MouseEvent) {
 }
 .head h2 { margin: 0; font-size: var(--font-lg); color: var(--text); }
 .body { padding: 12px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.update-health { padding: 8px 16px; overflow-y: auto; max-height: 240px; flex-shrink: 0; font-size: var(--font-sm); overflow-wrap: anywhere; }
+.update-health ul { padding-left: 16px; }
+.update-health li { margin: 8px 0; }
+.update-health p { margin: 4px 0; }
 .foot {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 16px; border-top: 1px solid var(--border);

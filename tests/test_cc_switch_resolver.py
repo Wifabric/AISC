@@ -73,6 +73,12 @@ V59 = make_release("v5.9.0", published="2026-07-08T00:00:00Z", rid=90)
 
 
 class SelectReleaseTests(unittest.TestCase):
+    def test_latest_uses_numeric_semver_even_when_older_patch_is_published_later(self):
+        backport = make_release("v5.9.99", published="2026-10-27T00:00:00Z")
+        selected = make_release("v5.11.3", published="2026-10-20T00:00:00Z")
+        release, _ = select_release([backport, selected, V510])
+        self.assertEqual(release["tag_name"], "v5.11.3")
+
     def test_latest_picks_newest_stable_with_asset(self):
         release, asset = select_release([V59, V5100, V510], version="latest")
         self.assertEqual(release["tag_name"], "v5.10.1")

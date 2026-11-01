@@ -1588,11 +1588,15 @@ async function onDrop(e: DragEvent) {
 
   dropActive.value = false;
 
-  const relativePath = e.dataTransfer?.getData(WORKSPACE_PATH_MIME) ?? "";
-
+  const relativePayload = e.dataTransfer?.getData(WORKSPACE_PATH_MIME) ?? "";
+  const relativePaths = relativePayload
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const relativePath = relativePaths[0] ?? "";
   const sid = sessionId.value;
 
-  if (!relativePath || !sid || !sessionLive.value) {
+  if (relativePaths.length === 0 || !sid || !sessionLive.value) {
 
     // OS image drag: the controlled MIME is absent by definition — fall
 
@@ -1616,7 +1620,9 @@ async function onDrop(e: DragEvent) {
 
   }
 
-  const token = quoteForTerminal(containerPathFor(relativePath));
+  const token = relativePaths
+    .map((path) => quoteForTerminal(containerPathFor(path)))
+    .join(" ");
 
   try {
 

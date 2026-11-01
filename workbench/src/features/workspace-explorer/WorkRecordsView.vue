@@ -26,6 +26,7 @@ const expandedMembers = ref(new Set<string>());
 const expandedUnfiled = ref(new Set<string>());
 const collapsedCollections = ref(new Set<string>());
 const unfiledExpanded = ref(true);
+const sessionLaunchError = ref<string | null>(null);
 const pendingDelete = ref<{
   kind: "collection" | "conversation";
   message: string;
@@ -415,21 +416,40 @@ function closeMenu() { contextMenu.value = null; moveSubOpen.value = false; }
 function menuConversation(): ConversationSummary | null {
   return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
 }
-// b2 (反馈 #11): /new equivalent — a fresh session tab for the same agent.
-async function newSessionFromMenu(): Promise<void> {
-  const menu = contextMenu.value;
-  closeMenu();
-  if (!menu) return;
-  runtime.createTab(menu.agent);
+function collectionLaunchAgent(collection: WorkRecordCollection): "claude" | "codex" {
+  const member = [...collection.members].reverse().find((item) => item.agent === "claude" || item.agent === "codex");
+  return member?.agent === "claude" ? "claude" : "codex";
+}
+
+// b5 (反馈 #7/#8): a Work Record launch is tracked; launch failure closes only
+// the new label and preserves the readable error for recovery.
+async function createSessionInRecord(collection: WorkRecordCollection): Promise<void> {
+  if (runtime.lastCreatedTabId) return;
+  sessionLaunchError.value = null;
+  const result = await runtime.createTrackedTab(collectionLaunchAgent(collection), collection.id);
+  if (result.error) {
+    sessionLaunchError.value = result.error === "tab-limit"
+      ? t("history.viewer.tabLimit")
+      : result.error === "provider-not-configured"
+        ? t("workRecords.providerNotConfigured")
+        : result.error;
+  }
   await refreshWorkRecords();
 }
-// b2 (反馈 #11): /fork equivalent — resume this conversation as a new forked
-// provider session (preflight + live-tab semantics handled by the store).
+
+// b5 (反馈 #7): context-menu /new remains scoped to the same Work Record.
 async function forkSessionFromMenu(): Promise<void> {
   const item = menuConversation();
   closeMenu();
   if (!item) return;
-  await explorer.resumeConversation(item, true);
+  sessionLaunchError.value = null;
+  const created = await explorer.resumeConversation(item, true);
+  if (!created) return;
+  const result = await runtime.waitForTabSession(runtime.lastCreatedTabId ?? null);
+  if (result.error && result.tabId) {
+    sessionLaunchError.value = result.error;
+    await runtime.removeTab(result.tabId);
+  }
   await refreshWorkRecords();
 }
 defineExpose({ buildMemberDragSubtree });
@@ -475,6 +495,7 @@ watch(() => props.workspace, async (workspace) => {
     </div>
 
       <p v-if="records.error" class="explorer-error" role="alert">{{ records.error }}</p>
+    <p v-if="sessionLaunchError" class="explorer-error" role="alert" data-testid="work-record-session-error">{{ sessionLaunchError }}</p>
 
       <div class="work-record-create">
         <input
@@ -534,6 +555,7 @@ watch(() => props.workspace, async (workspace) => {
           <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ collection.title }}</h4>
           <span v-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
           <span class="head-actions">
+            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" :data-testid="'new-session-' + collection.id" @click.stop="createSessionInRecord(collection)">＋</button>
             <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" :data-testid="'rename-' + collection.id" @click.stop="beginCollectionRename(collection)">✎</button>
             <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.archive')" :aria-label="t('workRecords.archive')" @click.stop="records.archive(collection.id)">🗄</button>
             <button v-else class="ui-icon-button sm" type="button" :title="t('workRecords.restore')" :aria-label="t('workRecords.restore')" @click.stop="records.restore(collection.id)">♻</button>
@@ -566,6 +588,7 @@ watch(() => props.workspace, async (workspace) => {
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(row.member.member_key)">✎</button>
               <button class="ui-icon-button sm danger" type="button" :title="t('workRecords.remove')" :aria-label="t('workRecords.remove')" @click.stop="removeMember(collection.id, row.member.agent, row.member.conversation_id)">✕</button>
             </li>
+            <li v-if="memberVisible(row) && explorer.resumeErrors[row.member.conversation_id]" class="record-resume-error" role="alert">{{ explorer.resumeErrors[row.member.conversation_id] }}</li>
           </template>
         </ul>
         <p v-if="!collapsedCollections.has(collection.id) && !collection.members.length" class="work-record-no-members">{{ t("workRecords.noMembers") }}</p>
@@ -604,10 +627,10 @@ watch(() => props.workspace, async (workspace) => {
               <button class="ui-icon-button sm" type="button" :disabled="!row.conversation.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" :data-testid="'resume-' + unfiledKey(row.conversation)" @click.stop="explorer.resumeConversation(row.conversation)">▶</button>
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(unfiledKey(row.conversation))">✎</button>
             </div>
+            <p v-if="unfiledVisible(row) && explorer.resumeErrors[row.conversation.conversation_id]" class="record-resume-error" role="alert">{{ explorer.resumeErrors[row.conversation.conversation_id] }}</p>
           </template>
         </div>
       </section>
-
 
       <section v-if="records.failures().length" class="work-record-failures" data-testid="delete-failures">
         <h4>{{ t("workRecords.failures") }}</h4>
@@ -630,7 +653,6 @@ watch(() => props.workspace, async (workspace) => {
       <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
         <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
         <button v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
-        <button type="button" @click="newSessionFromMenu()">{{ t("workRecords.newSession") }}</button>
         <button v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
         <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
         <button type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
@@ -651,6 +673,7 @@ watch(() => props.workspace, async (workspace) => {
 
 <style scoped>
 .work-records-panel { gap: var(--space-2); overflow: auto; width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
+.record-resume-error { color: var(--error, var(--text-2)); white-space: normal !important; overflow-wrap: anywhere; font-size: var(--font-sm); padding: 6px; }
 .work-record-switches { display:flex; align-items:center; gap:var(--space-1); flex-wrap:wrap; }
 .work-record-checkbox { display:inline-flex; gap:4px; align-items:center; font-size:var(--font-sm); }
 .work-record-create { display:flex; gap:var(--space-1); }

@@ -1,0 +1,379 @@
+# v2.1.17 统一手测方案
+
+> **D-7（2026-10-31）：用户取消剩余补测，直接放行收尾。** 本清单保留作历史和
+> 后续复现参考，不再要求用户执行；未执行项目仍为 NOT RUN，不能记成 PASS。
+
+## 当前收尾入口（2026-10-31，优先于下文 R2 历史变量）
+
+R3/R4 已由用户确认手测通过，本节用于收尾整体回归，不替代既往逐批验收。
+预测试证据和精确 SHA256 见 [CLOSEOUT-PRETEST.md](CLOSEOUT-PRETEST.md)。
+下文原 R2/b7 步骤保留作历史详细用例；除 b5 的 0.0.0 专用旧副本外，
+当前高频复核必须使用本节产物/最终镜像，不能把下文 R2 镜像和 CLI 混入当前候选。
+
+前置：Docker Desktop 正常；保留其它工作区容器运行；当前收尾 Workbench 已打开时
+直接在现有窗口测试，无需重复启动。新终端使用 PowerShell：
+
+```powershell
+$Repo = 'C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC'
+$Artifacts = "$Repo\release-staging\2.1.17-closeout"
+$Aisc = "$Artifacts\aisc-closeout.exe"
+$Bundle = "$Artifacts\handtest-stage\aisc-bundle"
+$Workspace = 'C:\pt\aisc-closeout-workspace'
+$Image = 'super-claude:2.1.17-closeout-final'
+& "$Artifacts\start-handtest.ps1" -VerifyOnly
+# 仅在没有当前收尾窗口时运行：
+# & "$Artifacts\start-handtest.ps1"
+```
+
+启动器绑定隔离数据根 `C:\pt\aisc-217-r4-handtest-data`、当前冻结 CLI 与干净 bundle，
+校验产物 hash 和镜像 ID；期望显示 `Closeout artifacts and pinned image verified.`。
+首页选 `$Workspace`，启动摘要高级设置的镜像填 `$Image`，等待右上“就绪”。
+镜像 ID 必须为 `sha256:7f82194edeeda7a2668a071c73ba63c92f99485ebb95aafb06807c03b7377e64`。
+任何校验失败/CLI 报旧 adapter usage/镜像不符，停止该项并反馈原文，不改用 latest。
+
+### C0 扩展市场与来源（约 5 分钟）
+
+1. 左侧“扩展”→“扩展市场”→“推荐”，依次切六分类；每类应有 10 张卡片。
+2. 点卡片正文：简介、类型、来源等应在卡片内部展开；无右侧空栏。
+3. 切“技能”，搜索 `caveman`，点击父组后点子技能；详情应有简要中文介绍。
+4. 切“来源管理”，分别看技能/插件/MCP：技能应有 4 仓库，插件 2 市场；前两类有
+   删除入口，MCP 有内置来源说明；不得出现 argparse usage 或空白错误弹窗。
+5. 如需验证删除，仅新增一个测试仓库/市场后删除该测试项，不删除默认源；插件删除
+   应先提示会连同该市场插件卸载。删除后列表不含测试源，原默认源仍保留。
+6. 关闭市场，主视图切已安装 MCP 空态：只显示“暂无内容。”，无空态第二个市场按钮，
+   无操作日记。推荐展开异常、中文简介缺失、源列表报错或删错来源均记 FAIL。
+
+### C1 扩展操作与 Services 交叉（约 5 分钟）
+
+前置：当前工作区已注册测试端口 3000/5173 并有真实 HTTP 服务。
+
+1. 技能市场搜索 `caveman`，已有 13 项可执行“更新全部”；操作期间切“服务”。
+2. 服务应及时显示“宿主工具（F2）”“注册服务”，3000 `closeout docs` 在前，
+   5173 回退为“端口 5173”在后；协议 HTTP、状态已注册，网关 ready。
+3. 点两条的“打开”，各自网页应显示 `closeout gateway ok`；回扩展等待成功通知，
+   13 项不丢失。阻塞超过既有 30 秒超时、端口顺序错误或更新后缺项均记 FAIL。
+4. 若 HTTP 进程已退出，只将服务浏览子项记 NOT RUN 并说明，不能将空白页算通过。
+
+### C2 Work Record 阅读（约 5 分钟）
+
+1. “工作记录”→点击 `R4 阅读预检：请汇总计算结果并附上报告。` 的正文（不点播放）。
+2. 应显示静态阅读弹窗，默认一项“思考与执行 3 项”；展开后见思考/过程说明/命令，
+   仍能分别展开细节。正文有表格、勾选列表、代码高亮、行内及独立公式、图片与脚注。
+3. 点“复制代码”、打开本地文本报告与项目网站；应分别得到完整代码、测试报告和
+   GitHub 项目页，不运行报告中的命令。Escape 关闭后仍回到记录列表。
+4. 分别点 `This is an isolated AISC resume test...`（Codex）和
+   `This is an isolated AISC Claude resume test...`（Claude），应各有两轮问答，页脚
+   `第 1–4 条 / 共 4 条`。正文缺失/重复/出现输出阶段推进、公式裁切均记 FAIL。
+
+### C3 新锁版中断恢复与隔离（需已认证环境）
+
+1. 自行在测试环境配置两个 Provider；本轮不会复制其它工作区凭据。选一个新测试
+   会话，告诉模型一段自定短标记，并等待回答；记录 Work Record 标题。
+2. 仅点击该测试终端页签右侧“关闭标签（会话将结束）”，回工作记录点该会话“恢复”；再次询问此前
+   标记但不附标记正文，期望答对；历史两轮可阅读，同一条记录不分裂成新会话。
+3. 仅在当前测试 runtime 仍为 `b290f18e-da74-4ab0-9159-16c03ee0e21f` 时，PowerShell
+   运行 `docker stop aisc-wb-b290f18e`；然后从同一记录“恢复”，期望重启原 runtime 后仍答对标记。
+   若已经更换 runtime，先反馈新 ID 再确认对应容器，不能停止其它工作区容器。
+4. 切另一个测试工作区 B，再回 A：记录和扩展开关不能串到 B。
+5. 恢复永久禁用/新开上下文/错关联或数据串区均记 FAIL。全局 Docker 引擎断连只在
+   你确认无其它工作负载时测试；Remote SSH、真实大历史缺环境可明确延后。
+
+### C4 安装与显式更新
+
+候选新 NSIS 的 CI 安装/升级/卸载保留数据已通过；本机交互形态尚待复核。
+采用下文 b5 0.0.0 专用副本步骤验证“下载完成仍留在应用→退出更新确认→Explorer
+选中安装包→正常 NSIS 界面”。候选尚未发布，检查更新仍会指向当前在线 release，
+不能把旧在线包当作本候选。最终 preview 出包后再对 preview 包复核真实更新；
+现在不要覆盖正式安装或把这一项误记 PASS。
+
+### C5 环境项与回报格式
+
+剩余故障网络/缓存竞态/重试 UI/离线禁用/诊断竞态/完整三轮 UI/窄屏键盘等项，
+详见 CLOSEOUT-PRETEST 的 NOT RUN 表与下文原编号。按实际环境补测或逐项明确延后。
+回报 `C0–C4：PASS/FAIL/NOT RUN；失败操作与原文；环境项：补测结果或同意延后项`。
+统一回归结论到位后才推进 preview/TestPyPI；正式 main/final 另走批准门。
+
+## 历史 R2 验收方案（以下变量仅用于复现旧证据）
+
+> 运行前先完成本批代码与 targeted 验证。所有命令在 PowerShell 5.1+ 执行；
+> `$Repo` 可按实际 checkout 修改，其余变量保持本文命名。
+
+## 变量与前置准备
+
+```powershell
+$Repo = "C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC"
+$Artifacts = "$Repo\release-staging\2.1.17-r2"
+$LegacyArtifacts = "$Repo\release-staging\2.1.17-b7" # 仅 b5 的 0.0.0 更新副本/旧 NSIS
+$Aisc = "$Artifacts\review-dist-2\aisc.exe"
+$Bundle = "$Artifacts\handtest-stage\aisc-bundle"
+$Workspace = Join-Path $env:TEMP ("AISC-217-R2-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $Workspace | Out-Null
+$Query = "caveman"
+```
+
+1. 使用本阶段最终集成 checkout；`git -C $Repo status --short` 输出为空。不要使用尚未同步的 `E:\Projects\AISC` 旧 checkout 或指向它的 editable CLI。
+2. `docker version --format "{{.Server.Version}}"` 输出一个非空版本号。
+3. Workbench 已关闭；`Test-Path $Aisc` 和 `Test-Path "$Bundle\manifest.json"` 均为 True。使用 R2 ACCEPTANCE 本地构建（含插件市场删除警告修正）、review-dist-2 冻结 CLI 与当前源码重打的 bundle；启动器校验 GUI/CLI/adapter SHA256，记录见 `$Artifacts\artifacts.json`。这些是未发布的本机忽略产物；另建 checkout 必须重建。不要用旧 b7/R1 GUI 验收 R2。
+4. 宿主无代理检查：
+   - `netsh winhttp show proxy` 输出包含“直接访问”或等义“没有代理服务器”；
+   - `Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" | Select-Object ProxyEnable,ProxyServer`
+     显示 `ProxyEnable : 0`。
+5. 在无代理环境变量下启动已准备的 Workbench（不需要重新编译）：
+
+```powershell
+$env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:ALL_PROXY=""; $env:GH_PROXY=""
+& "$Artifacts\start-handtest.ps1"
+```
+
+6. 启动器使用隔离数据根 `C:\pt\aisc-217-r2-handtest-data` 并绑定上面的 CLI/bundle。首页选择/创建 `$Workspace`，在启动摘要展开高级设置，在“镜像”输入框填 `super-claude:2.1.17-r2-final` 后启动，等待 running。该镜像 ID 为 `sha256:2f54fad6d86c15468f0cf968535fc377c7ff11e9362f94dcb5f29e2ee6121556`，由 b7 `610cd7ebfa39…` 加最终 adapter 派生；`latest` 仍为 b7，不能用于 R2 来源维护验收。此处未进行从头全镜像构建。
+7. 异常判定：上述任一步失败、Docker 未运行、sidecar 构建失败或运行时未启动，
+   本轮手测停止并记录原始输出。
+
+## H1 无代理正常安装（直连或镜像至少一条可用）
+
+1. 左侧资源面板点击“扩展” → 顶部资产页签点击“技能”。
+2. 点击“扩展市场”→“技能”，在搜索框输入 `$Query`，点击“搜索”。
+3. 记录市场父组标题右侧“{count} 个技能”的实际 `count = N`。
+4. 点击父组行右侧“安装全部”。
+5. 理想结果：
+   - 操作期间父组按钮显示 spinner，状态为 `0/N`；当前组级 IPC 不流式发送
+     子项增量，成功返回后一次性达到 `N/N` 并清除，不承诺逐项递增；
+   - 结束后 toast 文案为“安装完成：<父组名>”；
+   - 关闭扩展市场后，主视图已安装技能列表中同名父组的子技能数为 `N`，没有缺项；
+   - 每个新安装子技能的 Claude/Codex 启用状态均为开启；
+   - 错误区为空。
+6. 异常判定：中途停止在 `x/N`、toast 只报“AISC CLI错误”、已安装少于 `N` 项、
+   任一子技能双引擎为关闭，均记录为失败。
+
+## H2 直连失败但镜像可用
+
+1. 前置探测：
+
+```powershell
+(Test-NetConnection github.com -Port 443).TcpTestSucceeded   # 期望 False
+(Test-NetConnection ghfast.top -Port 443).TcpTestSucceeded   # 期望 True
+```
+
+2. 若两条不满足，H2 标记 NOT RUN 并保留输出；不得通过修改系统网络伪装通过。
+3. 满足后重复 H1 的搜索与“安装全部”。
+4. 理想结果：安装可经镜像完成，最终状态与 H1 第 5 条一致；UI 错误区为空。
+5. 异常判定：只安装一个子技能、失败信息不包含目标 repo/spec，或无法从镜像
+   完成，均记录为失败。
+
+## H3 失败诊断（仅当直连与镜像均不可用的真实环境）
+
+1. 前置探测：
+
+```powershell
+(Test-NetConnection github.com -Port 443).TcpTestSucceeded      # 期望 False
+(Test-NetConnection ghfast.top -Port 443).TcpTestSucceeded      # 期望 False
+(Test-NetConnection gh-proxy.com -Port 443).TcpTestSucceeded    # 期望 False
+```
+
+2. 若任一源可用，H3 标记 NOT RUN；失败诊断以 adapter 单元测试中的模拟 stderr
+   为自动化证据，不冒充实网手测。
+3. 全部不可用时，对一个未安装的多子技能市场组点击“安装全部”。
+4. 理想结果：Workbench 不退出；错误文案包含“操作失败”，technical detail 包含
+   repo、目标 spec、direct 与 mirror 探测结果、官方 CLI stderr 尾部；错误文本可
+   复制；刷新后不会把半安装项标成完整安装。
+5. 异常判定：只显示泛化的“AISC CLI错误”、无法复制详情、半安装组显示为完整成功，
+   均记录为失败。
+
+## H4 组更新保留状态
+
+1. 在 H1 完成后，把其中一个子技能 Codex 开关显式关闭并等待列表刷新。
+2. 点击该已安装父组右侧“更新全部”。
+3. 理想结果：更新期间状态为 `0/N`，成功返回后一次性达到 `N/N` 并清除；
+   被关闭项更新后 Codex 仍关闭、Claude
+   保持原状态；其余未改动项双引擎保持开启。
+4. 异常判定：更新后覆盖用户显式关闭状态或缺少任一子项，记录为失败。
+
+## 2026-10-26 执行记录（当前修订）
+
+以下是历史 b1 证据；统一手测使用文首 b7 产物，不沿用历史镜像。
+
+- 当前 adapter checksum：`eceb822ca20b5fbdd79c8a11fad77058179f9bfb1495ee97be2f45ed4354abeb`；
+  当前验证镜像：`super-claude:latest @ sha256:21e4b9b6dd0991428958d4d4a4cc6d28f0f36f8dff5da8a649b1585ac2db2c4e`。
+- **H1 UI：NOT RUN** — 未启动 Workbench 真窗口；不能声称进度文案 / toast / 子行状态已手测。
+  Workbench store/Vitest 覆盖对应状态逻辑。
+- **H2 数据面：PASS** — 宿主 WinHTTP direct、用户 `ProxyEnable=0`，ghfast 与 gh-proxy
+  均可连接。启动真实 temporary runtime
+  `2ca8d158-ad21-4523-8a4e-47c6d363cf8e` 后在容器 `/etc/hosts` 将 `github.com`
+  指到 `127.0.0.1`，实测 direct `git ls-remote` rc=128、ghfast rc=0。执行 JSON
+  specs 组安装 `caveman` + `caveman-commit`，operation `ec9a7f0a-adf8-4510-aae2-20c3805cad57`
+  返回 `total=2, completed=2`，两项 `installed`；列表确认两项 Claude/Codex 均开启。
+- **H2 UI 进度/文案：NOT RUN** — 数据面通过不代表父组按钮 `0/2→2/2` 与 toast 已在
+  真窗口观察。当前组 IPC 无逐项流式进度，成功返回后一次性到达终态。
+- **H3：NOT RUN** — 实测 ghfast 与 gh-proxy 均可连接，不满足“直连与镜像均不可用”
+  前置；失败诊断由 adapter 单测覆盖 direct/mirror probe、clone fallback 与官方 CLI
+  stderr tail，不伪充实网结果。
+- **H4 数据面：PASS** — 先将 `caveman` Codex 显式关闭，再执行组更新，operation
+  `9cc298c0-262f-4055-837c-f7f125848e6c` 返回 `total=2, completed=2`；列表确认
+  `caveman` 为 Claude=true / Codex=false，`caveman-commit` 为 Claude=true /
+  Codex=true，用户显式状态未被覆盖。
+- 测试容器已 stop/remove；本地镜像保留为验证产物。
+
+## b2 市场与更新信号
+
+前置：按文首启动本版 Workbench/sidecar 和 ready 的隔离工作区，不启用系统代理。
+
+1. 左侧“扩展”→“检查更新”，展开 caveman：无可靠版本字段的子技能显示“暂无可靠版本源”，不能显示“已是最新”。如有已安装插件和可比 marketplace 版本，更新项名称加粗并显示“可更新”；点开详情核对当前/最新版本。网络报错应显示具体错误。
+2. 点击“扩展市场”，分别在技能/MCP/插件页签搜索 `caveman` / `pdf` / `superpowers`；成功结果标“已刷新”和时间，展开详情显示中文字段及“市场原文”。清空输入后结果和缓存提示一起清空。
+3. 成功搜索后临时断开测试网络，再搜索同关键词：有缓存时显示“缓存结果”、上次成功时间与远端错误；首次搜索不存在的关键词不得显示前一关键词结果。恢复网络。
+4. 切换工作区后上述结果/徽标必须清空，新运行时的查询不能被旧响应覆盖。出现永久禁用、错类徽标、静默吞掉网络错误均记为异常。
+
+## b3 失败恢复（R2 紧凑失败区）
+
+前置：本版 ready runtime，使用一次性测试扩展。R2 已删除旧插件 identity 输入框和操作日志；不要照历史截图寻找它们。仅当真实市场结果中的测试项可稳定触发安装失败时执行本组，否则记 NOT RUN，引用 `extensionsOperationRecovery` / `extensionFailureNotice` 自动化证据，不把搜索失败当成安装失败。
+
+1. “扩展”→“扩展市场”→对应资产页签搜索测试项→单击真实结果→详情“安装”。记录完整 identity；失败后关闭市场。理想：主视图显示一块“最近失败”，包含类型、安装动作、名称和诊断；无历史日志列表。
+2. 仅当最近失败区有“重试”按钮时点击。理想：仅重试同一 identity/参数，仍失败则更新最近失败；已成功项不重复安装。若状态为“结果未知”，只能先刷新核对实际状态，不能显示可盲目重试按钮。没有可重试真实失败时本项记 NOT RUN，不制造虚假 PASS。
+3. 仅在隔离测试组真实出现部分失败时，核对成功项仍在、失败项可恢复；组内成功项不重复执行以真实数据面及自动化另证。缺少前置则记 NOT RUN。
+4. 最近失败区点击“复制诊断”，粘贴到本地文本编辑器：包含 identity、动作、尝试次数、起止时间和错误，敏感值遮蔽，超长诊断有截断标记。主视图无需显示全部日志字段。
+5. 等待测试操作时切换工作区。理想：新工作区无旧失败/错误，旧组剩余操作不能发送到新工作区；连续重试只执行一次。成功项重复执行、跨工作区操作或凭据残留均判异常。
+
+## b4 分类推荐与发现（R2 市场入口）
+
+前置：先在未启动 runtime 的工作区打开扩展市场，再启动隔离 ready runtime。主视图不再显示推荐。
+
+1. 左侧“扩展”→“扩展市场”→“推荐”：科学研究/教育学习/知识文档/数据可视化/写作表达/开发工程六类，每类 10 条；每条含类型、中文理由、来源与有据可查的热度/官方目录标签。未启动 runtime 时详情“搜索市场”禁用；不能显示假热度。
+2. ready 后，依次选择知识文档的 Context7（MCP）、开发工程的 superpowers（插件）及科学研究的一项技能推荐，单击详情“搜索市场”。理想：进入对应资产页签，关键词与推荐 query 一致；真实结果详情可安装，推荐详情只能先搜索。不得再要求旧 caveman/context7/superpowers 三卡并列布局。
+3. 在市场中连续更换搜索词，再清空输入：最终只显示当前关键词结果；清空后迟到结果不能重现。切工作区后不能残留上个工作区的已安装行。
+4. “来源管理”加载错误与关键词搜索错误各在相应位置显示，错误不能伪装为空结果。切英文后理由/按钮/离线说明均为英文。分类少于 10 条、关键词错类、离线伪刷新或跨工作区数据残留均判异常。
+
+## b5 显式更新与健康报告
+
+前置：Windows、可替换的测试安装目录。先关闭常规 2.1.17 Workbench，执行以下命令启动专用更新测试副本；它由同一份源码构建，仅以临时配置把版本设为 0.0.0，使现有正式 release 可触发下载，数据根独立为 `C:\pt\aisc-217-update-flow-data`。关于页必须显示 0.0.0；否则停止并记录。普通 2.1.17 构建高于当前正式 release，不能用它验证下载按钮。先保存工作区文件，真实安装器出现后可取消，避免安装旧正式版。非 Windows 只复核手动安装提示。
+
+```powershell
+& "$Artifacts\start-handtest.ps1" -UpdateFlow
+```
+
+1. 顶部菜单“关于与更新”→“检查更新”，再打开设置→更新。检查失败时应显示错误，不能提示“已是最新”；有新版时显示 GUI/CLI 当前与目标版本。
+2. 点击“下载更新”，等待按钮变为“退出更新”。理想：Workbench 仍运行，安装器尚未启动；下载文件位于 `%TEMP%\aisc-workbench-update\workbench-setup-<目标版本>.exe`。
+3. 点“退出更新”→取消。理想：仍显示“退出更新”，可重新确认，无安装进度或自动退出。
+4. 再点“退出更新”→确认。理想：Explorer 打开安装包目录并选中该 exe，随后出现正常 NSIS 安装界面，Workbench 退出；安装器没有 `/S` 静默参数。
+5. 另下载一次，在确认前临时重命名测试下载包后确认。理想：显示文件缺失错误，Workbench 保持运行；恢复原文件名。若出现 UAC 拒绝或启动失败，同样必须保留应用并报错。
+6. 打开“诊断”→展开“本机更新网络观测”→复制健康报告并粘贴到本地文本编辑器。理想：没有请求时显示“尚未探测”，有请求时显示 direct/mirror、传输、状态、耗时和时间；容器扩展网络明确未探测；CLI/bundle 检查列出实际路径、版本、manifest 规则与原因，不能把 Workbench 2.x 与 CLI 0.x 直接判为版本不匹配。
+7. 在诊断进行时切工作区或关闭后重开。理想：当前诊断结果不被旧请求覆盖。静默安装、下载即退出、失败后退出、未知版本被报健康、复制出凭据或旧结果覆盖均为异常。
+
+完成后关闭更新测试副本，运行 `& "$Artifacts\start-handtest.ps1"` 返回 2.1.17，继续其余批次。需要另测本批 NSIS 安装器时使用 `$Artifacts\AISC-Workbench-2.1.17-R2-setup.exe`；它来自最终 PR NSIS CI `40923914879`，SHA256 为 `7d1c3981d16f9aa25704e4030f51fd756426a61449b2f8df35a37c4516187831`，已核对下载压缩包与 GitHub artifact digest。它是未发布的 R2 安装器，不是更新服务当前发布目标。
+
+## b6 注册服务分组与 caveman 默认态
+
+前置：本版 R2 Workbench、Docker 已启动，按文首选用 R2 final 镜像，全新隔离项目工作区进入 ready。使用工作区的 bash 标签执行以下容器命令，勿在宿主 PowerShell 执行：
+
+```bash
+python3 -m http.server 3000 --bind 0.0.0.0 >/tmp/aisc-b6-3000.log 2>&1 &
+python3 -m http.server 5173 --bind 0.0.0.0 >/tmp/aisc-b6-5173.log 2>&1 &
+aisc-web-expose 5173
+aisc-web-expose 3000 --name "docs preview"
+```
+
+1. 左侧 Services 视图：先出现“宿主工具（F2）”，随后同类标题“注册服务”；注册服务行按 3000→5173 排列，名称分别为 docs preview、端口 5173。协议/注册状态有对应中文，切英文后分组/状态为英文。
+2. 点击 3000 的“复制”并粘贴核对 URL，点击“打开”显示测试 HTTP 目录页。缺少 runtime-services capability 的旧 CLI 只显示不支持提示、仍保留宿主工具；不出现假服务行。
+3. “扩展”→已安装→展开 caveman，核对 13 个子技能 C/X 均 on。关闭 caveman 的 X、caveman-commit 的 C、caveman-compress 的 C/X，再重启工作区或升级镜像：对应状态应保持 1/0、0/1、0/0，其他项仍双开。
+4. 仅卸载测试子技能 caveman-stats 后重新安装；理想 C/X 均 on。若容器启动同步补回缺失的内置技能，同样必须双开，不能覆盖其他已有 off。
+5. 服务刷新等待时切换 A→B→A，再刷新；只显示当前 runtime 的服务，不残留旧错误或提前解除忙碌。分组缺失、顺序颠倒、空白名称、升级强制开启、重装仍关闭或跨工作区旧响应均判异常。
+
+## b7 稳定工具与三轮统一冒烟
+
+前置：已完成本文件前置准备，使用 b7 新镜像，隔离工作区 ready。仅对测试扩展执行安装/卸载。版本记录见 dependency-evidence.md 和 PRETEST b7；不将宿主 Node 22 与容器 Node 24 混淆。
+
+1. 工作区 bash 中运行 `node --version; codex --version; claude --version; cc-switch --version; mihomo -v; yazi --version`。理想依次含 24.22.1、0.164.0、2.1.311、5.11.3、1.19.33、26.9.1。设置→关于应显示 Workbench 2.1.17，诊断的 CLI/bundle 均 0.1.10.dev0 且配对 pass。
+2. 连续执行三轮：扩展→打开扩展市场，分别在技能/MCP/插件页签搜索 caveman/context7/superpowers→从真实市场结果选择测试项安装→检查更新→卸载测试项。至少一轮安装两个 caveman 子技能。理想安装后列表与 C/X 对齐，卸载后测试项消失；Skills/MCP 更新源为 unsupported，不显示虚构“可更新”；Plugins 显示实际市场元数据判断。
+3. 按 b3 的受控失败步骤仅重试失败项，成功项保持一次；切工作区 A→B→A。理想新工作区无旧错误/日志、按钮不永久忙碌，主视图无历史日志，仅最近失败；内部记录上限 100 条、单项诊断上限 8 KiB 由自动化核对，复制后敏感值遮蔽。
+4. 复核 b6 的 Services 和 caveman；显式更新按 b5 切到专用 0.0.0 副本完成 ready→取消→确认。真实安装器应显示正常界面，Explorer 选中包，Workbench 随后退出。
+5. 发现版本不同、混装旧包、跨工作区污染、成功项重复执行、升级覆盖 off 或静默安装均记 FAIL，并记录批次、实际操作与原始错误。CU NOT RUN 项需用户最终复核，不把单测/数据面通过等同 UI 通过。
+
+
+## R2 扩展 UI 重设计追加手测
+
+前置：使用 R2 构建与当前源码 CLI（构建账本见 `R2-EXTENSION-UI-REDESIGN.md`），隔离工作区 ready。测试来源只使用一次性仓库/市场，不删除 built-in 或官方来源。
+
+1. 打开“扩展”主视图。理想：只显示 技能/MCP/插件、已安装列表、检查更新、扩展市场；不出现精选推荐、操作日志、市场搜索表单或来源表单。
+2. 点击“扩展市场”。理想：弹窗显示 推荐/技能/MCP/插件/来源管理；推荐含 科学研究、教育学习、知识文档、数据可视化、写作表达、开发工程 六类，每类正好 10 条，热度来源只出现一次。
+3. 切到教育学习，单击 Microsoft Learn。理想：右侧详情先显示中文简介，再看类型/来源/安装量；点击“搜索市场”后进入 MCP 搜索并保留缓存时间。
+4. 搜索后单击一条非目录 MCP。理想：详情标题切换，显示中文 fallback 简介和市场原文，不把 MCP 称为技能。
+5. 来源管理→技能仓库：添加 `wshobson/agents`（若已存在则换全新隔离工作区），列表出现该 ID、main、已启用后点击该行删除。确认文案必须说明不会卸载已安装技能；确认后列表消失，已安装技能仍在主视图。
+6. 在宿主 PowerShell 执行 `& "$Artifacts\prepare-source-fixture.ps1" -Workspace $Workspace`。来源管理→插件市场输入 `/root/app/.aisc-r2-handtest-market`→添加，列表出现 `aisc-r2-handtest`；市场“插件”页搜索 `aisc-r2-demo`，单击结果→安装。关闭市场后核对主视图有 `aisc-r2-demo@aisc-r2-handtest`，再进入来源管理删除该测试市场。确认文案必须明确“同时卸载来自该市场的已安装插件”；先取消，市场/插件均保留；再确认，市场及其测试插件均消失。其他市场的插件不受影响。禁止删除 built-in/官方市场。2026-10-30 真容器已证实官方删除会卸载来源插件，旧“保留”预期作废。
+7. 将窗口宽度压到 720px 以下。理想：弹窗详情移到单列、无横向文字重叠；主视图分组和子技能行仍可读，动作可键盘到达。
+8. 操作失败时只显示最近失败提示，可复制诊断；已知可重试项才显示重试，不出现历史日志列表。实际 add→delete、窄屏与失败路径为本批用户手测重点。
+
+## 2026-10-30 清单同步说明
+
+上述步骤已按 R2 最终界面替换旧市场入口/操作日志步骤。旧版截图与 PRETEST 历史证据保留，不能视为 R2 最终二进制全部重测通过。当前会话没有 `node_repl`，无法调用 Computer Use 的 `@oai/sky`；来源 add→delete、窄屏、键盘/焦点、旧 runtime 提示仍为 NOT RUN。用户统一手测仍未开始。
+
+## R3 扩展市场批次修复手测
+
+前置：关闭旧 R2 窗口；使用本批 R3 direct build、R3 adapter 镜像和全新隔离工作区，避免继承 R2 手测的 `super-claude:latest`。本批完成后先由用户验收，不进入下一批。
+
+1. R3 镜像：扩展→扩展市场→来源管理。理想：技能仓库和插件市场正常加载，不出现 `extensions skill-repos-list failed: usage: aisc-extensions-adapter...`。
+2. 旧 b7 镜像负向检查（可选但推荐）：同样打开来源管理。理想：显示“当前运行环境不支持扩展来源维护/请升级或重建镜像”类明确提示，不显示 argparse usage。
+3. 依次切到已安装 Skills/MCP/Plugins 且均无内容。理想：每个空态只有“暂无内容”，后面没有“打开扩展市场”按钮；工具栏仍有一个“扩展市场”。
+4. 推荐页切六个分类，各分类仍正好 10 条。卡片占满内容区，右侧没有固定空白详情栏。分别单击技能、MCP、插件推荐：详情在同一卡片内展开，包含中文简介、身份/来源、热度/证据和“搜索市场”；点另一张卡时上一张收起；再次点击当前卡或 Close 收起。
+5. 将弹窗宽度压到 720px 以下。理想：推荐卡片与内联详情无横向文字重叠，键盘可到达卡片和动作。
+
+
+## R4 Work Record 阅读与中断恢复（单批验收）
+
+前置：只验收本批，R3 未自动判为通过。Docker 已运行。使用 R4 direct build 和 R4 冻结 CLI；启动脚本校验 SHA256，独立数据根不会显示用户原工作区历史。
+
+```powershell
+$Repo = 'C:\Users\wangyu\.codex\worktrees\217-b1-proxyless-extension-reliability\AISC'
+$R4 = Join-Path $Repo 'release-staging\2.1.17-r4'
+$R4Workspace = 'C:\pt\aisc-r4-reader-workspace'
+$R4Cli = Join-Path $R4 'aisc-r4.exe'
+& (Join-Path $R4 'start-handtest.ps1')
+```
+
+首页填 `$R4Workspace` → 下一步 → 启动。镜像 `super-claude:2.1.17-r3-final` / 当前等价 latest，ID 应为 `2f54fad6…`。已经打开 R4 则使用现有窗口；不要打开多个同工作区窗口。纯阅读不需要 Provider 认证；恢复连续对话需要用户在这个隔离环境自行配置 Codex/Claude Provider，不要把演示夹具当作已认证会话。
+
+### R4-T1 静态阅读和单轮折叠
+
+1. 左侧“工作记录” → “未归档会话” → 单击 `R4 阅读预检：请汇总计算结果并附上报告。` 标题（不是右侧 ▶）。
+2. 理想：弹窗标题、Codex、用户问题与答案一次出现，页脚 `第 1–5 条 / 共 5 条`、`会话阅读 · 只读快照`；没有输入框、播放/阶段切换、自动跟随输出。
+3. 理想：问答之间恰有一个默认收起的 `思考与执行 3 项`。点开后看到思考过程、过程说明、exec_command；再点 exec_command，看到 `{"cmd":"python calculate.py"}` 和工具结果 `Process exited with code 0` / `result = 1/3`。收起再打开不丢正文。
+4. 异常：工具调用在主问答区散成多条，最终答案被折进执行项、正文逐字播放、不同会话串页，记 FAIL。
+
+### R4-T2 富文本、附件、链接与窄窗
+
+1. 在 T1 弹窗向下阅读。理想：标题、粗体、两列表格、勾选任务、行内 E=mc² 与独立积分公式、引用、Python 高亮代码、脚注可读；代码有“复制代码”，点击后显示“已复制”，粘贴应为原 Python 代码。
+2. 点击“打开文本报告”。理想：系统关联程序打开 `$R4Workspace\reports\result.txt`，内容 `R4 本地文件链接打开成功。`；“打开本地报告”对应同目录 result.md，本机未关联 .md 程序时显示打不开提示；点击“项目网站”，系统浏览器打开 `https://github.com/Wifabric/AISC`。不存在/越界文件只显示打不开的提示，不执行任意路径。
+3. 关闭后点 `R4 Claude 阅读预检：请说明这张图。`。理想：Claude Code、图片附件、一个 `思考与执行 1 项` 和完整答案可见；1px 演示图片视觉很小，但不显示“图片不可用”。真实较大图片需另用含图片的用户会话复核。
+4. 在设置切换明/暗主题，再打开记录；将窗口还原缩窄。理想：正文不挤进右栏，表格/长代码在各自内部横向滚动；关闭、展开和链接仍可操作，深色链接可读。Tab 留在弹窗，Escape 关闭并回到原触发点。
+5. 异常：公式变成乱码、图片静默丢弃、网页抢占阅读页、深色链接看不清、整页横向溢出、键盘无法退出，记 FAIL。
+
+### R4-T3 进程中止后继续原会话（认证前置）
+
+1. 用户自行在隔离环境配置 Codex/Claude；各新建真实会话发一个容易核对的问题，例如“请记住本次标记 R4-RESUME-1030”。确认回答写入 Work Record，记录对应 provider-native ID。
+2. 通过 CLI 正常退出或在该测试会话终止进程；再在“工作记录”找到同一条记录点 ▶ 恢复。
+3. 理想：恢复原会话上下文，继续询问标记能得到相同值；不会新建空白对话。已经恢复且仍运行时重复点 ▶ 应激活同一 pane，不重复创建标签。
+4. 分屏打开一个 Bash 后切到 Bash，再点原记录 ▶。理想：激活对应 Codex/Claude pane，不停留在旁边 Bash。
+5. 异常：引导重试后变新会话、恢复按钮永久禁用、重复恢复开出多个标签、错误没有行内提示，记 FAIL。尚未认证时显示登录/Provider 引导属于环境前置未满足，不算连续会话通过。
+
+本轮已有真实 Codex 记录 `This is an isolated AISC resume test…`，native ID `01a18b57-ce8c-7321-bf6b-2d146bafd587`，标记 `R4-RESUME-1030-CODEX`；Claude 记录 `This is an isolated AISC Claude resume test…` / native ID `14972c8d-4c11-4da7-80c9-420dd2b09e8a`，标记 `R4-RESUME-1030-CLAUDE`。两者进程中止后 CU 恢复、容器停止后恢复及 CLI 追加问题召回均已通过，可直接复核。Claude 首次工作区信任已由用户处理，重复恢复保持一个标签。点击两个真实记录标题，各显示第 1–4 条 / 共 4 条，两轮问答的标记相同。
+
+### R4-T4 容器停止后恢复原 runtime（只动隔离容器）
+
+1. T3 测试会话存盘后，在宿主 PowerShell 先识别本工作区容器，检查名称/runtime ID，禁止停止其它工作区：
+
+```powershell
+docker ps --filter label=io.aisc.workspace-key=c3e3bcd645d5674ac2fc35142c6142fdf8ed9aaae6602a0818bee21a66f7b2b2 --format '{{.ID}} {{.Names}}'
+# FINAL 本轮实例 d300dd738f2b；退出应用会清理临时容器，重建后必须使用上一步实际返回的 ID。
+$R4Container = 'd300dd738f2b'
+docker inspect $R4Container --format '{{ index .Config.Labels "io.aisc.runtime-id" }}'
+docker stop --timeout 2 $R4Container
+```
+
+2. Work Record 点原记录 ▶。理想：只重启原容器，容器 ID/runtime ID 不变；成功后恢复相同 provider-native ID。旧 Bash/PTY 结束不会挡住恢复，也不删除记录。
+3. Docker 引擎确实不可用时，应显示行内可重试错误，不创建空标签。引擎恢复后可再点 ▶。本项不要为测试主动退出整个 Docker Desktop，以免打断其它工作区。
+4. 异常：意外停止后的恢复自动新建/删除容器、历史丢失、误激活已死 pane、恢复后上下文变化，记 FAIL。CU 已分别确认 FINAL 停止 → 同一容器/runtime 重启 → 同一已认证 Codex/Claude 会话，并通过 CLI 追加问题召回。正常退出应用清理临时容器属于现有退出行为，与本条意外停止不同。
+
+### R4-T5 长记录与切换保护
+
+1. 用一条含长答案、多轮工具或图片的真实用户记录打开预览，滚动并点“加载更早的消息”。理想：旧内容插入后当前位置保持，问答次序一致；若记录超出读取预算/有损坏行，出现明确部分读取提示。
+2. 连续关闭/打开不同记录，再切换工作区。理想：旧请求不覆盖新标题/内容，换工作区时阅读弹窗关闭；JSONL 不被阅读器改写。
+3. 异常：缺尾部但标完整、旧结果覆盖、无限忙碌、切工作区仍显示上个工作区文件，记 FAIL。
+
+记录每项 PASS / FAIL / NOT RUN、提供商、实际会话 ID、容器 ID、按钮与文案；本批用户验收未完成前不进入下一批。

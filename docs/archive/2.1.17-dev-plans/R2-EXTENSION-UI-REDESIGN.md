@@ -1,0 +1,533 @@
+# v2.1.17 R2 Implementation Plan: Extension UI Redesign
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans.
+> Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Rebuild the Extensions experience around installed-asset management, a categorized market dialog, meaningful bilingual details, and maintainable skill/plugin sources.
+
+**Architecture:** Keep `ExtensionsView.vue` as the quiet installed-asset surface. Move discovery, categorized recommendations, search details, and source maintenance into focused dialog/panel components. Extend the existing adapter → CLI → Rust bridge → Pinia path with repository/marketplace list-and-remove operations; do not bypass the data-plane boundary.
+
+**Tech Stack:** Vue 3 + Pinia + vue-i18n + existing CSS tokens; Python adapter/CLI; Rust Tauri bridge; Vitest / pytest / cargo tests.
+
+**Spec:** User ruling on 2026-10-29: remove the operation log; move recommendations to a separate Extension Market dialog; show a brief Chinese introduction in details; improve the whole layout; maintain added source links; recommendations must be categorized (research / education / etc.) with exactly ten prominent entries per category based on project fit and market heat.
+
+## Non-negotiable requirements
+
+1. The Extensions main view must not embed the historical operation-log list.
+2. The main view exposes an `扩展市场` action; recommendations live only in that dialog.
+3. Recommendation catalog categories each contain **exactly 10** unique entries.
+4. Details opened from installed or market rows must show a non-empty brief Chinese introduction in `zh-CN`, not just the item name.
+5. Skill repositories must support list/add/remove. Plugin marketplaces must support list/add/remove. MCP maintains installed-server deletion; Smithery remains a built-in search source, not a deletable local repository.
+6. Unknown/timeout operation recovery remains available through a compact current-failure surface, without exposing a persistent operation history.
+7. No new UI dependency and no online translation service. First-party summaries are local; unknown market items retain the original market text.
+8. Follow the app-screen style: quiet chrome, 1px separation/tone steps, restrained accent use, real metadata, honest empty/error states.
+
+## 2026-10-29 recommendation evidence snapshot
+
+Selection blended:
+
+- project fit to AISC coding/research/document workflows;
+- skills.sh install counts observed through the bundled cc-switch market/API on 2026-10-29;
+- Smithery MCP usage metadata observed through the existing adapter on 2026-10-29;
+- official Claude plugin directory inclusion/category when the source has no public install count.
+
+No popularity number is invented. Plugin entries selected from the bundled official directory are marked `official-directory`; skills/MCP entries carry observed heat where available.
+
+### Category catalog: six categories × 10
+
+| Category | Selected identities |
+| --- | --- |
+| 科学研究 | `mattpocock/skills:research`; `llllllllama/rigorpilot-skills:ai-research-explore`; `llllllllama/rigorpilot-skills:ai-research-reproduction`; `google-deepmind/science-skills:literature-search-arxiv`; `google-deepmind/science-skills:literature-search-openalex`; `google-deepmind/science-skills:pubmed-database`; `google-deepmind/science-skills:literature-search-europepmc`; `firecrawl/skills:firecrawl-research-index`; MCP `pubmed`; MCP `consensus` |
+| 教育学习 | MCP `microsoft/learn_mcp`; MCP `clouatre-labs/math-mcp`; MCP `vocab-voyage/vocab-voyage-mcp`; MCP `flash-cards/flash`; MCP `ltt2019051173/bloom-study-guide`; `github/awesome-copilot:add-educational-comments`; `samber/developer-relations-skills:developer-education-strategy`; plugins `learn-with-coursera`, `explanatory-output-style`, `learning-output-style` |
+| 知识文档 | `anthropics/skills:pdf`; `anthropics/skills:docx`; `mattpocock/skills:handoff`; `mattpocock/skills:writing-for-agents`; `firecrawl/skills:firecrawl-knowledge-base`; `firecrawl/skills:firecrawl-knowledge-ingest`; `openclaw/openclaw:summarize`; `tw93/waza:read`; MCP `upstash/context7-mcp`; plugin `desktop-commander` |
+| 数据可视化 | `anthropics/knowledge-work-plugins:data-visualization`; `antvis/chart-visualization-skills:chart-visualization`; `anthropics/knowledge-work-plugins:create-viz`; `wshobson/agents:data-storytelling`; `wshobson/agents:kpi-dashboard-design`; `wshobson/agents:grafana-dashboards`; `claude-office-skills/skills:chart-designer`; `jimliu/baoyu-skills:baoyu-diagram`; `github/awesome-copilot:power-bi-report-design-consultation`; `wshobson/agents:service-mesh-observability` |
+| 写作表达 | `mattpocock/skills:writing-beats`; `mattpocock/skills:writing-shape`; `mattpocock/skills:writing-fragments`; `mattpocock/skills:writing-great-skills`; `yuan1z0825/nature-skills:nature-writing`; `yuan1z0825/nature-skills:nature-polishing`; MCP `manavm/zero-slop`; MCP `theserverlessdev/wsc`; MCP `prose-coach/prose-coach`; plugin `canva` |
+| 开发工程 | plugin `superpowers@claude-plugins-official`; plugins `code-review`, `chrome-devtools-mcp`, `semgrep`; `mattpocock/skills:code-review`; `pbakaus/impeccable:impeccable`; `vercel-labs/agent-skills:vercel-react-best-practices`; `llllllllama/rigorpilot-skills:safe-debug`; `llllllllama/rigorpilot-skills:explore-code`; `mattpocock/skills:domain-modeling` |
+
+## Target UX
+
+### Main Extensions view
+
+```text
+扩展
+┌────────────────────────────────────────────────┐
+│ 技能 / MCP / 插件     [检查更新] [扩展市场]      │
+├────────────────────────────────────────────────┤
+│ Installed groups / rows                         │
+│ Row → detail panel                              │
+└────────────────────────────────────────────────┘
+```
+
+- No recommendation block.
+- No persistent operation-history block.
+- One compact active-operation progress line.
+- One compact latest-failure surface with retry/copy only where safe.
+- Quiet groups, aligned metadata, hover/focus action affordances.
+
+### Extension Market dialog
+
+```text
+扩展市场
+┌───────────────────────────────────────────────┐
+│ [推荐] [技能] [MCP] [插件] [来源管理]           │
+│ Search current tab                             │
+│ Category chips: 科学研究 / 教育学习 / …          │
+│ 10 recommendation cards                        │
+│ Detail pane: Chinese intro + metadata + action │
+└───────────────────────────────────────────────┘
+```
+
+- Opening recommendations does not mutate the main view.
+- A recommendation opens details first; its market action runs the existing search/install path.
+- Search result rows open the same detail pane.
+- Source management is a dialog tab, not more main-view clutter.
+
+## File structure
+
+Create:
+
+- `workbench/src/features/workspace-explorer/recommendationCatalog.ts`
+- `workbench/src/features/workspace-explorer/extensionSummaries.ts`
+- `workbench/src/features/workspace-explorer/ExtensionMarketDialog.vue`
+- `workbench/src/features/workspace-explorer/ExtensionDetailPanel.vue`
+- `workbench/src/features/workspace-explorer/ExtensionSourceManager.vue`
+- `workbench/src/features/workspace-explorer/ExtensionFailureNotice.vue`
+- focused tests beside these modules.
+
+Modify:
+
+- `workbench/src/features/workspace-explorer/ExtensionsView.vue`
+- `workbench/src/stores/extensions.ts`
+- `workbench/src/lib/ipc.ts`
+- `workbench/src/i18n/zh-CN.ts`, `en-US.ts`
+- `workbench/src-tauri/src/runtime.rs`
+- `src/aisc/cli/main.py`
+- `src/aisc/cli/commands/extensions.py`
+- `src/aisc/application/extensions.py`
+- `container/aisc-extensions-adapter`
+- plan/ledger docs.
+
+Remove after replacements land:
+
+- `workbench/src/features/workspace-explorer/ExtensionRecommendations.vue`
+- `workbench/src/features/workspace-explorer/ExtensionOperationLog.vue`
+- their obsolete focused tests.
+
+---
+
+### Task 1: Recommendation catalog contract
+
+**Files:**
+
+- Create: `workbench/src/features/workspace-explorer/recommendationCatalog.ts`
+- Modify: `workbench/src/features/workspace-explorer/extensionRecommendations.ts` (replace legacy export or re-export)
+- Test: `workbench/src/features/workspace-explorer/__tests__/recommendationCatalog.test.ts`
+
+**Interfaces:**
+
+```ts
+export type RecommendationCategoryId =
+  | "research" | "education" | "knowledge" | "visualization" | "writing" | "development";
+
+export interface CategorizedRecommendation {
+  category: RecommendationCategoryId;
+  kind: ExtensionsKind;
+  identity: string;
+  query: string;
+  name: string;
+  sourceUrl: string;
+  heat?: string;
+  heatSource: "skills.sh" | "smithery" | "official-directory";
+  summaryZh: string;
+  summaryEn: string;
+}
+```
+
+- [x] RED: assert six category IDs, exactly ten entries per category, unique `(kind, identity)` globally, every name/query/source/summary non-empty, and every category has at least two asset kinds where the selected catalog above provides them.
+- [x] Run `npm test -- recommendationCatalog` and confirm the module missing failure.
+- [x] Implement the six-category catalog exactly as documented above.
+- [x] GREEN: rerun focused test.
+- [x] Commit: `feat(workbench): categorize extension recommendations`.
+
+### Task 2: Local detail summaries and fallback
+
+**Files:**
+
+- Create: `workbench/src/features/workspace-explorer/extensionSummaries.ts`
+- Test: `workbench/src/features/workspace-explorer/__tests__/extensionSummaries.test.ts`
+- Modify: i18n files for fallback labels.
+
+**Interfaces:**
+
+```ts
+export function extensionSummary(
+  item: Pick<ExtensionsItem, "kind" | "id" | "name" | "repo" | "description">,
+  locale: "zh-CN" | "en-US",
+): { summary: string; marketOriginal?: string; source: "first-party" | "fallback" };
+```
+
+- [x] RED: known recommendation identity returns its first-party Chinese summary; all 13 caveman children return distinct non-empty Chinese summaries; unknown item returns a useful local fallback plus original description; English locale returns English first-party/fallback copy.
+- [x] Implement alias matching by full market ID, directory/name, and repo/name.
+- [ ] GREEN.
+- [x] Commit: `feat(workbench): add local extension detail summaries`.
+
+### Task 3: Source maintenance data plane
+
+**Files:**
+
+- Modify: `container/aisc-extensions-adapter`
+- Modify: `src/aisc/application/extensions.py`
+- Modify: `src/aisc/cli/commands/extensions.py`, `src/aisc/cli/main.py`
+- Modify: `workbench/src-tauri/src/runtime.rs`
+- Tests: `tests/test_extensions_adapter.py`, `tests/test_extensions_bridge.py`, `tests/test_extensions_dispatch.py`, Rust runtime test.
+
+**New ops:**
+
+- `skill-repos-list`
+- `skill-repo-remove`
+- `plugin-market-remove`
+
+**Adapter semantics:**
+
+- `skill-repos-list`: read `skill_repos(owner, name, branch, enabled)` from cc-switch SQLite and emit `kind:"skill-repo"`, `id:"owner/name"`, `name`, `repo`, `branch`, `enabled`.
+- `skill-repo-remove <owner/name-or-URL>`: call `cc-switch skills repos remove <id>`; it only unregisters the source and does not uninstall installed skills.
+- `plugin-market-remove <name>`: call `claude-real plugin marketplace remove <name>`, then the UI refreshes marketplace list.
+
+- [x] RED adapter: seeded SQLite repo list shape; remove argv; plugin remove argv; malformed IDs fail closed; main envelope choices.
+- [x] Implement adapter.
+- [x] RED bridge/dispatch/Rust allowlist: argv and op pass-through.
+- [x] Implement bridge/CLI/Rust allowlist.
+- [x] Run focused Python and Rust tests.
+- [x] Commit: `feat(extensions): maintain skill and plugin sources`.
+
+### Task 4: Store source state and operations
+
+**Files:**
+
+- Modify: `workbench/src/stores/extensions.ts`
+- Modify: `workbench/src/lib/ipc.ts`
+- Test: store-focused Vitest under `workbench/src/stores/__tests__` or existing extension tests.
+
+**Interfaces added to the Pinia store:**
+
+```ts
+skillRepos: ExtensionsItem[];
+skillReposBusy: boolean;
+skillReposError: string | null;
+loadSkillRepos(): Promise<void>;
+removeSkillRepo(id: string): Promise<void>;
+removePluginMarket(id: string): Promise<void>;
+```
+
+- Reuse `pluginMarkets` state for plugin marketplace list/add/remove.
+- Context switch clears both source states.
+- Remove actions use the normal operation/bus/toast path and refresh source lists after success.
+
+- [x] RED: IPC op assertions, busy/error state, context reset, successful list refresh.
+- [x] Implement.
+- [ ] GREEN.
+- [x] Commit: `feat(workbench): manage extension sources in store`.
+
+### Task 5: Extension detail panel
+
+**Files:**
+
+- Create: `ExtensionDetailPanel.vue`
+- Test: `__tests__/extensionDetailPanel.test.ts`
+
+**Requirements:**
+
+- Accept installed or market item plus optional recommendation.
+- Show title, kind, source/repo/marketplace, install count, updated time, version/update state.
+- First visual block is the local summary; Chinese locale always starts with a Chinese sentence.
+- Keep hydrated search-result `市场原文` in a separate subdued block. Direct curated
+  recommendations show an explicit `推荐依据（目录英文摘要）` block instead of pretending
+  first-party evidence is upstream market text.
+- Actions are supplied by parent so installed and market contexts reuse one component.
+- Escape closes only when the panel owns focus; parent dialog remains open.
+
+- [x] RED test content/actions/accessibility.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add extension detail panel`.
+
+### Task 6: Extension Market dialog
+
+**Files:**
+
+- Create: `ExtensionMarketDialog.vue`
+- Test: `__tests__/extensionMarketDialog.test.ts`
+- Modify i18n.
+
+**Requirements:**
+
+- Teleported modal, labelled `扩展市场`, focus trapped, Escape/Close works.
+- Tabs: 推荐 / 技能 / MCP / 插件 / 来源管理.
+- Recommendation tab shows six category chips and ten cards per category.
+- Cards display name, kind, source, observed heat badge when available, and one-line Chinese summary.
+- Clicking a recommendation opens detail; search action keeps the exact identity highlighted in results.
+- Search result click opens detail; install/update actions remain disabled during busy state.
+- Source management renders Task 7 component.
+- Dialog state is local; closing does not erase main installed lists.
+
+- [x] RED tests for dialog shell, category counts, cards, details, close/focus basics.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add categorized extension market dialog`.
+
+### Task 7: Source manager UI
+
+**Files:**
+
+- Create: `ExtensionSourceManager.vue`
+- Test: `__tests__/extensionSourceManager.test.ts`
+
+**Requirements:**
+
+- Two clear sections: 技能仓库 and 插件市场.
+- Existing add forms move here from the main view.
+- Rows show source, branch/name, and enabled state where available.
+- Delete uses explicit confirm text:
+  - skill repo delete explains it does not uninstall installed skills;
+  - plugin marketplace delete explicitly warns that the official Claude CLI also uninstalls plugins from that market; confirmation is required before the call, and installed plugins are refreshed afterward.
+- MCP section explains Smithery is built in and installed MCP servers are managed from the MCP installed list.
+- Busy/error rows are honest; no delete button before identity is loaded.
+
+- [x] RED test list/add/remove and confirmation text.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `feat(workbench): add extension source manager`.
+
+### Task 8: Main view cleanup and failure surface
+
+**Files:**
+
+- Modify: `ExtensionsView.vue`
+- Create: `ExtensionFailureNotice.vue`
+- Remove: `ExtensionRecommendations.vue`, `ExtensionOperationLog.vue`
+- Update/remove obsolete tests; modify preview contracts.
+
+**Requirements:**
+
+- Main view header has tabs and two primary actions: 检查更新, 扩展市场.
+- No operation-log/details element appears in the main view.
+- Active operation remains a single compact progress status.
+- Latest failed/unknown operation appears in `ExtensionFailureNotice`; it supports copy and retry only for known retryable failures.
+- Installed row click opens detail panel; child row click opens child detail.
+- Market/search forms are removed from the main view; all discovery lives in dialog.
+- Empty state offers `打开扩展市场`.
+
+- [x] RED tests assert removed nodes, header actions, detail opening, failure copy/retry behavior.
+- [x] Implement.
+- [x] GREEN.
+- [x] Commit: `refactor(workbench): focus extensions view on installed assets`.
+
+### Task 9: Visual refinement and responsive contracts
+
+**Files:**
+
+- Modify created components and `ExtensionsView.vue`
+- Update `extensionsPreviewContracts.test.ts`
+- Optionally add `extensionMarketDialog.visual.test.ts`.
+
+**Checks:**
+
+- At narrow sidebar width, installed rows remain readable and actions do not overlap identity.
+- Dialog grid collapses from two columns to one below 720px.
+- Recommendation cards use one repeated quiet card recipe; no rainbow category colors.
+- Metadata is sentence case/subtle; accent only on active category, update, or primary action.
+- Hover/focus states reveal row actions; keyboard users can reach every action.
+- Empty/search/error states keep their frame.
+
+- [x] RED structural CSS/DOM tests.
+- [x] Implement with existing tokens only.
+- [x] GREEN.
+- [x] Commit: `style(workbench): refine extension experience`.
+
+### Task 10: Full verification and Computer Use pretest
+
+**Local gates:**
+
+- [x] `npm test`
+- [x] `npm run build`
+- [x] Targeted plus full Rust tests if bridge changed: `cargo test --manifest-path workbench/src-tauri/Cargo.toml --lib`
+- [x] Focused/full Python extensions tests, then repository local Python gate appropriate to touched files.
+- [x] `bash tools/check-docs.sh`
+- [x] `git diff --check`
+- [x] Production Workbench build.
+
+**Computer Use pretest:**
+
+1. Fresh isolated workspace and runtime.
+2. Main Extensions view:
+   - no 精选推荐 block;
+   - no 操作日志;
+   - three tabs usable;
+   - installed skill group and child detail show Chinese summaries.
+3. Extension Market:
+   - six categories visible;
+   - each shows exactly 10 recommendations;
+   - research and education category content matches catalog;
+   - recommendation detail opens;
+   - search executes from recommendation;
+   - result detail shows Chinese intro and market original.
+4. Sources:
+   - list skill repositories;
+   - add then remove a disposable skill repository;
+   - list plugin marketplaces;
+   - add then remove a disposable marketplace;
+   - explanatory copy is visible before confirm.
+5. MCP installed row delete remains available and does not show fake repository deletion.
+6. Width/narrow spot checks and bilingual spot checks.
+7. Record truthful PASS/FAIL/NOT RUN in `PRETEST.md`; any product FAIL is fixed before handoff.
+
+**Documentation:**
+
+- Update `R2-EXTENSION-UI-REDESIGN.md` progress/evidence.
+- Update `PRETEST.md`, `devlog.md`, `README.md`, `todo.md`, and `HANDTEST.md`.
+- Request independent code review after implementation.
+- Open PR to `develop`; wait CI; merge only after review and checks.
+
+## Implementation and verification evidence (2026-10-29)
+
+- Catalog: six categories × exactly 10 = 60 unique entries. Selection evidence came
+  from live skills.sh / Smithery queries and the bundled official Claude plugin
+  directory; plugin entries carry `official-directory`, not fabricated install counts.
+- Local gates:
+  - Vitest: **95 files / 802 tests passed**.
+  - Python: **1691 passed / 69 skipped / 186 subtests passed** (`pytest tests`).
+  - Rust lib: **404 passed / 1 ignored**.
+  - `npm run build`: vue-tsc + production Vite build passed.
+  - Tauri release `--no-bundle`: passed.
+  - `tools/vendor-verify.sh`: **1533 verified, 0 missing, 0 checksum mismatch, 0 malformed**.
+  - `tools/check-docs.sh`: final rerun passed after the review-fix ledger update below.
+- R2 CU build:
+  - Workbench `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-CU.exe`.
+  - CLI `release-staging/2.1.17-r2/aisc-r2-cli.exe`, SHA256
+    `84df81eaf89e42d3041b6a33bca6d3d1d858e387fd46c04fddd682507c120079`.
+  - Derived CU image `super-claude:2.1.17-r2-cu`
+    `sha256:c04729568df1d510c381494fc6c8e5a25aab4421d3f19efa646879b45207ed1b`
+    (b7 base plus only the modified adapter); a full image rebuild has not been run for R2.
+    The sidecar/bundle/NSIS workflows verify packaging, not Docker image construction.
+- CU PASS:
+  - Main view has no embedded recommendation or operation-history block.
+  - Main view shows installed skill groups plus `检查更新` / `扩展市场`.
+  - Market dialog shows six categories; research and education each showed 10 rows.
+  - Education recommendation opened a Chinese detail panel, displayed its catalog English
+    evidence under an explicit non-upstream label, and search loaded live Smithery results
+    with cache timestamp.
+  - Clicking another MCP result opened a Chinese fallback detail and updated title.
+  - Skill repositories listed branch/enabled state; plugin marketplaces listed built-in
+    and official sources. Delete confirmation explained retention semantics; cancel kept
+    the row. MCP source note correctly says Smithery is built in.
+  - CU-found issues (duplicated heat-source label, `market-mcp` fallback labeled as
+    skill, stale detail on Sources tab, missing market group install) were fixed,
+    regression-tested, and the fixed Workbench build was retested.
+- CU boundary: actual disposable source add→delete and sub-720px visual inspection were
+  not completed; adapter/store/component tests cover the operations and responsive
+  contract, but those UI paths remain for user handtest or a later CU pass.
+- Review-fix CU retest (2026-10-30):
+  - Direct release binaries were rebuilt from the review-fix tree:
+    `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-REVIEW.exe` SHA256
+    `5e4a79364b257760c0b627c62370fca353e69d42c0cf08b64fa0caae4d95793f`, and
+    `release-staging/2.1.17-r2/review-dist-2/aisc.exe` SHA256
+    `52ee1fe48f78e50eedc85eae7f7486bd3adaf4d954629e247e3d6d1293a93d93`.
+    This was a direct Tauri `--no-bundle` executable plus pinned frozen CLI, not an NSIS
+    installer.
+  - The disposable runtime used derived image `c04729568df1`; `super-claude:latest` was restored
+    to b7 `610cd7ebfa39`, the disposable R2 container was removed, and the user's R1 container
+    `4ac8ca6c9a97` remained untouched.
+  - CU PASS: the installed caveman group expanded through its native header and remained open
+    while a child detail displayed Chinese summary plus market original; the market education
+    category showed 10 rows; Microsoft Learn showed catalog evidence and “搜索市场”; live search
+    returned Smithery results; selecting Hugging Face switched the detail to Chinese fallback,
+    `市场原文`, and “安装” without inheriting catalog evidence or the search action.
+  - Third-review finalization rebuilt the direct release as
+    `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-FINAL.exe` SHA256
+    `5d9ee44a020f219691920eb72e67682919a5b47efbdd0bd943ea723fd42572f9`.
+    The row-level sibling/native-header fix and source-op envelope guard are covered by the
+    802-test frontend suite, 404-test Rust suite, and production build; they were not re-run
+    through CU after the reviewer finding.
+  - CU boundary: tab ArrowLeft/ArrowRight, focus restoration, and the old-runtime unsupported
+    banner were not verifiable through this CU input channel and remain automated-test-only;
+    actual source add→delete, sub-720px inspection, and NSIS provenance remain user-handtest
+    or CI boundaries.
+- Independent review follow-ups (2026-10-29):
+  - Updated the modified adapter checksum to
+    `97464109c7aec00d1721fb06716b9ce513b61c5fe97e669637a60f969a7e2c5f`; full vendor
+    verification passed 1533/1533.
+  - Source maintenance now uses a stable capability code: Python maps a legacy adapter's
+    exact unknown-op/stale-schema response to `AISC_ERR_EXTENSIONS_UNSUPPORTED_OP`, and Rust maps
+    both that envelope code and an old host CLI's exact argparse invalid-choice boundary to
+    `WB_ERR_EXTENSIONS_UNSUPPORTED_OP`. Database locks and unrelated protocol failures remain
+    ordinary retryable errors rather than being mislabeled unsupported.
+  - Search failures render as an `alert` separately from a genuinely empty result.
+  - Curated recommendations show first-party catalog English evidence under
+    `推荐依据（目录英文摘要）`; selecting a real market result clears recommendation state,
+    shows `市场原文`, and exposes the install action rather than inheriting “搜索市场”.
+  - Installed skill groups, child rows, and MCP/plugin rows use native identity buttons with
+    action buttons as siblings, so C/X/update/remove controls are no longer nested interactive
+    descendants. Keyboard handlers act directly on native buttons, market result/source rows
+    remain operable, market tabs expose arrow-key navigation, and closing the dialog restores
+    focus to either actual opening button (toolbar or empty state).
+  - Skill/plugin source controls share aggregate busy state; a stale SQLite schema returns
+    stable `ERR_SNAPSHOT` instead of leaking an adapter traceback.
+  - Cache timestamps follow the active UI locale, and i18n indentation was normalized.
+  - Final reruns: Vitest 802, Python 1691/69/186 subtests, Rust 404/1 ignored, production
+    build, docs check, diff check, and Tauri release `--no-bundle` all passed.
+## Out of scope
+
+- No concurrent Python serve redesign.
+- No online translation.
+- No arbitrary third-party summary fabrication.
+- No change to extension install/update transport semantics from R1.
+- No release/tag/phase closeout.
+
+## Integration follow-up (2026-10-30)
+
+- Fourth independent review: Critical=0 / Important=0, ready to merge for the reviewed implementation; review fixes committed as `e3609e6`, verification ledger as `bc2e3b0`.
+- PR [#49](https://github.com/Wifabric/AISC/pull/49) targets `develop`; product head `bc2e3b027fd51eb21a873c0a80d8f1ef04eedc2c`.
+- Workbench CI [40918164812](https://github.com/Wifabric/AISC/actions/runs/40918164812): SUCCESS.
+- CLI sidecar [40919496197](https://github.com/Wifabric/AISC/actions/runs/40919496197): SUCCESS on Windows/Linux/macOS.
+- Linux/macOS bundle [40919500745](https://github.com/Wifabric/AISC/actions/runs/40919500745) and NSIS [40919505823](https://github.com/Wifabric/AISC/actions/runs/40919505823): SUCCESS against the same reviewed pre-warning product head.
+- A fresh user-handtest bundle is staged in `release-staging/2.1.17-r2/handtest-stage/aisc-bundle`. The local full-test run had generated ignored Python bytecode inside the vendored plugin tree; the verifier rejected it. Only the staged copy's generated `.pyc` files and now-empty cache directories were removed; independent `artifact.py verify` then passed. Source files and vendor checksums were unchanged.
+- The final adapter is pinned in derived image `super-claude:2.1.17-r2-final`, ID `sha256:2f54fad6d86c15468f0cf968535fc377c7ff11e9362f94dcb5f29e2ee6121556`. The in-image SHA256 matches the staged/current adapter (`97464109…e2c5f`), and Python syntax verification passed. This is a b7-derived image, not a clean full-image rebuild.
+- Local `start-handtest.ps1` verifies GUI/CLI/adapter hashes, uses an independent R2 handtest data root, and delegates `-UpdateFlow` only to the existing b7 0.0.0 update-flow test. `HANDTEST.md` now points to R2 artifacts and current UI routes.
+- Current-session CU blocker: the available tool list has no `node_repl`, which the Computer Use skill requires for `@oai/sky`. No alternate UI automation was substituted. Remaining UI cases stay NOT RUN; user acceptance is unchecked.
+
+### Source-removal contract correction before implementation (2026-10-30)
+
+Final frozen-CLI/container smoke disproved the earlier agent-authored plugin-retention assumption: add local `aisc-r2-handtest`, install `aisc-r2-demo@aisc-r2-handtest`, then `plugin-market-remove` returned success and installed plugins changed from one to zero. Evidence: `release-staging/2.1.17-r2/final-data-smoke.jsonl`, runtime `1fc3fe95-05b4-4e2c-9134-65df1f336223`. This is a product FAIL in the confirmation copy; it is not a CU result. Skill repositories correctly changed 4→5→4.
+
+The user's requirement is source maintenance/deletion; retaining installed plugins was a plan assumption. Preserve the official Claude CLI behavior and explicitly warn in both languages that deleting a marketplace also uninstalls its installed plugins. Cancel must issue no remove call. Keep skill-repository retention copy. Do not modify Claude's registry behind the official CLI. Add regression coverage for warning/confirmation in both languages and installed-list refresh after marketplace deletion, then rebuild and review the new GUI before merge. Previously saved FINAL binary and CI runs describe the pre-correction product head and do not cover this warning fix.
+
+- Warning correction verification: targeted 16/16, full Vitest **803/803**, vue-tsc/Vite/Tauri direct release PASS; independent incremental review **Critical=0 / Important=0, Ready to merge Yes**.
+- Superseding direct user-handtest executable: `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-ACCEPTANCE.exe`, SHA256 `9ae03cc2234f3ce9ea41c618c51c188f5271d9db2fda29c50e1321f6db1fbda5`. Launcher and manifest pin it; the earlier FINAL is retained only as historical evidence. No CU was performed on this new executable.
+- Initial sidecar/bundle/NSIS runs above all completed SUCCESS. The final UI-warning change requires fresh Workbench and installer verification; no adapter/CLI/Rust bytes changed in the correction.
+
+## Final PR integration (2026-10-30)
+
+- Warning-fix product head: `2e921f0dcd343028772db9e8a4c01a3f10dc9660`.
+- Final Workbench CI [40923743766](https://github.com/Wifabric/AISC/actions/runs/40923743766): SUCCESS (CLI/Rust/frontend).
+- Final Linux/macOS bundle [40923908547](https://github.com/Wifabric/AISC/actions/runs/40923908547): SUCCESS (deb/dmg).
+- Final NSIS [40923914879](https://github.com/Wifabric/AISC/actions/runs/40923914879): SUCCESS, including installed-app PATH, upgrade/uninstall retention smoke. Release job skipped because this is a development branch.
+- Sidecar implementation unchanged by the final warning correction; Windows/Linux/macOS sidecar run [40919496197](https://github.com/Wifabric/AISC/actions/runs/40919496197) remains valid for those bytes.
+- PR [#49](https://github.com/Wifabric/AISC/pull/49) merged into `develop`: `6133eef9686fb04142263bf35ccf161e0eec70e6`. All final PR checks were complete/success (release skipped) before merge. Automatic develop-push integration runs are tracked separately from these completed feature/PR checks.
+- Additional real-container cross-market smoke: install one fixture plugin each from A/B; deleting A changes installed count 2→1, retains B's marketplace/plugin, and removes A's marketplace/plugin. PASS; `release-staging/2.1.17-r2/cross-market-smoke.jsonl`.
+- User acceptance remains unchecked. No main merge, tag, publication, or phase closeout.
+
+- Final CI NSIS downloaded locally as `release-staging/2.1.17-r2/AISC-Workbench-2.1.17-R2-setup.exe` (675469546 bytes), SHA256 `7d1c3981d16f9aa25704e4030f51fd756426a61449b2f8df35a37c4516187831`. The archive matched GitHub artifact digest `a3772f98510f5379e2f9da70e7932bc610eca7ddde44e252ffb2d21ef72ef399` before extraction. It has not been installed on the user's host; CI smoke passed, GUI NSIS CU remains NOT RUN.
+- Develop integration follow-up: Workbench [40927944987](https://github.com/Wifabric/AISC/actions/runs/40927944987) and sidecar [40927944984](https://github.com/Wifabric/AISC/actions/runs/40927944984) SUCCESS. Bundle [40927944792](https://github.com/Wifabric/AISC/actions/runs/40927944792) attempt 1: Linux SUCCESS, macOS dependency staging failed with `HTTP Error 403: rate limit exceeded`; only the failed job was rerun. The original failure evidence is retained. No source/CI change was made for the upstream limit.
+
+### Develop CI final result
+
+All merge-head `6133eef` integration workflows completed SUCCESS:
+
+| Workflow | Run | Result |
+| --- | --- | --- |
+| Workbench CLI/Rust/frontend | [40927944987](https://github.com/Wifabric/AISC/actions/runs/40927944987) | SUCCESS |
+| CLI sidecar Windows/Linux/macOS | [40927944984](https://github.com/Wifabric/AISC/actions/runs/40927944984) | SUCCESS |
+| Bundle deb/dmg | [40927944792](https://github.com/Wifabric/AISC/actions/runs/40927944792) | SUCCESS attempt 2; macOS dependency HTTP 403 on attempt 1 retained |
+| NSIS installed-app smoke | [40927944887](https://github.com/Wifabric/AISC/actions/runs/40927944887) | SUCCESS; release job skipped |
+
+Final documentation consistency check: 39 passed / 0 warnings / 0 failures; diff check clean. The follow-up integration ledger is documentation only. R2 user acceptance remains open, and remaining GUI CU cases retain their tool-blocked NOT RUN status.

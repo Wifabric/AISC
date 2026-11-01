@@ -1989,6 +1989,76 @@ pub async fn workspace_open(
     open_path(Path::new(&workspace), &relative_path)
 }
 
+const RECORD_IMAGE_MAX: usize = 8 * 1024 * 1024;
+
+fn record_image_data_url(bytes: &[u8]) -> Result<String, WorkbenchError> {
+    use base64::Engine;
+    if bytes.len() > RECORD_IMAGE_MAX {
+        return Err(WorkbenchError::input_too_large());
+    }
+    let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        "image/jpeg"
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        "image/gif"
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        "image/webp"
+    } else {
+        return Err(WorkbenchError::workspace_invalid().with_detail("not a supported raster image"));
+    };
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+/// A bounded, contained image read for the record reader. No asset:// scope
+/// widening; the remote leg uses the same filesystem gate as Explorer.
+#[tauri::command]
+pub async fn workspace_read_image(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    relative_path: String,
+) -> Result<String, WorkbenchError> {
+    if let crate::cli::CliTarget::Remote(t) =
+        crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?
+    {
+        use base64::Engine;
+        let data = crate::serve::fs_op(crate::serve::global_pool(), &t, "fs.read",
+            &serde_json::json!({ "root": workspace, "path": relative_path, "maxBytes": RECORD_IMAGE_MAX })).await?;
+        if data
+            .get("truncated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+        {
+            return Err(WorkbenchError::input_too_large());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(
+                data.get("base64")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|e| WorkbenchError::cli_protocol().with_detail(e.to_string()))?;
+        return record_image_data_url(&bytes);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Read;
+        let path = resolve_contained(Path::new(&workspace), &relative_path)?;
+        let file = fs::File::open(path)
+            .map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?;
+        let mut bytes = Vec::new();
+        file.take((RECORD_IMAGE_MAX + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?;
+        record_image_data_url(&bytes)
+    })
+    .await
+    .map_err(|e| WorkbenchError::workspace_invalid().with_detail(e.to_string()))?
+}
+
 #[tauri::command]
 pub async fn workspace_reveal(
     workspace: String,
@@ -2781,11 +2851,518 @@ pub fn resolve_contained(workspace: &Path, relative: &str) -> Result<PathBuf, Wo
     Ok(canon)
 }
 
+fn validate_relative_or_root(raw: &str) -> Result<String, WorkbenchError> {
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    validate_relative(raw)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceBatchFailure {
+    pub relative_path: String,
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceBatchResult {
+    pub schema_version: u64,
+    pub operation: String,
+    pub results: Vec<WorkspaceMutationResult>,
+    pub failures: Vec<WorkspaceBatchFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceClipboardResult {
+    pub schema_version: u64,
+    pub count: usize,
+    pub explorer_compatible: bool,
+}
+
+pub fn delete_entry(
+    workspace: &Path,
+    relative_path: &str,
+) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    if relative_path.is_empty() {
+        return Err(WorkbenchError::workspace_invalid().with_detail("cannot delete workspace root"));
+    }
+    let path = resolve_existing(workspace, relative_path)?;
+    let kind = if path.is_dir() { "dir" } else { "file" };
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(map_io_err)?;
+    } else {
+        fs::remove_file(&path).map_err(map_io_err)?;
+    }
+    Ok(WorkspaceMutationResult {
+        schema_version: 1,
+        operation: "delete".into(),
+        relative_path: relative_path.to_string(),
+        kind: kind.into(),
+    })
+}
+
+fn clipboard_error(detail: impl std::fmt::Display) -> WorkbenchError {
+    WorkbenchError::usage(format!("clipboard: {detail}"))
+}
+
+#[cfg(target_os = "windows")]
+mod windows_file_clipboard {
+    use super::{clipboard_error, WorkbenchError};
+    use std::path::PathBuf;
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GHND};
+    use windows_sys::Win32::System::Ole::CF_HDROP;
+
+    fn open_clipboard() -> Result<(), WorkbenchError> {
+        // SAFETY: no window ownership is needed; all access is closed on every
+        // return path. The APIs only read/write the process clipboard.
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            return Ok(());
+        }
+        Err(clipboard_error("OpenClipboard failed"))
+    }
+
+    pub fn set_paths(paths: &[PathBuf]) -> Result<(), WorkbenchError> {
+        if paths.is_empty() {
+            return Err(clipboard_error("no files"));
+        }
+        let mut wide: Vec<u16> = Vec::new();
+        for path in paths {
+            wide.extend(path.as_os_str().to_string_lossy().encode_utf16());
+            wide.push(0);
+        }
+        wide.push(0);
+        // DROPFILES: u32 offset + POINT (two i32) + BOOL. The list starts at
+        // offset 20 and uses UTF-16 paths with a terminating empty string.
+        const HEADER: usize = 20;
+        let bytes = HEADER + wide.len() * 2;
+        let mut h = std::ptr::null_mut();
+        let mut result = Err(clipboard_error("clipboard rejected the file list"));
+        // SAFETY: the allocation is sized exactly for header + double-NUL UTF-16.
+        unsafe {
+            open_clipboard()?;
+            if EmptyClipboard() != 0 {
+                h = GlobalAlloc(GHND, bytes);
+                let locked = GlobalLock(h) as *mut u8;
+                if !locked.is_null() {
+                    std::ptr::write_bytes(locked, 0, bytes);
+                    std::ptr::copy_nonoverlapping(
+                        (HEADER as u32).to_ne_bytes().as_ptr(),
+                        locked,
+                        4,
+                    );
+                    std::ptr::copy_nonoverlapping(1u32.to_ne_bytes().as_ptr(), locked.add(16), 4);
+                    std::ptr::copy_nonoverlapping(
+                        wide.as_ptr() as *const u8,
+                        locked.add(HEADER),
+                        wide.len() * 2,
+                    );
+                    let _ = GlobalUnlock(h);
+                    if !SetClipboardData(CF_HDROP as u32, h as _).is_null() {
+                        // Ownership transferred to the clipboard on success.
+                        h = std::ptr::null_mut();
+                        result = Ok(());
+                    }
+                }
+            }
+            CloseClipboard();
+            if !h.is_null() {
+                let _ = GlobalFree(h);
+            }
+        }
+        result
+    }
+
+    pub fn get_paths() -> Result<Vec<PathBuf>, WorkbenchError> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        // SAFETY: the clipboard handle is locked only for the bounded read and
+        // always unlocked before CloseClipboard.
+        unsafe {
+            open_clipboard()?;
+            let h = GetClipboardData(CF_HDROP as u32);
+            if !h.is_null() {
+                let locked = GlobalLock(h as _) as *const u8;
+                if !locked.is_null() {
+                    let header = std::ptr::read_unaligned(locked as *const u32) as usize;
+                    if header > 0 && header < 1024 {
+                        let chars = locked.add(header) as *const u16;
+                        let mut len = 0usize;
+                        while *chars.add(len) != 0 {
+                            len += 1;
+                        }
+                        let wide = std::slice::from_raw_parts(chars, len);
+                        out.extend(
+                            String::from_utf16_lossy(wide)
+                                .split('\0')
+                                .filter(|value| !value.is_empty())
+                                .map(PathBuf::from),
+                        );
+                    }
+                    let _ = GlobalUnlock(h as _);
+                }
+            }
+            CloseClipboard();
+        }
+        if out.is_empty() {
+            Err(clipboard_error(
+                "the clipboard does not contain a file list",
+            ))
+        } else {
+            Ok(out)
+        }
+    }
+}
+
+/// Copy one host clipboard entry into a contained workspace destination.
+/// Destination names are never clobbered; recursive directory copy remains
+/// bounded and staged by the same helpers used by in-app copy.
+fn copy_external_entry(
+    workspace: &Path,
+    source: &Path,
+    destination_relative_dir: &str,
+) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    let source = source.canonicalize().map_err(|e| {
+        WorkbenchError::workspace_not_found().with_detail(format!("clipboard source: {e}"))
+    })?;
+    let ws = canonicalize_lenient(workspace)?;
+    let dest_dir = resolve_contained_dir(workspace, destination_relative_dir)?;
+    let is_dir = source.is_dir();
+    if is_dir && (path_eq(&source, &dest_dir) || is_inside(&source, &dest_dir)) {
+        return Err(WorkbenchError::workspace_invalid()
+            .with_detail("cannot copy a directory into its descendant"));
+    }
+    let name = source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            WorkbenchError::workspace_invalid().with_detail("unreadable clipboard name")
+        })?
+        .to_string();
+    let mut output_name = name.clone();
+    let mut attempt = 2;
+    while exists_nofollow(&dest_dir.join(&output_name)) {
+        output_name = format!("{name} ({attempt})");
+        attempt += 1;
+        if attempt > 100 {
+            return Err(WorkbenchError::workspace_conflict());
+        }
+    }
+    let final_target = dest_dir.join(&output_name);
+    let temp = dest_dir.join(copy_temp_name(&name));
+    let copy_result = if is_dir {
+        let staged = fs::create_dir(&temp).map_err(map_io_err);
+        if let Err(e) = staged {
+            Err(e)
+        } else {
+            let mut budget = 0usize;
+            copy_dir_recursive(&source, &temp, &ws, &mut budget)
+        }
+    } else {
+        fs::copy(&source, &temp).map(|_| ()).map_err(map_io_err)
+    };
+    if let Err(e) = copy_result {
+        if temp.is_dir() {
+            let _ = fs::remove_dir_all(&temp);
+        } else {
+            let _ = fs::remove_file(&temp);
+        }
+        return Err(e);
+    }
+    if let Err(e) = fs::rename(&temp, &final_target) {
+        if temp.is_dir() {
+            let _ = fs::remove_dir_all(&temp);
+        } else {
+            let _ = fs::remove_file(&temp);
+        }
+        return Err(map_io_err(e));
+    }
+    let relative = if destination_relative_dir.is_empty() {
+        output_name
+    } else {
+        format!("{destination_relative_dir}/{output_name}")
+    };
+    Ok(WorkspaceMutationResult {
+        schema_version: 1,
+        operation: "paste".into(),
+        relative_path: relative,
+        kind: if is_dir { "dir" } else { "file" }.into(),
+    })
+}
+
+fn local_batch_copy(
+    workspace: &Path,
+    sources: &[String],
+    destination_relative_dir: &str,
+) -> WorkspaceBatchResult {
+    let mut results = Vec::new();
+    let mut failures = Vec::new();
+    for source in sources {
+        match copy_entry(workspace, source, destination_relative_dir) {
+            Ok(result) => results.push(result),
+            Err(e) => failures.push(WorkspaceBatchFailure {
+                relative_path: source.clone(),
+                code: e.code,
+                detail: e.technical_detail.unwrap_or_default(),
+            }),
+        }
+    }
+    WorkspaceBatchResult {
+        schema_version: 1,
+        operation: "copy".into(),
+        results,
+        failures,
+    }
+}
+
+#[tauri::command]
+pub async fn workspace_delete_entry(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    relative_path: String,
+) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    if is_remote(&app, &window, &workspace).await {
+        let relative = validate_relative(&relative_path)?;
+        return remote_mutation(
+            &app,
+            &window,
+            &workspace,
+            "fs.delete",
+            &serde_json::json!({ "root": workspace, "path": relative }),
+            "delete",
+            relative,
+            "file",
+        )
+        .await;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        delete_entry(Path::new(&workspace), &relative_path)
+    })
+    .await
+    .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn workspace_copy_entries_to_system_clipboard(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    source_relative_paths: Vec<String>,
+) -> Result<WorkspaceClipboardResult, WorkbenchError> {
+    if is_remote(&app, &window, &workspace).await {
+        return Err(WorkbenchError::usage(
+            "system file clipboard is only available for a local workspace",
+        ));
+    }
+    let mut unique: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for source in source_relative_paths {
+        if source.is_empty() || !seen.insert(source.clone()) {
+            continue;
+        }
+        unique.push(source);
+    }
+    let paths = tauri::async_runtime::spawn_blocking(move || {
+        let base = Path::new(&workspace);
+        let mut paths = Vec::new();
+        for source in unique {
+            paths.push(resolve_existing(base, &source)?);
+        }
+        Ok::<_, WorkbenchError>(paths)
+    })
+    .await
+    .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))??;
+
+    #[cfg(target_os = "windows")]
+    {
+        windows_file_clipboard::set_paths(&paths)?;
+        return Ok(WorkspaceClipboardResult {
+            schema_version: 1,
+            count: paths.len(),
+            explorer_compatible: true,
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = paths;
+        Err(WorkbenchError::usage(
+            "system file clipboard is only implemented on Windows",
+        ))
+    }
+}
+
+#[tauri::command]
+pub async fn workspace_paste_system_clipboard(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    destination_relative_dir: String,
+) -> Result<WorkspaceBatchResult, WorkbenchError> {
+    if is_remote(&app, &window, &workspace).await {
+        return Err(WorkbenchError::usage(
+            "system file clipboard cannot paste into a remote workspace",
+        ));
+    }
+    let destination = validate_relative_or_root(&destination_relative_dir)?;
+    #[cfg(target_os = "windows")]
+    {
+        let sources = tauri::async_runtime::spawn_blocking(windows_file_clipboard::get_paths)
+            .await
+            .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))??;
+        tauri::async_runtime::spawn_blocking(move || {
+            let base = Path::new(&workspace);
+            let mut results = Vec::new();
+            let mut failures = Vec::new();
+            for source in sources {
+                let display = source.to_string_lossy().to_string();
+                match copy_external_entry(base, &source, &destination) {
+                    Ok(result) => results.push(result),
+                    Err(e) => failures.push(WorkspaceBatchFailure {
+                        relative_path: display,
+                        code: e.code,
+                        detail: e.technical_detail.unwrap_or_default(),
+                    }),
+                }
+            }
+            Ok(WorkspaceBatchResult {
+                schema_version: 1,
+                operation: "paste".into(),
+                results,
+                failures,
+            })
+        })
+        .await
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (workspace, destination);
+        Err(WorkbenchError::usage(
+            "system file clipboard is only implemented on Windows",
+        ))
+    }
+}
+
+#[tauri::command]
+pub async fn workspace_paste_entries(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    source_relative_paths: Vec<String>,
+    destination_relative_dir: String,
+) -> Result<WorkspaceBatchResult, WorkbenchError> {
+    let destination = validate_relative_or_root(&destination_relative_dir)?;
+    if is_remote(&app, &window, &workspace).await {
+        let target =
+            match crate::target::resolve_target_for_workspace(&app, &window, &workspace).await? {
+                crate::cli::CliTarget::Remote(t) => t,
+                crate::cli::CliTarget::Local(_) => unreachable!(),
+            };
+        let pool = crate::serve::global_pool();
+        let mut results = Vec::new();
+        let mut failures = Vec::new();
+        for source in source_relative_paths {
+            if source.is_empty() {
+                continue;
+            }
+            let name = source.rsplit('/').next().unwrap_or("copy").to_string();
+            let new_relative = if destination.is_empty() {
+                name.clone()
+            } else {
+                format!("{destination}/{name}")
+            };
+            let read = crate::serve::fs_op(
+                pool,
+                &target,
+                "fs.read",
+                &serde_json::json!({ "root": workspace, "path": source, "maxBytes": 64 * 1024 * 1024 }),
+            )
+            .await;
+            let data = match read {
+                Ok(value) => value,
+                Err(e) => {
+                    failures.push(WorkspaceBatchFailure {
+                        relative_path: source,
+                        code: e.code,
+                        detail: e.technical_detail.unwrap_or_default(),
+                    });
+                    continue;
+                }
+            };
+            if data
+                .get("truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
+            {
+                failures.push(WorkspaceBatchFailure {
+                    relative_path: source,
+                    code: "WB_ERR_INPUT_TOO_LARGE".into(),
+                    detail: "remote paste supports files up to 64 MiB".into(),
+                });
+                continue;
+            }
+            let base64 = data
+                .get("base64")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            match crate::serve::fs_op(
+                pool,
+                &target,
+                "fs.write",
+                &serde_json::json!({ "root": workspace, "path": new_relative, "base64": base64 }),
+            )
+            .await
+            {
+                Ok(_) => results.push(WorkspaceMutationResult {
+                    schema_version: 1,
+                    operation: "copy".into(),
+                    relative_path: new_relative,
+                    kind: "file".into(),
+                }),
+                Err(e) => failures.push(WorkspaceBatchFailure {
+                    relative_path: source,
+                    code: e.code,
+                    detail: e.technical_detail.unwrap_or_default(),
+                }),
+            }
+        }
+        return Ok(WorkspaceBatchResult {
+            schema_version: 1,
+            operation: "copy".into(),
+            results,
+            failures,
+        });
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(local_batch_copy(
+            Path::new(&workspace),
+            &source_relative_paths,
+            &destination,
+        ))
+    })
+    .await
+    .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn record_images_are_bounded_rasters_not_active_markup() {
+        assert!(record_image_data_url(b"\x89PNG\r\n\x1a\n")
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert!(record_image_data_url(b"<svg onload='alert(1)'/>").is_err());
+        assert!(record_image_data_url(&vec![0; RECORD_IMAGE_MAX + 1]).is_err());
+    }
 
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -3568,5 +4145,60 @@ mod s2_forget_tests {
         assert!(g.categories.contains(&"claude".to_string()));
         assert!(g.categories.contains(&"toolchain".to_string()));
         assert!(g.categories.iter().any(|c| c.starts_with("other:")));
+    }
+}
+
+#[cfg(test)]
+mod file_management_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn delete_removes_files_and_nested_dirs_inside_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        fs::create_dir_all(ws.join("nested/deeper")).unwrap();
+        fs::write(ws.join("nested/deeper/file.txt"), "x").unwrap();
+        assert!(delete_entry(&ws, "nested/deeper/file.txt").is_ok());
+        assert!(!ws.join("nested/deeper/file.txt").exists());
+        assert!(delete_entry(&ws, "nested").is_ok());
+        assert!(!ws.join("nested").exists());
+    }
+
+    #[test]
+    fn delete_rejects_root_and_escape_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        fs::create_dir_all(&ws).unwrap();
+        assert!(delete_entry(&ws, "").is_err());
+        assert!(delete_entry(&ws, "../outside.txt").is_err());
+        assert!(tmp.path().join("outside.txt").exists() == false);
+    }
+
+    #[test]
+    fn external_clipboard_paste_is_staged_and_does_not_clobber() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("workspace");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&ws).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("report.txt"), "new").unwrap();
+        fs::write(ws.join("report.txt"), "old").unwrap();
+        let first = copy_external_entry(&ws, &outside.join("report.txt"), "").unwrap();
+        let second = copy_external_entry(&ws, &outside.join("report.txt"), "").unwrap();
+        assert_eq!(first.relative_path, "report.txt (2)");
+        assert_eq!(second.relative_path, "report.txt (3)");
+        assert_eq!(fs::read_to_string(ws.join("report.txt")).unwrap(), "old");
+        assert_eq!(fs::read_to_string(ws.join("report.txt (2)")).unwrap(), "new");
+    }
+
+    #[test]
+    fn external_directory_paste_rejects_copying_into_descendant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("workspace");
+        fs::create_dir_all(ws.join("inside")).unwrap();
+        let source = tmp.path().join("workspace");
+        let e = copy_external_entry(&ws, &source, "inside").unwrap_err();
+        assert_eq!(e.code, "WB_ERR_WORKSPACE_INVALID");
     }
 }

@@ -21,16 +21,43 @@ from aisc.application.cc_switch_provider import _SCOPE_WRAPPER
 
 PROTOCOL = "aisc.extensions/v1"
 ADAPTER_PATH = "/usr/local/bin/aisc-extensions-adapter"
+UNSUPPORTED_OP = "AISC_ERR_EXTENSIONS_UNSUPPORTED_OP"
 
 _OPS = (
     "list", "toggle", "delete", "skill-install", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
-    "skill-search", "deeplink", "skill-repo-add",
-    "skill-update", "plugin-market-list", "plugin-market-add", "plugin-search",
-    "mcp-search", "mcp-market-install",
+    "skill-install-group", "skill-search", "skill-describe", "deeplink", "skill-repo-add",
+    "skill-repos-list", "skill-repo-remove", "skill-update-group",
+    "skill-update", "plugin-market-list", "plugin-market-add",
+    "plugin-market-remove", "plugin-search",
+    "mcp-search", "mcp-market-install", "updates-check",
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
+_SOURCE_MAINTENANCE_OPS = frozenset({
+    "skill-repos-list", "skill-repo-remove",
+    "plugin-market-list", "plugin-market-add", "plugin-market-remove",
+})
+
+
+def _legacy_argparse_source_unsupported(op: str, stderr: str) -> bool:
+    """Match only an old in-container adapter's exact argparse boundary.
+
+    Old images reject R2 source ops before the JSON envelope exists. Keep
+    database/network stderr and unrelated argparse failures retryable/visible
+    rather than mislabeling them as an upgrade-only condition.
+    """
+    return (
+        op in _SOURCE_MAINTENANCE_OPS
+        and "usage: aisc-extensions-adapter" in stderr
+        and f"invalid choice: '{op}'" in stderr
+    )
+
+
+def _group_timeout_seconds(specs: list[str]) -> float:
+    """Cover probe + up to three clones + installs/enables in the adapter."""
+    repos = len({spec.split(":", 1)[0] for spec in specs})
+    return 30.0 + 450.0 * repos + 240.0 * len(specs)
 
 
 def _validate(op: str, kind: Optional[str], agent: Optional[str]) -> None:
@@ -68,6 +95,8 @@ def _exec_adapter(
     apps: Optional[str] = None,
     query: Optional[str] = None,
     url: Optional[str] = None,
+    specs: Optional[list[str]] = None,
+    timeout: float = 600.0,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
@@ -98,11 +127,21 @@ def _exec_adapter(
         argv.extend(["--query", query])
     if url:
         argv.extend(["--url", url])
+    if specs is not None:
+        argv.extend(["--specs", json.dumps(specs, ensure_ascii=False,
+                                           separators=(",", ":"))])
 
-    result = executor.run_captured(argv, timeout=600.0, input_text=stdin_text)
+    result = executor.run_captured(argv, timeout=timeout, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
+        stderr = (result.stderr or "").strip()
+        if _legacy_argparse_source_unsupported(op, stderr):
+            raise CliError(
+                message="当前运行环境不支持扩展来源维护，请升级或重建运行时镜像",
+                exit_code=1,
+                error_code=UNSUPPORTED_OP,
+            )
         raise CliError(
-            message=f"extensions {op} failed: {(result.stderr or '').strip()[:200]}",
+            message=f"extensions {op} failed: {stderr[:200]}",
             exit_code=1,
             error_code="AISC_ERR_EXTENSIONS_EXEC_FAILED",
         )
@@ -122,10 +161,25 @@ def _exec_adapter(
         )
     if not envelope.get("ok"):
         error = envelope.get("error") or {}
+        code = str(error.get("code") or "AISC_ERR_EXTENSIONS_EXEC_FAILED")
+        message = str(error.get("message") or f"extensions {op} failed")
+        # R2 source maintenance must distinguish an old runtime from transient
+        # database/network failures. Legacy adapters have no dedicated code, so
+        # classify only their exact unknown-op and stale-schema responses.
+        legacy_unsupported = (
+            op in _SOURCE_MAINTENANCE_OPS
+            and code == "AISC_ERR_USAGE"
+            and message == f"unhandled op: {op}"
+        )
+        stale_schema = (
+            op == "skill-repos-list"
+            and code == "AISC_ERR_EXTENSIONS_SNAPSHOT_FAILED"
+            and message == "skill repository table is unavailable; upgrade the runtime image"
+        )
         raise CliError(
-            message=str(error.get("message") or f"extensions {op} failed"),
+            message=message,
             exit_code=1,
-            error_code=str(error.get("code") or "AISC_ERR_EXTENSIONS_EXEC_FAILED"),
+            error_code=UNSUPPORTED_OP if legacy_unsupported or stale_schema else code,
         )
     return envelope
 
@@ -176,6 +230,32 @@ def extensions_skill_install(runtime_id: str, spec: str,
     return {"kind": "skills", "spec": spec}
 
 
+def extensions_skill_install_group(
+    runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
+) -> Dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise CliError(
+            message="Invalid extensions skill specs: expected a non-empty string array",
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+            error_code="AISC_ERR_USAGE",
+        )
+    _validate("skill-install-group", None, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-install-group",
+        specs=specs, timeout=_group_timeout_seconds(specs),
+    )
+    items = envelope.get("items") or []
+    return {
+        "kind": "skills",
+        "total": envelope.get("total", len(items)),
+        "completed": envelope.get("completed", 0),
+        "items": items,
+        "operation_id": envelope.get("operation_id"),
+    }
+
+
 def extensions_skill_update(runtime_id: str, spec: str,
                              workspace: Optional[str], executor: Any) -> Dict[str, Any]:
     _validate("skill-update", None, None)
@@ -183,6 +263,32 @@ def extensions_skill_update(runtime_id: str, spec: str,
         runtime_id, _registry_root(workspace), executor, "skill-update", spec=spec
     )
     return {"kind": "skills", "spec": spec}
+
+
+def extensions_skill_update_group(
+    runtime_id: str, specs: list[str], workspace: Optional[str], executor: Any,
+) -> Dict[str, Any]:
+    if not isinstance(specs, list) or not specs or not all(
+        isinstance(spec, str) and spec.strip() for spec in specs
+    ):
+        raise CliError(
+            message="Invalid extensions skill specs: expected a non-empty string array",
+            exit_code=RuntimeExitCode.USAGE_ERROR,
+            error_code="AISC_ERR_USAGE",
+        )
+    _validate("skill-update-group", None, None)
+    envelope = _exec_adapter(
+        runtime_id, _registry_root(workspace), executor, "skill-update-group",
+        specs=specs, timeout=_group_timeout_seconds(specs),
+    )
+    items = envelope.get("items") or []
+    return {
+        "kind": "skills",
+        "total": envelope.get("total", len(items)),
+        "completed": envelope.get("completed", 0),
+        "items": items,
+        "operation_id": envelope.get("operation_id"),
+    }
 
 
 def extensions_mcp_add(runtime_id: str, config: Dict[str, Any], apps: str,
@@ -235,5 +341,8 @@ def extensions_call_raw(runtime_id: str, op: str, workspace: Optional[str],
         runtime_id, _registry_root(workspace), executor, op,
         kind=kind, item_id=item_id, query=query, url=url,
     )
-    return {"op": op, "items": envelope.get("items") or [],
-            "operation_id": envelope.get("operation_id")}
+    result = {"op": op, "items": envelope.get("items") or [],
+              "operation_id": envelope.get("operation_id")}
+    if isinstance(envelope.get("cache"), dict):
+        result["cache"] = envelope["cache"]
+    return result

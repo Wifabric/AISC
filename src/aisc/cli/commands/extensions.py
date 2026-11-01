@@ -19,6 +19,24 @@ def _runtime(args: argparse.Namespace):
     return args.runtime_id, args.workspace
 
 
+def _group_specs(raw: str) -> list[str]:
+    try:
+        specs = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(
+            message=f"invalid extensions specs JSON: {exc}",
+            exit_code=2,
+            error_code="AISC_ERR_USAGE",
+        ) from exc
+    if not isinstance(specs, list):
+        raise CliError(
+            message="extensions specs must be a JSON string array",
+            exit_code=2,
+            error_code="AISC_ERR_USAGE",
+        )
+    return specs
+
+
 def cmd_extensions_list(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_list
 
@@ -50,11 +68,27 @@ def cmd_extensions_skill_install(args: argparse.Namespace) -> Dict[str, Any]:
     return extensions_skill_install(runtime_id, args.spec, workspace, None)
 
 
+def cmd_extensions_skill_install_group(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_skill_install_group
+
+    runtime_id, workspace = _runtime(args)
+    specs = _group_specs(args.specs)
+    return extensions_skill_install_group(runtime_id, specs, workspace, None)
+
+
 def cmd_extensions_skill_update(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_skill_update
 
     runtime_id, workspace = _runtime(args)
     return extensions_skill_update(runtime_id, args.spec, workspace, None)
+
+
+def cmd_extensions_skill_update_group(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_skill_update_group
+
+    runtime_id, workspace = _runtime(args)
+    specs = _group_specs(args.specs)
+    return extensions_skill_update_group(runtime_id, specs, workspace, None)
 
 
 def cmd_extensions_mcp_add(args: argparse.Namespace) -> Dict[str, Any]:
@@ -96,6 +130,25 @@ def cmd_extensions_plugin_update(args: argparse.Namespace) -> Dict[str, Any]:
 
 def print_extensions_text(data: Dict[str, Any]) -> None:
     items = data.get("items")
+    if data.get("op") == "updates-check" and isinstance(items, list):
+        print("kind\tid\tstatus\tcurrent\tlatest\tupdate\treason")
+        for item in items:
+            print(
+                f"{item.get('kind', '')}\t{item.get('id', '')}\t"
+                f"{item.get('status', '')}\t{item.get('current_version', '')}\t"
+                f"{item.get('latest_version', '')}\t"
+                f"{'YES' if item.get('update_available') else 'NO'}\t"
+                f"{item.get('reason', '')}"
+            )
+        return
+    if data.get("kind") == "skills" and isinstance(items, list) and items and \
+            "total" in data and "spec" in items[0]:
+        print(f"{data.get('completed', 0)}/{data.get('total', len(items))}")
+        for item in items:
+            error = str(item.get("error") or "").strip()
+            suffix = f" | {error}" if error else ""
+            print(f"{item.get('spec', '')}\t{item.get('status', '')}{suffix}")
+        return
     if items is None:
         print(json.dumps(data, ensure_ascii=False))
         return
@@ -112,6 +165,31 @@ def print_extensions_text(data: Dict[str, Any]) -> None:
             print(f"{item.get('id', '')}\t{item.get('name', '')}\t{item.get('transport', '')}\t{flags}\t{target}")
         else:
             print(f"{item.get('id', '')}\t{item.get('version', '')}\t{item.get('scope', '')}\t{item.get('last_updated', '')}")
+    cache = data.get("cache")
+    if isinstance(cache, dict):
+        status = "cached" if cache.get("cached") else str(cache.get("source") or "remote")
+        details = [f"cache={status}"]
+        if cache.get("fetched_at"):
+            details.append(f"fetched_at={cache.get('fetched_at')}")
+        if cache.get("error"):
+            details.append(str(cache["error"]))
+        print(" · ".join(details))
+
+
+def cmd_extensions_updates_check(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "updates-check", workspace, None)
+
+
+def cmd_extensions_skill_describe(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-describe", workspace, None,
+                               item_id=args.id)
+
 
 def cmd_extensions_skill_search(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw
@@ -137,6 +215,21 @@ def cmd_extensions_skill_repo_add(args: argparse.Namespace) -> Dict[str, Any]:
                                item_id=args.id)
 
 
+def cmd_extensions_skill_repos_list(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-repos-list", workspace, None)
+
+
+def cmd_extensions_skill_repo_remove(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "skill-repo-remove", workspace, None,
+                               item_id=args.id)
+
+
 def cmd_extensions_plugin_market_list(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extensions import extensions_call_raw
 
@@ -149,6 +242,14 @@ def cmd_extensions_plugin_market_add(args: argparse.Namespace) -> Dict[str, Any]
 
     runtime_id, workspace = _runtime(args)
     return extensions_call_raw(runtime_id, "plugin-market-add", workspace, None,
+                               item_id=args.id)
+
+
+def cmd_extensions_plugin_market_remove(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extensions import extensions_call_raw
+
+    runtime_id, workspace = _runtime(args)
+    return extensions_call_raw(runtime_id, "plugin-market-remove", workspace, None,
                                item_id=args.id)
 
 

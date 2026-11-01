@@ -38,7 +38,12 @@ class _BuildEnv:
     use_cn_mirror: str = "1"
     node_image: str = ""
     node_image_cn: str = ""
+    node_image_digest: str = ""
     node_image_mirrors: tuple = ()
+    mihomo_version: str = BuildPlan.build_arg_mihomo_version
+    geodata_version: str = BuildPlan.build_arg_geodata_version
+    geodata_commit: str = BuildPlan.build_arg_geodata_commit
+    yazi_version: str = BuildPlan.build_arg_yazi_version
     # A5 (D-9): tool pins forwarded as build args — factory values layered
     # under the data-root USER pin overlay (tool_versions.py, D-27).
     claude_code_version: str = "latest"
@@ -71,6 +76,11 @@ def _parse_build_env(root: Path, data_root: Optional[Path] = None) -> _BuildEnv:
     return _BuildEnv(
         use_cn_mirror=use_cn, node_image=node_image,
         node_image_cn=node_image_cn, node_image_mirrors=mirrors,
+        node_image_digest=env.get("NODE_IMAGE_DIGEST", "").strip(),
+        mihomo_version=env.get("MIHOMO_VERSION") or _BuildEnv.mihomo_version,
+        geodata_version=env.get("GEODATA_VERSION") or _BuildEnv.geodata_version,
+        geodata_commit=env.get("GEODATA_COMMIT") or _BuildEnv.geodata_commit,
+        yazi_version=env.get("YAZI_VERSION") or _BuildEnv.yazi_version,
         claude_code_version=claude or "latest",
         codex_version=codex or "latest",
         gh_proxy=env.get("GH_PROXY", "").strip(),
@@ -191,6 +201,26 @@ def _dockerfile_instruction_count(plan: BuildPlan) -> Optional[int]:
     return count or None
 
 
+def _pinned_node_image(selected: str, official: str, digest: str) -> str:
+    """Apply one SHA256 pin consistently across upstream and mirror refs."""
+    pins = [digest] if digest else []
+    for ref in (official, selected):
+        if "@" in ref:
+            pins.append(ref.split("@", 1)[1])
+    normalized = []
+    for pin in pins:
+        if re.fullmatch(r"[0-9a-fA-F]{64}", pin):
+            pin = "sha256:" + pin
+        if not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", pin):
+            raise CliError(message="NODE_IMAGE_DIGEST must be a SHA256 image digest.",
+                           exit_code=1, error_code="AISC_ERR_GENERAL")
+        normalized.append(pin.lower())
+    if len(set(normalized)) > 1:
+        raise CliError(message="Conflicting Node image digest pins in config/versions.env.",
+                       exit_code=1, error_code="AISC_ERR_GENERAL")
+    return selected.split("@", 1)[0] + "@" + normalized[0] if normalized else selected
+
+
 def plan_build(
     root: Path,
     tag: str = "super-claude:latest",
@@ -241,6 +271,9 @@ def plan_build(
     selected_node_image = build_env.node_image
     if build_env.use_cn_mirror == "1" and build_env.node_image_cn:
         selected_node_image = build_env.node_image_cn
+    selected_node_image = _pinned_node_image(
+        selected_node_image, build_env.node_image, build_env.node_image_digest,
+    )
 
     cc_kwargs: Dict[str, str] = {}
     if cc_switch is not None:
@@ -278,6 +311,10 @@ def plan_build(
         build_arg_node_image=selected_node_image,
         build_arg_claude_code_version=build_env.claude_code_version,
         build_arg_codex_version=build_env.codex_version,
+        build_arg_mihomo_version=build_env.mihomo_version,
+        build_arg_geodata_version=build_env.geodata_version,
+        build_arg_geodata_commit=build_env.geodata_commit,
+        build_arg_yazi_version=build_env.yazi_version,
         build_arg_gh_proxy=build_env.gh_proxy,
         dry_run=dry_run,
         **cc_kwargs,
@@ -368,6 +405,90 @@ def _remove_same_id_aliases(exec_, bare: str, candidates: list) -> None:
             exec_.run_captured(["rmi", ref], timeout=30.0)
 
 
+def _verified_pinned_image_id(exec_, ref: str, digest: str) -> str:
+    """Require engine provenance for the index digest, not a same-name tag.
+
+    RepoDigests can name the upstream repo even after a mirror pull. The
+    content digest must agree; the platform config .Id is a different hash.
+    """
+    proc = exec_.run_captured(["image", "inspect", ref], timeout=30.0)
+    if proc.exit_code != 0 or proc.timed_out:
+        return ""
+    try:
+        docs = json.loads(proc.stdout)
+        doc = docs[0] if isinstance(docs, list) and len(docs) == 1 else None
+        if not isinstance(doc, dict):
+            return ""
+        image_id, digests = doc.get("Id"), doc.get("RepoDigests")
+        if not isinstance(image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            return ""
+        if not isinstance(digests, list) or not any(
+            isinstance(value, str) and value.endswith("@" + digest) for value in digests
+        ):
+            return ""
+        return image_id
+    except (ValueError, TypeError):
+        return ""
+
+
+def _local_digest_builder(exec_) -> str:
+    """Bind the builder to the Docker context whose image store we verified."""
+    context = exec_.run_captured(["context", "show"], timeout=30.0)
+    name = context.stdout.strip() if context.exit_code == 0 else ""
+    if name and not name.startswith("-") and not any(char.isspace() for char in name):
+        builder = exec_.run_captured(
+            ["buildx", "inspect", name], timeout=30.0,
+        )
+        drivers = re.findall(r"^Driver:[ \t]*(\S+)[ \t]*$", builder.stdout, re.MULTILINE)
+        endpoints = re.findall(r"^Endpoint:[ \t]*(.+?)[ \t]*$", builder.stdout, re.MULTILINE)
+        if builder.exit_code == 0 and drivers == ["docker"] and endpoints == [name]:
+            return name
+    raise CliError(
+        message="固定 digest 构建需要当前 Docker context 的 docker driver，"
+                "以使用已校验的本地镜像；无法确认 builder，已停止构建。",
+        exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
+    )
+
+
+def _ensure_pinned_base_image(exec_, plan, candidates: list, say) -> str:
+    selected = _pinned_node_image(plan.build_arg_node_image, "", "")
+    digest = selected.split("@", 1)[1]
+    local = "aisc-node-base:" + digest.replace(":", "-")
+
+    def tag_verified(image_id: str) -> str:
+        # docker tag destinations cannot include @digest. Always rebind by
+        # verified content ID so an unrelated local alias is never trusted.
+        tagged = exec_.run_captured(["tag", image_id, local], timeout=30.0)
+        if tagged.exit_code == 0 and exec_.inspect_image(local).image_id == image_id:
+            return local
+        raise CliError(message="无法为已校验的 Node 基础镜像创建本地构建 tag。",
+                       exit_code=4, error_code="AISC_ERR_BUILD_FAILED")
+
+    if not plan.pull:
+        # Check every candidate before contacting a registry: a later mirror's
+        # verified cache must not wait for earlier unreachable registries.
+        for ref in candidates:
+            image_id = _verified_pinned_image_id(exec_, ref, digest)
+            if image_id:
+                return tag_verified(image_id)
+
+    for ref in candidates:
+        say(f"⬇️  基础镜像 try: {ref}（最长 {_PULL_TIMEOUT_S:.0f}s，失败自动切换下一源）\n")
+        proc = exec_.run_captured(["pull", ref], timeout=_PULL_TIMEOUT_S)
+        if proc.exit_code == 0 and not proc.timed_out:
+            image_id = _verified_pinned_image_id(exec_, ref, digest)
+            if image_id:
+                return tag_verified(image_id)
+        say(f"⚠️  基础镜像源失败或 digest 无法校验: {ref}；继续尝试下一源\n")
+
+    raise CliError(
+        message="固定 digest 的 Node 基础镜像不可用；请检查镜像源或手动 docker pull "
+                + candidates[0] + " 后重试，不会使用未校验的本地同名 tag。",
+        exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
+        data={"base_image_candidates": candidates, "node_image_digest": digest},
+    )
+
+
 def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
     """Pre-pull the base image through the mirror chain.
 
@@ -386,6 +507,9 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
         if streaming and emitter is None:
             _sys.stderr.write(line)
             _sys.stderr.flush()
+
+    if "@" in plan.build_arg_node_image:
+        return _ensure_pinned_base_image(exec_, plan, candidates, _say)
 
     # Local store hit → buildkit needs no network at all.
     if exec_.inspect_image(bare).status == ImageInspectStatus.EXISTS:
@@ -412,7 +536,7 @@ def _ensure_base_image(exec_, plan, emitter, streaming: bool) -> str:
         message=(
             "基础镜像预拉失败（所有镜像源均不可达）：" + ", ".join(candidates) +
             "。可依次尝试：① Docker Desktop 设置里配置 registry-mirrors 后重试；"
-            "② 手动 docker pull <任一镜像源>/node:22-slim 成功后重新构建；"
+            f"② 手动 docker pull {candidates[0]} 成功后重新构建；"
             "③ 切换到可直连 Docker Hub 的网络。"
         ),
         exit_code=4, error_code="AISC_ERR_BUILD_FAILED",
@@ -534,10 +658,17 @@ def run_build(
 
     # --- T8a: pre-pull the base image through the mirror chain (CN 网络兜底;
     # local hit is a zero-IPC no-op) and point the build at the local name ---
+    builder = _local_digest_builder(exec_) if "@" in plan.build_arg_node_image else ""
     effective_node_image = _ensure_base_image(exec_, plan, emitter, streaming)
 
     # --- execute docker build ---
     argv = _rewrite_node_image(plan.docker_argv, effective_node_image)
+    if builder:
+        argv[1:1] = ["--builder", builder]
+    if "@" in plan.build_arg_node_image and "--pull" in argv:
+        # --pull was honored by the digest pre-pull. Asking the builder to
+        # pull our local-only alias would reintroduce a Docker Hub lookup.
+        argv.remove("--pull")
     result.docker_argv = argv  # error payloads carry the argv that actually ran
 
     if streaming:

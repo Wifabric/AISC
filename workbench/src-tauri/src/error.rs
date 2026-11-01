@@ -110,6 +110,18 @@ impl WorkbenchError {
         )
     }
 
+    /// The active host/runtime pair lacks an R2 extension source op. This is a
+    /// stable capability boundary, not a generic protocol or database failure.
+    pub fn extensions_unsupported_op(op: impl Into<String>) -> Self {
+        Self::new(
+            "WB_ERR_EXTENSIONS_UNSUPPORTED_OP",
+            "当前运行环境不支持扩展来源维护，请升级或重建 Runtime",
+            false,
+            Action::UpgradeCli,
+        )
+        .with_detail(format!("unsupported extensions op: {}", op.into()))
+    }
+
     pub fn workspace_invalid() -> Self {
         Self::new(
             "WB_ERR_WORKSPACE_INVALID",

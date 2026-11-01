@@ -693,6 +693,11 @@ export interface ExtensionsItem {
   url?: string;
   command?: string;
   env_keys?: string[];
+  auth_required?: boolean;
+  auth_configured?: boolean;
+  auth_claude_configured?: boolean;
+  auth_codex_configured?: boolean;
+  auth_env_var?: string;
   marketplace?: string;
   version?: string;
   directory?: string;
@@ -702,6 +707,12 @@ export interface ExtensionsItem {
   conflict?: boolean;
   scope?: string;
   last_updated?: string;
+  branch?: string;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  latest_version?: string;
+  latest_git_commit_sha?: string;
   enabled_claude?: boolean;
   enabled_codex?: boolean;
 }
@@ -719,6 +730,7 @@ export interface ExtensionsCallParams {
   config?: string;
   query?: string;
   url?: string;
+  specs?: string[];
 }
 
 export const extensionsCall = (p: ExtensionsCallParams) =>
@@ -735,6 +747,7 @@ export const extensionsCall = (p: ExtensionsCallParams) =>
     config: p.config ?? null,
     query: p.query ?? null,
     url: p.url ?? null,
+    ...(p.specs ? { specs: p.specs } : {}),
   });
 // --- v2.1.13 (docker-scan-fidelity): read-only per-item inspection ---
 export interface CacheInspectRow {
@@ -915,6 +928,9 @@ export const workspaceList = (
 export const workspaceOpen = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_open", { workspace, relativePath });
 
+export const workspaceReadImage = (workspace: string, relativePath: string) =>
+  invoke<string>("workspace_read_image", { workspace, relativePath });
+
 
 export const workspaceReveal = (workspace: string, relativePath: string) =>
   invoke<void>("workspace_reveal", { workspace, relativePath });
@@ -955,6 +971,41 @@ export const workspaceCreateDir = (workspace: string, relativeDir: string, name:
     workspace,
     relativeDir,
     name,
+  });
+
+export const workspaceCopyEntriesToSystemClipboard = (
+  workspace: string,
+  sourceRelativePaths: string[],
+) =>
+  invoke<import("../types").WorkspaceClipboardResult>("workspace_copy_entries_to_system_clipboard", {
+    workspace,
+    sourceRelativePaths,
+  });
+
+export const workspacePasteSystemClipboard = (
+  workspace: string,
+  destinationRelativeDir: string,
+) =>
+  invoke<import("../types").WorkspaceBatchResult>("workspace_paste_system_clipboard", {
+    workspace,
+    destinationRelativeDir,
+  });
+
+export const workspaceDeleteEntry = (workspace: string, relativePath: string) =>
+  invoke<import("../types").WorkspaceMutationResult>("workspace_delete_entry", {
+    workspace,
+    relativePath,
+  });
+
+export const workspacePasteEntries = (
+  workspace: string,
+  sourceRelativePaths: string[],
+  destinationRelativeDir: string,
+) =>
+  invoke<import("../types").WorkspaceBatchResult>("workspace_paste_entries", {
+    workspace,
+    sourceRelativePaths,
+    destinationRelativeDir,
   });
 
 export const workspaceCopyEntry = (
@@ -1009,9 +1060,26 @@ export interface UpdateDownloadResult {
 export const appCheckUpdate = () => invoke<UpdateInfo>("app_check_update");
 
 /** Progress events ride the `update://progress` Tauri event. */
-export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVersion: string) =>
-  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url, targetVersion });
+export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVersion: string, requestId?: string) =>
+  invoke<UpdateDownloadResult>("app_download_update", { setupUrl, sha256Url, targetVersion, requestId });
 
-/** Runs the staged installer SILENT and exits the app (UI confirms first). */
+/** Selects the verified installer in Explorer, opens it normally, then exits. */
 export const appInstallUpdate = (setupPath: string) =>
   invoke<void>("app_install_update", { setupPath });
+
+export interface UpdateHealthObservation {
+  scope: string;
+  endpoint: string;
+  route: "direct" | "mirror";
+  transport: "direct" | "system-proxy";
+  status: string;
+  latencyMs: number;
+  errorCode: string | null;
+  checkedAt: number;
+}
+export interface UpdateHealth {
+  workbenchVersion: string;
+  observations: UpdateHealthObservation[];
+  containerExtensions: { status: string; reason: string };
+}
+export const appUpdateHealth = () => invoke<UpdateHealth>("app_update_health");
