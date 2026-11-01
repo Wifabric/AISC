@@ -1163,9 +1163,28 @@ export interface WorkspaceCopyResult {
 
 /** Stage 11 (11b): result of a contained Explorer mutation. The UI routes
  *  errors by the stable WB_ERR_* code, never by message text. */
+export interface WorkspaceBatchFailure {
+  relative_path: string;
+  code: string;
+  detail: string;
+}
+
+export interface WorkspaceBatchResult {
+  schema_version: number;
+  operation: "copy" | "paste" | "delete";
+  results: WorkspaceMutationResult[];
+  failures: WorkspaceBatchFailure[];
+}
+
+export interface WorkspaceClipboardResult {
+  schema_version: number;
+  count: number;
+  explorer_compatible: boolean;
+}
+
 export interface WorkspaceMutationResult {
   schema_version: number;
-  operation: "create_file" | "create_dir" | "copy" | "rename";
+  operation: "create_file" | "create_dir" | "copy" | "rename" | "delete" | "paste" | "upload";
   relative_path: string;
   kind: "dir" | "file";
 }

@@ -4386,3 +4386,5 @@ b2 从该基线独立分支实施功能简介及内联详情布局，范围/回�
 b2 完成功能简介数据出口、按需上游 skill 描述、精确仓库中文简介和市场卡片内联详情；修复窄栏换行、
 鼠标焦点外框、长错误与 Escape 后焦点恢复。全门禁及生产候选通过，Windows Computer Use 已按
 HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。
+
+- 2026-11-01：preview-fixes b6 完成文件管理实现：Windows CF_HDROP 双向兼容、受控应用剪贴板回退、Explorer 多选/删除/批量粘贴、稳定顺序终端拖拽。批量操作逐项聚合失败；Rust 继续承担来源/目标 containment 与不覆盖暂存。全门禁和生产 Workbench 构建通过，CU/用户实测延后到 preview.N。

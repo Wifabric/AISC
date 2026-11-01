@@ -16,8 +16,11 @@ import {
   conversationPreflight,
   conversationRead,
   conversationRename,
-  workspaceCopyEntry,
+  workspaceCopyEntriesToSystemClipboard,
   workspaceCopyPath,
+  workspaceDeleteEntry,
+  workspacePasteEntries,
+  workspacePasteSystemClipboard,
   workspaceGitDiff,
   workspaceGitInfo,
   workspaceGitStatus,
@@ -40,6 +43,7 @@ import type {
   ArtifactRecord,
   ConversationSummary,
   WorkspaceMutationResult,
+  WorkspaceBatchResult,
   WorkspaceNode,
 } from "../types";
 
@@ -77,11 +81,17 @@ export type ExplorerKind = "explorer" | "work-records" | "conversations" | "arti
 /** Stage 11 (D11-02/D11-03): the in-app file clipboard. Short-lived store
  *  state — copy never touches the OS text clipboard. Single source entry
  *  only; invalidated on workspace switch or when the source disappears. */
+export interface ExplorerClipboardEntry {
+  relativePath: string;
+  kind: "file" | "dir";
+}
+
 export interface ExplorerClipboard {
   workspace: string;
-  sourceRelativePath: string;
-  kind: "file" | "dir";
+  entries: ExplorerClipboardEntry[];
   generation: number;
+  /** True only after the native Windows CF_HDROP write succeeded. */
+  explorerCompatible: boolean;
 }
 
 /** Extract the stable WB_ERR_* code from an invoke rejection. The Rust side
@@ -842,6 +852,21 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
 
     async copyRecordText(text: string): Promise<void> { await writeText(text); },
 
+  /** Delete one contained file/dir. The UI batches and aggregates failures. */
+  async deleteEntry(relativePath: string): Promise<WorkspaceMutationResult> {
+    if (!this.workspace) throw { code: "WB_ERR_WORKSPACE_INVALID" };
+    const result = await workspaceDeleteEntry(this.workspace, relativePath);
+    const parent = parentDirOf(relativePath);
+    delete this.tree[relativePath];
+    this.expanded.delete(relativePath);
+    delete this.nextCursors[relativePath];
+    for (const path of Object.keys(this.unattributed)) {
+      if (path === relativePath || path.startsWith(`${relativePath}/`)) delete this.unattributed[path];
+    }
+    await this.loadDir(parent, true);
+    return result;
+  },
+
     async revealFile(relativePath: string) {
       if (!this.workspace) return;
       await workspaceReveal(this.workspace, relativePath);
@@ -859,35 +884,52 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
     // directed refresh of the affected parent directory. The watcher stays a
     // supplementary signal (02 §3, 05 §2).
 
-    /** Copy action: only records the in-app clipboard (D11-02). */
-    setClipboardEntry(sourceRelativePath: string, kind: "file" | "dir") {
-      if (!this.workspace) return;
+    /** Copy selected entries into the app clipboard and, for local Windows
+     *  workspaces, the native CF_HDROP clipboard. The app list remains a
+     *  controlled fallback; Explorer compatibility is never faked. */
+    async setClipboardEntries(entries: ExplorerClipboardEntry[]) {
+      if (!this.workspace || entries.length === 0) return;
       this.clipboardGeneration += 1;
+      let explorerCompatible = false;
+      try {
+        const result = await workspaceCopyEntriesToSystemClipboard(
+          this.workspace,
+          entries.map((entry) => entry.relativePath),
+        );
+        explorerCompatible = result.explorer_compatible;
+      } catch {
+        // Remote/non-Windows/native-failure falls through to the contained
+        // app clipboard; `explorerCompatible` stays false.
+      }
       this.clipboard = {
         workspace: this.workspace,
-        sourceRelativePath,
-        kind,
+        entries,
         generation: this.clipboardGeneration,
+        explorerCompatible,
       };
     },
 
     /** True when the clipboard holds a pasteable entry for THIS workspace. */
     canPaste(): boolean {
       const c = this.clipboard;
-      return !!c && !!this.workspace && c.workspace === this.workspace;
+      return !!c && !!this.workspace && c.workspace === this.workspace && c.entries.length > 0;
     },
 
-    /** Paste: copy the clipboard entry into `destinationDir`. Rejects when
-     *  the buffer is empty, from another workspace, or the source vanished.
-     *  Never overwrites — conflicts surface as WB_ERR_WORKSPACE_CONFLICT. */
-    async pasteEntry(destinationDir: string): Promise<WorkspaceMutationResult> {
+    /** Paste through native CF_HDROP when present; otherwise contained app
+     *  paths. Both legs revalidate every source and destination in Rust. */
+    async pasteEntry(destinationDir: string): Promise<WorkspaceBatchResult> {
       const c = this.clipboard;
       if (!c || !this.workspace || c.workspace !== this.workspace) {
         throw { code: "WB_ERR_WORKSPACE_INVALID" };
       }
-      const result = await workspaceCopyEntry(
+      if (c.explorerCompatible) {
+        const result = await workspacePasteSystemClipboard(this.workspace, destinationDir);
+        await this.loadDir(destinationDir, true);
+        return result;
+      }
+      const result = await workspacePasteEntries(
         this.workspace,
-        c.sourceRelativePath,
+        c.entries.map((entry) => entry.relativePath),
         destinationDir,
       );
       await this.loadDir(destinationDir, true);
