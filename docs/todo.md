@@ -328,4 +328,4 @@
   - [x] `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布完成（Workbench NSIS、CLI Artifact/TestPyPI 全绿；B1–B6 已合入）
   - [x] 用户从 preview.2 统一手测 B1–B6，结论无问题；final 收口进行中
 - 发布
-  - [ ] `v2.1.17` / CLI `0.1.10` final 收口、main 同步与发布验证
+  - [x] `v2.1.17` / CLI `0.1.10` final 收口：PR #60/#61 合入，main `bf95ce0`；Workbench NSIS、CLI Artifact、正式 PyPI 与 NSIS 下载 SHA256 验证通过；preview Release 已清理
