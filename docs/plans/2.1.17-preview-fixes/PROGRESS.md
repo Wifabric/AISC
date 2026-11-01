@@ -20,3 +20,4 @@
 - 2026-11-01：b5 实现完成。分支会话沿用原 conversation preflight 并只创建 fork；启动失败保存可读错误、只回收失败新标签。移除单会话右键新建，工作记录标题操作区新增按既有引擎的“＋”，新 provider 会话唯一识别后自动加入来源记录。前端 98 files / 837 tests 通过。
 - 2026-11-01：b5 最终全门禁 Python 1723 / Rust 410 / Vitest 837 / vue-tsc 通过，生产 Workbench 构建通过；按 §1.4.2 不做逐批 CU；PR #57 三项 Workbench CI SUCCESS，合入 develop `aef1d5a`，用户实测延后到 preview 发布。
 - 2026-11-01：b6 实现完成。Windows Explorer 文件剪贴板使用 CF_HDROP；应用内保留多路径受控回退并明确兼容性。Explorer 支持 Ctrl/Shift/Ctrl+A 多选、多选复制/粘贴/删除、确认与部分失败明细；粘贴目标按选中目录/父目录规则处理。文件与目录可多选拖入 Bash/CLI，受控 MIME 按可见树顺序输入 quoteForTerminal，不自动执行。本地/远端文件面逐项校验，目录递归和外部剪贴板粘贴保持有界、暂存、不覆盖。全门禁 Python 1723 / Rust 414 / Vitest 98 files / 841 / vue-tsc 通过，生产 Workbench 构建通过；按 §1.4.2 不做逐批 CU，用户实测延后到 preview 发布。
+- 2026-11-01：B1–B6 全部合入 develop `7ffe39b`。开始 `v2.1.17-preview.2` 发布准备：CLI bump `0.1.10.dev1`，新增双轨 release notes；远端发布门禁待 release 分支合并后执行。

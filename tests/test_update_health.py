@@ -112,7 +112,7 @@ def test_source_checkout_without_published_manifest_is_explicitly_unknown(tmp_pa
 
 
 def test_check_adds_allowlisted_json_detail_and_doctor_wires_it(tmp_path, monkeypatch):
-    root = bundle(tmp_path, {"schema_version": 1, "compatible_cli_versions": ["0.1.10.dev0"], "token": "never-copy-this"})
+    root = bundle(tmp_path, {"schema_version": 1, "compatible_cli_versions": ["0.1.10.dev1"], "token": "never-copy-this"})
     check = pairing_check(root)
     assert check.name == "cli-bundle-pairing" and check.status == "pass"
     assert "never-copy-this" not in check.detail
