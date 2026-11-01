@@ -19,3 +19,5 @@ DEVELOP_WIKI §1.2 先入 todo、先计划后代码，按 §1.4 逐批验证和�
 不因登记后续批次而提前实现；preview 发布、统一回归和正式 final 按既有阶段门执行。
 
 2026-11-01：B6 合入后进入 `v2.1.17-preview.2` / CLI `0.1.10.dev1` 发布准备；发布已完成：Workbench `v2.1.17-preview.2` / CLI `0.1.10.dev1` GitHub prerelease 与 CLI TestPyPI 均成功，等待用户统一更新实测。
+
+> 2026-11-01：用户完成 `v2.1.17-preview.2` 统一实测并确认“没什么问题”。B1–B6 全部收口；本计划集归档，最终版本进入 `v2.1.17` / CLI `0.1.10`。

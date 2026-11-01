@@ -4389,3 +4389,4 @@ HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。
 
 - 2026-11-01：preview-fixes b6 完成文件管理实现：Windows CF_HDROP 双向兼容、受控应用剪贴板回退、Explorer 多选/删除/批量粘贴、稳定顺序终端拖拽。批量操作逐项聚合失败；Rust 继续承担来源/目标 containment 与不覆盖暂存。全门禁和生产 Workbench 构建通过，CU/用户实测延后到 preview.N。
 - 2026-11-01：发布 Workbench `v2.1.17-preview.2` 与 CLI `v0.1.10.dev1`。release PR #59 CI SUCCESS 并合入 develop `5076fb2`；CLI Artifact/TestPyPI、Workbench NSIS 全绿，误触的 CLI tag 重复 NSIS 已取消。GitHub prerelease 资产完整，等待用户按 HANDTEST 统一实测 B1–B6。
+- 2026-11-01：进入 v2.1.17 final 收口。用户确认 preview.2 B1–B6 统一实测无问题；CLI 版本升至 0.1.10，新增 Workbench/CLI final release notes，preview-fixes 计划集归档。全门禁、版本/docs、vendor 工作树校验与 bundle stage/verify 通过；main/final 发布流程执行中。
