@@ -130,4 +130,5 @@ GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实
 - [x] b4 规格与准确实施范围落档。
 - [x] b4 RED 回归与实现。
 - [x] b4 本地门禁、真实数据面和生产候选。
-- [ ] b4 Windows CU、远端 CI、用户单批验收。
+- [x] b4 远端 CI（最终 head `9f13847` 的 Workbench/Bundle/NSIS/Artifact 全部 SUCCESS）。
+- [ ] b4 Windows CU 完整下载安装链路、用户单批验收（真实启动清理预测试已 PASS）。

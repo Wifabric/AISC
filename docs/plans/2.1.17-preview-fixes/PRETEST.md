@@ -197,3 +197,16 @@ yazi +6,778,413 B、Mihomo +5,009,561 B 与 Workbench +1,233,920 B；geodata 合
 `aisc-pfb4-freeze.log`、`aisc-pfb4-production.log`、`aisc-pfb4-nsis.log`。
 2.1.16 对照安装包与两次 7-Zip 列表保存在 `C:/pt/aisc-pfb4-*`。清理测试根
 `C:/pt/aisc-pfb4-cleanup` 保留无关文件证据，测试 Workbench 已关闭。
+
+### 远端集成证据
+
+最终 head `9f13847d53c1a4ea7862e57c46ef8c95b2945502` 四条流水线全部 SUCCESS：
+
+| workflow | run | 关键结果 |
+| --- | --- | --- |
+| Workbench CI | 41226911753 | frontend / Rust / CLI |
+| Bundle Linux/macOS | 41226973402 | deb / dmg |
+| NSIS installer | 41226975807 | NSIS、安装/PATH/数据保留冒烟 |
+| Artifact | 41226978184 | linux x64 / windows x64 / macOS arm64 目标架构 staging/verify |
+
+修复过程中的 yazi GitHub API 限流失败保留为历史证据；最终实现改用 pinned release URL 后全绿。
