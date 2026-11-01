@@ -996,6 +996,17 @@ export const enUS: Record<string, string> = {
   "explorer.menu.toggle": "Expand/Collapse",
   "explorer.menu.rename": "Rename",
   "explorer.menu.copyFile": "Copy File",
+  "explorer.menu.delete": "Delete",
+  "explorer.batch.deleteTitle": "Delete files",
+  "explorer.batch.deleteConfirm": "Delete {count} entries?",
+  "explorer.batch.pasteTitle": "Paste results",
+  "explorer.batch.summary": "{success} succeeded, {failure} failed",
+  "explorer.batch.success": "success",
+  "explorer.batch.cancel": "Cancel",
+  "explorer.batch.close": "Close",
+  "explorer.status.copiedEntries": "Copied {count} entries (Windows file clipboard attempted)",
+  "explorer.status.pastedEntries": "Pasted {count} entries",
+  "explorer.status.deletedEntries": "Deleted {count} entries",
   "explorer.menu.copyFolder": "Copy Folder",
   "explorer.paste.disabled": "Nothing to paste",
   "explorer.nameInput.file": "File name",
@@ -1177,4 +1188,5 @@ export const enUS: Record<string, string> = {
   "history.viewer.retry": "Retry",
   "history.viewer.partial": "Partial record: {omitted} earlier entries omitted; {malformed} malformed lines skipped.",
 };
+
 

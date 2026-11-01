@@ -973,6 +973,41 @@ export const workspaceCreateDir = (workspace: string, relativeDir: string, name:
     name,
   });
 
+export const workspaceCopyEntriesToSystemClipboard = (
+  workspace: string,
+  sourceRelativePaths: string[],
+) =>
+  invoke<import("../types").WorkspaceClipboardResult>("workspace_copy_entries_to_system_clipboard", {
+    workspace,
+    sourceRelativePaths,
+  });
+
+export const workspacePasteSystemClipboard = (
+  workspace: string,
+  destinationRelativeDir: string,
+) =>
+  invoke<import("../types").WorkspaceBatchResult>("workspace_paste_system_clipboard", {
+    workspace,
+    destinationRelativeDir,
+  });
+
+export const workspaceDeleteEntry = (workspace: string, relativePath: string) =>
+  invoke<import("../types").WorkspaceMutationResult>("workspace_delete_entry", {
+    workspace,
+    relativePath,
+  });
+
+export const workspacePasteEntries = (
+  workspace: string,
+  sourceRelativePaths: string[],
+  destinationRelativeDir: string,
+) =>
+  invoke<import("../types").WorkspaceBatchResult>("workspace_paste_entries", {
+    workspace,
+    sourceRelativePaths,
+    destinationRelativeDir,
+  });
+
 export const workspaceCopyEntry = (
   workspace: string,
   sourceRelativePath: string,

@@ -997,6 +997,17 @@ export const zhCN = {
   "explorer.menu.toggle": "展开/折叠",
   "explorer.menu.rename": "重命名",
   "explorer.menu.copyFile": "复制文件",
+  "explorer.menu.delete": "删除",
+  "explorer.batch.deleteTitle": "删除文件",
+  "explorer.batch.deleteConfirm": "确定删除 {count} 项？",
+  "explorer.batch.pasteTitle": "粘贴结果",
+  "explorer.batch.summary": "成功 {success} 项，失败 {failure} 项",
+  "explorer.batch.success": "成功",
+  "explorer.batch.cancel": "取消",
+  "explorer.batch.close": "关闭",
+  "explorer.status.copiedEntries": "已复制 {count} 项（Windows 兼容剪贴板已尝试）",
+  "explorer.status.pastedEntries": "已粘贴 {count} 项",
+  "explorer.status.deletedEntries": "已删除 {count} 项",
   "explorer.menu.copyFolder": "复制文件夹",
   "explorer.paste.disabled": "没有可粘贴的文件",
   "explorer.nameInput.file": "文件名",
@@ -1180,4 +1191,5 @@ export const zhCN = {
 } as const;
 
 export type ZhKey = keyof typeof zhCN;
+
 

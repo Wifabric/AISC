@@ -177,6 +177,6 @@ GitHub hosted MCP URL 为 `https://api.githubcopilot.com/mcp/`，未带授权实
 
 - [x] b5 用户验收及集成。
 - [x] b6 规格与准确实施范围落档。
-- [ ] b6 RED 回归与实现。
-- [ ] b6 本地门禁、真实数据面和生产候选。
+- [x] b6 RED 回归与实现。
+- [x] b6 本地全门禁和生产构建；真实数据面/生产候选待发布收口。
 - [ ] b6 Windows 实测、远端 CI、preview 发布前整体验收。

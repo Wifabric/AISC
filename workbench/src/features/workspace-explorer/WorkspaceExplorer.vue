@@ -37,9 +37,18 @@ const { t } = useI18n();
 const explorer = useWorkspaceExplorerStore();
 const runtime = useRuntimeStore();
 
-const selected = ref<string | null>(null);
+const selectedPaths = ref<string[]>([]);
+const selectionAnchor = ref<string | null>(null);
 /** Roving focus index into `visibleNodes` (APG tree pattern). */
 const focusIndex = ref(-1);
+
+type BatchFailureView = { path: string; code: string; detail: string };
+const batchReport = ref<{
+  titleKey: string;
+  succeeded: string[];
+  failures: BatchFailureView[];
+} | null>(null);
+const pendingDelete = ref<{ paths: string[] } | null>(null);
 
 // --- Stage 11: target-aware context menu ---
 
@@ -74,6 +83,16 @@ function flash(key: string, params?: Record<string, string>, tone: "ok" | "warn"
 }
 
 /** Stable WB_ERR_* code → i18n key (UI never parses message text, 06 §2). */
+function showBatchResult(
+  titleKey: string,
+  succeeded: string[],
+  failures: BatchFailureView[],
+): boolean {
+  if (failures.length === 0) return true;
+  batchReport.value = { titleKey, succeeded, failures };
+  return false;
+}
+
 function errorI18nKey(e: unknown): string {
   switch (errorCodeOf(e)) {
     case "WB_ERR_WORKSPACE_CONFLICT": return "explorer.error.conflict";
@@ -305,7 +324,10 @@ watch(
 watch(
   () => explorer.workspace,
   () => {
-    selected.value = null;
+    selectedPaths.value = [];
+    selectionAnchor.value = null;
+    batchReport.value = null;
+    pendingDelete.value = null;
     pending.value = null;
     pendingError.value = null;
     menu.value = null;
@@ -331,13 +353,54 @@ function parentOf(relativePath: string): string {
 
 /** Stage 11 (D11-01): single click SELECTS. Files no longer preview; dirs
  *  toggle. The Artifacts panel keeps click-to-preview (D11-16). */
-function onSelect(node: WorkspaceNode) {
-  selected.value = node.relative_path;
+function onSelect(node: WorkspaceNode, event?: MouseEvent) {
   menu.value = null;
-  if (node.kind === "dir") {
-    void explorer.toggleDir(node.relative_path);
+  focusPath(node.relative_path);
+  const rows = explorer.visibleNodes;
+  if (event?.shiftKey) {
+    const from = rows.findIndex((row) => row.relative_path === (selectionAnchor.value ?? node.relative_path));
+    const to = rows.findIndex((row) => row.relative_path === node.relative_path);
+    if (from >= 0 && to >= 0) {
+      const [start, end] = from < to ? [from, to] : [to, from];
+      selectedPaths.value = rows.slice(start, end + 1).map((row) => row.relative_path);
+      return;
+    }
   }
+  if (event?.ctrlKey || event?.metaKey) {
+    const next = new Set(selectedPaths.value);
+    if (next.has(node.relative_path)) next.delete(node.relative_path);
+    else next.add(node.relative_path);
+    selectedPaths.value = rows.filter((row) => next.has(row.relative_path)).map((row) => row.relative_path);
+    selectionAnchor.value = node.relative_path;
+    return;
+  }
+  selectedPaths.value = [node.relative_path];
+  selectionAnchor.value = node.relative_path;
+  if (node.kind === "dir") void explorer.toggleDir(node.relative_path);
 }
+
+function isSelected(relativePath: string): boolean {
+  return selectedPaths.value.includes(relativePath);
+}
+
+function selectedRows(): WorkspaceNode[] {
+  const chosen = new Set(selectedPaths.value);
+  return explorer.visibleNodes.filter((row) => chosen.has(row.relative_path));
+}
+
+function contextSelection(node: WorkspaceNode): WorkspaceNode[] {
+  return isSelected(node.relative_path) ? selectedRows() : [node];
+}
+
+function clearMissingSelection() {
+  const present = new Set(explorer.visibleNodes.map((row) => row.relative_path));
+  selectedPaths.value = selectedPaths.value.filter((path) => present.has(path));
+}
+
+watch(
+  () => explorer.visibleNodes.map((row) => row.relative_path).join("\n"),
+  clearMissingSelection,
+);
 
 /** Double-click / Enter: files open with the system app, dirs toggle. A
  *  failed open (file vanished externally, no association) surfaces as the
@@ -366,11 +429,11 @@ async function copyRelativePath(relativePath: string) {
 
 /** Copy FILE/FOLDER action: only the in-app Explorer clipboard is touched —
  *  the OS text clipboard is reserved for copy-PATH (D11-02). */
-function copyEntryToClipboard(relativePath: string, kind: "file" | "dir") {
-  explorer.setClipboardEntry(relativePath, kind);
-  flash(kind === "dir" ? "explorer.status.copiedFolder" : "explorer.status.copiedFile", {
-    name: fileName(relativePath),
-  });
+async function copyEntriesToClipboard(nodes: WorkspaceNode[]) {
+  if (nodes.length === 0 || !explorer.workspace) return;
+  const entries = nodes.map((node) => ({ relativePath: node.relative_path, kind: node.kind }));
+  await explorer.setClipboardEntries(entries);
+  flash("explorer.status.copiedEntries", { count: String(entries.length) });
 }
 
 /** Resolve a node by relative path across loaded tree levels. */
@@ -389,13 +452,16 @@ function nodeOf(rel: string): WorkspaceNode | null {
 const draggingPath = ref<string | null>(null);
 
 function onDragStart(node: WorkspaceNode, e: DragEvent) {
-  // Dirs never start a terminal drag (misreading a folder as a file argument
-  // is exactly what D11-09 avoids).
-  if (node.kind !== "file" || !e.dataTransfer) {
+  if (!e.dataTransfer) {
     e.preventDefault();
     return;
   }
-  e.dataTransfer.setData(WORKSPACE_PATH_MIME, node.relative_path);
+  const rows = contextSelection(node).filter((row) => row.kind === "file" || row.kind === "dir");
+  if (rows.length === 0) {
+    e.preventDefault();
+    return;
+  }
+  e.dataTransfer.setData(WORKSPACE_PATH_MIME, rows.map((row) => row.relative_path).join("\n"));
   e.dataTransfer.effectAllowed = "copy";
   draggingPath.value = node.relative_path;
 }
@@ -405,7 +471,16 @@ function onDragEnd() {
 }
 
 function selectedNode(): WorkspaceNode | null {
-  return selected.value ? nodeOf(selected.value) : null;
+  const rows = selectedRows();
+  return rows.length === 1 ? rows[0] : null;
+}
+
+function pasteTargetDir(): string {
+  const rows = selectedRows();
+  if (rows.length === 0) return "";
+  if (rows.length === 1 && rows[0].kind === "dir") return rows[0].relative_path;
+  const parents = new Set(rows.map((row) => parentOf(row.relative_path)));
+  return parents.size === 1 ? [...parents][0] : "";
 }
 
 /** Toolbar target directory (D11-17): selected dir → inside it; selected
@@ -455,7 +530,8 @@ async function beginRename(relativePath: string) {
   const node = nodeOf(relativePath);
   if (!node) return; // rename needs a loaded row to host the inline input
   menu.value = null;
-  selected.value = relativePath;
+  selectedPaths.value = [relativePath];
+  selectionAnchor.value = relativePath;
   pending.value = { mode: "rename", relativePath, isDir: node.kind === "dir" };
   pendingName.value = node.name;
   pendingError.value = null;
@@ -496,7 +572,8 @@ async function submitName() {
     // Clear pending BEFORE the input unmounts so the blur handler no-ops.
     pending.value = null;
     pendingError.value = null;
-    selected.value = result.relative_path;
+    selectedPaths.value = [result.relative_path];
+    selectionAnchor.value = result.relative_path;
     focusPath(result.relative_path);
     flash(p.mode === "create" ? "explorer.status.created" : "explorer.status.renamed", {
       name: fileName(result.relative_path),
@@ -560,15 +637,52 @@ async function pasteInto(destinationDir: string) {
   menu.value = null;
   try {
     const result = await explorer.pasteEntry(destinationDir);
-    selected.value = result.relative_path;
-    focusPath(result.relative_path);
-    flash("explorer.status.pasted", { name: fileName(result.relative_path) });
+    const names = result.results.map((item) => item.relative_path);
+    selectedPaths.value = names;
+    if (names.length === 1) focusPath(names[0]);
+    const complete = showBatchResult(
+      "explorer.batch.pasteTitle",
+      names,
+      result.failures.map((failure) => ({ path: failure.relative_path, code: failure.code, detail: failure.detail })),
+    );
+    if (complete) flash("explorer.status.pastedEntries", { count: String(names.length) });
   } catch (e) {
     flash(errorI18nKey(e), undefined, "warn");
   }
 }
 
+function requestDelete(paths: string[]) {
+  if (paths.length === 0) return;
+  pendingDelete.value = { paths };
+  menu.value = null;
+}
+
+async function confirmDelete() {
+  const pending = pendingDelete.value;
+  pendingDelete.value = null;
+  if (!pending) return;
+  const settled = await Promise.allSettled(pending.paths.map((path) => explorer.deleteEntry(path)));
+  const succeeded: string[] = [];
+  const failures: BatchFailureView[] = [];
+  settled.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") succeeded.push(pending.paths[index]);
+    else {
+      const e = outcome.reason;
+      failures.push({ path: pending.paths[index], code: errorCodeOf(e) || "WB_ERR_WORKSPACE_IO", detail: e && typeof e === "object" && "message" in e ? String((e as { message?: unknown }).message) : "" });
+    }
+  });
+  selectedPaths.value = selectedPaths.value.filter((path) => !succeeded.includes(path));
+  const complete = showBatchResult("explorer.batch.deleteTitle", succeeded, failures);
+  if (complete) flash("explorer.status.deletedEntries", { count: String(succeeded.length) });
+}
+
 // --- context menu assembly ---
+
+function nodeFromMenuTarget(target: MenuTarget): WorkspaceNode | null {
+  if (target.kind === "root") return null;
+  const path = target.relativePath;
+  return explorer.visibleNodes.find((node) => node.relative_path === path) ?? nodeOf(path);
+}
 
 function buildMenuItems(target: MenuTarget): MenuAction[] {
   const actions: MenuAction[] = [];
@@ -614,10 +728,11 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
         label: t("explorer.menu.copyFolder"),
         run: () => {
           menu.value = null;
-          copyEntryToClipboard(target.relativePath, "dir");
+          void copyEntriesToClipboard(contextSelection(nodeFromMenuTarget(target)!));
         },
       },
       { id: "rename", label: t("explorer.menu.rename"), run: () => void beginRename(target.relativePath) },
+      { id: "delete", label: t("explorer.menu.delete"), run: () => requestDelete(contextSelection(nodeFromMenuTarget(target)!).map((node) => node.relative_path)) },
       { id: "refresh", label: t("explorer.menu.refresh"), run: refreshFromMenu },
     );
     return actions;
@@ -631,7 +746,7 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
       label: t("explorer.menu.copyFile"),
       run: () => {
         menu.value = null;
-        copyEntryToClipboard(target.relativePath, "file");
+        void copyEntriesToClipboard(contextSelection(nodeFromMenuTarget(target)!));
       },
     },
     {
@@ -642,6 +757,8 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
         void copyRelativePath(target.relativePath);
       },
     },
+    { id: "paste", label: t("explorer.menu.paste"), disabled: pasteDisabled, reason: pasteDisabled ? t("explorer.paste.disabled") : undefined, run: () => void pasteInto(parentOf(target.relativePath)) },
+    { id: "delete", label: t("explorer.menu.delete"), run: () => requestDelete(contextSelection(nodeFromMenuTarget(target)!).map((node) => node.relative_path)) },
   );
   if (target.renamable) {
     actions.push({ id: "rename", label: t("explorer.menu.rename"), run: () => void beginRename(target.relativePath) });
@@ -720,7 +837,10 @@ function openMenuAt(target: MenuTarget, clientX: number, clientY: number) {
 }
 
 function onRowContextMenu(node: WorkspaceNode, event: MouseEvent) {
-  selected.value = node.relative_path;
+  if (!isSelected(node.relative_path)) {
+    selectedPaths.value = [node.relative_path];
+    selectionAnchor.value = node.relative_path;
+  }
   openMenuAt(
     node.kind === "dir"
       ? { kind: "dir", relativePath: node.relative_path }
@@ -762,7 +882,8 @@ function fileName(relativePath: string): string {
  * opens with the system app; a git diff opens in the diff pane below
  * (git source only). */
 function onArtifactSelect(relativePath: string) {
-  selected.value = relativePath;
+  selectedPaths.value = [relativePath];
+  selectionAnchor.value = relativePath;
   menu.value = null;
 }
 
@@ -787,12 +908,33 @@ function onTreeKeydown(e: KeyboardEvent) {
     menu.value = null;
     return;
   }
+  const focusedNode = explorer.visibleNodes[focusIndex.value];
+  if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
+    e.preventDefault();
+    if (focusedNode && isSelected(focusedNode.relative_path)) void copyEntriesToClipboard(selectedRows());
+    else if (focusedNode) void copyEntriesToClipboard([focusedNode]);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) { e.preventDefault(); void pasteInto(pasteTargetDir()); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) { e.preventDefault(); selectedPaths.value = explorer.visibleNodes.map((node) => node.relative_path); return; }
+  if ((e.key === "Delete" || e.key === "Backspace") && focusedNode) { e.preventDefault(); requestDelete(contextSelection(focusedNode).map((node) => node.relative_path)); return; }
+  if (e.shiftKey && focusedNode && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    e.preventDefault();
+    const anchorIndex = explorer.visibleNodes.findIndex((node) => node.relative_path === (selectionAnchor.value ?? focusedNode.relative_path));
+    const next = e.key === "ArrowDown" ? focusIndex.value + 1 : focusIndex.value - 1;
+    focusNode(next);
+    const start = Math.max(0, Math.min(anchorIndex, focusIndex.value));
+    const end = Math.min(explorer.visibleNodes.length - 1, Math.max(anchorIndex, focusIndex.value));
+    selectedPaths.value = explorer.visibleNodes.slice(start, end + 1).map((node) => node.relative_path);
+    return;
+  }
   const menuKey = (e.key === "F10" && e.shiftKey) || e.key === "ContextMenu";
   if (menuKey) {
     const node = explorer.visibleNodes[focusIndex.value];
     if (node) {
       e.preventDefault();
-      selected.value = node.relative_path;
+      selectedPaths.value = [node.relative_path];
+      selectionAnchor.value = node.relative_path;
       openMenuAt(
         node.kind === "dir"
           ? { kind: "dir", relativePath: node.relative_path }
@@ -825,7 +967,8 @@ function onTreeKeydown(e: KeyboardEvent) {
     const node = explorer.visibleNodes[focusIndex.value];
     if (node) {
       e.preventDefault();
-      selected.value = node.relative_path;
+      selectedPaths.value = [node.relative_path];
+      selectionAnchor.value = node.relative_path;
     }
   }
 }
@@ -958,10 +1101,10 @@ function onTreeKeydown(e: KeyboardEvent) {
           v-for="m in searchMatches"
           :key="m.relative_path"
           class="explorer-row search-hit"
-          :class="{ selected: selected === m.relative_path }"
+          :class="{ selected: selectedPaths.includes(m.relative_path) }"
           :data-path="m.relative_path"
           :title="hostPath(m.relative_path)"
-          @click="selected = m.relative_path; m.kind === 'dir' && explorer.toggleDir(m.relative_path)"
+          @click="selectedPaths = [m.relative_path]; selectionAnchor = m.relative_path; m.kind === 'dir' && explorer.toggleDir(m.relative_path)"
           @dblclick="m.kind === 'file' && explorer.openFile(m.relative_path)"
           @contextmenu.prevent.stop="openMenuAt({ kind: m.kind, relativePath: m.relative_path, renamable: nodeOf(m.relative_path) !== null }, $event.clientX, $event.clientY)"
         >
@@ -1002,16 +1145,16 @@ function onTreeKeydown(e: KeyboardEvent) {
 
         <template v-for="(node, i) in explorer.visibleNodes" :key="node.relative_path">
           <div
-            :class="['explorer-row', { selected: selected === node.relative_path, dragging: draggingPath === node.relative_path }]"
+            :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path }]"
             :data-path="node.relative_path"
             role="treeitem"
-            :aria-selected="selected === node.relative_path"
+            :aria-selected="selectedPaths.includes(node.relative_path)"
             :aria-expanded="node.kind === 'dir' ? isExpanded(node) : undefined"
             :aria-level="depthOf(node) + 1"
             :tabindex="i === focusIndex ? 0 : -1"
             :style="{ paddingLeft: `${8 + depthOf(node) * 16}px` }"
-            :draggable="node.kind === 'file'"
-            @click="onSelect(node)"
+            :draggable="true"
+            @click="onSelect(node, $event)"
             @dblclick="onOpen(node)"
             @contextmenu.prevent.stop="onRowContextMenu(node, $event)"
             @dragstart="onDragStart(node, $event)"
@@ -1126,7 +1269,7 @@ function onTreeKeydown(e: KeyboardEvent) {
           v-for="{ node, depth } in changeTreeRows"
           :key="(node.dir ? 'd:' : 'f:') + node.path"
           class="explorer-row change-row"
-          :class="{ selected: !node.dir && selected === node.path }"
+          :class="{ selected: !node.dir && selectedPaths.includes(node.path) }"
           :style="{ paddingLeft: 6 + depth * 12 + 'px' }"
           @click="onRowClick(node)"
           @dblclick="!node.dir && explorer.openFile(node.path)"
@@ -1233,6 +1376,26 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- Click-away backdrop: closes the menu without selecting a tree row. -->
     <div v-if="menu" class="explorer-menu-backdrop" @mousedown="menu = null" @contextmenu.prevent="menu = null" />
 
+    <div v-if="pendingDelete" class="explorer-dialog-backdrop" @mousedown.stop>
+      <div class="explorer-dialog" role="dialog" aria-modal="true" :aria-label="t('explorer.batch.deleteTitle')" data-testid="explorer-delete-dialog">
+        <p>{{ t("explorer.batch.deleteConfirm", { count: pendingDelete.paths.length }) }}</p>
+        <ul class="explorer-dialog-list"><li v-for="path in pendingDelete.paths" :key="path">{{ path }}</li></ul>
+        <div class="explorer-dialog-actions">
+          <button type="button" data-testid="explorer-delete-cancel" @click="pendingDelete = null">{{ t("explorer.batch.cancel") }}</button>
+          <button type="button" class="danger" data-testid="explorer-delete-confirm" @click="confirmDelete">{{ t("explorer.menu.delete") }}</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="batchReport" class="explorer-dialog-backdrop" @mousedown.stop>
+      <div class="explorer-dialog" role="alertdialog" aria-modal="true" :aria-label="t(batchReport.titleKey)" data-testid="explorer-batch-report">
+        <p>{{ t("explorer.batch.summary", { success: batchReport.succeeded.length, failure: batchReport.failures.length }) }}</p>
+        <ul class="explorer-dialog-list">
+          <li v-for="path in batchReport.succeeded" :key="'ok:' + path">{{ path }} — {{ t("explorer.batch.success") }}</li>
+          <li v-for="failure in batchReport.failures" :key="'fail:' + failure.path">{{ failure.path }} — {{ t(errorI18nKey({ code: failure.code })) }}<small v-if="failure.detail">{{ failure.detail }}</small></li>
+        </ul>
+        <div class="explorer-dialog-actions"><button type="button" data-testid="explorer-batch-close" @click="batchReport = null">{{ t("explorer.batch.close") }}</button></div>
+      </div>
+    </div>
     <!-- Transient operation feedback (copy/paste/create/rename outcomes). -->
     <Transition name="pop">
       <div
@@ -1564,6 +1727,12 @@ function onTreeKeydown(e: KeyboardEvent) {
 .explorer-status.warn {
   color: var(--warn);
 }
+.explorer-row.selected { background: var(--surface-active); color: var(--text); }
+.explorer-dialog-backdrop { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 1); background: var(--scrim, rgba(0,0,0,.4)); display: flex; align-items: center; justify-content: center; }
+.explorer-dialog { width: min(460px, 90vw); max-height: 80vh; overflow: auto; padding: var(--space-3); background: var(--surface); border: var(--border-w) solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-menu); }
+.explorer-dialog-list { margin: var(--space-2) 0; padding-left: 1.2em; color: var(--text-muted); font-size: var(--font-sm); }
+.explorer-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.explorer-dialog-actions .danger { color: var(--error-fg); }
 .explorer-mini {
   background: none;
   border: none;
@@ -1641,3 +1810,4 @@ function onTreeKeydown(e: KeyboardEvent) {
 .diff-ctx { display: block; color: var(--text-2); }
 
 </style>
+

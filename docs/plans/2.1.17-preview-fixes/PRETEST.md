@@ -231,3 +231,21 @@ PR #56 docs head `89605875e62ea037d271c8006d10be95a1757a93` 的 Workbench CI 三
   Vitest 98 files / 837 passed；vue-tsc 与生产 Tauri `--no-bundle` 通过。
 - 真实 preview 安装/更新后的整体用户实测延后到 b6 合入与 preview.N 发布后。
 - PR #57 head `48081c592b2f819328ab6179e7c3507d5713e61d` 的 Workbench CI frontend/Rust/CLI 全部 SUCCESS；合并 develop `aef1d5a00e6b949164695761d54d56b5c796381a`。
+
+## b6（2026-11-01）
+
+结论：B6 实现、全量本地门禁与生产 Workbench 构建 **PASS**。按 DEVELOP_WIKI §1.4.2，
+本 preview 修复阶段不做逐批 Computer Use；Explorer 文件操作和真实终端拖拽统一留到
+preview.N 用户实测。
+
+- 分支 `codex/2.1.17-preview-b6-file-management`，基线 develop `945b04a`。
+- Windows 文件剪贴板：`workspace_copy_entries_to_system_clipboard` 在 Rust 内解析
+  contained 来源并写入 CF_HDROP；`workspace_paste_system_clipboard` 只从 OS 剪贴板
+  读取宿主路径，目标目录再次 contained。远端/失败不声明 Explorer 兼容。
+- 批量文件面：新增删除/多粘贴 IPC；本地每项 `resolve_contained`，远端走同一
+  serve fs 面；逐项返回 success/failure，不因单项失败中断。
+- 前端：多选/快捷键/确认/聚合报告和目标规则；终端只接受 controlled MIME 并逐路径
+  `quoteForTerminal`，目录与多选均不发送 Enter。
+- 本地门禁：Python 1723 passed / 53 skipped / 201 subtests；Rust 414 passed / 2
+  ignored；Vitest 98 files / 841 passed；vue-tsc、production UI、Tauri `--no-bundle`
+  通过。本地 Rust 新增删除 containment、外部粘贴不覆盖/防自嵌套回归。
