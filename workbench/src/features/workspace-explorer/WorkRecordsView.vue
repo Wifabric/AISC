@@ -405,6 +405,8 @@ const submenuEl = ref<HTMLElement | null>(null);
 const submenuTrigger = ref<HTMLButtonElement | null>(null);
 const menuPosition = ref({ x: 0, y: 0 });
 const submenuPosition = ref({ x: 0, y: 0 });
+const submenuWidth = ref<number | null>(null);
+let submenuSide: "left" | "right" = "right";
 const menuReady = ref(false);
 const submenuReady = ref(false);
 const moveSubOpen = ref(false);
@@ -421,6 +423,13 @@ const menuLimits = computed(() => ({
   minWidth: `${Math.min(160, Math.max(0, viewport.value.width - 16))}px`,
   maxWidth: `${Math.max(0, viewport.value.width - 16)}px`,
   maxHeight: `${Math.max(0, viewport.value.height - 16)}px`,
+}));
+const submenuLimits = computed(() => ({
+  ...menuLimits.value,
+  ...(submenuWidth.value === null ? {} : {
+    minWidth: `${Math.min(160, submenuWidth.value)}px`,
+    maxWidth: `${submenuWidth.value}px`,
+  }),
 }));
 function boundedPosition(x: number, y: number, width: number, height: number) {
   const view = viewport.value;
@@ -450,13 +459,26 @@ function placeMenus() {
   menuReady.value = true;
   if (moveSubOpen.value) void nextTick(placeSubmenu);
 }
-function placeSubmenu() {
+async function placeSubmenu() {
   if (!contextMenu.value || !moveSubOpen.value || !submenuEl.value || !submenuTrigger.value) return;
+  const menu = contextMenu.value;
   const anchor = submenuTrigger.value.getBoundingClientRect();
-  const { width, height } = measuredSize(submenuEl.value);
   const view = viewport.value;
+  const rightSpace = Math.max(0, view.x + view.width - 8 - anchor.right);
+  const leftSpace = Math.max(0, anchor.left - view.x - 8);
+  if (submenuWidth.value === null) {
+    const naturalWidth = measuredSize(submenuEl.value).width;
+    submenuSide = naturalWidth <= rightSpace ? "right" : naturalWidth <= leftSpace ? "left"
+      : rightSpace >= leftSpace ? "right" : "left";
+  }
+  // Never cover the trigger on hover: that can turn the subsequent click
+  // into a move to whichever destination appeared under the pointer.
+  submenuWidth.value = submenuSide === "right" ? rightSpace : leftSpace;
+  await nextTick();
+  if (contextMenu.value !== menu || !moveSubOpen.value || !submenuEl.value) return;
+  const { width, height } = measuredSize(submenuEl.value);
   submenuPosition.value = boundedPosition(
-    anchor.right + width <= view.x + view.width - 8 ? anchor.right : anchor.left - width,
+    submenuSide === "right" ? anchor.right : anchor.left - width,
     anchor.top, width, height,
   );
   submenuReady.value = true;
@@ -466,9 +488,10 @@ async function openMoveSubmenu(focus = false) {
   if (!menu) return;
   moveSubOpen.value = true;
   submenuReady.value = false;
+  submenuWidth.value = null;
   await nextTick();
   if (contextMenu.value !== menu || !moveSubOpen.value) return;
-  placeSubmenu();
+  await placeSubmenu();
   // Focus only after Vue has applied the visible, measured placement.
   await nextTick();
   if (contextMenu.value !== menu || !moveSubOpen.value) return;
@@ -832,7 +855,7 @@ watch(() => props.workspace, async (workspace) => {
         <div v-if="records.unarchivedCollections.some((c) => c.id !== (contextMenu?.collectionId ?? ''))" class="menu-sub" @mouseenter="openMoveSubmenu()" @mouseleave="leaveMoveSubmenu">
           <button role="menuitem" ref="submenuTrigger" type="button" class="submenu-trigger" aria-haspopup="menu" :aria-expanded="moveSubOpen" @click="openMoveSubmenu(true)">{{ t("workRecords.moveToMenu") }} <span class="arrow">▸</span></button>
           <Teleport to="body">
-          <div v-show="moveSubOpen" ref="submenuEl" class="submenu" role="menu" :aria-label="t('workRecords.moveToMenu')" :style="{ ...menuLimits, left: submenuPosition.x + 'px', top: submenuPosition.y + 'px', visibility: submenuReady ? 'visible' : 'hidden' }" @click.stop @mouseleave="leaveMoveSubmenu">
+          <div v-show="moveSubOpen" ref="submenuEl" class="submenu" role="menu" :aria-label="t('workRecords.moveToMenu')" :style="{ ...submenuLimits, left: submenuPosition.x + 'px', top: submenuPosition.y + 'px', visibility: submenuReady ? 'visible' : 'hidden' }" @click.stop @mouseleave="leaveMoveSubmenu">
             <template v-for="collection in records.unarchivedCollections" :key="collection.id">
               <button role="menuitem" v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ collection.title }}</button>
             </template>

@@ -1,11 +1,11 @@
 # 实测与证据账本
 
-截至 2026-11-02，b1/b2 已实现；b2 前端验证通过但未执行 Windows CU；b3–b6 未实施。独立的 2.1.17 个人功能整合验证不计入本表。
+截至 2026-11-02，b1/b2 已实现；D-8 后 b2 已执行 Windows CU，发现子菜单遮挡误移并修复复测；b3–b6 未实施。独立的 2.1.17 个人功能整合验证不计入本表。
 
 | 批次 | 定向/自动化 | 真实数据面 | 候选构建 | Windows CU | 用户验收 | 原因 |
 | --- | --- | --- | --- | --- | --- | --- |
 | b1 | Rust PASS：415 passed / 2 ignored；前端 840+1 复测通过 | PASS：Windows 普通 NTFS 文件/目录；其他环境 NOT RUN | PASS：debug Workbench；前端修正版 build PASS | 改名/刷新/重入/不覆盖 PASS；冲突提示初测 FAIL，修后复测 NOT RUN | 未本人复测；D-6/D-7 明确进入 b2 | PR #63 打开、不合并；未补远端 CI 结论 |
-| b2 | PASS：定向 44 项；前端全套 851 项 | 不涉及后端数据面；真实 GUI NOT RUN | PASS：vue-tsc/Vite | NOT RUN | NOT RUN | 用户停止 CU；本批未新建 PR |
+| b2 | PASS：最终定向 45 项；前端全套 852 项 | PASS：实际改名/移入目标及无误移核对 | PASS：vue-tsc/Vite | 初测误移 FAIL；修后已执行路径 PASS，覆盖边界见下 | NOT RUN | D-8 委托补测；本批未新建 PR |
 | b3 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-1 |
 | b4 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-2 |
 | b5 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-3/U-4 |
@@ -56,6 +56,22 @@
 - 前端产物 `workbench/dist`，主资源 `index-GdwSeNbZ.js` / `index-Dow_fdWT.css`；组件 SHA256 `FA2162877E3B0328750BB287121AB944D6AF05C06440322EDFC7FA6B245516D2`。尚未发布、安装或切换运行中的客户端。
 - 验证边界：测试为 jsdom 中模拟 rect/viewport 的行为验证；真实 Windows 缩放、滚动、视觉遮挡及实际点击仍 **NOT RUN**。用户停止 CU 后没有任何桌面输入，也未用测试替代用户验收。
 - 后续按 H2 恢复实机验证须由用户允许；b3 未启动，U-1 仍未裁定。
+
+### D-8 Windows CU 与修复复测（2026-11-02）
+
+- 基线 `18195640`，仍为本地 b2 分支；复用 b1 Rust 客户端（本批没有 Rust/CLI 变化），将 localhost:9000 的前端服务从整合工作树切到 b2。HTTP 返回组件已核对包含 b2 定位实现；重新进入隔离 QA 工作区启动，非旧前端验收。
+- 工具 `@oai/sky`，Windows 本机；截图窗口尺寸依次包含 803×631、533×631、533×334、331×334、331×184，最后恢复最大化 2560×1392。应用随窗口自动缩放；系统 DPI/缩放百分比未独立测量，未改变系统设置。
+- 数据：仅准备 30 条中性 QA provider JSONL 会话和 24 个 QA 工作记录，末目标带长名称。测试脚本、基线 JSON、日志和新增测试留本机，不上传；未输入模型/终端指令。
+- 初测 PASS：列表底部右键主菜单向上避让；24 项子菜单可内部滚动，End 到末项；方向键/Home/End 导航，右方向键展开、左方向键返回、Escape 返回原会话，Shift+F10 从该行重新打开。焦点以截图的焦点框及后续键盘行为验证，UIA 的 focused_element 只报告 Web 根节点，不能单凭它判断丢焦点。
+- 改名 PASS：菜单将 QA Session 01 改为带 Renamed 后缀；实际 CLI 列表与 30 条基线逐项比较，只有这条标题变化，其余 29 条保持。
+- **真实 FAIL 保留**：533×334 下长子菜单两侧均放不下，原算法直接 clamp，覆盖“移入工作记录”触发按钮。鼠标移动到按钮后展开，随后的 click 命中了下面的第 09 个目标；实际账本确认 QA Session 02 被意外移入 Collection 09。
+- 修复：优先选择能完整容纳的右/左侧；两侧都不足时选剩余空间较大的一侧，将子菜单 min/max-width 限制到该侧并换行，重新测量后定位，避免覆盖触发按钮。补本地回归，修前 expected left >= 260 / actual 8 为 RED（`b2-overlap-red.log`），修后 45 项 PASS（`b2-overlap-green.log`）。
+- 修后 CU PASS：相同 533×334 鼠标点击展开仅打开子菜单，账本未新增移动；End 可滚到长名称末项，文字完整换行且没有窗外裁切。实际点击最后目标只把 QA Session 03 移到 Collection 24，CLI 核对精确目标/会话。
+- 修后 CU PASS：331×334 的右下方触发主菜单向左向上避让，子菜单缩窄换行且不覆盖触发按钮；331×184 下主菜单自身出现内部滚动，滚到“移入工作记录”后仍能展开独立子菜单。侧栏外部滚动关闭菜单；通过系统窗口尺寸调整改变视口时关闭菜单；Escape 可关闭并返回原行。
+- 最终门禁：首轮完整前端 851 PASS / 1 环境失败，原因是沙箱不能启动已有 Python 解释器；允许读取解释器后重新完整执行 **98 文件 / 852 PASS / 0 FAIL**（`b2-cu-final-tests-elevated.log`，原失败日志 `b2-cu-final-tests.log` 保留）。vue-tsc/Vite PASS（`b2-cu-final-build.log`），原有大 chunk 警告保留。
+- 最终组件 SHA256 `8B8858DAED606EE8344ECB6D5410C407B98DC25349B18C85E1B271D295FC5045`；dist 主资源 `index-DmNEga2J.js` / `index-DLDRgy47.css`。修复已通过 Vite 热更新到实际测试窗口；不是安装包/发布版验收。
+- 覆盖边界：本次实机覆盖本机 Windows、应用自动缩放与上述尺寸。修后子菜单向左展开的独立几何用例由定向回归覆盖，未单独重做 GUI 左展；其他系统 DPI、多显示器、macOS/Linux、Remote、模型恢复/分支实际运行、安装包均 NOT RUN。原 b1 提示复测不在本次完成项中。用户本人验收、b2 PR/远端 CI 仍未完成，b3 未启动；历史 FAIL/NOT RUN 不覆盖为 PASS。
+- 截图与逐步操作在本次会话工具记录；本机日志保存在工作树外 `.aisc-integration-work`。QA 改名和有意移入结果保留供复查；误移记录通过“移出到未归档”还原，最终账本另作只读核对。
 
 ## 每次实测记录模板（新增记录时复制）
 
