@@ -6,7 +6,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 2026-11-02：仅四条新增反馈、六批方案；用户已授权启动，b1 已实现待验收，b2–b6 未实施。采用开发阶段逐批 CU + 用户验收门；产品待裁定见该目录 decisions。
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 2026-11-02：仅四条新增反馈、六批方案；b1 PR #63 打开，用户要求与 #62 一并暂不合并；b2 已实现并通过前端验证，b3–b6 未实施。保留 b1 提示复测及 b2 CU 未测项；产品待裁定见该目录 decisions。
 
 ## Previous stages and intake
 

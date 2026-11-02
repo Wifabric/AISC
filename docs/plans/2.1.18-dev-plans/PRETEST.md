@@ -1,11 +1,11 @@
 # 实测与证据账本
 
-截至 2026-11-02，b1 已实现并执行 Windows Rust 验证及候选构建；其余批次未实施。独立的 2.1.17 个人功能整合验证不计入本表。
+截至 2026-11-02，b1/b2 已实现；b2 前端验证通过但未执行 Windows CU；b3–b6 未实施。独立的 2.1.17 个人功能整合验证不计入本表。
 
 | 批次 | 定向/自动化 | 真实数据面 | 候选构建 | Windows CU | 用户验收 | 原因 |
 | --- | --- | --- | --- | --- | --- | --- |
-| b1 | Rust PASS：415 passed / 2 ignored；前端 840+1 复测通过 | PASS：Windows 普通 NTFS 文件/目录；其他环境 NOT RUN | PASS：debug Workbench；前端修正版 build PASS | 改名/刷新/重入/不覆盖 PASS；冲突提示初测 FAIL，修后复测 NOT RUN | NOT RUN | 用户取消 CU，已停止输入；尚无 b1 PR/CI |
-| b2 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施 |
+| b1 | Rust PASS：415 passed / 2 ignored；前端 840+1 复测通过 | PASS：Windows 普通 NTFS 文件/目录；其他环境 NOT RUN | PASS：debug Workbench；前端修正版 build PASS | 改名/刷新/重入/不覆盖 PASS；冲突提示初测 FAIL，修后复测 NOT RUN | 未本人复测；D-6/D-7 明确进入 b2 | PR #63 打开、不合并；未补远端 CI 结论 |
+| b2 | PASS：定向 44 项；前端全套 851 项 | 不涉及后端数据面；真实 GUI NOT RUN | PASS：vue-tsc/Vite | NOT RUN | NOT RUN | 用户停止 CU；本批未新建 PR |
 | b3 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-1 |
 | b4 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-2 |
 | b5 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-3/U-4 |
@@ -46,7 +46,18 @@
 - 前端首轮 840 passed / 1 failed：唯一失败为快照测试找不到 python3（ENOENT），不是断言失败；配置本地现有 venv 后该 1 项单独复测 PASS，合计覆盖 841 项，不声称一次全量全绿。日志 `b1-frontend-test.log`、`b1-frontend-build.log`、`b1-frontend-retry.log`。
 - 本轮没有新增 GUI 测试文件；实际窗口树、截图、只读磁盘断言留在会话工具记录。用户委托执行不伪装为用户本人验收，b2 未启动。
 
-## 每次实测记录模板
+## b2 / R-2 / H2 — 2026-11-02
+
+- 分支 `codex/2.1.18-b2-work-record-menu`，develop 起点 `1d26f237`，本地快进至依赖 `cb528cad`。远端 PR #62/#63 均保留，不合并；b2 仅本地提交，无 PR/远端 CI。
+- 仅改前端 `WorkRecordsView.vue` 与计划；新行为回归留在本地测试文件，不上传。Rust/CLI/容器未改，不把旧门禁重复写为本批 PASS。
+- RED：四角边界、子菜单左展/焦点、visual viewport 短屏、外部滚动等 7 项回归在原实现全部失败，日志 `b2-red.log`。
+- GREEN：最终该组件 44 项 PASS（含新增 10 项本地测试）；还覆盖显示后才聚焦、键盘导航/重开、点击外部关闭、旧异步 move 不关闭新菜单以及监听器卸载。日志 `b2-targeted-final.log`。
+- 最终完整前端 98 文件 / 851 项 / 0 failed，日志 `b2-final-gates.log`；vue-tsc/Vite build PASS，日志 `b2-build-final.log`。构建原有大 chunk 提示保留，不作为测试失败。
+- 前端产物 `workbench/dist`，主资源 `index-GdwSeNbZ.js` / `index-Dow_fdWT.css`；组件 SHA256 `FA2162877E3B0328750BB287121AB944D6AF05C06440322EDFC7FA6B245516D2`。尚未发布、安装或切换运行中的客户端。
+- 验证边界：测试为 jsdom 中模拟 rect/viewport 的行为验证；真实 Windows 缩放、滚动、视觉遮挡及实际点击仍 **NOT RUN**。用户停止 CU 后没有任何桌面输入，也未用测试替代用户验收。
+- 后续按 H2 恢复实机验证须由用户允许；b3 未启动，U-1 仍未裁定。
+
+## 每次实测记录模板（新增记录时复制）
 
 - 批次/需求/手测编号：
 - 时间/执行者/操作系统/窗口尺寸与缩放：

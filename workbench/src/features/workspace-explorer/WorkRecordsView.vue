@@ -400,19 +400,164 @@ async function dropCollection(event: DragEvent, targetId: string) {
   ids.splice(to, 0, ...ids.splice(from, 1));
   await records.reorderCollections(ids);
 }
-function openMemberMenu(event: MouseEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary) {
+const menuEl = ref<HTMLElement | null>(null);
+const submenuEl = ref<HTMLElement | null>(null);
+const submenuTrigger = ref<HTMLButtonElement | null>(null);
+const menuPosition = ref({ x: 0, y: 0 });
+const submenuPosition = ref({ x: 0, y: 0 });
+const menuReady = ref(false);
+const submenuReady = ref(false);
+const moveSubOpen = ref(false);
+let menuOrigin: HTMLElement | null = null;
+let menuResizeObserver: ResizeObserver | undefined;
+const viewport = ref(readMenuViewport());
+
+function readMenuViewport() {
+  const view = window.visualViewport;
+  return { x: view?.offsetLeft ?? 0, y: view?.offsetTop ?? 0,
+    width: view?.width ?? window.innerWidth, height: view?.height ?? window.innerHeight };
+}
+const menuLimits = computed(() => ({
+  minWidth: `${Math.min(160, Math.max(0, viewport.value.width - 16))}px`,
+  maxWidth: `${Math.max(0, viewport.value.width - 16)}px`,
+  maxHeight: `${Math.max(0, viewport.value.height - 16)}px`,
+}));
+function boundedPosition(x: number, y: number, width: number, height: number) {
+  const view = viewport.value;
+  const left = view.x + 8, top = view.y + 8;
+  return {
+    x: Math.max(left, Math.min(x, view.x + view.width - 8 - width)),
+    y: Math.max(top, Math.min(y, view.y + view.height - 8 - height)),
+  };
+}
+function measuredSize(el: HTMLElement) {
+  const rect = el.getBoundingClientRect();
+  return { width: Math.min(rect.width, Math.max(0, viewport.value.width - 16)),
+    height: Math.min(rect.height, Math.max(0, viewport.value.height - 16)) };
+}
+function placeMenus() {
+  const menu = contextMenu.value;
+  if (!menu || !menuEl.value) return;
+  // Both menus are teleported outside .app's CSS zoom: all measurements and
+  // pointer coordinates are viewport CSS pixels, with no appZoom division.
+  const view = viewport.value;
+  const { width, height } = measuredSize(menuEl.value);
+  menuPosition.value = boundedPosition(
+    menu.x + width > view.x + view.width - 8 ? menu.x - width : menu.x,
+    menu.y + height > view.y + view.height - 8 ? menu.y - height : menu.y,
+    width, height,
+  );
+  menuReady.value = true;
+  if (moveSubOpen.value) void nextTick(placeSubmenu);
+}
+function placeSubmenu() {
+  if (!contextMenu.value || !moveSubOpen.value || !submenuEl.value || !submenuTrigger.value) return;
+  const anchor = submenuTrigger.value.getBoundingClientRect();
+  const { width, height } = measuredSize(submenuEl.value);
+  const view = viewport.value;
+  submenuPosition.value = boundedPosition(
+    anchor.right + width <= view.x + view.width - 8 ? anchor.right : anchor.left - width,
+    anchor.top, width, height,
+  );
+  submenuReady.value = true;
+}
+async function openMoveSubmenu(focus = false) {
+  const menu = contextMenu.value;
+  if (!menu) return;
+  moveSubOpen.value = true;
+  submenuReady.value = false;
+  await nextTick();
+  if (contextMenu.value !== menu || !moveSubOpen.value) return;
+  placeSubmenu();
+  // Focus only after Vue has applied the visible, measured placement.
+  await nextTick();
+  if (contextMenu.value !== menu || !moveSubOpen.value) return;
+  if (focus) submenuEl.value?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+}
+function leaveMoveSubmenu(event: MouseEvent) {
+  const target = event.relatedTarget;
+  if (target instanceof Node && (submenuEl.value?.contains(target) || submenuTrigger.value?.contains(target))) return;
+  moveSubOpen.value = false;
+}
+async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null) {
   event.preventDefault();
+  if (!item) { closeMenu(); return; }
+  menuOrigin = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const anchor = menuOrigin?.getBoundingClientRect();
+  moveSubOpen.value = false;
+  menuReady.value = false;
+  viewport.value = readMenuViewport();
   contextMenu.value = {
-    x: event.clientX,
-    y: event.clientY,
+    x: "clientX" in event ? event.clientX : anchor?.left ?? 8,
+    y: "clientY" in event ? event.clientY : anchor?.bottom ?? 8,
     collectionId,
     memberKey: member?.member_key ?? unfiledKey(item),
     agent: item.agent,
     conversationId: item.conversation_id,
   };
+  const menu = contextMenu.value;
+  await nextTick();
+  if (contextMenu.value !== menu) return;
+  placeMenus();
+  await nextTick();
+  if (contextMenu.value !== menu) return;
+  menuEl.value?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
 }
-const moveSubOpen = ref(false);
-function closeMenu() { contextMenu.value = null; moveSubOpen.value = false; }
+function closeMenu(restoreFocus = false) {
+  const origin = menuOrigin;
+  contextMenu.value = null;
+  moveSubOpen.value = false;
+  menuOrigin = null;
+  if (restoreFocus && origin?.isConnected) origin.focus({ preventScroll: true });
+}
+function isMenuTarget(target: EventTarget | null) {
+  return target instanceof Node && !!(menuEl.value?.contains(target) || submenuEl.value?.contains(target));
+}
+function onOutsideMenu(event: Event) {
+  if (contextMenu.value && !isMenuTarget(event.target)) closeMenu();
+}
+function onMenuViewportChange() {
+  if (contextMenu.value) closeMenu(isMenuTarget(document.activeElement));
+}
+function onMenuScroll(event: Event) {
+  if (!contextMenu.value) return;
+  if (isMenuTarget(event.target)) {
+    if (event.target instanceof Node && menuEl.value?.contains(event.target)) {
+      if (submenuEl.value?.contains(document.activeElement)) submenuTrigger.value?.focus({ preventScroll: true });
+      moveSubOpen.value = false;
+    }
+    return;
+  }
+  onMenuViewportChange();
+}
+function onMenuKeydown(event: KeyboardEvent) {
+  if (!contextMenu.value) return;
+  if (event.key === "Escape") {
+    event.preventDefault(); event.stopPropagation(); closeMenu(true); return;
+  }
+  if (!isMenuTarget(event.target)) return;
+  if (event.key === "Tab") { closeMenu(true); return; }
+  if (event.key === "ArrowRight" && event.target === submenuTrigger.value) {
+    event.preventDefault(); void openMoveSubmenu(true); return;
+  }
+  if (event.key === "ArrowLeft" && moveSubOpen.value) {
+    event.preventDefault(); moveSubOpen.value = false; submenuTrigger.value?.focus(); return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const parent = submenuEl.value?.contains(event.target as Node) ? submenuEl.value : menuEl.value;
+  const buttons = Array.from(parent?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+  if (!buttons.length) return;
+  event.preventDefault();
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+    : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+  buttons[next]?.focus();
+}
+function onMemberMenuKey(event: KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null) {
+  if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+    event.stopPropagation(); void openMemberMenu(event, collectionId, member, item);
+  }
+}
 function menuConversation(): ConversationSummary | null {
   return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
 }
@@ -463,7 +608,7 @@ async function moveFromMenu(targetId: string | null) {
     await records.addMember(targetId, menu.agent, menu.conversationId);
     await records.reorderMembers(targetId, next);
   }
-  closeMenu();
+  if (contextMenu.value === menu) closeMenu();
 }
 
 watch(() => explorer.conversations, (_value, old) => {
@@ -471,14 +616,36 @@ watch(() => explorer.conversations, (_value, old) => {
   void records.reconcile();
 });
 onMounted(async () => {
-  window.addEventListener("click", closeMenu);
+  window.addEventListener("click", onOutsideMenu);
+  window.addEventListener("focusin", onOutsideMenu);
+  window.addEventListener("keydown", onMenuKeydown);
+  window.addEventListener("resize", onMenuViewportChange);
+  window.addEventListener("scroll", onMenuScroll, true);
+  window.visualViewport?.addEventListener("resize", onMenuViewportChange);
+  window.visualViewport?.addEventListener("scroll", onMenuViewportChange);
+  if (typeof ResizeObserver !== "undefined") menuResizeObserver = new ResizeObserver(placeMenus);
   if (props.workspace) {
     await Promise.all([records.load(props.workspace), explorer.loadConversations(true)]);
     await runtime.resolvePendingConversationAssociations(explorer.conversations);
   }
 });
-onBeforeUnmount(() => window.removeEventListener("click", closeMenu));
+watch([menuEl, submenuEl], () => {
+  menuResizeObserver?.disconnect();
+  if (menuEl.value) menuResizeObserver?.observe(menuEl.value);
+  if (submenuEl.value) menuResizeObserver?.observe(submenuEl.value);
+});
+onBeforeUnmount(() => {
+  menuResizeObserver?.disconnect();
+  window.removeEventListener("click", onOutsideMenu);
+  window.removeEventListener("focusin", onOutsideMenu);
+  window.removeEventListener("keydown", onMenuKeydown);
+  window.removeEventListener("resize", onMenuViewportChange);
+  window.removeEventListener("scroll", onMenuScroll, true);
+  window.visualViewport?.removeEventListener("resize", onMenuViewportChange);
+  window.visualViewport?.removeEventListener("scroll", onMenuViewportChange);
+});
 watch(() => props.workspace, async (workspace) => {
+  closeMenu();
   records.setWorkspace(workspace);
   if (workspace) await Promise.all([records.load(workspace), explorer.loadConversations(true)]);
 });
@@ -568,12 +735,14 @@ watch(() => props.workspace, async (workspace) => {
             <li
               v-if="memberVisible(row)"
               draggable="true"
+              tabindex="0"
               :data-testid="'member-' + row.member.member_key"
               @dragstart="memberDragStart($event, collection.id, row.member)"
               @dragover.prevent
               @drop.stop="dropMember($event, collection.id, row.member.member_key)"
               @click="previewMember(row.member.member_key)"
               @contextmenu.prevent="openMemberMenu($event, collection.id, row.member, memberConversation(row.member.member_key)!)"
+              @keydown="onMemberMenuKey($event, collection.id, row.member, memberConversation(row.member.member_key))"
             >
               <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
               <button v-if="row.childCount" class="conversation-twisty" type="button" :aria-expanded="expandedMembers.has(row.member.conversation_id.toLowerCase())" :aria-label="t('workRecords.tree.toggle')" :data-testid="'member-toggle-' + row.member.member_key" @click.stop="toggleMember(row.member)">
@@ -614,6 +783,8 @@ watch(() => props.workspace, async (workspace) => {
               @drop.stop="dropMember($event, null, unfiledKey(row.conversation))"
               @click="previewConversation(row.conversation)"
               @contextmenu.prevent="openMemberMenu($event, null, null, row.conversation)"
+              tabindex="0"
+              @keydown="onMemberMenuKey($event, null, null, row.conversation)"
             >
               <span class="member-tree-indent" :class="{ branch: row.depth > 0 }" :style="{ width: (row.depth * 14) + 'px' }" />
               <button v-if="row.childCount" class="conversation-twisty" type="button" :aria-expanded="expandedUnfiled.has(row.conversation.conversation_id.toLowerCase())" :aria-label="t('workRecords.tree.toggle')" :data-testid="'unfiled-toggle-' + row.conversation.agent + ':' + row.conversation.conversation_id" @click.stop="toggleUnfiled(row.conversation.conversation_id)">
@@ -650,21 +821,23 @@ watch(() => props.workspace, async (workspace) => {
       </div>
     </div>
     <Teleport to="body">
-      <div v-if="contextMenu" class="work-record-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" data-testid="work-record-context-menu" @click.stop>
-        <button type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
-        <button v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
-        <button v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
-        <button type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
-        <button type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
-        <button v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
+      <div v-if="contextMenu" ref="menuEl" class="work-record-menu" role="menu" :aria-label="t('workRecords.title')" :style="{ ...menuLimits, left: menuPosition.x + 'px', top: menuPosition.y + 'px', visibility: menuReady ? 'visible' : 'hidden' }" data-testid="work-record-context-menu" @click.stop>
+        <button role="menuitem" type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
+        <button role="menuitem" v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
+        <button role="menuitem" v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
+        <button role="menuitem" type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
+        <button role="menuitem" type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
+        <button role="menuitem" v-if="contextMenu.collectionId" type="button" @click="moveFromMenu(null)">{{ t("workRecords.moveOut") }}</button>
         <!-- b9 手测 #4: 扁平「移入 测试 / 移入 Test …」收敛为单个子菜单入口 -->
-        <div v-if="records.unarchivedCollections.some((c) => c.id !== (contextMenu?.collectionId ?? ''))" class="menu-sub" @mouseenter="moveSubOpen = true" @mouseleave="moveSubOpen = false">
-          <button type="button" class="submenu-trigger">{{ t("workRecords.moveToMenu") }} <span class="arrow">▸</span></button>
-          <div v-show="moveSubOpen" class="submenu">
+        <div v-if="records.unarchivedCollections.some((c) => c.id !== (contextMenu?.collectionId ?? ''))" class="menu-sub" @mouseenter="openMoveSubmenu()" @mouseleave="leaveMoveSubmenu">
+          <button role="menuitem" ref="submenuTrigger" type="button" class="submenu-trigger" aria-haspopup="menu" :aria-expanded="moveSubOpen" @click="openMoveSubmenu(true)">{{ t("workRecords.moveToMenu") }} <span class="arrow">▸</span></button>
+          <Teleport to="body">
+          <div v-show="moveSubOpen" ref="submenuEl" class="submenu" role="menu" :aria-label="t('workRecords.moveToMenu')" :style="{ ...menuLimits, left: submenuPosition.x + 'px', top: submenuPosition.y + 'px', visibility: submenuReady ? 'visible' : 'hidden' }" @click.stop @mouseleave="leaveMoveSubmenu">
             <template v-for="collection in records.unarchivedCollections" :key="collection.id">
-              <button v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ collection.title }}</button>
+              <button role="menuitem" v-if="collection.id !== contextMenu.collectionId" type="button" @click="moveFromMenu(collection.id)">{{ collection.title }}</button>
             </template>
           </div>
+          </Teleport>
         </div>
       </div>
     </Teleport>
@@ -700,12 +873,14 @@ watch(() => props.workspace, async (workspace) => {
 .work-record-unfiled h4 { margin:0 0 var(--space-1); }
 .work-record-failures { margin-top:var(--space-2); color:var(--error); }
 .ui-icon-button.danger { color:var(--error); }
-.work-record-menu { position:fixed; z-index:1000; display:grid; min-width:160px; padding:4px; border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface); box-shadow:var(--shadow-menu); }
-.work-record-menu button { justify-content:flex-start; padding:5px 8px; border:none; background:none; color:var(--text); text-align:left; border-radius:var(--radius-sm); cursor:pointer; }
-.work-record-menu button:hover { background:var(--surface-hover); }
+.work-record-menu, .submenu { position:fixed; z-index:1000; display:flex; flex-direction:column; width:max-content; min-width:min(160px, calc(100vw - 16px)); box-sizing:border-box; overflow:auto; overscroll-behavior:contain; padding:4px; border:var(--border-w) solid var(--border); border-radius:var(--radius-sm); background:var(--surface); box-shadow:var(--shadow-menu); }
+.work-record-menu > *, .submenu > button { flex-shrink:0; }
+.work-record-menu button, .submenu button { justify-content:flex-start; padding:5px 8px; border:none; background:none; color:var(--text); text-align:left; border-radius:var(--radius-sm); cursor:pointer; white-space:normal; overflow-wrap:anywhere; }
+.work-record-menu button:hover, .submenu button:hover { background:var(--surface-hover); }
+.work-record-menu button:focus-visible, .submenu button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .menu-sub { position: relative; }
 .submenu-trigger { display: flex; width: 100%; justify-content: space-between; align-items: center; }
-.submenu { position: absolute; left: 100%; top: 0; min-width: 140px; background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-menu); padding: 4px; }
+.submenu { z-index:1001; }
 
 </style>
 
