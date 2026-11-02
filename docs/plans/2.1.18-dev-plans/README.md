@@ -1,0 +1,38 @@
+# v2.1.18 开发计划
+
+状态：**范围已纳入规划；方案待确认；尚未开始实施。** 更新：2026-11-02。
+
+本阶段把反馈站四条新增反馈转为可验证的修复/功能方案。此次授权是把反馈方案和计划落到仓库；保留用户最初“总结确认后再开发”的实施门。所有批次当前均未实施、未验收。
+
+## 基线与执行模式
+
+- 独立 clone 的发布基线：`v2.1.17` / `bf95ce0aa9eaca0439b52679f97b91c46a25adeb`，CLI `0.1.10`。
+- 计划起点：`codex/2.1.18-planning`，来自 `origin/develop` 的 `1d26f237206ef27dd263df6725e27383b3848174`。该 develop 相对发布基线仅补 todo/devlog 收口记录，产品代码相同。
+- **开发阶段逐批模式**：实施及必要数据面验证 → Windows CU 预测试 → 用户本批验收/裁定 → 下一批。依据 [DEVELOP_WIKI §1.4](../../../DEVELOP_WIKI.md)。本阶段不是 preview 批量修复模式。
+- 本目录只计划四条反馈；个人功能直接合入 2.1.17 副本，属于独立整合工作，不列入本版需求或批次。后续发布按开发手册另行执行。
+- 跨前端、Rust、CLI、Docker、扩展适配器和持久化，采用 Full 文档结构；各小批以本目录 `b*.md` 为具体执行规格。沿用仓库 `PROGRESS.md` / `LESSONS.md` 命名，不另建重复进度账本。
+
+## 阅读与维护顺序
+
+1. [feedback-intake](feedback-intake.md)：原始问题、观察与推断、归属批次。
+2. [代码阅读地图](reading-map.md)：四条反馈的相关实现与测试入口。
+3. [decisions](decisions.md)：已确认范围 D 项、未确认产品语义 U 项。
+4. [PRD](PRD.md)、[APP_FLOW](APP_FLOW.md)：用户目标、边界、验收编号及使用流程。
+5. [TECH_STACK](TECH_STACK.md)、[FRONTEND_GUIDELINES](FRONTEND_GUIDELINES.md)、[BACKEND_STRUCTURE](BACKEND_STRUCTURE.md)、[DESIGN](DESIGN.md)：实现约束和界面方案。
+6. [IMPLEMENTATION_PLAN](IMPLEMENTATION_PLAN.md)、下表批次方案：实施顺序、依赖、文件与验证。
+7. [HANDTEST](HANDTEST.md)、[PRETEST](PRETEST.md)、[PROGRESS](PROGRESS.md)、[LESSONS](LESSONS.md)：验收步骤、实际证据、进度及经验。
+
+## 批次总表
+
+| 批次 | 范围 | 来源 | 前置依赖/待裁定 | 当前状态 |
+| --- | --- | --- | --- | --- |
+| [b1](b1-case-rename.md) | 文件/目录仅改变大小写的重命名 | F1 | 整体方案确认 | PLANNED |
+| [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | b1 用户裁定进入下一批 | PLANNED |
+| [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 | PLANNED |
+| [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 | PLANNED |
+| [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3、U-4 | PLANNED |
+| [b6](b6-module-operations.md) | 模块应用/卸载、共享成员保护、失败恢复 | F4 | b5、U-3 | PLANNED |
+
+PLANNED 只表示计划落档，不表示允许绕过方案确认或逐批验收门。
+
+范围的总账是 [todo](../../todo.md)，方案以本目录为准；[devlog](../../devlog.md) 只记录实际完成的工作。历史阶段的通过或免测结论均不继承为本阶段 PASS。

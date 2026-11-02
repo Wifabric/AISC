@@ -8,6 +8,7 @@ pub mod artifact;
 pub mod cache;
 pub mod cli;
 pub mod conversation;
+pub mod topic;
 pub mod data_root;
 pub mod docker_admin;
 pub mod docker_api;
@@ -156,6 +157,7 @@ pub fn run(cli_arg: Option<String>) {
             conversation_rename,
             conversation_read,
             work_record_list,
+            topic::topic_call,
             work_record_create,
             work_record_rename,
             work_record_activate,

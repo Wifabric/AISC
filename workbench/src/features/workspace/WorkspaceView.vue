@@ -22,7 +22,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { leafCount } from "../../stores/paneTree";
-import { useRuntimeStore } from "../../stores/runtime";
+import { TOPICS_TAB_ID, useRuntimeStore } from "../../stores/runtime";
 import { useDoctorStore } from "../../stores/doctor";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useWorkspacesStore } from "../../stores/workspaces";
@@ -44,6 +44,8 @@ import StartProgress from "../startup/StartProgress.vue";
 import BuildProgress from "../startup/BuildProgress.vue";
 import ConflictManager from "../startup/ConflictManager.vue";
 import WorkspaceExplorer from "../workspace-explorer/WorkspaceExplorer.vue";
+import TopicsView from "../workspace-explorer/TopicsView.vue";
+import TopicConversationBanner from "./TopicConversationBanner.vue";
 
 const props = defineProps<{
   /** Terminal counter-zoom style (App owns the zoom machinery, G-11). */
@@ -176,7 +178,7 @@ function focusTabTerminal(tabId: string): void {
  * rendering order; drives Ctrl+Tab / Ctrl+1..9). */
 function renderedTabIds(): string[] {
   // b5 D-1: the Provider UI virtual tab is gone; rail owns the view.
-  return store.tabs.map((tb) => tb.tabId);
+  return [...store.tabs.map((tb) => tb.tabId), ...(store.topicsTabOpen ? [TOPICS_TAB_ID] : [])];
 }
 
 function activateRenderedTab(id: string): void {
@@ -511,9 +513,10 @@ function setPaneTreeRef(tabId: string) {
         @dblclick="setExplorerCollapsed(true)"
       ></div>
       <div class="main">
+        <TopicConversationBanner />
         <TabBar />
         <main ref="terminalAreaRef" class="terminal-area">
-          <div v-if="store.tabs.length === 0" class="empty-tabs">
+          <div v-if="store.tabs.length === 0 && !store.topicsTabOpen" class="empty-tabs">
             <p>{{ t("tabs.empty") }}</p>
             <button class="ui-button primary" @click="store.createTab('bash')">{{ t("tabs.newTab") }}</button>
           </div>
@@ -528,6 +531,9 @@ function setPaneTreeRef(tabId: string) {
             <PaneTree :ref="setPaneTreeRef(tb.tabId)" :tab-id="tb.tabId" :tree="tb.tree" />
           </div>
 
+          <section v-if="store.topicsTabOpen" v-show="store.activeTabId === TOPICS_TAB_ID" class="topics-pane" role="tabpanel" :aria-label="t('topics.skill')">
+            <TopicsView />
+          </section>
         </main>
       </div>
       <!-- 弱化开关：右缘幽灵 ⓘ（抽屉打开时被抽屉覆盖，经抽屉内 ✕ 关闭） -->
@@ -576,6 +582,8 @@ function setPaneTreeRef(tabId: string) {
 </template>
 
 <style scoped>
+.topics-pane { flex: 1; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.topics-pane > :deep(.topics-view) { height: 100%; box-sizing: border-box; }
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .gate.error, .center {
   flex: 1;
