@@ -4,6 +4,8 @@
 
 ## 方案
 
+PR 交接：D-9 用户授权后已创建 [#64](https://github.com/Wifabric/AISC/pull/64)，base 为 b1 分支，保持 #62/#63 不变。测试对应产品提交 `247fbf97`；仅本地新增测试不随 PR 上传。远端 CI/验收状态见 PRETEST。
+
 `WorkRecordsView.vue` 的 openMemberMenu 直接保存 clientX/clientY，Teleport 到 body 后固定定位；菜单/子菜单缺少实际尺寸避让。打开后测量布局，下方不足向上，右侧不足向左，最终 clamp 到当前视口留边。菜单太高时设 max-height 与内部滚动；子菜单独立计算左右展开。
 
 点击坐标、getBoundingClientRect 和视口边界采用同一 CSS 坐标系，不把文件侧栏现有 appZoom 除法原样照搬。窗口缩放/resize/相关滚动导致位置失效时重新定位或关闭；Escape、焦点还原及点击外部关闭保持一致。

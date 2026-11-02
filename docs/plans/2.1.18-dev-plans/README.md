@@ -27,7 +27,7 @@
 | 批次 | 范围 | 来源 | 前置依赖/待裁定 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | [b1](b1-case-rename.md) | 文件/目录仅改变大小写的重命名 | F1 | D-5/D-6 | 核心 CU PASS；提示复测未执行；PR #63 打开，D-7 允许进入 b2 |
-| [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8 已授权 | 修后 852 项、构建及已执行 CU 路径 PASS；未测项见 PRETEST，用户验收/PR 未完成 |
+| [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9 已授权 | 修后 852 项、构建及已执行 CU 路径 PASS；[PR #64](https://github.com/Wifabric/AISC/pull/64) 打开，依赖 #63；用户验收待定，未测项见 PRETEST |
 | [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 | PLANNED |
 | [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 | PLANNED |
 | [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3、U-4 | PLANNED |
