@@ -23,7 +23,7 @@ Set-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt') -Value 'keep-me' -En
 
 **本轮候选**：`codex/2.1.18-b1-case-rename` 工作树的 `workbench/src-tauri/target/debug/workbench.exe`，精确 SHA256 见 PRETEST。版本显示仍为 2.1.17；这是带 b1 修复的开发候选。独立 QA 目录已准备，名称 `AISC-b1-QA-64b486cf`；进入时选本机，下一步完成预检，再启动。无需在终端输入模型指令。
 
-**本轮状态**：客户端已打开上述 QA 工作区；agent CU 在重命名输入时遇工具错误，未完成本节，记录 NOT RUN。请用户执行下列三步，并反馈通过/失败及是否进入 b2。
+**本轮状态**：用户委托 agent 已完成文件/目录改名、刷新重入及磁盘不覆盖检查。冲突文案初测不可见，已补前端修复并构建；用户随后取消 CU，已停止操作，修后文案复测 NOT RUN。当前窗口未切换到前端修正版；后续恢复测试时须先切换对应候选再复测冲突提示，不能要求用户在旧窗口验收新修复。
 
 **前置**：本批候选已打开 `$qaRoot`；目录含上述三个条目及子文件；无需模型会话。
 

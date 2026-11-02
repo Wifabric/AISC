@@ -1,6 +1,6 @@
 # b1 文件与目录大小写重命名
 
-状态：已实现并通过 Rust 全套验证；H1 因 CU 工具错误未完整执行，待用户验收。来源 F1；验收 R-1/H1。D-5 已授权启动。
+状态：已实现，改名/刷新/重入及磁盘不覆盖 CU PASS；冲突提示初测 FAIL 后已修复，用户取消 CU，修后界面复测 NOT RUN。PR/CI/用户验收未完成。来源 F1；验收 R-1/H1。D-5 已授权启动。
 
 ## 判断与方案
 
@@ -12,6 +12,8 @@
 
 ## 涉及文件
 
+2026-11-02 H1 实测补充：文件/目录改名、刷新重入和磁盘内容均通过，但冲突时 alert 存在而文案不可见。重命名行没有定位上下文，绝对定位错误提示落到可见区域之外。此项属于既定 H1“冲突显示错误”的验收修复：仅给正在重命名的行复用 `name-input-row` 定位样式，随后重跑现有前端回归/构建与实际 CU 冲突检查。
+
 - `workbench/src-tauri/src/workspace.rs`：rename_entry、canonicalize_lenient、path_eq 与现有 Windows rename 测试。
 - `workbench/src/stores/workspaceExplorer.ts`、`features/workspace-explorer/WorkspaceExplorer.vue`：renameEntry、缓存/选中路径刷新。
 - `workbench/src/lib/ipc.ts`、`src/aisc/cli/commands/serve_fs.py`：核对 Remote fs.rename 与不覆盖/路径规则，只有必要差异才改。
@@ -22,5 +24,5 @@
 - 同名完全不变、独立条目冲突、非法 basename、越界/链接沿用现有保护；没有第二步及恢复分支，不把它们记录为已测。
 - store/UI 保留多选、刷新和 2.1.17 复制/粘贴/拖入能力；Local/Remote 受影响路径分别核对。
 - 自动化：Rust 415 passed / 2 ignored；Windows 文件和目录精确大小写、往返改名、内容保留、原名不变 PASS。普通 NTFS 未执行大小写敏感目录中独立 Area/AREA 的断言分支，Linux/macOS/真实 SSH NOT RUN。
-- 前端 store/UI 及 Python Remote fs.rename 路径已核对，本次无需修改；CU 按 H1，用户验收尚未执行。未增加全局文件移动/覆盖能力。
+- 前端 store 与 Python Remote fs.rename 路径无需修改；UI 根据 H1 实测补错误提示定位，见本节补充规格。用户验收尚未执行。未增加全局文件移动/覆盖能力。
 - 构建、候选哈希、原始日志与 UI 证据见 [PRETEST](PRETEST.md)。新增回归留本机，遵守此前用户不上传新增测试用例的要求。

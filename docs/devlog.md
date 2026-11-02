@@ -4,6 +4,8 @@
 
 ## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
 
+- 后续用户委托补测：恢复普通窗口与键盘输入后，文件/目录改名、刷新、关闭重入、磁盘不覆盖及内容保留 PASS。冲突文案不可见属真实 CU FAIL，已在本批给重命名行补定位容器；前端 840 项首轮通过、1 项因缺 Python 失败后补环境复测通过，vue-tsc/Vite PASS。用户取消 CU 后已停止输入和候选切换，修后提示可见性仍 NOT RUN；尚无 b1 PR/CI，不启动 b2。
+
 - 用户授权按开发指南和计划更新后，在独立 `codex/2.1.18-b1-case-rename` 分支实施 F1；依赖已验收的个人功能整合 PR #62，不替用户合并远端 PR。
 - 真实 NTFS RED 确认 canonicalize 返回旧 basename 导致改名无效。修复保留请求 basename 用于 fs::rename，并继续检查规范路径范围与目标冲突；文件和目录往返改名及内容断言 GREEN。
 - Rust 415 passed / 2 ignored，Windows debug 构建 PASS。Windows 大小写敏感目录、Linux/macOS/SSH 未实测；不继承历史整合测试为本次结果。新增测试留本机。

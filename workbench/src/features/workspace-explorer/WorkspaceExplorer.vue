@@ -1145,7 +1145,7 @@ function onTreeKeydown(e: KeyboardEvent) {
 
         <template v-for="(node, i) in explorer.visibleNodes" :key="node.relative_path">
           <div
-            :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path }]"
+            :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path, 'name-input-row': isRenaming(node) }]"
             :data-path="node.relative_path"
             role="treeitem"
             :aria-selected="selectedPaths.includes(node.relative_path)"
