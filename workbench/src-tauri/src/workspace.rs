@@ -1609,14 +1609,17 @@ pub fn rename_entry(
         return Err(WorkbenchError::workspace_invalid().with_detail("rename escapes workspace"));
     }
     let is_dir = source.is_dir();
-    // Same resolved path (case-insensitive on Windows) ⇒ case-only rename;
-    // otherwise an occupied destination is a conflict. `fs::rename` replaces
-    // an existing target on POSIX, so the pre-check is load-bearing there.
-    let same_target = path_eq(&source, &canon);
-    if !same_target && exists_nofollow(&canon) {
+    // Compare the actual canonical spellings, not case-folded paths: Windows
+    // also supports case-sensitive directories with independent Area/AREA.
+    // Only a spelling change of the source basename may reuse its destination.
+    let same_target = source == canon && source.file_name().is_some_and(|name|
+        name.to_string_lossy().to_lowercase() == clean.to_lowercase());
+    if !same_target && exists_nofollow(&target) {
         return Err(WorkbenchError::workspace_conflict());
     }
-    fs::rename(&source, &canon).map_err(map_io_err)?;
+    // Canonicalization validates containment but resolves an existing target
+    // to its OLD on-disk spelling. Preserve the requested basename for rename.
+    fs::rename(&source, &target).map_err(map_io_err)?;
     let parent_rel = match relative_path.rfind('/') {
         Some(idx) => relative_path[..idx].to_string(),
         None => String::new(),
