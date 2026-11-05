@@ -4,6 +4,10 @@ Active/in-progress implementation plans live here. Completed plans are archived
 under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-plans/`,
 topical plans under their own directories.
 
+## Workflow improvement
+
+- [`pr-intake-workflow`](pr-intake-workflow.md) — 独立开发协作文档专题：PR 接入、职责分工与贡献者流程；本地自查和隔离演练已记录，真实团队试用待开展。
+
 ## Current active plan
 
 - [`2.1.17-preview-fixes`](../archive/2.1.17-preview-fixes/) — 2026-10-31 preview 手测反馈六批已由 `v2.1.17` final 收口；preview.2 用户统一实测通过，计划已归档。

@@ -329,3 +329,14 @@
   - [x] 用户从 preview.2 统一手测 B1–B6，结论无问题；final 收口进行中
 - 发布
   - [x] `v2.1.17` / CLI `0.1.10` final 收口：PR #60/#61 合入，main `bf95ce0`；Workbench NSIS、CLI Artifact、正式 PyPI 与 NSIS 下载 SHA256 验证通过；preview Release 已清理
+
+## 开发协作文档专题（2026-11-05，独立于产品版本）
+
+范围与材料见[专题计划](plans/pr-intake-workflow.md)。
+
+- [x] 补充 WIKI 的 PR 输入与协作入口，明确 TODO／批次／PR 记录职责。
+- [x] 完成主开发人员 PR intake、开发职责与贡献者流程文档。
+- [x] 记录静态走查和隔离仓库演练，区分技术验证、独立评审与用户验收。
+- [ ] 文档 PR 审核并合入 develop。
+- [ ] 使用真实 PR 试用多人交接，按实际问题完善流程；不以文档完成替代产品验收。
+- [ ] 实证后提炼通用小团队开发元 Skill。
