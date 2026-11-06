@@ -2,6 +2,11 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: topic sync edge-case follow-up (2026-11-06)
+
+- Stop draining on EOF after truncation; validate marker payload types; scan a bounded prefix of large discovery candidates and report exhausted discovery budgets.
+- Local checks: 19 recovery/edge probes, 39 Python tests plus 11 subtests, 32 topic frontend tests passed. [Review](reviews/pr62-sync-recovery-20261106.md#follow-up-review-and-verification). GUI/user acceptance is separate.
+
 ## Unreleased: topic sync recovery (2026-11-06)
 
 - Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
