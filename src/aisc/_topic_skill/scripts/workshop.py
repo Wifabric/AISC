@@ -13,7 +13,7 @@ import re
 import sys
 import uuid
 
-VERSION = "0.3.2"
+VERSION = "0.4.2"
 
 LOG_MARKER = "<!-- topic-workshop:derived-iteration-log:v1 -->"
 

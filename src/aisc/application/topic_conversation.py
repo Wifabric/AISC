@@ -107,6 +107,8 @@ def prepare_session(workspace: str, session_id: str, agent: str) -> dict | None:
         encoded = value.encode("utf-8")
         files[name] = encoded[:18000].decode("utf-8", "ignore") + ("\n[已截断，需要时读取原文件]" if len(encoded) > 18000 else "")
     background += json.dumps(files, ensure_ascii=False)
+    from aisc.application.topic_assistant import context as assistant_context
+    background += assistant_context(topic)
     with records.lock(topic):
         doc = _bindings(topic)
         existing = next((item for item in doc["sessions"] if item["session_id"] == session_id), None)

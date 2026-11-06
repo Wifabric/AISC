@@ -5,6 +5,7 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useTopicsStore } from "../../stores/topics";
 import type { TopicAction } from "../../lib/ipc";
 import TopicDocument from './TopicDocument.vue';
+import TopicAssistant from './TopicAssistant.vue';
 
 const { t } = useI18n();
 const runtime = useRuntimeStore();
@@ -18,7 +19,7 @@ const feedback = ref("");
 const selectedSession = ref("");
 const section = ref("guide");
 let draftTopicId = "";
-const sections = ["guide", "iterations", "state", "files", "records"] as const;
+const sections = ["guide", "assistant", "iterations", "state", "files", "records"] as const;
 const deliverables = computed(() => store.detail?.files.filter(p => !store.detail?.internal_files?.includes(p)) ?? []);
 function readable(value: unknown): string {
   if (Array.isArray(value)) return value.map(readable).join('\n');
@@ -172,6 +173,7 @@ async function prepare(): Promise<void> {
             <button type="button" class="ui-button sm" data-testid="topic-reveal-log" :disabled="!store.detail.iteration_log" @click="store.accessIterationLog(true)">{{ t('topics.revealLog') }}</button>
           </div>
           <TopicDocument v-if="section === 'guide'" :text="store.detail.guide || t('topics.emptyGuide')" @open="store.openReference" />
+          <TopicAssistant v-else-if="section === 'assistant'" :workspace="runtime.workspace!" :topic-id="store.detail.id" />
           <TopicDocument v-else-if="section === 'iterations'" data-testid="topic-iteration-log" :text="store.detail.iteration_log || t('topics.emptyIterations')" @open="store.openReference" />
           <TopicDocument v-else-if="section === 'state'" :text="store.detail.state || t('topics.emptyState')" @open="store.openReference" />
           <div v-else-if="section === 'files'" class="topic-files">

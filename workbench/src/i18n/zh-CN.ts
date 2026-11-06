@@ -65,6 +65,7 @@ export const zhCN = {
   "topics.invalidPrompt": "任务指令格式异常，请刷新或重新准备任务。",
   "topics.contents": "主题内容",
   "topics.section.guide": "手册",
+  "topics.section.assistant": "助手与记忆",
   "topics.section.state": "进度",
   "topics.section.files": "成果",
   "topics.section.records": "过程",

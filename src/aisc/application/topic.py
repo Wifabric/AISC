@@ -18,7 +18,7 @@ SKILL_ROOT = Path(records.__file__).parent.parent
 SKILL_FILES = (
     "SKILL.md", "agents/openai.yaml", "assets/TOPIC_GUIDE.md", "assets/STATE.md",
     "references/recording.md", "references/practice.md", "references/evolution.md",
-    "references/aisc.md", "scripts/workshop.py",
+    "references/aisc.md", "references/assistant.md", "scripts/workshop.py", "scripts/assistant.py",
 )
 CONTAINER_ROOT = "/root/app"
 MAX_TEXT = 12_000
@@ -144,6 +144,8 @@ def _install_copy(topic: Path) -> None:
     dest = records.local(topic, ".skill")
     if dest.exists():
         for name in SKILL_FILES:
+            if name in {"references/assistant.md", "scripts/assistant.py"}:
+                continue  # Older pinned skills predate the optional assistant layer.
             if not records.local(topic, f".skill/{name}").is_file():
                 fail("incomplete topic .skill copy; preserve it and repair before continuing")
         return
@@ -211,6 +213,8 @@ def create_topic(root: Path, title: str, text: str, sources: list[str]) -> dict:
                  f"- 所用 skill：topic-workshop {records.VERSION}（.skill/）。\n")
         # Initial template only, before any practice or external evidence exists.
         records.local(topic, "STATE.md").write_text(state, encoding="utf-8", newline="\n")
+    from aisc.application import topic_assistant
+    topic_assistant.save(root, identifier, {"expected_revision": 0, "enabled": True})
     return {"topic": show_topic(root, identifier)["topic"]}
 
 
@@ -373,6 +377,18 @@ def show_topic(root: Path, identifier: str) -> dict:
 def execute(operation: str, workspace: str, **params) -> dict:
     try:
         root = _workspace(workspace)
+        if operation.startswith("assistant-"):
+            from aisc.application import topic_assistant as assistant
+            identifier, form = params.get("id", ""), params.get("form", {})
+            routes = {"assistant-show": lambda: assistant.show(root, identifier),
+                      "assistant-save": lambda: assistant.save(root, identifier, form),
+                      "assistant-profile-save": lambda: assistant.save_profile(root, identifier, form),
+                      "assistant-skills": lambda: assistant.installed(root),
+                      "assistant-pin": lambda: assistant.pin(root, identifier, form),
+                      "assistant-unpin": lambda: assistant.unpin(root, identifier, form)}
+            if operation not in routes:
+                fail("unknown assistant operation")
+            return routes[operation]()
         if operation in {"activate", "deactivate", "sync"}:
             from aisc.application import topic_conversation
             if operation == "activate":

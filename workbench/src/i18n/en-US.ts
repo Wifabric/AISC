@@ -65,6 +65,7 @@ export const enUS: Record<string, string> = {
   "topics.invalidPrompt": "The task instruction has an invalid format. Refresh or prepare the task again.",
   "topics.contents": "Topic contents",
   "topics.section.guide": "Guide",
+  "topics.section.assistant": "Assistant & memory",
   "topics.section.state": "Progress",
   "topics.section.files": "Files",
   "topics.section.records": "Records",
