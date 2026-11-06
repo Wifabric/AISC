@@ -236,11 +236,13 @@ def _background_marker(raw, marker):
     if not isinstance(obj, dict):
         return False
     kind = obj.get("type")
-    allowed = kind in {"session_meta", "turn_context"} or (kind == "response_item" and obj.get("payload", {}).get("role") == "developer")
+    payload = obj.get("payload")
+    allowed = kind in {"session_meta", "turn_context"} or (
+        kind == "response_item" and isinstance(payload, dict) and payload.get("role") == "developer")
     return allowed and marker in json.dumps(obj, ensure_ascii=False)
 
 
-def _read_record(stream, markers=()):
+def _read_record(stream, markers=(), scan_end=None):
     """Read one physical record with bounded memory; retain partial tails.
 
     Oversized records are drained in chunks, never parsed as fragments. Scan
@@ -249,6 +251,8 @@ def _read_record(stream, markers=()):
     """
     start = stream.tell()
     end = os.fstat(stream.fileno()).st_size
+    if scan_end is not None:
+        end = min(end, scan_end)
     raw = stream.readline(min(MAX_LINE + 1, max(0, end - start)))
     if len(raw) <= MAX_LINE:
         return raw, raw.endswith(b"\n"), False
@@ -259,6 +263,9 @@ def _read_record(stream, markers=()):
     complete = raw.endswith(b"\n")
     while not complete and stream.tell() < end:
         chunk = stream.readline(min(MAX_LINE, end - stream.tell()))
+        if not chunk:
+            # The file may have been truncated after the EOF snapshot.
+            return None, False, boundary
         window = tail + chunk
         boundary = boundary or any(n in window for n in needles)
         tail = window[-overlap:] if overlap else b""
@@ -276,6 +283,7 @@ def _locate(workspace: str, binding: dict) -> Path | None:
     if binding.get("source"):
         return topics._inside(base, binding["source"])
     matches = []
+    limited = False
     for index, path in enumerate(base.rglob("*.jsonl")):
         if index >= 2000:
             raise ValueError("conversation discovery limit reached")
@@ -287,11 +295,12 @@ def _locate(workspace: str, binding: dict) -> Path | None:
             continue
         if path.stat().st_mtime < binding["created_epoch"] - 5:
             continue
-        if path.stat().st_size > MAX_SCAN:
-            continue  # Discovery is bounded per file; keep checking other candidates.
         with path.open("rb") as stream:
-            while stream.tell() < path.stat().st_size:
-                raw, complete, boundary = _read_record(stream, [binding["marker"]])
+            size = os.fstat(stream.fileno()).st_size
+            scan_end = min(size, MAX_SCAN)
+            limited = limited or size > MAX_SCAN
+            while stream.tell() < scan_end:
+                raw, complete, boundary = _read_record(stream, [binding["marker"]], scan_end)
                 if not complete:
                     break
                 if raw is None:
@@ -300,7 +309,7 @@ def _locate(workspace: str, binding: dict) -> Path | None:
                     continue
                 try:
                     entries = _messages(raw, binding["agent"])
-                except (ValueError, TypeError, AttributeError):
+                except (ValueError, TypeError, AttributeError, KeyError):
                     continue
                 if _background_marker(raw, binding["marker"]) or any(e["role"] == "user" and e["text"].startswith(binding["marker"] + " ") for e in entries):
                     matches.append((path, stream.tell()))
@@ -308,6 +317,8 @@ def _locate(workspace: str, binding: dict) -> Path | None:
     if len(matches) > 1:
         raise ValueError("multiple conversations contain the binding marker; refusing to guess")
     if not matches:
+        if limited:
+            raise ValueError("conversation discovery scan limit reached (32 MiB per file); binding marker not found")
         return None
     path, offset = matches[0]
     binding.update(source=path.relative_to(base).as_posix(), offset=offset)
