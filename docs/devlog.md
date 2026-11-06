@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: 主题助手与记忆
+
+- 增加合作方式、主题记忆、显式工作区共享偏好及完整技能基线固定；界面和便携工具共用版本冲突保护。
+- topic-workshop 0.4.2 提炼核心原则，保留反馈教学、逐轮记录和首份待验证方法入册；旧主题不静默升级固定技能。
+- 详见[使用说明](topic-assistant.md)；真实主题效果和跨模型稳定性仍需用户实测。
+
 ## Unreleased: topic sync edge-case follow-up (2026-11-06)
 
 - Stop draining on EOF after truncation; validate marker payload types; scan a bounded prefix of large discovery candidates and report exhausted discovery budgets.

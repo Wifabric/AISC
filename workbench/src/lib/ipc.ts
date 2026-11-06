@@ -1109,12 +1109,13 @@ export interface TopicCheck {
 }
 export interface TopicCallParams {
   workspace: string;
-  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync";
+    operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync" | "assistant-show" | "assistant-save" | "assistant-profile-save" | "assistant-skills" | "assistant-pin" | "assistant-unpin";
   id?: string;
   title?: string;
   text?: string;
   sources?: string[];
   action?: TopicAction;
+    payload?: Record<string, unknown>;
 }
 export const topicCall = <T = Record<string, unknown>>(params: TopicCallParams) =>
   invoke<T>("topic_call", params as unknown as Record<string, unknown>);

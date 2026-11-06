@@ -7,17 +7,18 @@ use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 fn topic_argv(workspace: &str, operation: &str, id: Option<&str>) -> Result<Vec<String>, WorkbenchError> {
-    if !["list", "create", "show", "prepare", "check", "activate", "deactivate", "sync"].contains(&operation) {
+    if !["list", "create", "show", "prepare", "check", "activate", "deactivate", "sync",
+        "assistant-show", "assistant-save", "assistant-profile-save", "assistant-skills", "assistant-pin", "assistant-unpin"].contains(&operation) {
         return Err(WorkbenchError::usage("unknown topic operation"));
     }
     let mut argv = vec!["topic".into(), operation.into(), "--workspace".into(),
                         workspace.into(), "--format".into(), "json".into()];
-    if ["show", "prepare", "check", "activate"].contains(&operation) {
+    if ["show", "prepare", "check", "activate"].contains(&operation) || (operation.starts_with("assistant-") && operation != "assistant-skills") {
         let value = id.filter(|v| !v.is_empty())
             .ok_or_else(|| WorkbenchError::usage("topic id is required"))?;
         argv.push(format!("--id={value}"));
     }
-    if ["create", "prepare"].contains(&operation) {
+    if ["create", "prepare", "assistant-save", "assistant-profile-save", "assistant-pin", "assistant-unpin"].contains(&operation) {
         argv.extend(["--input-json".into(), "-".into()]);
     }
     Ok(argv)
@@ -34,15 +35,16 @@ pub async fn topic_call(
     text: Option<String>,
     sources: Option<Vec<String>>,
     action: Option<String>,
+    payload: Option<Value>,
 ) -> Result<Value, WorkbenchError> {
     let argv = topic_argv(&workspace, &operation, id.as_deref())?;
     let target = crate::target::resolve_target_for(&app, &window).await?;
     let timeout = Duration::from_secs(30);
     let cancel = CancellationToken::new();
-    let env = if ["create", "prepare"].contains(&operation.as_str()) {
+    let env = if ["create", "prepare", "assistant-save", "assistant-profile-save", "assistant-pin", "assistant-unpin"].contains(&operation.as_str()) {
         // User input travels over stdin, not a shell or process command line.
-        let form = json!({"title": title.unwrap_or_default(), "text": text.unwrap_or_default(),
-                          "sources": sources.unwrap_or_default(), "action": action.unwrap_or_else(|| "continue".into())});
+        let form = if operation.starts_with("assistant-") { payload.unwrap_or(json!({})) } else { json!({"title": title.unwrap_or_default(), "text": text.unwrap_or_default(),
+                          "sources": sources.unwrap_or_default(), "action": action.unwrap_or_else(|| "continue".into())}) };
         run_control_input_target(&target, argv, form.to_string(), timeout, cancel).await?
     } else {
         run_control_target(&target, argv, timeout, cancel).await?
@@ -56,4 +58,19 @@ pub async fn topic_call(
         return Err(WorkbenchError::cli_protocol().with_detail("topic command failed without an error"));
     }
     env.data.ok_or_else(WorkbenchError::cli_protocol)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::topic_argv;
+    #[test]
+    fn assistant_forms_use_stdin_and_require_topic_identity() {
+        assert!(topic_argv("D:/workspace", "assistant-save", None).is_err());
+        let argv = topic_argv("D:/workspace", "assistant-save", Some("topic-a")).unwrap();
+        assert!(argv.contains(&"--id=topic-a".to_string()));
+        assert!(argv.windows(2).any(|w| w == ["--input-json", "-"]));
+        let listing = topic_argv("D:/workspace", "assistant-skills", None).unwrap();
+        assert!(!listing.contains(&"--input-json".to_string()));
+        assert!(topic_argv("D:/workspace", "assistant-exec", None).is_err());
+    }
 }
