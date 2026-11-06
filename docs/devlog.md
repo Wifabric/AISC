@@ -12,6 +12,15 @@
 - Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
 - Local validation: 9 recovery probes and 18 existing topic regressions passed. [Details](reviews/pr62-sync-recovery-20261106.md). GUI/user acceptance remains outstanding.
 
+## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
+
+- 后续用户委托补测：恢复普通窗口与键盘输入后，文件/目录改名、刷新、关闭重入、磁盘不覆盖及内容保留 PASS。冲突文案不可见属真实 CU FAIL，已在本批给重命名行补定位容器；前端 840 项首轮通过、1 项因缺 Python 失败后补环境复测通过，vue-tsc/Vite PASS。用户取消 CU 后已停止输入和候选切换，修后提示可见性仍 NOT RUN；尚无 b1 PR/CI，不启动 b2。
+
+- 用户授权按开发指南和计划更新后，在独立 `codex/2.1.18-b1-case-rename` 分支实施 F1；依赖已验收的个人功能整合 PR #62，不替用户合并远端 PR。
+- 真实 NTFS RED 确认 canonicalize 返回旧 basename 导致改名无效。修复保留请求 basename 用于 fs::rename，并继续检查规范路径范围与目标冲突；文件和目录往返改名及内容断言 GREEN。
+- Rust 415 passed / 2 ignored，Windows debug 构建 PASS。Windows 大小写敏感目录、Linux/macOS/SSH 未实测；不继承历史整合测试为本次结果。新增测试留本机。
+- CU 已进入独立 QA 工作区并打开重命名框，但工具 set_value 报 0x80040201，H1 未完整执行，记 NOT RUN。用户验收与进入 b2 的裁定待定；b2–b6 未实施，未发布或关闭反馈。详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+
 ## 2026-11-02：2.1.17 个人功能直接整合（本地，未发布）
 
 - 按用户纠正，将本人主题工坊及主标签后续改动实际整合到独立的 2.1.17 副本；采用本地 `66404c72` 来源和 Git 三方结果，保留正式版后续修复，当前分支 `codex/2.1.17-personal-integration`。
