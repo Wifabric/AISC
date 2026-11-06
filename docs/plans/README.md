@@ -4,6 +4,10 @@ Active/in-progress implementation plans live here. Completed plans are archived
 under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-plans/`,
 topical plans under their own directories.
 
+## Workflow improvement
+
+- [`pr-intake-workflow`](pr-intake-workflow.md) — 独立开发协作文档专题：PR 接入、职责分工与贡献者流程；本地自查和隔离演练已记录，真实团队试用待开展。
+
 ## Current active plan
 
 - [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 2026-11-02：仅四条新增反馈、六批方案；用户已授权启动，b1 已实现待验收，b2–b6 未实施。采用开发阶段逐批 CU + 用户验收门；产品待裁定见该目录 decisions。

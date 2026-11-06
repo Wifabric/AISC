@@ -2,6 +2,11 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: topic sync recovery (2026-11-06)
+
+- Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
+- Local validation: 9 recovery probes and 18 existing topic regressions passed. [Details](reviews/pr62-sync-recovery-20261106.md). GUI/user acceptance remains outstanding.
+
 ## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
 
 - 后续用户委托补测：恢复普通窗口与键盘输入后，文件/目录改名、刷新、关闭重入、磁盘不覆盖及内容保留 PASS。冲突文案不可见属真实 CU FAIL，已在本批给重命名行补定位容器；前端 840 项首轮通过、1 项因缺 Python 失败后补环境复测通过，vue-tsc/Vite PASS。用户取消 CU 后已停止输入和候选切换，修后提示可见性仍 NOT RUN；尚无 b1 PR/CI，不启动 b2。
@@ -1944,6 +1949,12 @@
 
 > **阶段总结（2026-08-09 ~ 2026-08-10）**：GUI Fine-Tune 18 个目标（G-01..G-18）全部完成并合并回 develop。覆盖：契约/测试基础设施（A-INFRA）、sidecar 入 PATH、停止/关闭/退出性能、typed settings、i18n、动态多 tab、终端渲染升级、设置页交付、侧边栏分层 + Provider 引导、Resize 根因修复、窗口记忆、终端基础 + 右键菜单、一键诊断、构建通知、动态标题、托盘、Tab 内分屏、明暗主题。
 > 每步均按 06-implementation-plan 拆子步骤 → 验收清单（A-*）→ 自动化 + 手动测试 → 汇报；CI 全绿；已知遗留（分屏键盘导航等）记录于 `docs/todo.md`。
+
+## 未发布文档：开发协作流程（2026-11-05）
+
+- 在既有阶段流程中增加贡献者 PR 收集、去重、依赖、审查批次、返修复审与合入验证；原有范围、验收和发布规则保留。
+- 新增[开发职责](workflows/development-roles.md)及[贡献者流程](workflows/contributor-workflow.md)，明确任务交接与逐项验收证据；入口在 DEVELOP_WIKI §1.5–§1.6。
+- [专题计划](plans/pr-intake-workflow.md)记录交付范围；历史自查与本地隔离演练分别保留，不等同于真实多人试用或用户验收。
 
 ## Step 0 验收清单（契约与测试基础设施 A-INFRA-1..5，分支 step-0-*）
 

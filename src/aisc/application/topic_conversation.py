@@ -240,6 +240,37 @@ def _background_marker(raw, marker):
     return allowed and marker in json.dumps(obj, ensure_ascii=False)
 
 
+def _read_record(stream, markers=()):
+    """Read one physical record with bounded memory; retain partial tails.
+
+    Oversized records are drained in chunks, never parsed as fragments. Scan
+    known session markers across chunk boundaries before dropping any content.
+    Snapshot EOF prevents a concurrently growing writer from extending a scan.
+    """
+    start = stream.tell()
+    end = os.fstat(stream.fileno()).st_size
+    raw = stream.readline(min(MAX_LINE + 1, max(0, end - start)))
+    if len(raw) <= MAX_LINE:
+        return raw, raw.endswith(b"\n"), False
+    needles = [m.encode("utf-8") for m in markers]
+    overlap = max((len(n) for n in needles), default=1) - 1
+    boundary = any(n in raw for n in needles)
+    tail = raw[-overlap:] if overlap else b""
+    complete = raw.endswith(b"\n")
+    while not complete and stream.tell() < end:
+        chunk = stream.readline(min(MAX_LINE, end - stream.tell()))
+        window = tail + chunk
+        boundary = boundary or any(n in window for n in needles)
+        tail = window[-overlap:] if overlap else b""
+        complete = chunk.endswith(b"\n")
+    return None, complete, boundary
+
+
+def _skip_record(binding, offset, reason):
+    binding["skipped_records"] = binding.get("skipped_records", 0) + 1
+    binding["last_skipped_record"] = {"offset": offset, "reason": reason}
+
+
 def _locate(workspace: str, binding: dict) -> Path | None:
     base = _provider_root(workspace, binding["agent"])
     if binding.get("source"):
@@ -257,13 +288,16 @@ def _locate(workspace: str, binding: dict) -> Path | None:
         if path.stat().st_mtime < binding["created_epoch"] - 5:
             continue
         if path.stat().st_size > MAX_SCAN:
-            raise ValueError("conversation too large to discover safely")
+            continue  # Discovery is bounded per file; keep checking other candidates.
         with path.open("rb") as stream:
-            while raw := stream.readline(MAX_LINE + 1):
-                if len(raw) > MAX_LINE:
-                    raise ValueError("conversation line exceeds 1 MiB")
-                if not raw.endswith(b"\n"):
+            while stream.tell() < path.stat().st_size:
+                raw, complete, boundary = _read_record(stream, [binding["marker"]])
+                if not complete:
                     break
+                if raw is None:
+                    if boundary:
+                        raise ValueError("binding marker occurs in an oversized record; cannot bind safely")
+                    continue
                 try:
                     entries = _messages(raw, binding["agent"])
                 except (ValueError, TypeError, AttributeError):
@@ -296,15 +330,33 @@ def _sync_binding(root: Path, topic: Path, binding: dict, markers: set[str] | No
             if start >= binding.get("stop_offset", float("inf")):
                 binding["closed"] = True
                 break
-            raw = stream.readline(MAX_LINE + 1)
-            if not raw or not raw.endswith(b"\n"):
-                if len(raw) > MAX_LINE:
-                    raise ValueError("conversation line exceeds 1 MiB")
+            other_markers = (markers or set()) - {binding["marker"]}
+            raw, complete, boundary = _read_record(stream, other_markers)
+            if not complete:
                 break
-            if len(raw) > MAX_LINE:
-                raise ValueError("conversation line exceeds 1 MiB")
-            budget -= len(raw)
-            entries = _messages(raw, binding["agent"])
+            budget -= stream.tell() - start
+            if boundary:
+                # An unreadable bootstrap may be a new topic on a resumed
+                # session. Stop conservatively rather than misattribute turns.
+                binding["closed"] = True
+                binding["error"] = "new session marker in oversized record; stopped safely"
+                break
+            if raw is None:
+                _skip_record(binding, start, "record exceeds 1 MiB; source retained")
+                binding["offset"] = stream.tell()
+                continue
+            try:
+                entries = _messages(raw, binding["agent"])
+            except (ValueError, TypeError, AttributeError, KeyError):
+                # A complete malformed line cannot improve on the next poll.
+                # Never move past an incomplete tail, handled above.
+                if any(m.encode("utf-8") in raw for m in other_markers):
+                    binding["closed"] = True
+                    binding["error"] = "new session marker in malformed record; stopped safely"
+                    break
+                _skip_record(binding, start, "malformed record; source retained")
+                binding["offset"] = stream.tell()
+                continue
             # A native resume shares the same transcript file. A registered
             # new bootstrap ends the former binding, rather than duplicating
             # later turns or misattributing the system bootstrap to the user.
@@ -362,10 +414,17 @@ def sync(root: Path) -> dict:
                 for binding in doc["sessions"]:
                     try:
                         _sync_binding(root, topic, binding, markers)
-                        binding.pop("error", None)
+                        if not binding.get("closed"):
+                            binding.pop("error", None)
                     except (ValueError, OSError, TypeError, KeyError) as exc:
                         binding["error"] = str(exc)
                         warnings.append(f"{summary['title']}: {exc}")
+                    if binding.get("skipped_records"):
+                        last = binding["last_skipped_record"]
+                        warnings.append(f"{summary['title']}: {binding['skipped_records']} conversation record(s) skipped; "
+                                        f"last at byte {last['offset']}: {last['reason']}")
+                    if binding.get("closed") and binding.get("error"):
+                        warnings.append(f"{summary['title']}: {binding['error']}")
                     sessions.append({"topic_id": topic.name, "session_id": binding["session_id"],
                         "agent": binding["agent"], "captured": binding["captured"],
                         "state": "error" if binding.get("error") else "completed" if binding.get("closed") else "recording" if binding.get("source") else "waiting",
