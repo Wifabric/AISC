@@ -31,6 +31,7 @@ Set-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt') -Value 'keep-me' -En
 1. 文件侧栏右键 `Area.txt` → 重命名 → 输入 `AREA.txt` → Enter；右键 `Folder` → 重命名为 `FOLDER`。
 2. 刷新文件侧栏，关闭并重新进入该工作区；执行下面只读命令。
 3. 尝试把 `AREA.txt` 改为 `Occupied.txt`，记录错误；重新读两份文件。
+4. 准备足够多的测试条目使列表可滚动，在最后一个可见行重复同名冲突及非法名称输入。错误文案应自动进入可见区域，输入仍可编辑；按 Escape 后输入与错误消失，原文件不变。
 
 ```powershell
 Get-ChildItem -LiteralPath $qaRoot | Select-Object Name
@@ -112,3 +113,7 @@ Get-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt')
 **理想结果**：部分失败明确显示，重试只处理需重试项；三类成员按能力显示。MCP 安装未认证仍标待认证，不显示可调用已验证。卸载 A 后共享项/预装项按 U-3 保留，只有符合归属条件的独占项移除。别的目标不继承已安装状态，删 B 定义不删资产。
 
 **异常**：错误吞掉后显示整组成功、未知归属被删除、跨目标误操作、用户配置被覆盖、取消后无逐项结果。进程中断、用户手动卸载及恢复路径由定向自动化/数据面另记证据。
+
+## H1 本轮复测说明（2026-11-06）
+
+#63 补充了底部错误提示的滚动修复，自动化与浏览器布局验证见 PRETEST。真实 Workbench 复测及用户验收仍 NOT RUN；必须启动本轮构建后再按 H1 操作，历史候选哈希与已安装窗口不代表本轮代码。
