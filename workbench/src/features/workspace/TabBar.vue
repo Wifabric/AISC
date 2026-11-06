@@ -10,7 +10,8 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { CC_SWITCH_UI_TAB_ID, useRuntimeStore } from "../../stores/runtime";
+import { TOPICS_TAB_ID, useRuntimeStore } from "../../stores/runtime";
+import { useTopicsStore } from "../../stores/topics";
 import { useSettingsStore } from "../../stores/settings";
 import { AGENTS } from "../../stores/tabLayout";
 import type { LaunchAgent, Tab, TabSessionState } from "../../types";
@@ -18,6 +19,7 @@ import type { LaunchAgent, Tab, TabSessionState } from "../../types";
 const { t } = useI18n();
 const store = useRuntimeStore();
 const settingsStore = useSettingsStore();
+const topics = useTopicsStore();
 
 // --- G-08 + menu (aria-haspopup; Enter/Space opens, arrows move, Enter picks) ---
 const menuOpen = ref(false);
@@ -112,14 +114,15 @@ function onMenuKeydown(e: KeyboardEvent) {
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     if (idx >= 0) {
-      choose(items[idx].dataset.agent as LaunchAgent);
+      choose(items[idx].dataset.agent as LaunchAgent | "topics");
     }
   }
 }
 
-function choose(agent: LaunchAgent) {
+function choose(agent: LaunchAgent | "topics") {
   menuOpen.value = false;
-  store.createTab(agent);
+  if (agent === "topics") store.openTopicsTab();
+  else store.createTab(agent);
 }
 
 
@@ -148,9 +151,8 @@ const roving = ref(-1); // -1 = no manual roving; follow the active tab
  * tabs, in this fixed order — the roving/focus model appends them as indexes
  * `store.tabs.length + n`. */
 const virtualTabs = computed(() => {
-  // b5 D-1 (2026-10-18): the cc-switch Provider UI moved to the LEFT RAIL
-  // dock view — no session-layer virtual tabs remain here.
-  return [] as { id: string; labelKey: string; icon: string }[];
+  // The topic page is a workspace-local virtual tab; it never opens a PTY.
+  return store.topicsTabOpen ? [{ id: TOPICS_TAB_ID, label: topics.detail?.title ? `${t("explorer.tab.topics")}：${topics.detail.title}` : t("topics.skill"), icon: "▤" }] : [];
 });
 const virtualBtnRefs = new Map<string, HTMLButtonElement>();
 function setVirtualRef(id: string) {
@@ -183,7 +185,7 @@ function activateChip(i: number): void {
     store.activateTab(store.tabs[i].tabId);
   } else {
     const id = virtualTabs.value[i - store.tabs.length]?.id;
-    if (id === CC_SWITCH_UI_TAB_ID) store.openCcSwitchUiTab();
+    if (id === TOPICS_TAB_ID) store.openTopicsTab();
   }
 }
 
@@ -206,13 +208,12 @@ function virtualTabIndex(i: number): string {
 
 function onVirtualClick(id: string) {
   roving.value = -1;
-  if (id === CC_SWITCH_UI_TAB_ID) store.openCcSwitchUiTab();
+  if (id === TOPICS_TAB_ID) store.openTopicsTab();
 }
 
-/** × on the cc-switch UI chip (no unsaved-state contract — forms are
- * per-operation and the key field is transient). */
-function closeCcSwitchUi() {
-  store.closeCcSwitchUiTab();
+/** Closing the page leaves topic files, active recording and sessions intact. */
+function closeTopics() {
+  store.closeTopicsTab();
 }
 
 function onTabClick(tabId: string) {
@@ -398,6 +399,7 @@ function canReopen(s: TabSessionState): boolean {
       v-for="(v, vi) in virtualTabs"
       :key="v.id"
       class="tab virtual-chip"
+      data-testid="topics-tab"
       :class="{ active: store.activeTabId === v.id }"
     >
       <button
@@ -406,15 +408,15 @@ function canReopen(s: TabSessionState): boolean {
         class="tab-main"
         :tabindex="virtualTabIndex(store.tabs.length + vi)"
         :aria-selected="store.activeTabId === v.id"
-        :title="t(v.labelKey)"
+        :title="v.label"
         @click="onVirtualClick(v.id)"
-      >{{ v.icon }} {{ t(v.labelKey) }}</button>
+      >{{ v.icon }} {{ v.label }}</button>
       <span class="actions">
         <button
           class="icon x"
           :title="t('tabbar.closeVirtual')"
           :aria-label="t('tabbar.closeVirtual')"
-          @click="closeCcSwitchUi()"
+          @click="closeTopics()"
         >×</button>
       </span>
     </div>
@@ -462,6 +464,7 @@ function canReopen(s: TabSessionState): boolean {
             :data-agent="a"
             @click="choose(a)"
           >{{ t(`tabbar.menu.${a}`) }}</li>
+          <li role="menuitem" tabindex="0" data-agent="topics" @click="choose('topics')">{{ t("topics.skill") }}</li>
 
 
         </ul>

@@ -10,6 +10,10 @@ topical plans under their own directories.
 
 ## Current active plan
 
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 2026-11-02：仅四条新增反馈纳入规划，六批方案待确认，尚未实施。采用开发阶段逐批 CU + 用户验收门；产品待裁定见该目录 decisions。
+
+## Previous stages and intake
+
 - [`2.1.17-preview-fixes`](../archive/2.1.17-preview-fixes/) — 2026-10-31 preview 手测反馈六批已由 `v2.1.17` final 收口；preview.2 用户统一实测通过，计划已归档。
 - v2.1.17 原阶段已完成 preview 收尾，见 [`2.1.17-dev-plans`](../archive/2.1.17-dev-plans/)（Workbench 2.1.17-preview.1 / CLI 0.1.10.dev0，原阶段 D-7 免补测放行，NOT RUN 保留）。
 - [`terminal-experience-intake`](terminal-experience-intake.md) — 历史 intake：N5 的 Work Record 静态阅读已由 v2.1.17 R4 实现；实时终端继续字节穿透，其余方向不自动进入新版本。

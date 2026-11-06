@@ -10,7 +10,7 @@ import type { WorkspaceRuntime } from "./workspaceRuntime";
 // IDEA-3 (3a): the sentinel ids + status domain live with the per-workspace
 // state machine now; re-exported here so existing consumers keep their import
 // paths (App.vue, TabBar.vue, tests).
-export { CC_SWITCH_UI_TAB_ID, SETTINGS_TAB_ID, NETWORK_USAGE_TAB_ID } from "./workspaceRuntime";
+export { TOPICS_TAB_ID, CC_SWITCH_UI_TAB_ID, SETTINGS_TAB_ID, NETWORK_USAGE_TAB_ID } from "./workspaceRuntime";
 export type { WorkbenchStatus } from "./workspaceRuntime";
 
 /** Unwrap `Ref<V>` for the forwarding helpers below. */
@@ -170,6 +170,9 @@ export const useRuntimeStore = defineStore("runtime", () => {
     buildDurationMs: fwdRef("buildDurationMs"),
     tabs: fwdRef("tabs"),
     activeTabId: fwdRef("activeTabId"),
+    topicsTabOpen: fwdRef("topicsTabOpen"),
+    openTopicsTab: fwdFn("openTopicsTab"),
+    closeTopicsTab: fwdFn("closeTopicsTab"),
     ccSwitchUiTabOpen: fwdRef("ccSwitchUiTabOpen"),
     runtimeState: fwdRef("runtimeState"),
     runtimeSnapshot: fwdRef("runtimeSnapshot"),

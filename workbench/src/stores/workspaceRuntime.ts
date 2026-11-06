@@ -98,6 +98,8 @@ export const SETTINGS_TAB_ID = "settings-tab";
 /** Stage 8e (CS-05): the virtual cc-switch Provider UI tab — same contract
  * as the settings tab (no session, never persisted, closes with the tab ×).
  * Coexists with the `cc-switch` TUI tab (advanced diagnostics). */
+export const TOPICS_TAB_ID = "topics-tab";
+
 export const CC_SWITCH_UI_TAB_ID = "cc-switch-ui-tab";
 
 /** IDEA-2 (2d): sentinel id of the workspace-layer「网络与用量」panel —
@@ -310,6 +312,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   const activeTabId = ref<string | null>(null);
   /** Stage 8e: the virtual cc-switch Provider UI tab is open. (The Settings
    * tab moved to the WORKSPACE layer in IDEA-3 3d — see stores/workspaces.) */
+  const topicsTabOpen = ref(false);
   const ccSwitchUiTabOpen = ref(false);
 
   let startTimer: number | null = null;
@@ -322,6 +325,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   function resetWorkspace() {
     tabs.value = [];
     activeTabId.value = null;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false;
     preflight.value = null;
     runtimeId.value = "";
@@ -1127,6 +1131,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     };
     const { tabs: created, bySavedId } = tabsFromRecords(records);
     tabs.value = created;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false; // fresh tab set; the virtual tab never restores
     // G-17: open EVERY pane leaf (a restored split tab has several), each
     // through the same provider gate as + menu tabs - unconfigured claude/
@@ -1473,6 +1478,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
 
   /** Activate a tab; idle tabs are opened on first activation. */
   function activateTab(tabId: string) {
+    if (tabId === TOPICS_TAB_ID) { openTopicsTab(); return; }
     const tab = findTab(tabId);
     if (!tab) return;
     activeTabId.value = tabId;
@@ -1767,13 +1773,25 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     const idx = tabs.value.indexOf(tab);
     tabs.value.splice(idx, 1);
     if (activeTabId.value === tabId) {
-      activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+      activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? (topicsTabOpen.value ? TOPICS_TAB_ID : null);
     }
     scheduleSave();
   }
 
   // --- Stage 8e: the virtual cc-switch Provider UI tab (no session, never
   // persisted). The IDEA-1 Settings tab moved to the WORKSPACE layer (3d). ---
+
+  function openTopicsTab() {
+    topicsTabOpen.value = true;
+    activeTabId.value = TOPICS_TAB_ID;
+  }
+
+  function closeTopicsTab() {
+    topicsTabOpen.value = false;
+    if (activeTabId.value === TOPICS_TAB_ID) {
+      activeTabId.value = tabs.value[tabs.value.length - 1]?.tabId ?? null;
+    }
+  }
 
   function openCcSwitchUiTab() {
     ccSwitchUiTabOpen.value = true;
@@ -1863,7 +1881,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       const idx = tabs.value.indexOf(tab);
       tabs.value.splice(idx, 1);
       if (activeTabId.value === tab.tabId) {
-        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? (topicsTabOpen.value ? TOPICS_TAB_ID : null);
       }
     } else {
       const removed = removeLeaf(tab.tree, paneId);
@@ -2107,6 +2125,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     ]);
     tabs.value = [];
     activeTabId.value = null;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false;
     try {
       // runtime-lifecycle-ux Stage 3: stop-only became the ephemeral teardown
@@ -2185,6 +2204,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     buildDurationMs,
     tabs,
     activeTabId,
+    topicsTabOpen,
+    openTopicsTab,
+    closeTopicsTab,
     ccSwitchUiTabOpen,
     openCcSwitchUiTab,
     closeCcSwitchUiTab,

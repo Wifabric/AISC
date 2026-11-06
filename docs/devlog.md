@@ -2,6 +2,30 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: topic sync edge-case follow-up (2026-11-06)
+
+- Stop draining on EOF after truncation; validate marker payload types; scan a bounded prefix of large discovery candidates and report exhausted discovery budgets.
+- Local checks: 19 recovery/edge probes, 39 Python tests plus 11 subtests, 32 topic frontend tests passed. [Review](reviews/pr62-sync-recovery-20261106.md#follow-up-review-and-verification). GUI/user acceptance is separate.
+
+## Unreleased: topic sync recovery (2026-11-06)
+
+- Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
+- Local validation: 9 recovery probes and 18 existing topic regressions passed. [Details](reviews/pr62-sync-recovery-20261106.md). GUI/user acceptance remains outstanding.
+
+## 2026-11-02：2.1.17 个人功能直接整合（本地，未发布）
+
+- 按用户纠正，将本人主题工坊及主标签后续改动实际整合到独立的 2.1.17 副本；采用本地 `66404c72` 来源和 Git 三方结果，保留正式版后续修复，当前分支 `codex/2.1.17-personal-integration`。
+- 合入主题技能/数据、普通对话桥接和同步、主标签 UI、CLI/IPC、相关测试及打包资源；个人功能不再占用 2.1.18 批次。版本号仍为 Workbench 2.1.17 / CLI 0.1.10。
+- 来源、冲突处理与本次验证见 [整合记录](integrations/2.1.17-personal-features.md)。未修改原个人仓库、未安装或发布应用；启动此副本客户端后，用户确认检查无问题并授权提交 PR。真实模型/Remote 未补测。
+- PR 按用户此前要求不带新增主题测试用例、个人信息/示例或本机日志；测试留本机，原有公开菜单测试只同步一处数量断言。
+- 回归含环境修正后的失败项复测：Python 合计覆盖 1761 项通过（55 skipped、212 subtests），前端 876 项、Rust 416 项（2 ignored）；vue-tsc/Vite、Workbench 编译、冻结 CLI 9 命令/9 技能文件、bundle stage/verify 通过。不是一次全量全绿，首轮失败及复测均留证。
+
+## 2026-11-02：2.1.18 反馈规划准备（未实施/未发布）
+
+- 四条新增反馈拆为 b1–b6：大小写改名、菜单边界、镜像命名/重建、扩展模块定义/执行。
+- 建立 [2.1.18 计划](plans/2.1.18-dev-plans/README.md) 的规格、批次、决策及手测账本，同步 todo 与活动索引。
+- 按用户纠正撤下误列的个人功能 b7/b8：已有功能直接整合进独立的 2.1.17 副本，不占用本版更新计划。四条反馈的实施仍待方案确认，相关验证全部 NOT RUN。
+
 # v2.1.17 preview 修复 b5（2026-11-01，合入待整体实测）
 
 - Work Record 分支会话保留原 conversation preflight/fork 链路，只新增独立 fork；Claude/Codex覆盖。

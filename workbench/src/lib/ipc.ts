@@ -1067,6 +1067,57 @@ export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVer
 export const appInstallUpdate = (setupPath: string) =>
   invoke<void>("app_install_update", { setupPath });
 
+// Topic workshop: target-aware CLI data plane, no model calls in the UI.
+export type TopicAction = "continue" | "feedback" | "guide" | "improve";
+export interface TopicSummary {
+  id: string;
+  title: string;
+  relative_path: string;
+  skill_version: string;
+  created_at: string;
+}
+export interface TopicRequest {
+  id: string;
+  action: TopicAction;
+  relative_path: string;
+  prompt: string;
+  created_at: string;
+}
+export interface TopicEvent {
+  id: string;
+  type: string;
+  summary: string;
+  recorded_at?: string;
+  data: Record<string, unknown>;
+}
+export interface TopicDetail extends TopicSummary {
+  iteration_log?: string;
+  internal_files?: string[];
+  guide: string;
+  state: string;
+  events: TopicEvent[];
+  files: string[];
+  requests: TopicRequest[];
+  warnings: string[];
+}
+export interface TopicCheck {
+  status: string;
+  checked_events: number;
+  errors: string[];
+  warnings: string[];
+  scope: string;
+}
+export interface TopicCallParams {
+  workspace: string;
+  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync";
+  id?: string;
+  title?: string;
+  text?: string;
+  sources?: string[];
+  action?: TopicAction;
+}
+export const topicCall = <T = Record<string, unknown>>(params: TopicCallParams) =>
+  invoke<T>("topic_call", params as unknown as Record<string, unknown>);
 export interface UpdateHealthObservation {
   scope: string;
   endpoint: string;
