@@ -59,3 +59,15 @@ S5：修后独立通道使中文名称经过 Windows 冻结 CLI 的系统编码 
 重入时启动摘要出现“已自动回收上次未正常关闭的运行环境”，尽管前一步通过正常“关闭工作区”返回选择页。五项预检通过，后续启动与文件读取正常；本轮未定位该回收提示的原因，不以此宣称运行时清理文案验收通过。
 
 追加轮清理完成：重入创建的 QA 容器 `7ea6c1ad5673` 随候选正常退出而删除，QA workspace-key 下无残留容器。原平台 PID 40320 与容器 `2e801ec161c0` 仍运行；测试文件与本地证据保留供复核。
+
+## Preview.3 追加镜像命名复测
+
+同一候选，窗口 878×821，从选择工作区页的“编辑 → 设置 → 磁盘与缓存”进入。只读扫描后仅操作专门创建的两个 FROM scratch 测试镜像；它们具有 org.aisc.managed=true 和本轮唯一 qa 标签，不运行容器、不推送镜像。
+
+- H3 本机流程 PASS：首次默认名 `super-claude:d2apok2o`，取消后 keep/old 两标签未变。再次进入生成新的八位小写字母数字默认名；从下拉框明确选择 old，输入完整 `aisc-h3-gui-714c6981:new` 后提交。界面刷新显示 keep/new，Docker inspect 确认 old 消失、new 与 keep 保持原 ID。
+- `INVALID NAME:bad` 被前端拒绝，行内显示完整镜像引用格式说明。目标为另一 ID 的 `aisc-h3-gui-714c6981:conflict` 被后端拒绝并显示 image reference already exists；两个镜像的 ID 和标签均未被覆盖。
+- 继续将选中的 keep 改为 `registry.example:5000/aisc-qa-714c6981/image:port`，UI 刷新后存在完整引用，new 保留，keep 消失。这里只创建本地标签，没有连接或推送到 registry.example。
+- 原测试镜像 ID 为 `sha256:7d7558a50973945ce3b6c8362111a3fe3f65dd77cba3bee228e8dd9fbca3210c`，冲突镜像为 `sha256:9e0370d3abccfa543737434a04f24a709c2a2e5ea883ec64555a930cf1a91673`。验证后按精确 ID/qa 标签清理三项测试引用，两镜像均已不存在；候选退出，原平台窗口保留。
+- WebView 原生下拉弹层的鼠标输入被自动化工具目标窗口检查拒绝，改用 End/Enter 正常选择，实际旧标签在提交前已核对；没有绕过工具检查或把它记作产品故障。
+
+证据：h3-gui-before.json、gui-h3-default.txt、gui-h3-renamed.txt、gui-h3-invalid.txt、gui-h3-conflict.txt、gui-h3-port.txt、h3-gui-after.json、h3-gui-cleanup.json，均在本机 verification 目录。部分失败时旧标签删除失败的 GUI、SSH 及 H4 重建未由本轮覆盖。设置页保留历次操作结果文案，冲突错误出现在成功后的历史结果区域；未将该区域误记为扩展失败提示 H10。
