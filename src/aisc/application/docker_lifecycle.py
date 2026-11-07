@@ -1295,7 +1295,15 @@ def _assert_image_operable(
 
         rid = str(row.get("id") or "")
 
-        return rid == image_id or rid.endswith(image_id)
+        if rid == image_id:
+            return True
+        listed = rid.removeprefix("sha256:")
+        requested = image_id.removeprefix("sha256:")
+        return bool(
+            re.fullmatch(r"[0-9a-f]{12,64}", listed)
+            and re.fullmatch(r"[0-9a-f]{12,64}", requested)
+            and (listed.startswith(requested) or requested.startswith(listed))
+        )
 
 
 
@@ -1550,18 +1558,26 @@ def image_management_tag(
     executor: Any, *, image_id: str, repository: str, tag: str,
 
     data_root: Optional[Path] = None,
+    old_ref: Optional[str] = None,
 
 ) -> Dict[str, Any]:
 
     """Retag ONE aisc-owned image (D-12 'rename'): adds repository:tag.
 
-    The old tag is preserved (retag semantics); in-use images allowed."""
+    Without old_ref the old tag is preserved for CLI compatibility. With
+    old_ref, verify the new identity before removing only that source tag."""
 
-    if not repository or not tag or any(
+    from aisc.application.image_reference import (
+        valid_repository_tag, split_tagged_reference, canonical_tagged_reference,
+    )
 
-        ch.isspace() or ch == "'" or ch == '"' for ch in repository + tag
-
-    ):
+    valid = valid_repository_tag(repository, tag)
+    if old_ref is not None:
+        try:
+            split_tagged_reference(old_ref)
+        except ValueError:
+            valid = False
+    if not valid:
 
         raise CliError(
 
@@ -1583,6 +1599,18 @@ def image_management_tag(
 
     ref = f"{repository}:{tag}"
 
+    warnings: List[str] = []
+    def inspect_ref(value: str) -> str:
+        result = executor.run_captured(
+            ["image", "inspect", value, "--format", "{{.Id}}"], timeout=15.0)
+        if result.exit_code == 0 and (result.stdout or "").strip():
+            return result.stdout.strip()
+        detail = (result.stderr or result.stdout or "").strip()
+        if result.exit_code != 0 and ("no such image" in detail.lower() or "no such object" in detail.lower()):
+            return ""
+        raise CliError(message=f"cannot inspect image reference {value}: {detail[:200]}",
+                       exit_code=10, error_code="AISC_ERR_GENERAL")
+
     with docker_maintenance_lock_at_root(root):
 
         target = _assert_image_operable(
@@ -1590,6 +1618,21 @@ def image_management_tag(
             executor, image_id=image_id, data_root=root, allow_in_use=True
 
         )
+
+        identity = inspect_ref(target["id"])
+        if not identity:
+            raise CliError(message="selected image no longer exists", exit_code=6,
+                           error_code="AISC_ERR_OWNERSHIP_REFUSED")
+        if old_ref is not None and inspect_ref(old_ref) != identity:
+            raise CliError(message="selected tag no longer refers to this image; refresh and retry",
+                           exit_code=6, error_code="AISC_ERR_OWNERSHIP_REFUSED")
+        existing = inspect_ref(ref)
+        if existing and existing != identity:
+            raise CliError(message=f"image reference already exists: {ref}", exit_code=6,
+                           error_code="AISC_ERR_IMAGE_REF_CONFLICT")
+        if old_ref is not None and canonical_tagged_reference(old_ref) == canonical_tagged_reference(ref):
+            return {"schema_version": MANAGEMENT_SCHEMA, "action": "image-tag",
+                    "id": identity, "ref": ref, "argv": [], "warnings": []}
 
         argv = ["tag", target["id"], ref]
 
@@ -1613,6 +1656,17 @@ def image_management_tag(
 
             )
 
+        if inspect_ref(ref) != identity:
+            raise CliError(message="new tag identity verification failed; old tag preserved",
+                           exit_code=10, error_code="AISC_ERR_GENERAL")
+        if old_ref is not None:
+            if inspect_ref(old_ref) != identity:
+                warnings.append("new tag created; old reference changed and was not removed")
+            else:
+                removed = executor.run_captured(["rmi", old_ref], timeout=60.0)
+                if removed.exit_code != 0:
+                    warnings.append(f"new tag created; old tag retained: {(removed.stderr or removed.stdout or '').strip()[:200]}")
+
     return {
 
         "schema_version": MANAGEMENT_SCHEMA,
@@ -1625,6 +1679,6 @@ def image_management_tag(
 
         "argv": argv,
 
-        "warnings": [],
+        "warnings": warnings,
 
     }

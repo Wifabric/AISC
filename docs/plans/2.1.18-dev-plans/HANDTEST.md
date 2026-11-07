@@ -67,8 +67,8 @@ Get-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt')
 **前置**：U-1 已定；开发者提供受 AISC 管理的独立测试镜像，记录其 image ID、全部 tags、另一个冲突 tag；Docker 运行。不得选择用户日常镜像。
 
 **操作**：
-1. 设置 → 磁盘与缓存 → 指定测试镜像行 → 重命名；核对默认建议，取消一次，刷新。
-2. 再打开，输入开发者给出的未占用合法 tag，确认；刷新镜像列表并对照 Docker inspect 证据。
+1. 设置 → 磁盘与缓存 → 指定测试镜像行 → 重命名；默认应为 `super-claude:` 加 8 位小写字母/数字，可编辑。取消一次，刷新，原 tags 不变。
+2. 再打开，在“要替换的旧标签”选择一项，输入开发者给出的未占用完整 `repository:tag`，确认；刷新镜像列表并对照 Docker inspect 证据。仅所选旧 tag 消失，其他 tag 保留；新 tag 与原镜像 ID 相同。
 3. 重试非法名称和指向另一 ID 的冲突 tag；再验证带 registry port 的合法引用。
 
 **理想结果**：取消不改 tags；新 tag 对应原 image ID；旧 tag 按 U-1 处理、其他 tags 保留。非法/冲突输入显示原因且无资源被覆盖；带 port 的仓库名完整保留。

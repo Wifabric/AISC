@@ -9,7 +9,7 @@
  * parent; the status strip (dirty/saved) renders here because the pane has no
  * header of its own.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings";
@@ -460,18 +460,36 @@ async function onImageRm(id: string, name: string): Promise<void> {
     managementBusyLocal.value = false;
   }
 }
+const imageRename = ref<{ id: string; refs: string[]; oldRef: string; value: string;
+  targetKey: string; error: string | null } | null>(null);
+watch(() => JSON.stringify(store.target), () => { imageRename.value = null; });
 async function onImageTag(id: string, name: string): Promise<void> {
-  if (managementBusyLocal.value) return;
-  // retag-only v1: the new tag derives from the old name (see plan doc).
-  const parts = name.split(":");
-  const repo = parts[0] ?? name;
-  const oldTag = parts[1] ?? "latest";
-  const newTag = `${oldTag}-renamed`;
-  const ok = await confirm(t("settings.docker.manage.imageTagConfirm", { name, newTag }));
-  if (!ok) return;
+  if (managementBusyLocal.value || store.managementBusy) return;
+  const refs = name.split(", ").filter(value => value.includes(":") && !value.includes("<none>") && !value.startsWith("sha256:"));
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(8)), n => alphabet[n % alphabet.length]).join("");
+  imageRename.value = { id, refs, oldRef: refs[0] ?? "", value: `super-claude:${suffix}`,
+    targetKey: JSON.stringify(store.target), error: null };
+  await nextTick();
+  const input = document.querySelector<HTMLInputElement>("[data-testid='image-rename-input']");
+  input?.focus(); input?.select();
+}
+async function submitImageRename(): Promise<void> {
+  const request = imageRename.value;
+  if (!request || managementBusyLocal.value || store.managementBusy) return;
+  if (request.targetKey !== JSON.stringify(store.target)) { imageRename.value = null; return; }
+  const reference = request.value.trim();
+  const split = reference.lastIndexOf(":");
+  if (split <= reference.lastIndexOf("/") || split <= 0 || split === reference.length - 1 || /\s/.test(reference)) {
+    request.error = t("settings.docker.manage.imageRenameInvalid"); return;
+  }
+  request.error = null;
   managementBusyLocal.value = true;
   try {
-    await store.imageTag(id, repo, newTag);
+    const error = await store.imageTag(request.id, reference.slice(0, split), reference.slice(split + 1), request.oldRef || undefined);
+    if (imageRename.value !== request) return;
+    if (error) request.error = error;
+    else imageRename.value = null;
   } finally {
     managementBusyLocal.value = false;
   }
@@ -840,8 +858,25 @@ async function reopenOnboarding() {
                   <span class="mr-state">—</span>
                   <span class="mr-actions">
                     <button class="danger" :disabled="store.managementBusy !== null" @click="onImageRm(row.id, row.name)">{{ t("settings.docker.manage.rm") }}</button>
-                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.retagName ?? row.name)">{{ t("settings.docker.manage.retag") }}</button>
+                    <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.name)">{{ t("settings.docker.manage.retag") }}</button>
                   </span>
+                  <form v-if="imageRename?.id === row.id" class="image-rename-form" data-testid="image-rename-form"
+                    @submit.prevent="submitImageRename" @keydown.esc.prevent="!managementBusyLocal && (imageRename = null)">
+                    <label v-if="imageRename.refs.length">{{ t("settings.docker.manage.imageRenameSource") }}
+                      <select v-model="imageRename.oldRef" :disabled="managementBusyLocal" data-testid="image-rename-source">
+                        <option v-for="reference in imageRename.refs" :key="reference" :value="reference">{{ reference }}</option>
+                      </select>
+                    </label>
+                    <label>{{ t("settings.docker.manage.imageRenameTarget") }}
+                      <input v-model="imageRename.value" data-testid="image-rename-input" :disabled="managementBusyLocal" autocomplete="off" spellcheck="false" />
+                    </label>
+                    <p class="help">{{ t("settings.docker.manage.imageRenameHint") }}</p>
+                    <p v-if="imageRename.error" role="alert" class="image-rename-error">{{ imageRename.error }}</p>
+                    <div class="mr-actions">
+                      <button type="button" class="ui-button" :disabled="managementBusyLocal" @click="imageRename = null">{{ t("common.cancel") }}</button>
+                      <button type="submit" class="ui-button" :disabled="managementBusyLocal || store.managementBusy !== null">{{ t("settings.docker.manage.retag") }}</button>
+                    </div>
+                  </form>
                 </div>
               </div>
             </template>
@@ -925,6 +960,10 @@ async function reopenOnboarding() {
 </template>
 
 <style scoped>
+.image-rename-form { grid-column: 1 / -1; display: grid; gap: var(--space-2); min-width: 0; width: 100%; }
+.image-rename-form label { display: grid; gap: var(--space-1); min-width: 0; }
+.image-rename-form input, .image-rename-form select { width: 100%; min-width: 0; box-sizing: border-box; }
+.image-rename-error { color: var(--error); overflow-wrap: anywhere; }
 /* b13: download progress bar */
 .dl-progress { display: flex; align-items: center; gap: var(--space-2); }
 .dl-bar {

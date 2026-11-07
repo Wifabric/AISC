@@ -802,8 +802,8 @@ export const containerAction = (name: string, action: string) =>
 export const imageRm = (id: string) =>
   invoke<ManagementResult>("image_rm", { id });
 
-export const imageTag = (id: string, repository: string, tag: string) =>
-  invoke<ManagementResult>("image_tag", { id, repository, tag });
+export const imageTag = (id: string, repository: string, tag: string, oldRef?: string) =>
+  invoke<ManagementResult>("image_tag", { id, repository, tag, ...(oldRef ? { oldRef } : {}) });
 
 // --- B3 (2.1.12): docker resource admin (maintenance scan/cleanup/rebuild) ---
 

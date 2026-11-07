@@ -709,6 +709,7 @@ def _build_parser() -> _AiscArgumentParser:
     mtmt.add_argument("--id", required=True, help="Image ID")
     mtmt.add_argument("--repository", required=True, help="New repository name")
     mtmt.add_argument("--tag", required=True, help="New tag")
+    mtmt.add_argument("--old-ref", help="Remove only this old tag after verifying the new tag")
 
     mtcc = mtsub.add_parser("cache-cleanup",
                             help="Prune builder cache + dangling images (until-filtered)",
@@ -2389,7 +2390,8 @@ def _cmd_maintenance(
         from aisc.application.docker_lifecycle import image_management_tag
         return image_management_tag(
             executor, image_id=args.id,
-            repository=args.repository, tag=args.tag), 0, []
+            repository=args.repository, tag=args.tag,
+            old_ref=getattr(args, "old_ref", None)), 0, []
     if sub == "cache-cleanup":
         from aisc.application.docker_lifecycle import docker_cache_cleanup
         data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)
