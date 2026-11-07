@@ -46,7 +46,7 @@ Get-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt')
 
 ## H2 / b2：底部、右侧和子菜单
 
-**候选与状态**：`codex/2.1.18-b2-work-record-menu` 的修正版已构建（资源标识见 PRETEST），实际客户端已切换到此工作树 Vite 前端，使用 b1 Rust 壳。D-8 委托 CU 已覆盖底边/右边、窄短窗口、内部/外部滚动、键盘和实际改名/移动；长子菜单覆盖按钮导致误移的初测 FAIL 已修复复测。修后子菜单单独左展仍仅有自动化覆盖，其他未测环境见 PRETEST；用户本人验收待定。
+**2026-11-08 候选与状态**：当前候选来自 `codex/2.1.18-b2-verification-20261107` 的产品提交 `b109f1e7`，独立工作树 `output/candidate/workbench.exe` 内嵌生产前端，Workbench 显示版本仍为 2.1.17。以 `output/启动-b2-验收.ps1` 启动，使用独立合成 QA 数据。本轮已实际覆盖底部避让、子菜单右展和左展、窄短窗口滚动、End/左右/Escape/Shift+F10、resize 关闭及改名/移动；只有 QA Session 01 改名、QA Session 25 移入 QA Collection 24，数据比对通过。Home/上下键和主菜单右边缘翻转本轮未单独补测，其他未测范围见 PRETEST。历史 Vite 开发候选及 852 项结果不作为本轮产物标识；用户本人验收待定。
 
 **前置**：本批候选有足够工作记录成员使侧栏可滚动；至少一个成员可展开现有子菜单。开发者准备无私人内容的记录，记录 Windows 缩放与窗口尺寸。
 
