@@ -26,3 +26,6 @@
 - 前端全套 876 passed（新增组件用例前）；最终描述与真实组件回归 7 passed，最终类型与生产构建 PASS。Rust 420 passed / 2 ignored。
 - 真实隔离 Docker 搜索 `grill` 包含准确 `grill-me`；读取 4.00 秒，重复 2.14 秒，返回准确简介及固定提交来源。QA 容器已清理。证据在本机 `output/verification/real-details.json` 及测试日志。
 - 自查完成，无独立评审；GUI/H9、SSH 尚 NOT RUN，按 D-15 留到统一 Preview。真实上游成功不代表人为断网 GUI 已验证。
+
+
+PR #73 精确 head `0ba8a105` 的 frontend/rust/cli 全部 PASS（run 42408462987），已合入 develop `c8a39b8a5c9fc36c1c1b3a2727fc28224ee8edde`。GUI/H9 仍待 Preview。

@@ -123,7 +123,7 @@ async function closeMarket(): Promise<void> {
       </span>
     </div>
 
-    <ExtensionFailureNotice />
+    <ExtensionFailureNotice @dismissed="marketButtonRef?.focus()" />
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
     <p v-if="!store.canLoad" class="explorer-empty">{{ t("extensions.noRuntime") }}</p>
     <p v-else-if="store.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>

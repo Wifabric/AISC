@@ -18,6 +18,8 @@ function makeStore() {
   return reactive({
     busy: false,
     operationLog: [] as ExtensionOperationRecord[],
+    get latestFailure() { return this.operationLog.filter(row => row.status !== "success").slice(-1)[0] ?? null; },
+    dismissFailureNotice: vi.fn(),
     canRetryOperation: vi.fn(() => true),
     retryOperation: vi.fn(async () => {}),
     copyOperationDiagnostic: vi.fn(() => {}),
@@ -57,6 +59,19 @@ describe("ExtensionFailureNotice", () => {
     expect(noRetry.find("[data-testid='extension-failure-retry']").exists()).toBe(false);
     await noRetry.get("[data-testid='extension-failure-copy']").trigger("click");
     expect(store.copyOperationDiagnostic).toHaveBeenCalledWith("op-2");
+  });
+
+  it("exposes a localized native close button and delegates without retrying", async () => {
+    store.operationLog = [record("unknown")];
+    const wrapper = mountNotice();
+    expect(wrapper.get('[data-testid="extension-failure-close"]').attributes('aria-label')).toBe('关闭失败提示');
+    i18n.global.locale.value = 'en-US';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get('[data-testid="extension-failure-close"]').attributes('aria-label')).toBe('Dismiss failure notice');
+    await wrapper.get('[data-testid="extension-failure-close"]').trigger('click');
+    expect(store.dismissFailureNotice).toHaveBeenCalledWith('op-2');
+    expect(store.retryOperation).not.toHaveBeenCalled();
+    expect(wrapper.emitted('dismissed')).toHaveLength(1);
   });
 
   it("renders nothing after successful operations only", () => {
