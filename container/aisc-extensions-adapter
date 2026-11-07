@@ -304,6 +304,95 @@ def list_items(kind: str) -> list[dict[str, Any]]:
     raise AdapterError(ERR_BAD_REQUEST, f"unknown kind: {kind}")
 
 
+def _tree_fingerprint(path: Path, allowed: list[Path]) -> str:
+    """Bounded content proof; missing, escaped or unreadable trees are unknown."""
+    try:
+        allowed = [p.resolve() for p in allowed]
+        seen: set[Path] = set()
+        digest = hashlib.sha256()
+        files = 0
+        total = 0
+        def visit(node: Path, relative: str, depth: int):
+            nonlocal files, total
+            resolved = node.resolve()
+            if depth > 30 or not any(resolved.is_relative_to(root) for root in allowed):
+                raise ValueError('outside ownership boundary')
+            digest.update(relative.encode() + b'\0')
+            if node.is_dir():
+                if resolved in seen:
+                    raise ValueError('recursive directory link')
+                seen.add(resolved)
+                for child in sorted(node.iterdir(), key=lambda p: p.name):
+                    visit(child, relative + '/' + child.name, depth + 1)
+            elif node.is_file():
+                before = node.stat()
+                files += 1
+                total += before.st_size
+                if files > 2000 or before.st_size > 8_000_000 or total > 64_000_000:
+                    raise ValueError('ownership inspection budget exceeded')
+                digest.update(node.read_bytes())
+                after = node.stat()
+                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                    raise ValueError('changed during inspection')
+            else:
+                raise ValueError('unsupported file type')
+        if not path.is_dir():
+            return ''
+        visit(path, '', 0)
+        return digest.hexdigest() if files else ''
+    except (OSError, ValueError, RuntimeError):
+        return ''
+
+
+def add_ownership_fingerprints(kind: str, items: list[dict[str, Any]]) -> None:
+    """Opt-in module proof. Ordinary listing keeps its existing cheap path.
+
+    Config values stay in-container; only their SHA-256 fingerprint leaves.
+    File proof includes added/edited files, not only package version metadata.
+    """
+    if kind == 'mcp':
+        proofs = {}
+        if _db_path().is_file():
+            connection = _connect_ro(_db_path())
+            try:
+                for identity, config in connection.execute('SELECT id, server_config FROM mcp_servers'):
+                    proofs[identity] = hashlib.sha256(str(config).encode()).hexdigest()
+            finally:
+                connection.close()
+        for item in items:
+            item['ownership_fingerprint'] = proofs.get(item['id'], '')
+        return
+    if kind == 'skills':
+        roots = [_db_path().parent]
+        roots += [Path(os.environ[name]) for name in ('CLAUDE_CONFIG_DIR', 'CODEX_CONFIG_DIR', 'CODEX_HOME') if os.environ.get(name)]
+        roots = list(dict.fromkeys(roots))
+        for item in items:
+            directory = Path(item.get('directory') or item['id'])
+            item['ownership_fingerprint'] = ''
+            if directory.is_absolute() or '..' in directory.parts:
+                continue
+            paths = [root / 'skills' / directory for root in roots]
+            existing = [path for path in paths if path.exists() or path.is_symlink()]
+            proofs = [_tree_fingerprint(path, roots) for path in existing]
+            if proofs and all(proofs):
+                # Include missing/present locations as well as their contents.
+                item['ownership_fingerprint'] = hashlib.sha256(json.dumps([
+                    (str(path), proofs[existing.index(path)] if path in existing else 'missing') for path in paths
+                ]).encode()).hexdigest()
+        return
+    root = Path(os.environ.get('CLAUDE_CONFIG_DIR', '/root/app/.claude')) / 'plugins'
+    try:
+        registry = json.loads((root / 'installed_plugins.json').read_text(encoding='utf-8')).get('plugins', {})
+    except (OSError, ValueError, AttributeError):
+        registry = {}
+    for item in items:
+        entries = registry.get(item['id'], [])
+        proof = ''
+        if len(entries) == 1 and isinstance(entries[0], dict) and entries[0].get('installPath'):
+            proof = _tree_fingerprint(Path(entries[0]['installPath']), [root / 'cache', root / 'marketplaces'])
+        item['ownership_fingerprint'] = proof
+
+
 def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
              input_text: str = "",
              env_overrides: dict[str, str] | None = None) -> str:
@@ -1421,6 +1510,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
     parser.add_argument("--url", help="deeplink: ccswitch://… URL")
     parser.add_argument("--kind", choices=list(KINDS))
+    parser.add_argument('--ownership', action='store_true', help='list: bounded content/config fingerprints for module ownership')
     parser.add_argument("--id")
     parser.add_argument("--agent", choices=list(AGENTS))
     parser.add_argument("--on", choices=["true", "false"], default="true")
@@ -1434,7 +1524,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.op == "list":
             if not args.kind:
                 raise AdapterError(ERR_BAD_REQUEST, "--kind is required")
-            print(json.dumps(_envelope("list", True, items=list_items(args.kind))))
+            items = list_items(args.kind)
+            if args.ownership:
+                add_ownership_fingerprints(args.kind, items)
+            print(json.dumps(_envelope("list", True, items=items)))
             return 0
         if args.op == "toggle":
             if not (args.kind and args.id and args.agent):
