@@ -208,3 +208,5 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 2026-11-08 H7/S7：Preview.4 真实插件 mattpocock-skills 安装、重复点击禁用、磁盘版本与刷新回读通过。H6 发现科研推荐安装 identity 与实际目录不符；修正现有四项推荐为实际下划线目录，保留显示名，不迁移用户定义或启用 U-4。前端 28 passed、类型/生产构建通过，四项均由当前冻结 CLI 在独立临时目标 installed→removed 并回读通过，容器已清理。旧候选 GUI 的部分失败与预装项保留如实记录；新版 GUI、精确提交 CI 与候选重建另记，详见 preview-gui。
 
 2026-11-08 Preview.5：#85 head d06b3269 的 CI 42420724178 三项 success，合入 5467c9cf。Workbench/NSIS 重建通过；真实 GUI arXiv/OpenAlex 安装、research 预装保护、当前项完成后停止、重新预检仅补缺项及切换视图后终态保持通过，三侧 SKILL.md 与记录一致。H2 的 Home/上下/End/Left/Escape/Shift+F10、647×593 子菜单左展与内部滚动、实际改名和移动均补充实测；磁盘对比只有指定会话变化。详情及未测边界见 [preview-gui](preview-gui.md)，不代表完整验收或本人认证通过。
+
+2026-11-08 H5/S8：真实双窗口同时编辑 QA-C，revision 9→10 后旧稿保存拒绝且磁盘不变，重新读取保留草稿，明确保存后 revision 11；目标容器断网时本地定义保存成功，网络已恢复。实测暴露底部保存看不到上方冲突提示，补错误渲染后的最小滚动定位与连续空名称验证；13 项相关模块回归、类型/生产构建通过。修后候选和 CI 待补记，旧 Preview.5 不代表错误可见性已修正，详见 preview-gui。

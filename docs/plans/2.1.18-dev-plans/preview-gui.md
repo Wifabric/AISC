@@ -160,3 +160,15 @@ QA-B 应用完成，arXiv 保留而非重复安装；持久化记录显示同一
 真实界面创建 QA-C，依次加入 research 技能、PubMed MCP、learn-with-coursera 插件，三者均显示实际安装标识及来源 URL，已选项按钮禁用。保存后磁盘定义含三种类型；再打开编辑器移除 PubMed，保存后显示两个成员，磁盘只保留技能和插件。期间没有为 C 创建或执行任何模块计划，技能文件状态不变；此处为定义编辑，不宣称 PubMed/Coursera 实际安装或调用已通过。
 
 证据 gui-preview5-h5-mixed-editor.txt、h6-preview5-c-saved-user-edited.json、h6-preview5-c-two-saved.json。离线编辑、双窗口冲突及 U-4 默认模块仍未实测/未批准，继续保留边界。
+
+## Preview.5 / H5 双窗口冲突与 S8 可见性修正
+
+重启候选后 QA-C 的两个成员仍在。通过“操作 → 新建窗口”打开独立 ui-workspace-peer，与原 QA 工作区使用相同用户配置、不同 workspace/runtime；两容器分别为 6bf30965bb6d / c32962952ba7，均使用 keep 62d358f2…，所有挂载位于 p18 QA 范围。原平台容器 2e801ec161c0 保持运行。
+
+两窗口从 revision 9 打开同一 QA-C，分别改名 A/B。A 保存变为 revision 10；B 旧稿保存拒绝，磁盘与 A 保存后的文件完全一致，B 输入仍保留。B 点击“重新读取定义”后列表显示 A 的最新名称，草稿仍为 B；再次明确保存后变为 revision 11。成员和其他模块均不变，check_h5_conflict.py 交叉核对通过。此处验证保存冲突保护与显式恢复，不是合并两个草稿。
+
+B 最后保存期间，仅断开专用 peer 容器的 bridge 网络，inspect 显示无网络端点；本地定义仍成功保存，随后恢复 bridge。未修改 Windows 网络、其他容器或用户配置；该证据为运行目标离线，不扩写为整机离线。证据 h5-two-window-{baseline,a-saved,b-rejected,b-recovered}.json、h5-peer-network-{offline,online}.json、gui-preview5-h5-conflict-reloaded.txt。
+
+S8：803×631 短窗口中，在编辑器底部点击保存后，冲突文本位于上方不可见区域，画面停在保存按钮，必须手动上滚才见错误和恢复入口。数据保护正确，但错误可见性不足。为模块持久化错误在渲染后执行最近边界滚动；空名称拒绝也定位其提示，包括连续重复提交。不改焦点、不清空草稿、不自动重试、不放宽 revision 校验。组件回归覆盖冲突提示定位、草稿保留、用户重新读取前无二次保存、新 revision 显式保存及重复空名称拒绝；相关模块 13 passed，类型和生产构建通过。修正版候选、CI 和真实 GUI 复测另记，Preview.5 不代表修后结果。
+
+旧候选证据 gui-preview5-h5-conflict-offscreen.txt、gui-preview5-h5-conflict-visible.txt；本地测试 module-feedback-tests.log、module-feedback-build.log。U-4、跨目标安装状态和其余 H 项仍按各自记录处理。
