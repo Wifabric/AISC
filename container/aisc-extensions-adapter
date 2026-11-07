@@ -1209,6 +1209,11 @@ def _skill_search_remote(query: str) -> list[dict[str, Any]]:
     return _parse_skills_api(data)
 
 
+def _skill_name_key(value: str) -> str:
+    # Some upstream directories use underscores while SKILL names use hyphens.
+    return value.replace("_", "-")
+
+
 def _skill_description(text: str, directory: str) -> str:
     """Extract frontmatter text, not instructions from the skill body.
 
@@ -1221,7 +1226,7 @@ def _skill_description(text: str, directory: str) -> str:
         return ""
     front = parts[0][4:]
     name = re.search(r"(?m)^name:\s*(.+)$", front)
-    if name and name.group(1).strip().strip("\"'") != directory.rsplit("/", 1)[-1]:
+    if name and _skill_name_key(name.group(1).strip().strip("\"'")) != _skill_name_key(directory.rsplit("/", 1)[-1]):
         return ""
     match = re.search(r"(?m)^description:[ \t]*(.*)$", front)
     if not match:
@@ -1312,7 +1317,7 @@ def _skill_detail_item(spec: str, directory: str, text: str, url: str, *, root=F
     normalized = text.lstrip('\ufeff').replace('\r\n', '\n')
     front = normalized.split('\n---', 1)[0] if normalized.startswith('---\n') else ''
     name = re.search(r'(?m)^name:\s*(.+)$', front)
-    if name and name.group(1).strip().strip('\"\'') != directory.rsplit('/', 1)[-1]:
+    if name and _skill_name_key(name.group(1).strip().strip('\"\'')) != _skill_name_key(directory.rsplit('/', 1)[-1]):
         return None
     if root and not name:
         return None
@@ -1341,6 +1346,10 @@ def skill_describe(spec: str) -> list[dict[str, Any]]:
         tree = _skill_tree(repo)
         matches = [entry for entry in tree['paths'] if isinstance(entry, dict) and isinstance(entry.get('path'), str)
                    and (entry['path'] == directory+'/SKILL.md' or entry['path'].endswith('/'+directory+'/SKILL.md'))]
+        if not matches:
+            alias = _skill_name_key(directory)+'/SKILL.md'
+            matches = [entry for entry in tree['paths'] if isinstance(entry, dict) and isinstance(entry.get('path'), str)
+                       and (_skill_name_key(entry['path']) == alias or _skill_name_key(entry['path']).endswith('/'+alias))]
         if len(matches) != 1:
             raise AdapterError(ERR_NOT_FOUND, 'No unique matching skill path; open the source repository')
         entry = matches[0]

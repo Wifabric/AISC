@@ -1375,6 +1375,25 @@ class SkillDescriptionTests(unittest.TestCase):
             result=A.skill_describe('owner/repo:audit')[0]
         self.assertEqual(result['description'],'');self.assertEqual(result['description_status'],'empty')
 
+    def test_hyphenated_name_resolves_unique_underscore_directory(self):
+        import base64
+        text='---\nname: literature-search-arxiv\ndescription: Search papers.\n---\nBody'
+        tree={'commit':'a'*40,'paths':[{'path':'skills/literature_search_arxiv/SKILL.md','sha':'b'*40,'size':len(text)}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), \
+             mock.patch.object(A,'_skill_api',return_value={'encoding':'base64','content':base64.b64encode(text.encode()).decode()}):
+            item=A.skill_describe('owner/repo:literature-search-arxiv')[0]
+        self.assertEqual(item['description'],'Search papers.')
+        self.assertIn('/literature_search_arxiv/',item['description_url'])
+        with mock.patch.object(A,'_read_skill_url',return_value=text):
+            self.assertEqual(A.skill_describe('owner/repo:literature_search_arxiv')[0]['description'],'Search papers.')
+
+    def test_aliases_do_not_guess_ambiguous_paths_or_accept_different_names(self):
+        tree={'commit':'a'*40,'paths':[{'path':f'skills/{group}/literature_search_arxiv/SKILL.md'} for group in ('one','two')]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as api:
+            with self.assertRaises(A.AdapterError): A.skill_describe('owner/repo:literature-search-arxiv')
+        api.assert_not_called()
+        self.assertIsNone(A._skill_detail_item('owner/repo:audit','audit','---\nname: different\ndescription: Wrong.\n---','https://example.test'))
+
     def test_tree_cache_reuses_pinned_metadata_and_handles_corruption(self):
         with tempfile.TemporaryDirectory() as root, mock.patch.dict(A.os.environ,{'AISC_EXTENSION_CACHE_DIR':root}):
             responses=[{'sha':'a'*40},{'tree':[{'path':'skills/nested/audit/SKILL.md','sha':'b'*40,'size':30,'type':'blob'}],'truncated':False}]
