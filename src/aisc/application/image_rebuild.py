@@ -11,7 +11,7 @@ from aisc.application.data_root import shared_root
 from aisc.application.docker_lifecycle import _assert_image_operable, _cc_switch_for_rebuild
 from aisc.application.image_reference import split_tagged_reference
 from aisc.cli.build_progress_parser import BuildProgressParser
-from aisc.cli.commands.build import _open_build_log, plan_build
+from aisc.cli.commands.build import _open_build_log, plan_build, prepare_build_argv
 from aisc.domain.models import CliError
 
 
@@ -111,7 +111,8 @@ def guarded_rebuild(executor, *, root: str, tag: str, expected_image_id: str,
                 for progress in parser.feed(text):
                     emitter.emit('build.progress', asdict(progress))
         try:
-            result = executor.run_streaming_captured(plan.docker_argv, chunk, timeout=1800.0)
+            argv = prepare_build_argv(plan, executor, emitter=emitter)
+            result = executor.run_streaming_captured(argv, chunk, timeout=1800.0)
             if result.exit_code != 0 or result.timed_out or result.command_not_found:
                 _fail('Build failed; original image preserved. See the build log.')
             new_id = _inspect(executor, temporary)
