@@ -53,3 +53,5 @@ D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代�
 - [PR #83](https://github.com/Wifabric/AISC/pull/83)：head 51b5cff53d7a1ad61219d7754c212d203df9e2bf，合入 24d03cd379babc8a9d61499f9de2f5204856145c；[CI 42417635698](https://github.com/Wifabric/AISC/actions/runs/42417635698) 三项 PASS。H4/S6 重建复用普通构建的基础镜像回退、固定 digest 验证和本机 builder 绑定；定向 52、全套 Python 1796/54 skipped/207 subtests 及真实冻结 CLI 完整构建通过。单代理自查，无独立评审。当前本机候选更新为 Preview.4，产物及 GUI 证据见 DELIVERY/preview-gui。
 
 - [PR #85](https://github.com/Wifabric/AISC/pull/85)：head d06b3269cc30bff8d5f2dfd7bf422fdd5c7bb704，合入 5467c9cf4a6cb58d0f1382da1982f8e45f6765f2；[CI 42420724178](https://github.com/Wifabric/AISC/actions/runs/42420724178) 三项 PASS。S7 四个科研推荐使用实际安装目录；28 项前端、构建、真实四项 installed→removed 通过。单代理自查，无独立评审；含修正的 Preview.5 已构建，GUI 及未测边界见 preview-gui。
+
+- [PR #87](https://github.com/Wifabric/AISC/pull/87)：head `195ff2b6d42e628d36be97180c7e2ff0079ef9b7`，合入 `5677a6e67fd12283577d1efe73d5365092112dfd`；[CI 42425026074](https://github.com/Wifabric/AISC/actions/runs/42425026074) frontend/rust/cli 三项 PASS。S8 模块保存错误与重复空名称校验滚动定位，13 项相关回归及类型/构建通过。单代理自查，无独立评审；Preview.6 已构建，真实界面与边界见 preview-gui。

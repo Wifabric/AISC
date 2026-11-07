@@ -172,3 +172,19 @@ B 最后保存期间，仅断开专用 peer 容器的 bridge 网络，inspect �
 S8：803×631 短窗口中，在编辑器底部点击保存后，冲突文本位于上方不可见区域，画面停在保存按钮，必须手动上滚才见错误和恢复入口。数据保护正确，但错误可见性不足。为模块持久化错误在渲染后执行最近边界滚动；空名称拒绝也定位其提示，包括连续重复提交。不改焦点、不清空草稿、不自动重试、不放宽 revision 校验。组件回归覆盖冲突提示定位、草稿保留、用户重新读取前无二次保存、新 revision 显式保存及重复空名称拒绝；相关模块 13 passed，类型和生产构建通过。修正版候选、CI 和真实 GUI 复测另记，Preview.5 不代表修后结果。
 
 旧候选证据 gui-preview5-h5-conflict-offscreen.txt、gui-preview5-h5-conflict-visible.txt；本地测试 module-feedback-tests.log、module-feedback-build.log。U-4、跨目标安装状态和其余 H 项仍按各自记录处理。
+
+## Preview.6 / S8 修后实机验证
+
+PR #87 head 195ff2b6d 的 CI 42425026074 frontend/rust/cli 均 success，合入 develop 5677a6e6。本机 Workbench 与 384429548 字节 NSIS 重建完成，CLI/bundle 与 Preview.5 相同。真实 About 显示 Workbench 2.1.18-preview.6、CLI/Bundle 0.1.10。工作区仍为独立 ui-workspace，QA 容器 c1d5609d21d2、镜像 keep 62d358f2…；原平台进程 40320 保留。
+
+818×669 窗口在 QA-C 编辑器底部提交空名称，提示“请输入模块名称。”自动滚入可见区域；连续再次提交仍定位提示，revision 保持 11。再输入有效名称后，用受控夹具只改独立 QA 配置中的 QA-A 名称并将 revision 置为 12，模拟外部写入。底部保存旧稿被拒绝，冲突提示自动滚入可见区域，QA-C 草稿保留。此轮是新版错误可见性的故障注入，真实双窗口冲突证据仍为上一轮 Preview.5，不混写。
+
+外部写入文件与拒绝后的文件 SHA256 均为 e04bc6fd7e50281cbd954d8ed2405a13e3eb7c200ba5f85ccd542d090bbb312b。点击“重新读取定义”后列表显示 QA-A 的新名称，QA-C 草稿仍为“QA-C Preview6 冲突恢复”；再次明确保存后 revision 13，QA-A 外部修改及其他成员全部保留。check_h5_preview6.py 核对 revision 11→12→12→13、拒绝不覆盖、显式恢复和成员保留均 PASS。QA-A 测试名称留在隔离数据，不还原整份旧配置。
+
+证据：gui-preview6-h5-{empty-visible,conflict-visible,reloaded,recovered}.txt、h5-preview6-{before-conflict,external-definition,conflict-rejected,recovered}.json、gui-preview6-about.txt。S8 真实界面回归 PASS；未代替完整 H5/H6 或 U-4 默认模块验收。
+
+## Preview.6 / H2 侧栏滚动与窗口尺寸
+
+打开未归档 Session 17 的右键菜单后滚动菜单外的工作记录侧栏，菜单正常关闭。重新打开后通过 Windows 原生“大小”操作从 818×669 缩窄到 646×669；进入原生调整模式时应用菜单仍在，完成实际尺寸变化后菜单关闭，没有残留脱离目标的菜单。直接拖边首次未改变尺寸，不将该次尝试计作 resize 通过。
+
+check_workrecords_preview6.py 与 Preview.5 保存后的记录对比：24 个集合 ID/名称/状态/成员以及 30 条未归档会话标题均不变。证据 gui-preview6-h2-sidebar-scroll-closed.txt、gui-preview6-h2-resize-closed.txt、preview6-workrecords-after.json。本轮补齐侧栏滚动和实际窗口缩窄关闭；主菜单最右边缘翻转仍未单独实测，用户最终验收仍待完成。
