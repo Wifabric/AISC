@@ -7,6 +7,24 @@ const call = vi.mocked(extensionsCall);
 const skill = { kind: "market-skill", id: "owner/repo:audit", name: "audit", repo: "owner/repo", directory: "audit" };
 beforeEach(() => { setActivePinia(createPinia()); call.mockReset(); });
 describe("on-demand functional descriptions", () => {
+  it("caches a valid empty response and preserves good text on a failed explicit retry", async () => {
+    const store=useExtensionsStore();store.setContext('/one','r1');
+    call.mockResolvedValueOnce({items:[{...skill,description:'',description_status:'empty'}]});
+    await store.describeSkill(skill);await store.describeSkill(skill);expect(call).toHaveBeenCalledTimes(1);
+    call.mockResolvedValueOnce({items:[{...skill,description:'Good summary',description_url:'https://github.com/owner/repo/blob/sha/skills/audit/SKILL.md'}]});
+    await store.describeSkill(skill,true);call.mockRejectedValueOnce(new Error('offline'));
+    await store.describeSkill(skill,true);expect(store.describedItem(skill).description).toBe('Good summary');
+    expect(store.descriptionState(skill)?.error).toBe('offline');
+  });
+  it("hydrates at most three search summaries and exposes them without modifying raw results", async () => {
+    const store=useExtensionsStore();store.setContext('/one','r1');
+    const items=['a','b','c','d'].map(name=>({...skill,id:`owner/repo:${name}`,name,directory:name}));
+    call.mockImplementation(async p=>p.op==='skill-search'?{items}:{items:[{...items.find(x=>x.id===p.id),description:'Loaded summary'}]});
+    await store.searchSkills('grill');for(let i=0;i<12;i++)await Promise.resolve();
+    expect(call.mock.calls.filter(([p])=>p.op==='skill-describe')).toHaveLength(3);
+    expect(store.marketSkillGroups[0].items[0].description).toBe('Loaded summary');
+    expect(store.marketSkills[0].description).toBeUndefined();
+  });
   it("loads once per identity without changing installed/search lists", async () => {
     let resolve!: (value: any) => void;
     call.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
@@ -19,6 +37,7 @@ describe("on-demand functional descriptions", () => {
     expect(call).toHaveBeenCalledWith(expect.objectContaining({ op: "skill-describe", id: skill.id }));
     resolve({ items: [{ ...skill, description: "Audit API compatibility" }] }); await pending;
     expect(store.describedItem(skill).description).toBe("Audit API compatibility");
+    expect(store.describedItem({ ...skill, kind: "mcp" }).description).toBeUndefined();
     expect(store.marketSkills[0]?.description).toBeUndefined();
     await store.describeSkill(skill); expect(call).toHaveBeenCalledTimes(1);
   });

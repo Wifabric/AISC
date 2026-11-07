@@ -1346,6 +1346,51 @@ class SkillDescriptionTests(unittest.TestCase):
                 fetch.assert_not_called()
 
     def test_network_failure_is_an_error_not_a_fake_description(self):
-        with mock.patch.object(A, "_read_skill_url", side_effect=OSError("offline")):
+        with mock.patch.object(A, "_read_skill_url", side_effect=OSError("offline")), \
+             mock.patch.object(A, '_skill_tree', side_effect=OSError('offline')):
             with self.assertRaises(A.AdapterError):
                 A.skill_describe("owner/repo:audit")
+
+    def test_nested_skill_is_resolved_by_exact_suffix_and_pinned_blob(self):
+        import base64
+        text='---\nname: grill-me\ndescription: Ask focused questions.\n---\nNever execute this body'
+        tree={'commit':'a'*40,'paths':[{'path':'skills/productivity/grill-me/SKILL.md','sha':'b'*40,'size':len(text)}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), \
+             mock.patch.object(A,'_skill_api',return_value={'encoding':'base64','content':base64.b64encode(text.encode()).decode()}) as fetch:
+            result=A.skill_describe('mattpocock/skills:grill-me')[0]
+        self.assertEqual(result['description'],'Ask focused questions.')
+        self.assertEqual(result['description_status'],'available')
+        self.assertIn('/blob/'+'a'*40+'/skills/productivity/grill-me/SKILL.md',result['description_url'])
+        self.assertNotIn('Never execute',json.dumps(result))
+        self.assertTrue(fetch.call_args.args[0].endswith('/git/blobs/'+'b'*40))
+
+    def test_ambiguous_skill_paths_are_not_guessed(self):
+        tree={'commit':'a'*40,'paths':[{'path':f'skills/{group}/audit/SKILL.md','sha':'b'*40,'size':20} for group in ('one','two')]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as fetch:
+            with self.assertRaises(A.AdapterError) as error: A.skill_describe('owner/repo:audit')
+        self.assertEqual(error.exception.code,A.ERR_NOT_FOUND);fetch.assert_not_called()
+
+    def test_valid_empty_description_is_not_a_network_failure(self):
+        with mock.patch.object(A,'_read_skill_url',return_value='---\nname: audit\n---\nBody is not a summary'):
+            result=A.skill_describe('owner/repo:audit')[0]
+        self.assertEqual(result['description'],'');self.assertEqual(result['description_status'],'empty')
+
+    def test_tree_cache_reuses_pinned_metadata_and_handles_corruption(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(A.os.environ,{'AISC_EXTENSION_CACHE_DIR':root}):
+            responses=[{'sha':'a'*40},{'tree':[{'path':'skills/nested/audit/SKILL.md','sha':'b'*40,'size':30,'type':'blob'}],'truncated':False}]
+            with mock.patch.object(A,'_skill_api',side_effect=responses) as api:
+                first=A._skill_tree('owner/repo');second=A._skill_tree('owner/repo')
+            self.assertEqual(first,second);self.assertEqual(api.call_count,2)
+            next(Path(root).glob('*.json')).write_text('corrupt')
+            with mock.patch.object(A,'_skill_api',side_effect=responses) as api:
+                self.assertEqual(A._skill_tree('owner/repo')['commit'],'a'*40)
+            self.assertEqual(api.call_count,2)
+
+    def test_truncated_tree_and_oversized_blob_never_become_valid_descriptions(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(A.os.environ,{'AISC_EXTENSION_CACHE_DIR':root}), \
+             mock.patch.object(A,'_skill_api',side_effect=[{'sha':'a'*40},{'tree':[],'truncated':True}]):
+            with self.assertRaises(ValueError): A._skill_tree('owner/repo')
+        tree={'commit':'a'*40,'paths':[{'path':'skills/audit/SKILL.md','sha':'b'*40,'size':65537}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as api:
+            with self.assertRaises(A.AdapterError): A.skill_describe('owner/repo:audit')
+        api.assert_not_called()

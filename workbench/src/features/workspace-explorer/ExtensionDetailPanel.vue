@@ -56,9 +56,11 @@ const authText = computed(() => {
 });
 
 const sourceUrl = computed(() => {
+  const repo = props.item.repo?.trim() ?? "";
+  const detail = props.item.description_url ?? "";
+  if (repo && (detail.startsWith(`https://github.com/${repo}/blob/`) || detail.startsWith(`https://raw.githubusercontent.com/${repo}/`))) return detail;
   const explicit = props.recommendation?.sourceUrl ?? "";
   if (explicit) return explicit;
-  const repo = props.item.repo?.trim() ?? "";
   if (/^https:\/\//i.test(repo)) return repo;
   if (repo && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
     return `https://github.com/${repo}`;
@@ -91,7 +93,7 @@ const sourceUrl = computed(() => {
     </header>
 
     <p class="detail-summary" data-testid="extension-detail-summary">
-      {{ loading ? t("extensions.detail.loading") : summary.summary }}
+      {{ loading && summary.source === 'fallback' ? t("extensions.detail.loading") : summary.summary }}
     </p>
 
     <div v-if="error" class="detail-fetch-error" role="status">

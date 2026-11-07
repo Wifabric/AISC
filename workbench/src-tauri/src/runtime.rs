@@ -1054,6 +1054,9 @@ pub async fn extensions_call(
         // Adapter: up to 3 x 180s; host Docker bridge: 600s plus target lock.
         // Short reads retain PROVIDER_TIMEOUT.
         Duration::from_secs(660)
+    } else if op == "skill-describe" {
+        // Bounded shallow probes, commit/tree discovery and one skill blob.
+        Duration::from_secs(60)
     } else if op.starts_with("github-auth-") {
         Duration::from_secs(90)
     } else if op == "module-plan" || op == "module-status" {

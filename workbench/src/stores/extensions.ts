@@ -78,30 +78,36 @@ function errorText(e: unknown): string {
 
 export const useExtensionsStore = defineStore("extensions", () => {
   const toast = useToastStore();
-  const descriptions = ref<Record<string, { description?: string; loading: boolean; error?: string }>>({});
+  const descriptions = ref<Record<string, { description?: string; description_url?: string; loaded?: boolean; loading: boolean; error?: string }>>({});
   function descriptionKey(item: ExtensionsItem): string {
     return skillUpdateSpec(item);
   }
   function describedItem(item: ExtensionsItem): ExtensionsItem {
-    const description = descriptions.value[descriptionKey(item)]?.description;
-    return description ? { ...item, description } : item;
+    if (!["skills", "market-skill"].includes(item.kind)) return item;
+    const cached = descriptions.value[descriptionKey(item)];
+    return cached ? { ...item, description: cached.description ?? item.description,
+      description_url: cached.description_url ?? item.description_url } : item;
   }
   function descriptionState(item: ExtensionsItem) {
+    if (!["skills", "market-skill"].includes(item.kind)) return undefined;
     return descriptions.value[descriptionKey(item)];
   }
-  async function describeSkill(item: ExtensionsItem): Promise<void> {
-    if (!context.value || !["skills", "market-skill"].includes(item.kind) || item.description?.trim()) return;
+  async function describeSkill(item: ExtensionsItem, force = false): Promise<void> {
+    if (!context.value || !["skills", "market-skill"].includes(item.kind)) return;
     const id = descriptionKey(item);
-    if (!id.includes(":") || descriptions.value[id]?.loading || descriptions.value[id]?.description) return;
+    if (item.description?.trim() && !descriptions.value[id]) return;
+    if (!id.includes(":") || descriptions.value[id]?.loading || (!force && descriptions.value[id]?.loaded)) return;
     const token = contextToken();
-    descriptions.value[id] = { loading: true };
+    const cached = descriptions.value[id];
+    descriptions.value[id] = { ...cached, loading: true, error: undefined };
     try {
       const result = await call<{ items?: ExtensionsItem[] }>("skill-describe", { id });
       if (!isCurrentContext(token)) return;
-      const description = result.items?.find(row => row.id === id)?.description?.trim();
-      descriptions.value[id] = { loading: false, ...(description ? { description } : {}) };
+      const detail = result.items?.find(row => row.id === id);
+      descriptions.value[id] = { loading: false, loaded: true, description: detail?.description?.trim() ?? "",
+        description_url: detail?.description_url };
     } catch (error) {
-      if (isCurrentContext(token)) descriptions.value[id] = { loading: false, error: errorText(error) };
+      if (isCurrentContext(token)) descriptions.value[id] = { ...cached, loading: false, error: errorText(error) };
     }
   }
   const kind = ref<ExtensionsKind>("skills");
@@ -264,7 +270,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   );
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
-  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value));
+  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value.map(describedItem)));
 
   async function call<T = Record<string, unknown>>(
     op: string,
@@ -629,9 +635,19 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   async function searchSkills(query: string): Promise<void> {
+    const generation = searchGeneration.skills + 1;
+    const token = contextToken();
     await runSearch("skills", "skill-search", query, (items) => {
       marketSkills.value = items;
     });
+    // Keep search interactive. Hydrate a bounded number of missing summaries
+    // serially; every later item remains available through on-demand details.
+    void (async () => {
+      for (const item of marketSkills.value.filter(item => !item.description?.trim()).slice(0, 3)) {
+        if (!isCurrentContext(token) || generation !== searchGeneration.skills) return;
+        await describeSkill(item);
+      }
+    })();
   }
 
   async function importDeeplink(url: string): Promise<void> {

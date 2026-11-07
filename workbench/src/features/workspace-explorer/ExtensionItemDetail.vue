@@ -14,7 +14,8 @@ const store = useExtensionsStore();
 const { locale } = useI18n();
 const item = computed(() => store.describedItem(props.item));
 const state = computed(() => store.descriptionState(props.item));
-watch(() => props.item, value => {
+watch(() => [props.item.kind, props.item.id, props.item.repo, props.item.directory].join("\0"), () => {
+  const value = props.item;
   if (extensionSummary(value, locale.value === "en-US" ? "en-US" : "zh-CN").source === "fallback")
     void store.describeSkill(value);
 }, { immediate: true });
@@ -23,7 +24,7 @@ watch(() => props.item, value => {
 <template>
   <ExtensionDetailPanel :item="item" :recommendation="recommendation" :update="update"
     :evidence-label="evidenceLabel" :loading="state?.loading" :error="state?.error"
-    @retry="store.describeSkill(props.item)" @close="emit('close')">
+    @retry="store.describeSkill(props.item, true)" @close="emit('close')">
     <template v-if="$slots.actions" #actions><slot name="actions" /></template>
   </ExtensionDetailPanel>
 </template>
