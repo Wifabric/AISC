@@ -47,8 +47,9 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 27] = [
+const EXTENSIONS_OPS: [&str; 30] = [
     "module-plan", "module-step", "module-status",
+    "github-auth-status", "github-auth-save", "github-auth-check",
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
@@ -1053,6 +1054,8 @@ pub async fn extensions_call(
         // Adapter: up to 3 x 180s; host Docker bridge: 600s plus target lock.
         // Short reads retain PROVIDER_TIMEOUT.
         Duration::from_secs(660)
+    } else if op.starts_with("github-auth-") {
+        Duration::from_secs(90)
     } else if op == "module-plan" || op == "module-status" {
         Duration::from_secs(120)
     } else if (op == "skill-install-group" || op == "skill-update-group")

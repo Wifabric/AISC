@@ -1,6 +1,6 @@
 # 实测与证据账本
 
-截至 2026-11-08，b1–b6 已合入 develop，b7 已实现并完成本地验证，b8–b10 待实施。下方按日期保留历史现场记录，当前状态以本表及最新批次记录为准。D-15 将后续 GUI / 手动验收统一留到 Preview；自动化和真实 Docker 不等于 GUI PASS。
+截至 2026-11-08，b1–b7 已合入 develop，b8 已实现并完成本地验证，b9–b10 待实施。下方按日期保留历史现场记录，当前状态以本表及最新批次记录为准。D-15 将后续 GUI / 手动验收统一留到 Preview；自动化和真实 Docker 不等于 GUI PASS。
 
 | 批次 | 定向/自动化 | 真实数据面 | 候选构建 | Windows CU | 用户验收 | 原因 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -11,7 +11,9 @@
 | b5 | PASS：前端 858 及修后 29 项；Rust 420 / 2 ignored | PASS：Rust 真实临时文件持久化、损坏保护、并发冲突和备份恢复；三类安装不在本批范围 | 前端生产构建 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR #69 三项 CI PASS，已合入 d3798c06；U-4 默认成员保留待批准 |
 | b6 | PASS：Python 1763 及最终定向 109、前端 865 及构建、Rust 420 / 2 ignored | PASS：真实 Skill/MCP/Plugin 应用、共享保护、卸载及运行标识 | 冻结 CLI 模块闭环 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR #70 三项 CI PASS，已合入 ffc84885；详细证据及未测边界见 b6 |
 
-| b7 | PASS：Python 全套 1774 及最终定向 112、前端 869 及构建、Rust 420 / 2 ignored | PASS：官方精确插件安装；受控 35 秒慢安装、断连、并发拒绝与超时清理 | 前端构建 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR/CI 待执行；详见 b7，真实上游故障慢网与 SSH 未测 |
+| b7 | PASS：Python 全套 1774 及最终定向 112、前端 869 及构建、Rust 420 / 2 ignored | PASS：官方精确插件安装；受控 35 秒慢安装、断连、并发拒绝与超时清理 | 前端构建 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR #71 三项 CI PASS，已合入 61c70540；详见 b7，真实上游故障慢网与 SSH 未测 |
+
+| b8 | PASS：Python 1782 及最终定向 101、前端 874 及构建、Rust 420 / 2 ignored | PASS：合成令牌双引擎配置、真实客户端读取、开关/重新同步；真实授权 NOT RUN | 冻结 CLI 全链 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR/CI 待执行；不将保存或合成令牌写成连接通过 |
 
 本轮文档检查结果单独记 [PROGRESS](PROGRESS.md)，不填成上表功能 PASS。
 

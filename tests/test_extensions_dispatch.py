@@ -9,6 +9,9 @@ from aisc.cli.main import _cmd_extensions
 class ExtensionsDispatchTests(unittest.TestCase):
     def test_market_ops_are_dispatched(self):
         cases = [
+            ("github-auth-status", "cmd_extensions_github_auth"),
+            ("github-auth-save", "cmd_extensions_github_auth"),
+            ("github-auth-check", "cmd_extensions_github_auth"),
             ("module-plan", "cmd_extensions_module"),
             ("module-step", "cmd_extensions_module"),
             ("module-status", "cmd_extensions_module"),

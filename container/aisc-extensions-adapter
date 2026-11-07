@@ -174,7 +174,9 @@ def _mcp_auth_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     declared = cfg.get("bearer_token_env_var")
     env_name = declared if isinstance(declared, str) and declared.strip() else "GITHUB_PAT_TOKEN"
-    codex_ready = bool(os.environ.get(env_name, "").strip())
+    codex_headers = cfg.get('http_headers')
+    codex_ready = bool(os.environ.get(env_name, "").strip()) or bool(
+        isinstance(codex_headers, dict) and str(codex_headers.get('Authorization') or '').strip())
     return {
         "auth_required": True,
         "auth_configured": claude_ready and codex_ready,
@@ -809,6 +811,11 @@ def toggle(kind: str, item_id: str, agent: str, on: bool) -> None:
     verb = "enable" if on else "disable"
     argv = ["cc-switch", kind, verb, item_id, "-a", agent]
     _run_cli(argv)
+    if kind == 'mcp' and item_id == 'github':
+        sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
+        import default_mcp
+        default_mcp.synchronize(config_dir=_db_path().parent, project_dir=Path('/root/app'),
+            codex_config_dir=Path(os.environ.get('CODEX_CONFIG_DIR') or os.environ.get('CODEX_HOME') or '/root/.codex'))
 
 
 def delete(kind: str, item_id: str) -> None:
@@ -1578,7 +1585,7 @@ def _main(argv: list[str] | None = None) -> int:
                                        "plugin-market-add", "plugin-market-remove",
                                        "plugin-search",
                                        "mcp-search", "mcp-market-install",
-                                       "updates-check"])
+                                       "updates-check", "github-auth-status", "github-auth-save", "github-auth-check"])
     parser.add_argument("--query", help="marketplace query (skill/plugin/MCP)")
     parser.add_argument("--url", help="deeplink: ccswitch://… URL")
     parser.add_argument("--kind", choices=list(KINDS))
@@ -1593,6 +1600,27 @@ def _main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.op.startswith('github-auth-'):
+            sys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))
+            from github_mcp_auth import handle, AuthError
+            try:
+                text = sys.stdin.read(16385)
+                if len(text) > 16384:
+                    raise AuthError('INVALID_REQUEST')
+                request = json.loads(text or '{}')
+                if not isinstance(request, dict):
+                    raise AuthError('INVALID_REQUEST')
+                data = handle(args.op, request, config_dir=_db_path().parent,
+                              project_dir=Path('/root/app'),
+                              codex_dir=Path(os.environ.get('CODEX_CONFIG_DIR') or os.environ.get('CODEX_HOME') or '/root/.codex'))
+            except AuthError as exc:
+                raise AdapterError('AISC_ERR_GITHUB_AUTH_'+exc.code, 'GitHub MCP configuration: '+exc.code)
+            except Exception:
+                raise AdapterError('AISC_ERR_GITHUB_AUTH_INVALID_REQUEST', 'Invalid GitHub MCP request')
+            envelope = _envelope(args.op, True)
+            envelope['data'] = data
+            print(json.dumps(envelope))
+            return 0
         if args.op == "list":
             if not args.kind:
                 raise AdapterError(ERR_BAD_REQUEST, "--kind is required")

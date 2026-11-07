@@ -720,6 +720,16 @@ export const useExtensionsStore = defineStore("extensions", () => {
     await loadPluginMarkets();
   }
 
+  async function githubAuth(owner: { workspace: string; runtimeId: string },
+    op: "github-auth-status" | "github-auth-save" | "github-auth-check", request: Record<string, unknown>): Promise<unknown> {
+    if (context.value?.workspace !== owner.workspace || context.value?.runtimeId !== owner.runtimeId) {
+      throw new Error("GitHub MCP target changed");
+    }
+    // Authentication payloads never enter generic operation history or retry
+    // closures. The component owns a transient, masked input only.
+    return ipc.extensionsCall({ ...owner, op, config: JSON.stringify(request) });
+  }
+
   function setContext(workspace: string, runtimeId: string): void {
     const next = workspace && runtimeId ? { workspace, runtimeId } : null;
     const changed = context.value?.workspace !== next?.workspace
@@ -746,7 +756,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
     installMcpMarket, importDeeplink, addSkillRepo, loadSkillRepos,
     removeSkillRepo, loadPluginMarkets, addPluginMarket, removePluginMarket,
-    load, toggle, remove, installSkill, addMcp,
-    pluginAction, setContext,
+    load, refreshKind: refresh, toggle, remove, installSkill, addMcp,
+    pluginAction, githubAuth, setContext,
   };
 });
