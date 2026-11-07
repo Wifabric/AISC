@@ -23,9 +23,9 @@ Set-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt') -Value 'keep-me' -En
 
 ## H1 / b1：精确大小写与冲突
 
-**本轮候选**：`codex/2.1.18-b1-case-rename` 工作树的 `workbench/src-tauri/target/debug/workbench.exe`，精确 SHA256 见 PRETEST。版本显示仍为 2.1.17；这是带 b1 修复的开发候选。独立 QA 目录已准备，名称 `AISC-b1-QA-64b486cf`；进入时选本机，下一步完成预检，再启动。无需在终端输入模型指令。
+**历史 b1 候选（非当前入口）**：`codex/2.1.18-b1-case-rename` 工作树的 `workbench/src-tauri/target/debug/workbench.exe`，精确 SHA256 见 PRETEST。版本显示仍为 2.1.17；这是带 b1 修复的开发候选。独立 QA 目录已准备，名称 `AISC-b1-QA-64b486cf`；进入时选本机，下一步完成预检，再启动。无需在终端输入模型指令。
 
-**本轮状态**：用户委托 agent 已完成文件/目录改名、刷新重入及磁盘不覆盖检查。冲突文案初测不可见，已补前端修复并构建；用户随后取消 CU，已停止操作，修后文案复测 NOT RUN。当前窗口未切换到前端修正版；后续恢复测试时须先切换对应候选再复测冲突提示，不能要求用户在旧窗口验收新修复。
+**历史 b1 实测状态**：用户委托 agent 已完成文件/目录改名、刷新重入及磁盘不覆盖检查。冲突文案初测不可见，已补前端修复并构建；用户随后取消 CU，已停止操作，修后文案复测 NOT RUN。当前窗口未切换到前端修正版；后续恢复测试时须先切换对应候选再复测冲突提示，不能要求用户在旧窗口验收新修复。
 
 **前置**：本批候选已打开 `$qaRoot`；目录含上述三个条目及子文件；无需模型会话。
 
@@ -48,7 +48,7 @@ Get-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt')
 
 ## H2 / b2：底部、右侧和子菜单
 
-**2026-11-08 候选与状态**：当前候选来自 `codex/2.1.18-b2-verification-20261107` 的产品提交 `b109f1e7`，独立工作树 `output/candidate/workbench.exe` 内嵌生产前端，Workbench 显示版本仍为 2.1.17。以 `output/启动-b2-验收.ps1` 启动，使用独立合成 QA 数据。本轮已实际覆盖底部避让、子菜单右展和左展、窄短窗口滚动、End/左右/Escape/Shift+F10、resize 关闭及改名/移动；只有 QA Session 01 改名、QA Session 25 移入 QA Collection 24，数据比对通过。Home/上下键和主菜单右边缘翻转本轮未单独补测，其他未测范围见 PRETEST。历史 Vite 开发候选及 852 项结果不作为本轮产物标识；用户本人验收待定。
+**历史 b2 候选与实测状态**：当时的候选来自 `codex/2.1.18-b2-verification-20261107` 的产品提交 `b109f1e7`，独立工作树 `output/candidate/workbench.exe` 内嵌生产前端，Workbench 显示版本仍为 2.1.17。以 `output/启动-b2-验收.ps1` 启动，使用独立合成 QA 数据。本轮已实际覆盖底部避让、子菜单右展和左展、窄短窗口滚动、End/左右/Escape/Shift+F10、resize 关闭及改名/移动；只有 QA Session 01 改名、QA Session 25 移入 QA Collection 24，数据比对通过。Home/上下键和主菜单右边缘翻转本轮未单独补测，其他未测范围见 PRETEST。历史 Vite 开发候选及 852 项结果不作为本轮产物标识；用户本人验收待定。
 
 **前置**：本批候选有足够工作记录成员使侧栏可滚动；至少一个成员可展开现有子菜单。开发者准备无私人内容的记录，记录 Windows 缩放与窗口尺寸。
 
