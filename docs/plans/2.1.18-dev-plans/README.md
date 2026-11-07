@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1–b9 已合入 develop；b10 失败提示关闭已实现并完成前端验证，准备 PR。随后整合协作流程并准备统一 Preview。** b4 PR #68 的精确 head `80e90919` 三项 CI 全部 PASS，合并 `1efe0904`。真实平台 GUI 和用户验收按 D-15 留到统一 Preview；U-4 默认成员按 D-16 暂留待批准。
+状态：**b1–b10 已合入 develop；B10 PR #74 三项 CI PASS，集成 b548728b。协作流程与仓库 Skill 已同步，准备流程 PR 和统一候选；用户验收及 U-4 仍未完成。** b4 PR #68 的精确 head `80e90919` 三项 CI 全部 PASS，合并 `1efe0904`。真实平台 GUI 和用户验收按 D-15 留到统一 Preview；U-4 默认成员按 D-16 暂留待批准。
 
 本阶段原收录 F1–F4，D-11 后新增 F5–F8，共八条反馈、十个批次。D-12–D-16 授权连续实施、统一 Preview 验收；U-1–U-3 已确认，U-4 具体成员待提案。未实施或未验收部分不预记完成。
 
@@ -36,10 +36,13 @@
 | [b7](b7-plugin-install.md) | 插件安装超时与结果核对 | F5 | D-11/D-12 | PR #71 已合入 61c70540，本地/真实 Docker/冻结 CLI/CI PASS；GUI 待 Preview |
 | [b8](b8-github-mcp-auth.md) | GitHub MCP 首次认证配置入口 | F6 | D-11/D-12 | PR #72 已合入 4ff4881f，三项 CI PASS；真实授权和 GUI 待 Preview |
 | [b9](b9-skill-details.md) | grill 搜索结果简介与子技能详情读取 | F7 | D-11/D-12 | PR #73 已合入 c8a39b8a，三项 CI PASS；GUI 待 Preview |
-| [b10](b10-failure-dismiss.md) | 关闭当前失败提示、保留历史与新失败提示 | F8 | D-11/D-12 | 关闭、历史/新失败及上下文隔离通过前端验证，准备 PR；GUI 待 Preview |
+| [b10](b10-failure-dismiss.md) | 关闭当前失败提示、保留历史与新失败提示 | F8 | D-11/D-12 | PR #74 已合入 b548728b，三项 CI PASS；GUI 待 Preview |
 
 剩余实施顺序：**b3 → b4 → b5 → b6 → b7 → b8 → b9 → b10**（D-14）；编号稳定，每批独立记录实现及验证，统一 Preview 验收。
 
 PLANNED 只表示计划落档；按已确认方案实施，不把计划或自动化通过写成用户验收通过。
 
 范围的总账是 [todo](../../todo.md)，方案以本目录为准；[devlog](../../devlog.md) 只记录实际完成的工作。历史阶段的通过或免测结论均不继承为本阶段 PASS。
+
+
+本版流程整合与角色安排见 [team-workflow](team-workflow.md)；本轮由同一代理兼任执行与技术自查，用户最终验收待 Preview。

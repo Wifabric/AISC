@@ -346,13 +346,13 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；个人功能整合
 - [ ] b7 / F5：插件安装超时与真实终态核对已实现，本地门禁、官方插件安装及慢进程恢复验证通过，PR #71 三项 CI PASS 并已合入；GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b7-plugin-install.md)，R-7/H7，D-11。
 - [ ] b8 / F6：GitHub MCP 首次认证配置与双引擎状态已实现，本地门禁、真实配置与冻结 CLI 验证通过，PR #72 三项 CI PASS 并已合入；真实授权及 GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b8-github-mcp-auth.md)，R-8/H8，D-11。
 - [ ] b9 / F7：grill 搜索结果简介与 grill-me 子技能详情读取/恢复已实现，本地门禁及真实容器读取通过，PR #73 三项 CI PASS 并已合入；GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b9-skill-details.md)，R-9/H9，D-11。
-- [ ] b10 / F8：关闭当前扩展失败提示、保留历史与新失败提醒已实现；前端全套 882、定向 48 与构建通过，准备 PR，GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b10-failure-dismiss.md)，R-10/H10，D-11。
+- [ ] b10 / F8：关闭当前扩展失败提示、保留历史与新失败提醒已实现；前端全套 882、定向 48 与构建通过，PR #74 三项 CI PASS 并已合入，GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b10-failure-dismiss.md)，R-10/H10，D-11。
 - [ ] 本阶段用户批次验收与最终回归；b1/b2 已有实现验证，未测项见 PRETEST，旧版本通过/免测不继承。
 
 未决产品规则见 [decisions](plans/2.1.18-dev-plans/decisions.md)；实时终端扩展和无关工具升级不自动入版。
 收尾、preview/final 发布、反馈站关闭与归档按开发指南另行触发，本轮未执行。
 
-## 开发协作文档专题（2026-11-05，独立于产品版本）
+## 开发协作文档专题（2026-11-05 起；本次更新按 D-12 整合进 2.1.18）
 
 范围与材料见[专题计划](plans/pr-intake-workflow.md)。
 
@@ -362,3 +362,5 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；个人功能整合
 - [x] 文档 PR #65 已审核并合入 develop（2026-11-05）。
 - [ ] 使用真实 PR 试用多人交接，按实际问题完善流程；不以文档完成替代产品验收。
 - [ ] 实证后提炼通用小团队开发元 Skill。
+
+- [ ] 2.1.18 协作流程与开发 Skill：主开发者统一 Preview、小修正直接处理、贡献者自测后 PR 的文档及 Skill 已实现，待流程 PR/候选验证和最终用户验收；见 [team-workflow](plans/2.1.18-dev-plans/team-workflow.md)。

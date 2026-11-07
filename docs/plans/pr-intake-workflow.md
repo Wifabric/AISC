@@ -45,3 +45,8 @@
 - [grill-me](https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md)：沿关键决策澄清问题；能从代码和记录查明的事实先自行核对。
 
 以上仅作为流程设计参考，没有自动安装或执行这些 Skill。
+
+
+## 2026-11-08 本轮接续
+
+以上为 #65 独立专题的历史约束。本轮用户 D-12 明确将 Issue 修复与流程/Skill 更新合为 2.1.18，按 [本版整合计划](2.1.18-dev-plans/team-workflow.md) 同步 §1.4 的统一 Preview 默认、直接小修正和仓库开发 Skill。b3–b10 已实际走过单代理自查、精确提交 CI、develop 集成；真实多人交接效果和统一候选用户验收仍未完成。
