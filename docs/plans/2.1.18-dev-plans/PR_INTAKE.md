@@ -50,3 +50,4 @@ D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代�
 
 - [PR #78](https://github.com/Wifabric/AISC/pull/78)：head 33227965，合入 fd8e7a0d543fd9500143b5e2a5ebe4bed7cfd9db；[CI 42412882668](https://github.com/Wifabric/AISC/actions/runs/42412882668) 三项 PASS。模块预检通道及成功结果提示修正，本地 Rust 35、前端模块 12 passed。
 - [PR #79](https://github.com/Wifabric/AISC/pull/79)：head 15b47ab1，合入 a9834710796ef057f13d8fd7f257b71f1bcd23f1；[CI 42413674608](https://github.com/Wifabric/AISC/actions/runs/42413674608) 三项 PASS。模块 UTF-8 stdin 修正，Python 22 passed / 18 subtests，冻结 CLI 多语言及最终真实界面预检通过。
+- [PR #83](https://github.com/Wifabric/AISC/pull/83)：head 51b5cff53d7a1ad61219d7754c212d203df9e2bf，合入 24d03cd379babc8a9d61499f9de2f5204856145c；[CI 42417635698](https://github.com/Wifabric/AISC/actions/runs/42417635698) 三项 PASS。H4/S6 重建复用普通构建的基础镜像回退、固定 digest 验证和本机 builder 绑定；定向 52、全套 Python 1796/54 skipped/207 subtests 及真实冻结 CLI 完整构建通过。单代理自查，无独立评审。当前本机候选更新为 Preview.4，产物及 GUI 证据见 DELIVERY/preview-gui。

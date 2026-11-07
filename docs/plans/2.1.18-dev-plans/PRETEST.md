@@ -202,3 +202,5 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 2026-11-08 Preview.3 镜像命名：H3 本机默认名/取消、显式旧标签选择、完整引用改名、其他标签保留、非法及冲突拒绝、registry port 保留均通过真实 GUI + Docker inspect。两个独立 scratch QA 镜像与标签已精确清理；候选产品没有变化。H4 重建、SSH、部分失败 GUI 未由本轮覆盖，详见 preview-gui。
 
 2026-11-08 H4/S6：真实 GUI 通过运行引用阻止、显式停止后预检、默认无缓存参数和失败日志/旧镜像保留。构建触发首选镜像源 EOF，定位 guarded_rebuild 缺少普通构建的基础镜像回退和 digest 准备；现共用 prepare_build_argv。定向 52、全套 Python 1796/54 skipped/207 subtests 通过；修后冻结 CLI 使用完整 bundle 真实重建成功，新 ID 发布到所选 tag、其他 tag 和停止容器保留。当前标准 Preview.3 未含 S6，重打包、修后 GUI 及未测项见 [preview-gui](preview-gui.md)，不预记整体通过。
+
+2026-11-08 Preview.4：#83 精确 head CI 42417635698 三项 success，合入 24d03cd3。重新冻结/NSIS 打包并更新独立候选；真实 GUI 设置与启动摘要两入口的缓存重建分别 12.2/12.5 秒完成，无缓存构建 19.3 秒取消且镜像未替换，实际参数与 Docker 状态核对通过。“帮助 → 关于”显示 Preview.4 / CLI/Bundle 0.1.10。缓存取消尝试遇到先完成，未记取消通过；Remote、完整无缓存 GUI 成功与安装升级等剩余边界见 preview-gui。候选哈希以 DELIVERY 为准。

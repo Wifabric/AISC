@@ -1,6 +1,6 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79 已合入。当前产品集成提交 `a9834710796ef057f13d8fd7f257b71f1bcd23f1`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
+2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83 已合入。当前产品集成提交 `24d03cd379babc8a9d61499f9de2f5204856145c`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
 
 ## 变更说明
 
@@ -21,31 +21,33 @@
 | --- | --- |
 | 隔离候选启动脚本 | `D:\AISC\p18\start-candidate.ps1` |
 | 完整可运行目录 | `D:\AISC\p18\candidate` |
-| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.3_x64-setup.exe` |
+| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.4_x64-setup.exe` |
 | 源码、哈希与状态清单 | `D:\AISC\p18\candidate-manifest.json` |
 | 详细测试日志 | `D:\AISC\output\preview-2.1.18-20261108\output\verification` |
 
 PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选。数据根为 `D:\AISC\p18\qa-data`，WebView 数据也独立；原平台安装和原工作区未替换。每轮检查后关闭独立候选，原平台进程保留。QA 工作区与证据保留，测试模块定义已通过 UI 删除，可继续创建新定义复测。选择隔离工作区完成 HANDTEST，避免把原工作区当测试数据。
 
-本地 Workbench 版本覆盖为 `2.1.18-preview.3`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
+本地 Workbench 版本覆盖为 `2.1.18-preview.4`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
 
-候选产品源码为 PR #79 head `15b47ab1524bd3f7957c7c7d79258e2178256ca7`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
+候选产品源码为 PR #83 head `51b5cff53d7a1ad61219d7754c212d203df9e2bf`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
 
 | 文件 | SHA256 |
 | --- | --- |
-| workbench.exe | `6ab2a8be0909b9adb17be738c79ae41337bf410542de63f26daba8159941024b` |
-| aisc.exe | `27afe7090986e995fb871664b3ff88574b7ca4bd22404aaf984ae8ce37090124` |
-| setup.exe | `40898713737055a94939e8869df1156995b0d07a80bf915c2f0702b735eb2941` |
+| workbench.exe | `b80203ff4b69b443e820c3a6342ac573314027d966097d94bdf5d34004b3e529` |
+| aisc.exe | `ded9ed26f029afb00350e8fa67354cf93cd08e89fa7028e248ea06d5eedc2eaf` |
+| setup.exe | `12d1402e17ca19f5c07a0e9aa42672558929f24538e2acb7b0aade6dbd64fb01` |
 
 ## 验证结果
 
-- 最终 Python：1791 passed、54 skipped、207 subtests；适配器定向 87 passed。前端最后一次完整本地门禁 882 passed，最终受影响定向 48 passed，类型/生产构建通过；Rust 最近产品批次 420 passed、2 ignored。
+- 最终 Python：1796 passed、54 skipped、207 subtests；基础镜像/重建定向 52 passed，既有适配器定向 87 passed。前端最后一次完整本地门禁 882 passed，最终受影响定向 48 passed，类型/生产构建通过；Rust 最近产品批次 420 passed、2 ignored。
 - 整合 PR #76 精确 head 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42411011239) frontend/rust/cli 全部 success。b3–b10 的 PR/CI/merge 逐项见 [PR_INTAKE](PR_INTAKE.md)。纯文档 PR #75 未触发产品 CI，Skill 格式和 105 个本地链接校验通过。
 - 完整 bundle 初次校验发现过期/遗漏 checksum，修正后 1534 项覆盖及完整校验通过。NSIS 初次因长路径失败，使用本地短路径引用同一资源后，含最终修正的 Windows 安装包构建通过。
-- 候选冻结 CLI + 实际打包资源：模块应用/卸载、合成双引擎认证配置及真实客户端读取、grill-me 详情通过。补充科研详情实际读取和四项提案成员 installed→removed 通过。自建 QA 容器均已清理。
+- 候选冻结 CLI + 实际打包资源：模块应用/卸载、合成双引擎认证配置及真实客户端读取、grill-me 详情通过。补充科研详情实际读取和四项提案成员 installed→removed 通过。该轮自建 QA 容器均已清理；后续 H4 的专用停止容器和镜像保留供继续复测。
 - Windows 真实候选启动与“帮助 → 关于”基础检查通过：工作区选择页正常，显示 Workbench `2.1.18-preview.3`、CLI/Bundle `0.1.10`。真实 GUI 的本机 H1/H3、H5/H6/H9/H10 子集与发现的三项整合修正见 [统一候选复测](preview-gui.md)；**完整 H1–H10、安装/升级手测、SSH、真实 GitHub 凭据与工具权限仍未完成**。合成令牌和 DOM 测试不替代这些项目。
 
-- GUI 发现并修复：模块预检独立通道避免拖慢后台同步，成功终态去掉旧预检原因，冻结 CLI 明确按 UTF-8 读取中文模块请求。Rust 定向 35、前端模块定向 12、Python 模块/分发 22 + 18 subtests 通过；冻结 CLI 多语言真实预检 48.38 秒通过。#78 [CI](https://github.com/Wifabric/AISC/actions/runs/42412882668) 和 #79 [CI](https://github.com/Wifabric/AISC/actions/runs/42413674608) 三项全部 success。Preview.3 完整 NSIS 构建通过；旧 Preview.1/.2 仅保留作历史产物，不再用作当前验收入口。
+- GUI 发现并修复：模块预检独立通道避免拖慢后台同步，成功终态去掉旧预检原因，冻结 CLI 明确按 UTF-8 读取中文模块请求。Rust 定向 35、前端模块定向 12、Python 模块/分发 22 + 18 subtests 通过；冻结 CLI 多语言真实预检 48.38 秒通过。#78 [CI](https://github.com/Wifabric/AISC/actions/runs/42412882668) 和 #79 [CI](https://github.com/Wifabric/AISC/actions/runs/42413674608) 三项全部 success。Preview.3 完整 NSIS 构建通过；旧 Preview.1/.2/.3 仅保留作历史产物，不再用作当前验收入口。
+
+Preview.4 补充：#83 [CI](https://github.com/Wifabric/AISC/actions/runs/42417635698) frontend/rust/cli 全部 success。真实完整镜像重建验证了基础镜像回退、固定 digest、本机 builder 和无缓存参数，选中标签更新、其他标签及停止容器引用保持；新镜像适配器哈希与 Node/Claude/Codex 版本探针通过，Codex 另有旧临时目录跨设备清理警告，未据此宣称所有工具运行场景通过。Preview.4 的真实 GUI 两入口缓存重建成功、无缓存取消与镜像保护、About 版本核验通过；缓存取消尝试时构建已先完成，未记取消通过。修正后的冻结 CLI、Workbench 和 384431133 字节 NSIS 安装包已重新生成并替换当前候选；旧 Preview.3 仅留作历史。具体 GUI 覆盖及未测项目继续见 [统一候选复测](preview-gui.md)。
 
 ## 次日集中处理
 
