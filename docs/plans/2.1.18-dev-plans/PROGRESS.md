@@ -40,3 +40,5 @@ D-8 收尾：当前计划目录 39 处相对链接全部存在，git diff whites
 PR #63 已合入；b2 PR #64 已实现，已在独立分支集成当前 develop 完成本地验证。详细数字、环境复测与边界见 PRETEST 最新记录。当前停在 CU 不可用的验收裁定点；未推送或合并 PR #64，未开始 b3。
 
 2026-11-07 重试：CU 初始化/窗口/点击恢复；Docker Desktop 因 sailor-ingest.sock 无法访问而启动失败，H2 仍 NOT RUN。详见 PRETEST 最新记录。
+
+2026-11-08：Docker 恢复后完成 b2 本轮真实 CU。已执行的边界/子菜单/滚动/键盘及实际改名移动路径 PASS，详情与未测边界见 PRETEST。用户批次验收待确认，未进入 b3。
