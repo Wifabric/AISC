@@ -488,6 +488,19 @@ export const cancelRuntimeStart = (runtimeId: string) =>
 export const buildImage = (tag: string, onEvent: Channel<BuildEvent>) =>
   invoke<void>("build_image", { tag, onEvent });
 
+export interface ImageRebuildCheck {
+  tag: string;
+  image_id: string;
+  exists: boolean;
+  containers: string[];
+  running_containers: string[];
+}
+export const checkImageRebuild = (tag: string, expectedImageId?: string) =>
+  invoke<ImageRebuildCheck>("check_image_rebuild", { tag, expectedImageId });
+export const rebuildImage = (tag: string, expectedImageId: string, noCache: boolean,
+  taskId: string, onEvent: Channel<BuildEvent>) =>
+  invoke<void>("rebuild_image", { tag, expectedImageId, noCache, taskId, onEvent });
+
 /** IDEA-3 (3b): keyed by the build tag. Returns whether an active op was
  *  found and cancelled (false = cancel missed — logged by the caller). */
 export const cancelBuild = (tag: string) => invoke<boolean>("cancel_build", { tag });

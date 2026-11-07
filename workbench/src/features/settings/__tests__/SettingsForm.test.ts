@@ -441,7 +441,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     wrapper.unmount();
   });
 
-  it("cleanup/rebuild disabled before any scan, enabled after one loads", async () => {
+  it("enables cleanup after scanning but requires an image selection for rebuild", async () => {
     mockIpc.dockerScan.mockResolvedValue({
       dockerAvailable: true, dockerReason: "ok",
       containers: { owned: [], legacy_owned: [], unverified: [] },
@@ -460,6 +460,10 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     await store.loadDockerScan();
     await Promise.resolve();
     expect((cleanup.element as HTMLButtonElement).disabled).toBe(false);
+    expect((rebuild.element as HTMLButtonElement).disabled).toBe(true);
+    mockUnifiedScan();
+    await store.loadDockerScan();
+    await flushPromises();
     expect((rebuild.element as HTMLButtonElement).disabled).toBe(false);
     wrapper.unmount();
   });

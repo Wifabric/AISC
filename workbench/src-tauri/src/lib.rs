@@ -76,7 +76,7 @@ use locale::resolve_locale;
 use logging::log_ui_event;
 use onboarding::{onboarding_load, onboarding_update};
 use runtime::{
-    build_image, cancel_build, cancel_runtime_start, cc_switch_add, cc_switch_delete,
+    build_image, check_image_rebuild, rebuild_image, cancel_build, cancel_runtime_start, cc_switch_add, cc_switch_delete,
     cc_switch_edit, cc_switch_fetch_models, cc_switch_providers, cc_switch_switch,
     cc_switch_templates, extensions_call, get_provider_status, list_runtimes,
     network_subscription_clear, network_subscription_import, network_subscription_import_file,
@@ -228,6 +228,8 @@ pub fn run(cli_arg: Option<String>) {
             load_history,
             save_history,
             build_image,
+            check_image_rebuild,
+            rebuild_image,
             cancel_build,
             start_docker,
             load_settings,

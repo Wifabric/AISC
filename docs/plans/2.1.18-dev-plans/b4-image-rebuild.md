@@ -1,6 +1,14 @@
 # b4 镜像重建与进度
 
-状态：PLANNED。来源 F3.2–4；验收 R-4/H4。依赖 b3 和 U-2。
+状态：IN PROGRESS。来源 F3.2–4；验收 R-4/H4。U-2 已由 D-13 确认。b3 PR #67 最新提交 `89971647` 三项 CI PASS，合并基线 `c0f9ab11`；本批从该 develop 提交建立独立分支。
+
+## 本批协议与执行细化
+
+- 两入口共用重建对话框和任务状态，固定 Local、完整 ref、预检查 image ID、缓存选择与唯一 task ID。Remote 禁用并由 Rust 再次拒绝；取消按 task ID 路由，不能影响别的构建。
+- `maintenance docker-rebuild-check` 只读返回现有 ID、所有引用容器及运行容器列表；可选 expected ID 捕获镜像行陈旧状态。执行使用 `docker-rebuild --guarded --expected-image-id ... --events`；使用缓存显式传 `--use-cache`，默认仍无缓存，保留旧安装器非 guarded JSON 调用。
+- guarded 路径在 maintenance 锁内再次检查，运行容器阻止执行。构建使用唯一临时 tag，流式读取 Docker 输出并复用 BuildProgressParser；完成后再次核对旧 ref/引用状态，才发布新 tag。失败/取消不先删除原镜像；仅在无其他 tag、无容器引用时尝试移除旧 ID，失败单独说明。
+- 复用已有 BuildProgress 展示组件，事件驱动进度；终态由 Promise 结果确定。任务和目标快照固定，异步返回不写入其他目标的界面。统一候选 GUI/用户验收保持未测，不能提前记 PASS。
+- 启动摘要的重建后刷新只重新读取 runtime preflight，不调用会回收旧容器的 runtime reconcile；镜像重建不会借刷新隐式停删容器。
 
 ## 当前缺口
 
@@ -22,4 +30,12 @@
 
 settings、runtimeBuild、launchSummary 定向测试；Python docker_lifecycle/docker_management；Rust argv/target/event/取消测试。真实隔离环境验证：有/无镜像、运行/停止引用容器、缓存开关、成功/失败/取消、旧 ID 保留、两个入口及防重入。构建进度采用真实事件，不能只用定时动画。
 
-H4 和所有本批验证当前 NOT RUN；操作用户现有工作容器不是测试前提。
+## 2026-11-08 实现验证
+
+- Python 定向 38 项通过；完整 1749 passed / 54 skipped / 201 subtests（本机 Git Bash/Node 路径适配，无断言修改）。
+- 前端全套 851 项及生产构建通过；随后早期取消/切换目标隔离修复相关 26 项与 vue-tsc 通过。Rust 全套 414 passed / 2 ignored；新增 argv 契约单测也已通过。
+- 真实 Docker 29.7.2：唯一 QA 镜像 `aisc-b4-qa-c21697c3`，通过运行引用拒绝、停止引用保留、使用缓存/无缓存、失败保持原引用、真实输出回调取消保持原引用五组验证。Docker 执行未 mock；只将无关 cc-switch release resolver 固定到离线 fallback，并保留相应警告。测试容器、所选标签与其他测试标签已清理。
+- 冻结 CLI 构建及新命令 smoke PASS：sha256 `c137e41c4f7a6f0b996c16740038cc7d76fe0ed388c66463dc0e7b797b8533a2`。真实只读预检查返回缺失镜像状态；未提供确认身份时输出 `build.failed` / `AISC_ERR_USAGE`，不进行构建。
+- 本地证据：`output/verification/real-image-rebuild.json`、`frozen-smoke.json` 及各层测试日志。原始日志/临时 QA 数据不上传。
+- 自查修正：刷新启动摘要不触发 reconcile；对话框使用现有主题变量与焦点管理；极早取消未命中时在收到该任务 start 后重发取消；原任务完成后不刷新新目标。
+- 远端 CI、真实 GUI 两入口/交互与用户 H4 尚 NOT RUN；按 D-15 留到对应阶段，不能将 DOM、CLI 或数据面结果冒充 GUI PASS。

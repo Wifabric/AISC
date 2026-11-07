@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1/b2 已由 PR #63/#64 合入 develop；b2 本地验证、已执行 CU 路径及 PR CI 通过，用户验收状态仍待确认；b3–b6 未实施。** 2026-11-08 D-11 已批准新增 F5–F8 入版，安排 b7–b10 四个独立修复批次，均未实施，见 [feedback-intake](feedback-intake.md)。
+状态：**b1/b2/b3 已由 PR #63/#64/#67 合入 develop；b4 正在完成验证与提交准备；b5–b10 待实施。** b3 精确 head `89971647` 的 frontend/rust/cli CI 全部 PASS，合并 `c0f9ab11`。真实平台 GUI 和用户验收按 D-15 留到统一 Preview，当前未测；D-16 允许暂留决策依赖并继续其他工作。
 
 本阶段原收录 F1–F4，D-11 后新增 F5–F8，共八条反馈、十个批次。D-12–D-14 按用户最新授权连续实施、统一 Preview 验收；U-1–U-3 已确认，U-4 具体成员待提案。b3 正在实施，其余未实施批次不预记完成。
 
@@ -29,8 +29,8 @@
 | --- | --- | --- | --- | --- |
 | [b1](b1-case-rename.md) | 文件/目录仅改变大小写的重命名 | F1 | D-5/D-6 | PR #63 已合入 develop；历史验证边界见 PRETEST，D-7 允许进入 b2 |
 | [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9/D-10 已授权 | 本轮前端 841 项、构建、已执行 CU 和 PR CI PASS；[PR #64](https://github.com/Wifabric/AISC/pull/64) 已合入 develop；用户验收状态仍待确认 |
-| [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 已确认 | 实现与定向验证、真实 Docker 通过；完整门禁/PR 处理中 |
-| [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 | PLANNED |
+| [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 已确认 | PR #67 已合入；自动化/真实 Docker/CI PASS；GUI/用户验收待 Preview |
+| [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 已确认 | 实施及本地验证通过；准备 PR，GUI/用户验收待 Preview |
 | [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3、U-4 | PLANNED |
 | [b6](b6-module-operations.md) | 模块应用/卸载、共享成员保护、失败恢复 | F4 | b5、U-3 | PLANNED |
 | [b7](b7-plugin-install.md) | 插件安装超时与结果核对 | F5 | D-11/D-12 | PLANNED |

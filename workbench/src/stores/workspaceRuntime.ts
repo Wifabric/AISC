@@ -530,6 +530,18 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     void runPreflight();
   }
 
+  /** Rebuild refresh is read-only: do not reconcile/recycle any container. */
+  async function refreshImagePreflight() {
+    const currentWorkspace = workspace.value.trim();
+    const currentImage = launch.value.image;
+    if (!currentWorkspace) return;
+    const report = await ipc.runtimePreflight(currentWorkspace, runtimeId.value,
+      currentImage, launch.value.network, launch.value.scope);
+    if (workspace.value.trim() === currentWorkspace && launch.value.image === currentImage) {
+      preflight.value = report;
+    }
+  }
+
   async function runPreflight() {
     if (!workspace.value.trim()) return;
     scheduleSave(); // record workspace selection (path/last_used/last_agent)
@@ -2233,6 +2245,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     backToSummaryFromBuild,
     runPreflight,
     recomputePreflightNeeded,
+    refreshImagePreflight,
     startDockerAndRepreflight,
     dockerStarting,
     dockerStartedAt,
