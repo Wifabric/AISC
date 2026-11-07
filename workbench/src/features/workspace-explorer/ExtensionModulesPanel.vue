@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ExtensionModuleDefinition, ExtensionModuleMember, ExtensionsItem } from "../../lib/ipc";
 import { copyModule, moduleMemberKey, useExtensionModulesStore } from "../../stores/extensionModules";
@@ -18,6 +18,15 @@ const memberKind = ref<ExtensionsKind>("skills");
 const query = ref("");
 const deleting = ref<string | null>(null);
 const validation = ref("");
+const persistenceAlert = ref<HTMLElement | null>(null);
+const validationAlert = ref<HTMLElement | null>(null);
+// The save button can be far below either alert in a short market dialog.
+// Keep failed saves visible without discarding the draft or moving focus.
+watch(() => modules.error, async (error) => {
+  if (!error) return;
+  await nextTick();
+  persistenceAlert.value?.scrollIntoView({ block: "nearest", inline: "nearest" });
+});
 const searching = ref(false);
 const searchError = ref("");
 const searched = ref<ExtensionsKind | null>(null);
@@ -68,7 +77,12 @@ function add(member: ExtensionModuleMember) {
 }
 async function save() {
   if (!draft.value) return;
-  if (!draft.value.name.trim()) { validation.value = t("modules.nameRequired"); return; }
+  if (!draft.value.name.trim()) {
+    validation.value = t("modules.nameRequired");
+    await nextTick();
+    validationAlert.value?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
   validation.value = "";
   if (await modules.save(draft.value)) draft.value = null;
 }
@@ -98,7 +112,7 @@ onMounted(() => modules.load());
       <button type="button" data-testid="module-new" :disabled="!modules.document || modules.busy" @click="edit()">{{ t("modules.create") }}</button>
       <button v-if="modules.document?.hidden_builtin_ids.length" type="button" :disabled="modules.busy" @click="modules.restoreBuiltins">{{ t("modules.restore") }}</button>
     </div>
-    <p v-if="modules.error" role="alert">{{ modules.error }}</p>
+    <p v-if="modules.error" ref="persistenceAlert" role="alert">{{ modules.error }}</p>
     <p v-if="!modules.busy && modules.document && !modules.modules.length">{{ t("modules.empty") }}</p>
     <ModuleOperationProgress />
     <article v-for="module in modules.modules" :key="module.id" class="module-card">
@@ -120,7 +134,7 @@ onMounted(() => modules.load());
     <form v-if="draft" class="module-editor" data-testid="module-editor" @submit.prevent="save">
       <label>{{ t("modules.name") }}<input v-model="draft.name" data-testid="module-name" :disabled="readonly || modules.busy" maxlength="160"></label>
       <p v-if="readonly">{{ t("modules.builtinNotice") }}</p>
-      <p v-if="validation" role="alert">{{ validation }}</p>
+      <p v-if="validation" ref="validationAlert" role="alert">{{ validation }}</p>
       <ul class="module-members">
         <li v-for="member in draft.members" :key="moduleMemberKey(member)">
           <span>{{ member.name }} · {{ t(`extensions.tab.${member.kind}`) }}<small>{{ member.identity }} · {{ member.source_url }}</small></span>

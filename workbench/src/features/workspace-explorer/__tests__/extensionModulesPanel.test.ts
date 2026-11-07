@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import ExtensionModulesPanel from "../ExtensionModulesPanel.vue";
@@ -14,6 +14,7 @@ beforeEach(() => {
   ipc.saveExtensionModules.mockImplementation(async (_revision, document) => JSON.parse(JSON.stringify({ ...document, revision: 1 })));
 });
 const render = () => mount(ExtensionModulesPanel, { global: { plugins: [createPinia(), i18n] } });
+afterEach(() => vi.restoreAllMocks());
 describe("module editor", () => {
   it("saves the installable source directories when research recommendations are selected", async () => {
     const wrapper = render(); await flushPromises();
@@ -52,13 +53,44 @@ describe("module editor", () => {
     expect(wrapper.text()).toContain("QA mixed");
     expect(ipc.extensionsCall).not.toHaveBeenCalled(); wrapper.unmount();
   });
-  it("keeps the editable draft when persistence fails", async () => {
+  it("reveals a save conflict, retains the draft and only retries after the user reloads", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="module-new"]').trigger("click");
     await wrapper.get('[data-testid="module-name"]').setValue("Keep my draft");
     ipc.saveExtensionModules.mockRejectedValueOnce({ technical_detail: "revision conflict" });
     await wrapper.get("form").trigger("submit"); await flushPromises();
     expect((wrapper.get('[data-testid="module-name"]').element as HTMLInputElement).value).toBe("Keep my draft");
-    expect(wrapper.get('[role="alert"]').text()).toBe("revision conflict"); wrapper.unmount();
+    const alert = wrapper.get('[role="alert"]');
+    expect(alert.text()).toBe("revision conflict");
+    expect(scroll.mock.contexts).toEqual([alert.element]);
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    expect(ipc.saveExtensionModules).toHaveBeenCalledTimes(1);
+    ipc.loadExtensionModules.mockResolvedValueOnce({ schema_version: 1, revision: 8, definitions: [], hidden_builtin_ids: [] });
+    await wrapper.findAll("button").find(button => button.text() === "重新读取定义")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="module-name"]').element as HTMLInputElement).value).toBe("Keep my draft");
+    expect(ipc.saveExtensionModules).toHaveBeenCalledTimes(1);
+    await wrapper.get("form").trigger("submit"); await flushPromises();
+    expect(ipc.saveExtensionModules.mock.calls[1]?.[0]).toBe(8);
+    expect(wrapper.find('[data-testid="module-editor"]').exists()).toBe(false);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+  it("reveals the name validation on every rejected submit without saving or losing the draft", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const wrapper = render(); await flushPromises();
+    await wrapper.get('[data-testid="module-new"]').trigger("click");
+    await wrapper.get('[data-testid="module-name"]').setValue("   ");
+    await wrapper.get(".module-candidates button").trigger("click");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await wrapper.get("form").trigger("submit"); await flushPromises();
+      expect(scroll.mock.contexts[attempt]).toBe(wrapper.get('[role="alert"]').element);
+    }
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(ipc.saveExtensionModules).not.toHaveBeenCalled();
+    expect(wrapper.findAll(".module-members li")).toHaveLength(1);
+    wrapper.unmount();
   });
 });
