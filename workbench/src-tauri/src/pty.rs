@@ -1016,21 +1016,28 @@ mod tests {
 
         let mut saw_stderr_marker = false;
         let mut last_offset: Option<u64> = None;
-        while let Ok(ev) = rx.try_recv() {
-            if let PtyEvent::Output { bytes, offset, .. } = ev {
-                // O2 (D-11): raw offsets are monotonic across BOTH pumps.
-                if let Some(prev) = last_offset {
-                    assert!(offset > prev, "offset must strictly increase: {offset} after {prev}");
-                }
-                last_offset = Some(offset);
-                let raw = base64::engine::general_purpose::STANDARD
-                    .decode(bytes.as_bytes())
-                    .unwrap();
-                if String::from_utf8_lossy(&raw).contains("aisc-stderr-probe") {
-                    saw_stderr_marker = true;
+        // ExitSignal means the child was reaped, not that both pipe pumps
+        // have drained. Wait for their senders to close before asserting.
+        let drain = async {
+            while let Some(ev) = rx.recv().await {
+                if let PtyEvent::Output { bytes, offset, .. } = ev {
+                    // O2 (D-11): raw offsets are monotonic across BOTH pumps.
+                    if let Some(prev) = last_offset {
+                        assert!(offset > prev, "offset must strictly increase: {offset} after {prev}");
+                    }
+                    last_offset = Some(offset);
+                    let raw = base64::engine::general_purpose::STANDARD
+                        .decode(bytes.as_bytes())
+                        .unwrap();
+                    if String::from_utf8_lossy(&raw).contains("aisc-stderr-probe") {
+                        saw_stderr_marker = true;
+                    }
                 }
             }
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(5), drain)
+            .await
+            .expect("output pumps must finish after child exit");
         assert!(
             saw_stderr_marker,
             "child stderr text must reach the Output stream"
