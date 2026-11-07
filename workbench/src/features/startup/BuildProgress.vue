@@ -9,7 +9,12 @@ import { useI18n } from "vue-i18n";
 import { useRuntimeStore } from "../../stores/runtime";
 
 const { t } = useI18n();
-const store = useRuntimeStore();
+const props = defineProps<{ model?: Pick<ReturnType<typeof useRuntimeStore>,
+  "buildStatus" | "buildTag" | "buildLog" | "buildLogPath" | "buildProgress" |
+  "buildStartedAt" | "buildDurationMs" | "buildWarnings" | "buildError" |
+  "dockerStarting" | "startBuild" | "cancelBuild" | "backToSummaryFromBuild" |
+  "revealBuildLog" | "startDockerAndRepreflight">; backLabel?: string; retryLabel?: string }>();
+const store = props.model ?? useRuntimeStore();
 const logEl = ref<HTMLPreElement | null>(null);
 const elapsedMs = ref(0);
 let timer: number | null = null;
@@ -146,8 +151,8 @@ watch(
           v-if="store.buildStatus === 'failed' || store.buildStatus === 'cancelled'"
           class="primary"
           @click="store.startBuild(store.buildTag)"
-        >{{ t("build.rebuild") }}</button>
-        <button @click="store.backToSummaryFromBuild()">{{ t("build.backToSummary") }}</button>
+        >{{ retryLabel ?? t("build.rebuild") }}</button>
+        <button @click="store.backToSummaryFromBuild()">{{ backLabel ?? t("build.backToSummary") }}</button>
       </template>
     </div>
 

@@ -1746,6 +1746,83 @@ pub async fn get_provider_status(
 
 /// Build an image via `aisc build --events`, streaming JSONL events to the
 /// frontend Channel (05 §4.1). Cancellable via `cancel_build`.
+pub fn image_rebuild_argv(root: &str, tag: &str, expected: &str, no_cache: bool) -> Vec<String> {
+    vec!["maintenance".into(), "docker-rebuild".into(), "--root".into(), root.into(),
+        "--tag".into(), tag.into(), "--guarded".into(), "--expected-image-id".into(), expected.into(),
+        if no_cache { "--no-cache".into() } else { "--use-cache".into() }, "--events".into()]
+}
+
+#[cfg(test)]
+mod rebuild_protocol_tests {
+    use super::image_rebuild_argv;
+
+    #[test]
+    fn cache_choice_and_absent_identity_survive_the_streaming_protocol() {
+        for no_cache in [true, false] {
+            let argv = image_rebuild_argv("C:/QA Bundle", "registry:5000/team/image:qa", "", no_cache);
+            assert_eq!(argv[3], "C:/QA Bundle");
+            assert_eq!(argv[5], "registry:5000/team/image:qa");
+            assert_eq!(argv[8], "");
+            assert_eq!(argv[9], if no_cache { "--no-cache" } else { "--use-cache" });
+            assert_eq!(argv[10], "--events");
+            assert!(!argv.contains(&"--format".to_string()));
+        }
+    }
+}
+
+async fn local_rebuild_target(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<crate::cli::CliTarget, WorkbenchError> {
+    let target = crate::target::resolve_target_for(app, window).await?;
+    if !matches!(target, crate::cli::CliTarget::Local(_)) {
+        return Err(WorkbenchError::cli_protocol().with_detail("Image rebuilding is available on Local only; remote rebuilding is disabled"));
+    }
+    Ok(target)
+}
+
+#[tauri::command]
+pub async fn check_image_rebuild(app: AppHandle, window: tauri::WebviewWindow,
+    tag: String, expected_image_id: Option<String>) -> Result<Value, WorkbenchError> {
+    let target = local_rebuild_target(&app, &window).await?;
+    let mut argv = vec!["maintenance".into(), "docker-rebuild-check".into(),
+        "--tag".into(), tag, "--format".into(), "json".into()];
+    if let Some(id) = expected_image_id { argv.extend(["--expected-image-id".into(), id]); }
+    let env = run_control_target(&target, argv, PREFLIGHT_TIMEOUT, CancellationToken::new()).await?;
+    if let Some(error) = envelope_error(&env) { return Err(error); }
+    Ok(env.data.unwrap_or(Value::Null))
+}
+
+#[tauri::command]
+pub async fn rebuild_image(app: AppHandle, window: tauri::WebviewWindow, tag: String,
+    expected_image_id: String, no_cache: bool, task_id: String,
+    on_event: Channel<BuildEvent>) -> Result<(), WorkbenchError> {
+    let target = local_rebuild_target(&app, &window).await?;
+    if task_id.is_empty() || task_id.len() > 80 || !task_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(WorkbenchError::cli_protocol().with_detail("Invalid rebuild task ID"));
+    }
+    let root = crate::docker_admin::bundle_root_beside_exe()?;
+    let build_ops = app.state::<BuildOps>().inner().clone();
+    let cancel = CancellationToken::new();
+    let key = format!("rebuild:{task_id}");
+    {
+        let mut operations = build_ops.0.lock().map_err(|_| WorkbenchError::cli_protocol())?;
+        if !operations.is_empty() {
+            return Err(WorkbenchError::cli_protocol().with_detail("Another image build is already running"));
+        }
+        operations.insert(key.clone(), cancel.clone());
+    }
+    let (tx, mut rx) = mpsc::channel::<BuildEvent>(256);
+    let bridge = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if on_event.send(event).is_err() { break; }
+        }
+    });
+    let result = run_build_stream_target(&target,
+        image_rebuild_argv(&root.display().to_string(), &tag, &expected_image_id, no_cache),
+        Duration::from_secs(2400), cancel, tx).await;
+    let _ = bridge.await;
+    remove_op(&build_ops.0, &key);
+    result
+}
+
 #[tauri::command]
 pub async fn build_image(
     app: AppHandle,
@@ -1757,7 +1834,13 @@ pub async fn build_image(
     let build_ops = app.state::<BuildOps>().inner().clone();
     let cancel = CancellationToken::new();
     let build_key = tag.clone();
-    insert_op(&build_ops.0, &build_key, cancel.clone());
+    {
+        let mut operations = build_ops.0.lock().map_err(|_| WorkbenchError::cli_protocol())?;
+        if operations.keys().any(|key| key.starts_with("rebuild:")) {
+            return Err(WorkbenchError::cli_protocol().with_detail("An image rebuild is already running"));
+        }
+        operations.insert(build_key.clone(), cancel.clone());
+    }
 
     let (tx, mut rx) = mpsc::channel::<BuildEvent>(256);
     // Bridge mpsc -> Tauri Channel.

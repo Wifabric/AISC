@@ -1,6 +1,6 @@
 # b3 镜像名称
 
-状态：IN PROGRESS。来源 F3.1；验收 R-3/H3。D-13 已确认 U-1，按 D-14 从本批开始；基线 develop `43fe416c`。
+状态：已合入 develop，统一 Preview / H3 待验收。来源 F3.1；验收 R-3/H3。D-13 已确认 U-1；实施基线 `43fe416c`。
 
 ## 方案
 
@@ -29,3 +29,5 @@ SettingsForm/store：自定义/默认/取消/空白/冲突/重复提交；含 `r
 CU、更新后的冻结 sidecar 界面验证、用户 H3、远端 CI 尚 NOT RUN；组件测试与 Python 真实数据面验证不冒充 GUI 实测。统一候选按 D-12 继续补证据。
 
 PR #67 首轮 CI：frontend/cli PASS，Rust 在原有 `pipe_session_streams_child_stderr_as_output` 失败（399 passed / 1 failed / 1 ignored）。该测试在 child wait 结束后立即 try_recv，但 stderr 的独立读取线程可能尚未投递。按现有 ExitSignal“子进程已回收”的契约，改为有界等待输出通道关闭，再保留原 stderr 内容及 offset 断言；不增加 sleep、不跳过测试、不改 PTY 产品逻辑。修后重跑本地定向和远端门禁。
+
+最终提交 `89971647905822f23c8f7fd671982832d3c3a99c` 的 frontend/rust/cli 全部 PASS：[CI](https://github.com/Wifabric/AISC/actions/runs/42397722859)。[PR #67](https://github.com/Wifabric/AISC/pull/67) 已合入 develop `c0f9ab11b345502832ac114bc422348da1384502`。上述首轮失败保留为历史；GUI 与 H3 仍 NOT RUN，按 D-15 统一 Preview 验证。

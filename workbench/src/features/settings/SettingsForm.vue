@@ -13,12 +13,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings";
+import { useImageRebuildStore } from "../../stores/imageRebuild";
 import { useUpdateStore } from "../../stores/update";
 import { buildSearchMatcher } from "../../lib/search";
 import type { TerminalSettings, UiSettings, WindowSettings } from "../../types";
 
 const { t } = useI18n();
 const store = useSettingsStore();
+const rebuild = useImageRebuildStore();
 const update = useUpdateStore();
 const supportsInstaller = update.supportsInstaller();
 const confirmationPending = ref(false);
@@ -373,10 +375,10 @@ async function onDockerCleanup() {
 }
 
 async function onDockerRebuild() {
-  const { confirm } = await import("@tauri-apps/plugin-dialog");
-  const ok = await confirm(t("settings.docker.rebuildConfirm"));
-  if (!ok) return;
-  await store.runDockerRebuild();
+  await rebuild.open(manageImages.value.flatMap(row => row.name.split(", ")), undefined, store.loadDockerScan);
+}
+async function onImageRebuild(id: string, name: string) {
+  await rebuild.open(name.split(", "), id, store.loadDockerScan);
 }
 
 /** b3 (反馈 #9): dedicated build-cache cleanup — never touches containers. */
@@ -797,10 +799,10 @@ async function reopenOnboarding() {
               @click="onCacheCleanup"
             >{{ t("settings.docker.cacheCleanup") }}</button>
             <button
-              :disabled="store.dockerRebuilding || !store.dockerReport"
-              :title="t('settings.docker.rebuildTip')"
+              :disabled="rebuild.busy || !manageImages.length || store.target?.kind === 'remote'"
+              :title="store.target?.kind === 'remote' ? t('imageRebuild.localOnly') : t('settings.docker.rebuildTip')"
               @click="onDockerRebuild"
-            >{{ store.dockerRebuilding ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}</button>
+            >{{ rebuild.busy ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}</button>
           </div>
 
           <template v-if="store.dockerReport">
@@ -859,6 +861,8 @@ async function reopenOnboarding() {
                   <span class="mr-actions">
                     <button class="danger" :disabled="store.managementBusy !== null" @click="onImageRm(row.id, row.name)">{{ t("settings.docker.manage.rm") }}</button>
                     <button class="ui-button" :disabled="store.managementBusy !== null" @click="onImageTag(row.id, row.name)">{{ t("settings.docker.manage.retag") }}</button>
+                    <button class="ui-button" :disabled="rebuild.busy || store.managementBusy !== null || store.target?.kind === 'remote'"
+                      :title="t('imageRebuild.localOnly')" @click="onImageRebuild(row.id, row.name)">{{ t("imageRebuild.rowAction") }}</button>
                   </span>
                   <form v-if="imageRename?.id === row.id" class="image-rename-form" data-testid="image-rename-form"
                     @submit.prevent="submitImageRename" @keydown.esc.prevent="!managementBusyLocal && (imageRename = null)">

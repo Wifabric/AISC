@@ -3,6 +3,8 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRuntimeStore } from "../../stores/runtime";
+import { useSettingsStore } from "../../stores/settings";
+import { useImageRebuildStore } from "../../stores/imageRebuild";
 import { useWorkspacesStore } from "../../stores/workspaces";
 import { useUsageStore } from "../../stores/usage";
 import PreflightGate from "./PreflightGate.vue";
@@ -10,6 +12,12 @@ import PreflightGate from "./PreflightGate.vue";
 const { t } = useI18n();
 const store = useRuntimeStore();
 const ws = useWorkspacesStore();
+const settings = useSettingsStore();
+const rebuild = useImageRebuildStore();
+async function openImageRebuild() {
+  const origin = ws.activeRuntime;
+  await rebuild.open([store.launch.image], undefined, origin.refreshImagePreflight);
+}
 const usageStore = useUsageStore();
 
 // IDEA-2 (2d): proxy mode with no imported subscription mounts nothing (the
@@ -156,7 +164,8 @@ const dockerElapsedSec = computed(() =>
         {{ store.dockerStarting ? t("summary.startingDocker") : t("summary.startDocker") }}
       </button>
       <button @click="changeSettings">{{ store.showAdvanced ? t("summary.toggleSettings") : t("summary.changeSettings") }}</button>
-      <button v-if="imageNotFound" class="danger" @click="store.startBuild(store.launch.image)">{{ t("summary.buildImage") }}</button>
+      <button class="danger" :disabled="dockerDown || rebuild.busy || settings.target?.kind === 'remote'"
+        :title="t('imageRebuild.localOnly')" @click="openImageRebuild">{{ imageNotFound ? t("summary.buildImage") : t("imageRebuild.rowAction") }}</button>
       <button @click="store.backToPicker()">{{ t("summary.cancel") }}</button>
     </div>
   </div>

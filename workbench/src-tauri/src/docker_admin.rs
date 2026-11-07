@@ -288,13 +288,15 @@ pub async fn docker_cleanup(
 
 /// No-cache rebuild of the workstation image from the LOCAL bundle root.
 #[tauri::command]
-pub async fn docker_rebuild(app: AppHandle) -> Result<DockerRebuildResult, WorkbenchError> {
+pub async fn docker_rebuild(app: AppHandle, window: tauri::WebviewWindow) -> Result<DockerRebuildResult, WorkbenchError> {
     let root = bundle_root_beside_exe()?;
     // The argv carries --root (the bundle beside the exe); the CLI itself is
     // resolved through the canonical pin/auto-select path, exactly like the
     // NSIS installer's silent call resolves its bundled copy.
-    let exe = crate::session::resolve_cli(&app).await?;
-    let target = crate::cli::CliTarget::Local(exe);
+    let target = crate::target::resolve_target_for(&app, &window).await?;
+    if !matches!(target, crate::cli::CliTarget::Local(_)) {
+        return Err(WorkbenchError::cli_protocol().with_detail("Remote image rebuilding is disabled"));
+    }
     let env = run_control_target(
         &target,
         docker_rebuild_argv(&root.display().to_string()),

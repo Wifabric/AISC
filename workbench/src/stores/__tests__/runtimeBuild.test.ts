@@ -14,10 +14,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { i18n } from "../../i18n";
 import { useRuntimeStore } from "../runtime";
+import { useWorkspacesStore } from "../workspaces";
 
 const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   buildImage: vi.fn(),
+  runtimePreflight: vi.fn(),
+  runtimeReconcile: vi.fn(),
 }));
 
 vi.mock("../../lib/ipc", () => mockIpc);
@@ -242,6 +245,19 @@ describe("build.progress events (v2.1.7 S4 / Gate-S4)", () => {
     d.resolve();
     await p;
     expect(s.buildStatus).toBe("complete"); // the build itself is unaffected
+  });
+});
+
+describe("read-only image rebuild refresh", () => {
+  it("refreshes image facts without reconciling or recycling containers", async () => {
+    const runtime = useWorkspacesStore().activeRuntime;
+    runtime.workspace.value = "D:/qa";
+    const report = { checks: [{ id: "image", status: "pass" }] };
+    mockIpc.runtimePreflight.mockResolvedValue(report);
+    await runtime.refreshImagePreflight();
+    expect(mockIpc.runtimePreflight).toHaveBeenCalledOnce();
+    expect(mockIpc.runtimeReconcile).not.toHaveBeenCalled();
+    expect(runtime.preflight.value).toEqual(report);
   });
 });
 

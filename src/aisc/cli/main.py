@@ -679,8 +679,17 @@ def _build_parser() -> _AiscArgumentParser:
     mtr.add_argument("--root", required=True, help="Bundle root (contains Dockerfile)")
     mtr.add_argument("--tag", default="super-claude:latest")
     mtr.add_argument("--old-image-id", default="")
-    mtr.add_argument("--no-cache", action="store_true", default=True)
+    cache_mode = mtr.add_mutually_exclusive_group()
+    cache_mode.add_argument("--no-cache", dest="no_cache", action="store_true", default=True)
+    cache_mode.add_argument("--use-cache", dest="no_cache", action="store_false")
     mtr.add_argument("--pull", action="store_true", default=False)
+    mtr.add_argument("--guarded", action="store_true", help="Rebuild a verified image without replacing it until success")
+    mtr.add_argument("--expected-image-id", default=None, help="Confirmed image ID, or empty for a missing image")
+
+    mtrc = mtsub.add_parser("docker-rebuild-check", help="Read-only selected image rebuild precheck", allow_abbrev=False)
+    _add_global_args(mtrc, is_subparser=True)
+    mtrc.add_argument("--tag", required=True)
+    mtrc.add_argument("--expected-image-id", default=None)
 
     mtu = mtsub.add_parser("cache-usage", help="Read-only docker system df summary",
                            allow_abbrev=False)
@@ -2336,6 +2345,7 @@ def _cmd_ps(
 def _cmd_maintenance(
     args: argparse.Namespace,
     effective_format: str,
+    emitter: Optional[JsonlEmitter] = None,
 ) -> Tuple[Any, int, List[Dict[str, Any]]]:
     """Execute ``aisc maintenance`` subcommands (docker-resource-lifecycle B).
 
@@ -2367,6 +2377,17 @@ def _cmd_maintenance(
             raise
         failed = bool(data["containers"]["failed"] or data["images"]["failed"])
         return data, (1 if failed else 0), []
+    if sub == "docker-rebuild-check":
+        from aisc.application.image_rebuild import rebuild_check
+        return rebuild_check(executor, tag=args.tag, expected_image_id=args.expected_image_id), 0, []
+    if sub == "docker-rebuild" and args.guarded:
+        from aisc.application.image_rebuild import guarded_rebuild
+        if args.expected_image_id is None:
+            raise CliError(message="--guarded requires --expected-image-id from the precheck", exit_code=2, error_code="AISC_ERR_USAGE")
+        data = guarded_rebuild(executor, root=args.root, tag=args.tag,
+            expected_image_id=args.expected_image_id, no_cache=args.no_cache,
+            pull=args.pull, emitter=emitter)
+        return data, 0, []
     if sub == "docker-rebuild":
         data = docker_rebuild(executor, root=args.root, tag=args.tag,
                               old_image_id=args.old_image_id,
@@ -3276,12 +3297,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     # Set up JSONL emitter
     emitter: Optional[JsonlEmitter] = None
-    if args_events and args.command in ("build", "run"):
-        emitter = JsonlEmitter(command=args.command)
+    rebuild_events = (args.command == "maintenance"
+        and getattr(args, "maintenance_command", "") == "docker-rebuild"
+        and getattr(args, "guarded", False))
+    event_command = "build" if rebuild_events else args.command
+    if args_events and (args.command in ("build", "run") or rebuild_events):
+        emitter = JsonlEmitter(command=event_command)
     elif args_events and args.command in ("version", "doctor", "config", "profile",
                                            "status", "stop", "restart", "shell", "switch",
                                            "provider", "ps", "session", "artifact",
-                                           "data-root"):
+                                           "data-root", "maintenance"):
         if effective_format == "json":
             emit_json_usage_error(
                 command=args.command, version=__version__,
@@ -3355,7 +3380,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         elif args.command == "ps":
             data, exit_code, errors = _cmd_ps(args, effective_format)
         elif args.command == "maintenance":
-            data, exit_code, errors = _cmd_maintenance(args, effective_format)
+            data, exit_code, errors = _cmd_maintenance(args, effective_format, emitter)
         elif args.command == "bundle":
             data, exit_code, errors = _cmd_bundle(args, effective_format)
         elif args.command == "update":
@@ -3396,7 +3421,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                       error_code=exc.error_code)
         # --- unified terminal: main owns the single terminal event ---
         if emitter is not None and not emitter.terminated:
-            cmd = args.command or "aisc"
+            cmd = event_command or "aisc"
             term_type = f"{cmd}.failed"
             term_data = dict(exc.data or {})
             term_data["exit_code"] = exc.exit_code
@@ -3424,7 +3449,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     except KeyboardInterrupt:
         _log_cli_exit(args.command, 130, started, _run_id)
         if emitter is not None and not emitter.terminated:
-            cmd = args.command or "aisc"
+            cmd = event_command or "aisc"
             emitter.emit(f"{cmd}.cancelled", {"exit_code": 130}, terminal=True)
             sys.exit(130)
         print("\nCancelled.", file=sys.stderr)
@@ -3433,7 +3458,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     # --- success: terminal event if events mode ---
     _log_cli_exit(args.command, exit_code, started, _run_id)
     if emitter is not None and not emitter.terminated:
-        cmd = args.command or "aisc"
+        cmd = event_command or "aisc"
         term_data = dict(data or {})
         term_data["exit_code"] = exit_code
         emitter.emit(f"{cmd}.complete", term_data, terminal=True)
