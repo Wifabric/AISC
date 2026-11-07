@@ -204,3 +204,5 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 2026-11-08 H4/S6：真实 GUI 通过运行引用阻止、显式停止后预检、默认无缓存参数和失败日志/旧镜像保留。构建触发首选镜像源 EOF，定位 guarded_rebuild 缺少普通构建的基础镜像回退和 digest 准备；现共用 prepare_build_argv。定向 52、全套 Python 1796/54 skipped/207 subtests 通过；修后冻结 CLI 使用完整 bundle 真实重建成功，新 ID 发布到所选 tag、其他 tag 和停止容器保留。当前标准 Preview.3 未含 S6，重打包、修后 GUI 及未测项见 [preview-gui](preview-gui.md)，不预记整体通过。
 
 2026-11-08 Preview.4：#83 精确 head CI 42417635698 三项 success，合入 24d03cd3。重新冻结/NSIS 打包并更新独立候选；真实 GUI 设置与启动摘要两入口的缓存重建分别 12.2/12.5 秒完成，无缓存构建 19.3 秒取消且镜像未替换，实际参数与 Docker 状态核对通过。“帮助 → 关于”显示 Preview.4 / CLI/Bundle 0.1.10。缓存取消尝试遇到先完成，未记取消通过；Remote、完整无缓存 GUI 成功与安装升级等剩余边界见 preview-gui。候选哈希以 DELIVERY 为准。
+
+2026-11-08 H7/S7：Preview.4 真实插件 mattpocock-skills 安装、重复点击禁用、磁盘版本与刷新回读通过。H6 发现科研推荐安装 identity 与实际目录不符；修正现有四项推荐为实际下划线目录，保留显示名，不迁移用户定义或启用 U-4。前端 28 passed、类型/生产构建通过，四项均由当前冻结 CLI 在独立临时目标 installed→removed 并回读通过，容器已清理。旧候选 GUI 的部分失败与预装项保留如实记录；新版 GUI、精确提交 CI 与候选重建另记，详见 preview-gui。

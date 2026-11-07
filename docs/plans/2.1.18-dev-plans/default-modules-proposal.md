@@ -9,7 +9,7 @@
 | 开发基础 | `obra/superpowers:systematic-debugging` | 按证据定位问题；[来源](https://github.com/obra/superpowers/tree/main/skills/systematic-debugging) |
 | 开发基础 | `obra/superpowers:test-driven-development` | 功能及修复的测试流程；[来源](https://github.com/obra/superpowers/tree/main/skills/test-driven-development) |
 
-安装 identity 使用实际目录，显示名可用自然语言。Science Skills 的目录为下划线，frontmatter/市场名称为连字符；原六类推荐中同源条目仍使用连字符。B9 整合修正已让两种拼写读取到唯一正确详情；这里选实际目录作为已验证安装标识。默认提案不增加 MCP 认证或整包插件，也不把技能自身要求的外部服务授权视为已完成。
+安装 identity 使用实际目录，显示名可用自然语言。Science Skills 的目录为下划线，frontmatter/市场名称为连字符；S7 修正将现有推荐中四个同源条目的安装标识改为实际目录，显示名保持不变。B9 整合修正已让两种拼写读取到唯一正确详情，但详情别名不代表安装目录别名。默认提案不增加 MCP 认证或整包插件，也不把技能自身要求的外部服务授权视为已完成。
 
 ## 已验证与边界
 

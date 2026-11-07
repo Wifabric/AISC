@@ -15,6 +15,24 @@ beforeEach(() => {
 });
 const render = () => mount(ExtensionModulesPanel, { global: { plugins: [createPinia(), i18n] } });
 describe("module editor", () => {
+  it("saves the installable source directories when research recommendations are selected", async () => {
+    const wrapper = render(); await flushPromises();
+    await wrapper.get('[data-testid="module-new"]').trigger("click");
+    await wrapper.get('[data-testid="module-name"]').setValue("Research source paths");
+    for (const name of ["literature-search-arxiv", "literature-search-openalex", "pubmed-database", "literature-search-europepmc"]) {
+      const choice = wrapper.findAll(".module-candidates button").find(button => button.text().startsWith(name));
+      expect(choice).toBeDefined();
+      await choice!.trigger("click");
+    }
+    await wrapper.get("form").trigger("submit"); await flushPromises();
+    expect(ipc.saveExtensionModules.mock.calls[0]?.[1].definitions[0].members).toEqual([
+      { kind: "skills", identity: "google-deepmind/science-skills:literature_search_arxiv", name: "literature-search-arxiv", source_url: "https://github.com/google-deepmind/science-skills" },
+      { kind: "skills", identity: "google-deepmind/science-skills:literature_search_openalex", name: "literature-search-openalex", source_url: "https://github.com/google-deepmind/science-skills" },
+      { kind: "skills", identity: "google-deepmind/science-skills:pubmed_database", name: "pubmed-database", source_url: "https://github.com/google-deepmind/science-skills" },
+      { kind: "skills", identity: "google-deepmind/science-skills:literature_search_europepmc", name: "literature-search-europepmc", source_url: "https://github.com/google-deepmind/science-skills" },
+    ]);
+    expect(ipc.extensionsCall).not.toHaveBeenCalled(); wrapper.unmount();
+  });
   it("creates an offline mixed module, prevents duplicates, removes a member, and saves without installation", async () => {
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="module-new"]').trigger("click");

@@ -101,3 +101,23 @@ PR #83 的精确 head 51b5cff5 在 CI 42417635698 三项通过后合入 develop 
 第二入口：在独立 QA 工作区的启动摘要“更改设置”中，将镜像明确改为同一 keep，从“重建镜像”打开的只读预检显示当前完整 ID，默认无缓存勾选。取消勾选后提交，实际 argv 含 `--use-cache`，进度到“导出镜像”，12.5 秒完成；新 ID `sha256:62d358f2b5c5f796de5efe95a28f1257b837645774ce55218d8523432c0ec759`，selected 和停止容器仍为最初旧 ID。尝试取消时已进入发布结束阶段，最终正确显示完成及新 ID，因此本次记第二入口成功，不记缓存取消通过。当前 QA 镜像保留供后续扩展复测；尚未运行此镜像的工作区容器。
 
 “帮助 → 关于”确认 Workbench 2.1.18-preview.4、CLI/Bundle 0.1.10、Claude 2.1.314；Image 仍显示未知（未启动 runtime）。对应 gui-preview4-h4-summary-success.txt、h4-gui-summary-cache-command.json、gui-preview4-about.txt。Remote 入口禁用实机、缓存构建在完成前取消、完整无缓存 GUI 成功、安装/升级仍未由本轮覆盖；保留此前数据面与组件测试证据，不扩写为完整 H4 或用户验收。
+
+## Preview.4 / H7 真实插件安装
+
+从启动摘要明确选择本轮完整构建的 keep，成功启动 runtime `87e27a0f-fdd0-40c6-ac40-6145b37199b9` / 容器 `ff84cabf72c7`。镜像为 62d358f2…；所有工作区/配置挂载均指向独立 p18 QA 目录，adapter 哈希 03595866… 与候选一致，本轮没有适配器注入或替换。插件清单初始 `{}`，与上轮 H10 的模拟失败分开记录。
+
+真实 GUI 搜索 mattpocock-skills，详情核对来源 claude-plugins-official 后点击安装。安装中按钮禁用，再次点击保持禁用；只读进程快照显示一条 adapter plugin-install 与一条实际 claude-real plugin install。完成后已安装列表及展开详情显示版本 1.3.1；磁盘 installed_plugins.json 仅一个对应 user 条目，安装路径下 .claude-plugin/plugin.json 存在且版本一致，记录来源 commit `49dd158d1076134a641b33efb035946536778336`。安装进程已结束，没有将表面成功代替磁盘核对。未采集精确总耗时，不填写推测秒数。
+
+切换文件视图再返回扩展，重新读取后仍显示已安装 1.3.1。证据：h7-preview4-baseline.json、h7-preview4-install-command.json、h7-preview4-installed.json、gui-preview4-h7-installing.txt、gui-preview4-h7-installed.txt、gui-preview4-h7-detail.txt、gui-preview4-h7-reloaded.txt。本轮正常安装成功；慢网/超时、未知结果恢复及安装中跨工作区切换尚未实测，不记完整 H7 PASS。插件仅安装于 QA 数据根，原平台保持运行。
+
+## H6 实机发现 S7：科研推荐的安装标识不匹配目录
+
+同一 Preview.4 真实 GUI 创建“QA-A 科研与预装保护”，选择既有 research 与推荐的 literature-search-arxiv。计划明确保留预装 research、只安装缺少的 arXiv；执行后 research 保留，但 arXiv 显示失败和“部分成员需要处理”，没有伪报整体成功。直接复现返回 SKILL_DIR_NOT_FOUND，路径 literature-search-arxiv 不存在。原始定义与失败历史留在 QA 数据根，未修改用户模块。
+
+只读获取 google-deepmind/science-skills 的提交 4de6786171f1479026da5d3a00f110703c8ba35e，确认实际目录为 literature_search_arxiv、literature_search_openalex、pubmed_database、literature_search_europepmc，均包含 SKILL.md；未执行上游技能指令。S7 将四个现有推荐的安装 identity 改为这些实际目录，保持显示名与推荐顺序。仅修正已知推荐数据，不自动改写已有用户定义，不启用 U-4 默认模块，也不宣称任意市场别名都可安装。
+
+新增真实编辑器组件回归验证四个推荐保存的安装 identity、显示名和来源，且保存不触发安装。受影响前端 28 passed，类型检查和生产构建通过。修后冻结 CLI 实际安装/移除及新版候选 GUI 复测另记；Preview.4 本身尚不包含这项前端修正。
+
+证据：h6-arxiv-install-failure.json、h6-science-source-paths.json、science-catalog-frontend.log、science-catalog-build.log。本轮预装项保留和部分失败的实际行为通过，不将未完成的全量应用/卸载记为 H6 PASS。
+
+修后安装标识数据面 PASS：使用当前冻结 CLI（ded9ed26…）和完整候选镜像，新建无用户挂载的独立临时容器，四项分别通过模块计划、逐项 installed、状态回读，再逐项 removed、状态回读。不存在的 plan_id 明确拒绝。测试容器按本轮唯一 QA 标签核对后已清理，证据 science-members-install.json。资产安装/移除通过不代表技能内部科研任务或外部 API 已验收；GUI 仍须用含 S7 的新候选复测。
