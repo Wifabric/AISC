@@ -18,3 +18,9 @@
 - 用户验收：待用户本人 H2 验收或明确放行。没有将自动化/CU 记为用户验收；不进入 b3。
 - 当前流程状态：审查中（补齐远端 CI 与用户验收）；没有合并、发布或将 TODO 标为完成。
 - 原始日志、合成 QA 数据、候选二进制、仅本地回归及凭据均不上传。
+
+### 2026-11-08 最新状态
+
+PR #64 已于北京时间 00:48 合入 develop，实际 merge commit 为 `b90d85ab38c56eb859ed42e762639d5d371d7a60`，合并父提交为 `9db6f642` 与 `4a2a8d12`。后者的 [Workbench CI #42392564054](https://github.com/Wifabric/AISC/actions/runs/42392564054) frontend/rust/cli 均 success；包括 Python tests、clean-room install smoke 与 baseline probe。上述“准备推送/无 CI”是早先快照，已由本条更新。
+
+本轮已按签名提交 payload 重建并验证合并提交 SHA，tree `235de608a90ba6d68393fa28224c11ed0d85e811` 与此前验证 head 相同，无额外合并代码差异；本次反馈登记基于该实际 develop。用户功能验收与未测边界仍不因合并自动改为通过。增量扫描全仓 open PR 返回 0 条，F5–F8 无可直接承接的打开 PR。

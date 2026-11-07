@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1 已由 PR #63 合入 develop；b2 本地集成验证及本轮已执行 CU 路径通过，待用户批次验收；b3–b6 未实施。** 更新：2026-11-08。
+状态：**b1/b2 已由 PR #63/#64 合入 develop；b2 本地验证、已执行 CU 路径及 PR CI 通过，用户验收状态仍待确认；b3–b6 未实施。** 2026-11-08 增量发现 F5–F8，已登记候选与验收建议，新增入版范围待确认，见 [feedback-intake](feedback-intake.md)。
 
 本阶段把反馈站四条新增反馈转为可验证的修复/功能方案。用户已明确“根据 develop wiki 和计划进行 2.1.18 的更新”（D-5）；按逐批模式启动 b1。后续批次产品规则 U-1–U-4 及用户逐批验收仍按原计划执行。
 
@@ -28,7 +28,7 @@
 | 批次 | 范围 | 来源 | 前置依赖/待裁定 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | [b1](b1-case-rename.md) | 文件/目录仅改变大小写的重命名 | F1 | D-5/D-6 | PR #63 已合入 develop；历史验证边界见 PRETEST，D-7 允许进入 b2 |
-| [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9/D-10 已授权 | 本轮前端 841 项、构建及已执行 CU 路径 PASS；[PR #64](https://github.com/Wifabric/AISC/pull/64) 目标 develop，CI 与用户验收状态见 PR_INTAKE |
+| [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9/D-10 已授权 | 本轮前端 841 项、构建、已执行 CU 和 PR CI PASS；[PR #64](https://github.com/Wifabric/AISC/pull/64) 已合入 develop；用户验收状态仍待确认 |
 | [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 | PLANNED |
 | [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 | PLANNED |
 | [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3、U-4 | PLANNED |

@@ -42,3 +42,5 @@ PR #63 已合入；b2 PR #64 已实现，已在独立分支集成当前 develop 
 2026-11-07 重试：CU 初始化/窗口/点击恢复；Docker Desktop 因 sailor-ingest.sock 无法访问而启动失败，H2 仍 NOT RUN。详见 PRETEST 最新记录。
 
 2026-11-08：Docker 恢复后完成 b2 本轮真实 CU。已执行的边界/子菜单/滚动/键盘及实际改名移动路径 PASS，详情与未测边界见 PRETEST。用户批次验收待确认，未进入 b3。
+
+2026-11-08 增量 intake：实时核查 develop 已在 `b90d85ab` 合入 PR #64；其 head `4a2a8d12` 的 Workbench CI 三项通过。收录反馈站新增 F5–F8，完成原文/附件核查、去重、静态代码定位、优先级与验收建议，TODO 独立候选区登记，新增入版范围待用户确认。四条首轮回复补丁已准备，但反馈仓库账号只有 pull 权限，发布失败且状态未变；详见 feedback-intake。没有开始产品实现。
