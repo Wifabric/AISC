@@ -42,3 +42,20 @@ S5：修后独立通道使中文名称经过 Windows 冻结 CLI 的系统编码 
 - S4 成功终态文案修正通过组件回归；修后 installed/removed 的完整真实 GUI 路径仍未重跑。H1 本次输入焦点问题仍待复测；H2–H4/H7/H8/H10 的完整候选 GUI、H6 卸载/故障恢复、安装升级、SSH、真实授权保持未完成。
 
 最终清理：本轮候选正常退出并删除其临时运行时；测试定义已删除，原平台窗口/容器保留。独立 QA 数据和安装的测试技能仅存在 QA 数据根，可用于后续复测。
+
+## Preview.3 追加文件与失败提示复测
+
+2026-11-08，仍为 DELIVERY 所列相同二进制，无产品代码变更；窗口 863×783，工作区与数据根沿用上述独立 QA 路径。以下为 AI 实机自测，不代表用户验收。
+
+- H1 本机流程 PASS：用正常键盘输入完成 `Area.txt → AREA.txt`、`Folder → FOLDER`；刷新、关闭并重新进入工作区后精确名称和内容保留。此前 UI Automation `set_value` 导致行内输入失焦的问题通过正常键盘操作绕开，未作为产品缺陷修复。SSH 路径未测。
+- 将 `AREA.txt` 改为已有 `Occupied.txt` 被拒绝，显示“同名文件已存在，未覆盖”；原输入仍可编辑，Escape 取消。准备 40 个合成滚动条目，在最后一行 `zz-qa40.txt` 重复冲突及 `bad/name` 非法名称，错误自动进入视口，分别显示冲突原因和“名称不能包含 / 或 \\”，Escape 恢复原条目。
+- 只读磁盘核对：`AREA.txt`、`FOLDER/child.txt`、`Occupied.txt`、`zz-qa40.txt` 内容依次为 qa-file、qa-child、keep-me、scroll-test；没有旧大小写名称、临时名或非法名称。未操作原工作区。
+- H10 子集 PASS：在 QA 容器 `98b531b2cfca` / runtime `5b831633-375f-418c-afc8-2bc0fef17881` 中，仅对 plugin-install 注入返回唯一 operation_id 的可控失败；实际安装器不执行，其他调用使用候选 adapter。真实 UI 显示失败卡片和同次重复错误；点击复制诊断出现“诊断已复制”反馈，未检查剪贴板内容。
+- 从复制诊断按钮连续 Shift+Tab 到重试、关闭，观察到关闭按钮的焦点环；按 Space 后卡片与重复文案同时消失，焦点回到扩展市场。故障计数仍为 1，未隐式重试。再次主动触发安装测试，新的 failure 2 正常显示；鼠标点击关闭后同时隐藏，故障计数仍为 2。切换文件视图后返回扩展，列表加载完毕，旧失败没有重新出现。
+- 插件清单前后 SHA256 均为 `4b3c46d84a7a7af421326c3e9591daf8279204c01fdf9b46a9274763b1ab9ea3`。故障注入已撤销，adapter 恢复为候选哈希 `035958661f6b7fa05bd8df8bcc02f75df7bc23e2b26e53f13feb153eaba088d9`。本项不能计作 H7 真实安装成功；跨目标、未知结果禁止重试和关闭后的历史诊断读取仍依赖既有自动化，未完成对应 GUI 验收。
+
+本地证据：gui-file-conflict.txt、gui-file-bottom-conflict.txt、gui-file-bottom-invalid.txt、gui-h1-disk.json、gui-h1-reenter.txt、gui-h1-reenter-disk.json；gui-h10-failure1.txt、gui-h10-keyboard-dismiss.txt、gui-h10-failure2.txt、gui-h10-mouse-dismiss.txt、gui-h10-view-return.txt、h10-postcheck.json。位置同 DELIVERY；截图在本轮工具记录。完整未覆盖范围继续按 HANDTEST 保留，不将子集通过扩写成 H1–H10 全部通过。
+
+重入时启动摘要出现“已自动回收上次未正常关闭的运行环境”，尽管前一步通过正常“关闭工作区”返回选择页。五项预检通过，后续启动与文件读取正常；本轮未定位该回收提示的原因，不以此宣称运行时清理文案验收通过。
+
+追加轮清理完成：重入创建的 QA 容器 `7ea6c1ad5673` 随候选正常退出而删除，QA workspace-key 下无残留容器。原平台 PID 40320 与容器 `2e801ec161c0` 仍运行；测试文件与本地证据保留供复核。
