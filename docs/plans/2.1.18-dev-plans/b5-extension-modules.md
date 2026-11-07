@@ -35,3 +35,7 @@ U-4 当前只建议科研/开发两类，没有捏造未核验的具体安装条
 - 用户定义离线混合成员编辑/重复禁用/删除成员、保存失败草稿保留、重建 store 后读取一致、仅定义删除不调用 extensions 安装/卸载均有回归。
 - 日志在本机 `output/verification/frontend-tests.log`、`frontend-build.log`、`rust-tests.log`；原始日志不上传。代码自查完成，没有独立评审。
 - U-4 受控清单为空，默认内容尚未交付；不阻止自建模块或后续 b6 机制。PR/CI 待执行，GUI/H5 用户验收按 D-15 留到统一 Preview，均不提前记 PASS。
+
+## 远端集成
+
+PR #69 的精确 head `ea5170c11f5df864c41be12e840c3fccfa400e55` 在 [CI run 42401663375](https://github.com/Wifabric/AISC/actions/runs/42401663375) 中 frontend/rust/cli 全部 PASS；合入 develop `d3798c062a4da431d75e9acffdfbfa4cff8ebf7a`。U-4、GUI 和用户验收状态不因此改变。

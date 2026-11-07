@@ -6,10 +6,13 @@ import { copyModule, moduleMemberKey, useExtensionModulesStore } from "../../sto
 import { useExtensionsStore, type ExtensionsKind } from "../../stores/extensions";
 import { EXTENSION_RECOMMENDATIONS_BY_CATEGORY } from "./recommendationCatalog";
 import { skillUpdateSpec } from "./skillGroups";
+import { useModuleOperationsStore } from "../../stores/moduleOperations";
+import ModuleOperationProgress from "./ModuleOperationProgress.vue";
 
 const { t } = useI18n();
 const modules = useExtensionModulesStore();
 const extensions = useExtensionsStore();
+const operations = useModuleOperationsStore();
 const draft = ref<ExtensionModuleDefinition | null>(null);
 const memberKind = ref<ExtensionsKind>("skills");
 const query = ref("");
@@ -97,9 +100,13 @@ onMounted(() => modules.load());
     </div>
     <p v-if="modules.error" role="alert">{{ modules.error }}</p>
     <p v-if="!modules.busy && modules.document && !modules.modules.length">{{ t("modules.empty") }}</p>
+    <ModuleOperationProgress />
     <article v-for="module in modules.modules" :key="module.id" class="module-card">
       <strong>{{ module.name }}</strong><span>{{ t("modules.memberCount", { count: module.members.length }) }}</span>
       <div class="module-actions">
+        <button type="button" :disabled="!operations.canPrepare || modules.busy" @click="operations.prepare(module, 'apply')">{{ t("modules.apply") }}</button>
+        <button type="button" :disabled="!operations.canPrepare || modules.busy" @click="operations.prepare(module, 'uninstall')">{{ t("modules.uninstall") }}</button>
+        <button type="button" :disabled="!operations.canPrepare || modules.busy" @click="operations.history(module)">{{ t("modules.history") }}</button>
         <button type="button" :disabled="modules.busy" @click="edit(module)">{{ t("modules.edit") }}</button>
         <button type="button" :disabled="modules.busy" @click="edit(module, true)">{{ t("modules.copy") }}</button>
         <button type="button" :disabled="modules.busy" @click="deleting = module.id">{{ modules.isBuiltin(module.id) ? t("modules.hide") : t("modules.delete") }}</button>

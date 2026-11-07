@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1–b4 已合入 develop；b5 定义机制已实现并完成本地验证，准备 PR；b6–b10 待实施。** b4 PR #68 的精确 head `80e90919` 三项 CI 全部 PASS，合并 `1efe0904`。真实平台 GUI 和用户验收按 D-15 留到统一 Preview；U-4 默认成员按 D-16 暂留待批准。
+状态：**b1–b5 已合入 develop；b6 模块执行已实现并完成本地验证，准备 PR；b7–b10 待实施。** b4 PR #68 的精确 head `80e90919` 三项 CI 全部 PASS，合并 `1efe0904`。真实平台 GUI 和用户验收按 D-15 留到统一 Preview；U-4 默认成员按 D-16 暂留待批准。
 
 本阶段原收录 F1–F4，D-11 后新增 F5–F8，共八条反馈、十个批次。D-12–D-16 授权连续实施、统一 Preview 验收；U-1–U-3 已确认，U-4 具体成员待提案。未实施或未验收部分不预记完成。
 
@@ -31,8 +31,8 @@
 | [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9/D-10 已授权 | 本轮前端 841 项、构建、已执行 CU 和 PR CI PASS；[PR #64](https://github.com/Wifabric/AISC/pull/64) 已合入 develop；用户验收状态仍待确认 |
 | [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 已确认 | PR #67 已合入；自动化/真实 Docker/CI PASS；GUI/用户验收待 Preview |
 | [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 已确认 | PR #68 已合入；自动化/真实 Docker/冻结 CLI/CI PASS；GUI/用户验收待 Preview |
-| [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3 已确认；U-4 默认清单待批准 | 定义机制本地验证通过，准备 PR；默认清单与 GUI/用户验收待定 |
-| [b6](b6-module-operations.md) | 模块应用/卸载、共享成员保护、失败恢复 | F4 | b5、U-3 | PLANNED |
+| [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3 已确认；U-4 默认清单待批准 | PR #69 已合入 d3798c06，三项 CI PASS；默认清单与 GUI/用户验收待定 |
+| [b6](b6-module-operations.md) | 模块应用/卸载、共享成员保护、失败恢复 | F4 | b5、U-3 | 本地自动化/真实三类扩展/冻结 CLI PASS，准备 PR；GUI/用户验收待 Preview |
 | [b7](b7-plugin-install.md) | 插件安装超时与结果核对 | F5 | D-11/D-12 | PLANNED |
 | [b8](b8-github-mcp-auth.md) | GitHub MCP 首次认证配置入口 | F6 | D-11/D-12 | PLANNED |
 | [b9](b9-skill-details.md) | grill 搜索结果简介与子技能详情读取 | F7 | D-11/D-12 | PLANNED |

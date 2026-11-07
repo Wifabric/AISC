@@ -343,6 +343,10 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extl)
     extl.add_argument("--kind", required=True, choices=["skills", "mcp", "plugins"])
 
+    for module_op in ("module-plan", "module-step", "module-status"):
+        module_parser = extsub.add_parser(module_op, help="Durable module operation (request JSON on stdin)", allow_abbrev=False)
+        _extensions_common(module_parser)
+
     extt = extsub.add_parser("toggle", help="Enable/disable a skill or MCP server",
                              allow_abbrev=False)
     _extensions_common(extt)
@@ -2082,7 +2086,9 @@ def _cmd_extensions(
     from aisc.cli.commands import extensions as ext_cmd
 
     sub = getattr(args, "extensions_command", None)
-    if sub == "list":
+    if sub in ("module-plan", "module-step", "module-status"):
+        data = ext_cmd.cmd_extensions_module(args)
+    elif sub == "list":
         data = ext_cmd.cmd_extensions_list(args)
     elif sub == "toggle":
         data = ext_cmd.cmd_extensions_toggle(args)

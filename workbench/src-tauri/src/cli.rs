@@ -705,7 +705,7 @@ fn is_long_extension_group_op(argv: &[String]) -> bool {
     argv.first().map(String::as_str) == Some("extensions")
         && matches!(
             argv.get(1).map(String::as_str),
-            Some("skill-install-group") | Some("skill-update-group")
+            Some("skill-install-group") | Some("skill-update-group") | Some("module-step")
         )
 }
 
@@ -1451,7 +1451,7 @@ mod tests {
         // group operation must not occupy the only resident control-plane
         // session until the UI's short services/list request times out.
         let local = CliTarget::Local(PathBuf::from("aisc.exe"));
-        for command in ["skill-install-group", "skill-update-group"] {
+        for command in ["skill-install-group", "skill-update-group", "module-step"] {
             assert_eq!(
                 control_transport_for(
                     &local,

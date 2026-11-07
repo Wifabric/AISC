@@ -81,7 +81,15 @@ def _validate(op: str, kind: Optional[str], agent: Optional[str]) -> None:
         )
 
 
-def _exec_adapter(
+def _exec_adapter(runtime_id, registry_root, executor, op, **kwargs):
+    from aisc.application.extension_operation_scope import mutation_scope, READ_OPS
+    if op in READ_OPS:
+        return _exec_adapter_body(runtime_id, registry_root, executor, op, **kwargs)
+    with mutation_scope(registry_root, runtime_id):
+        return _exec_adapter_body(runtime_id, registry_root, executor, op, **kwargs)
+
+
+def _exec_adapter_body(
     runtime_id: str,
     registry_root: Any,
     executor: Any,
@@ -96,6 +104,7 @@ def _exec_adapter(
     query: Optional[str] = None,
     url: Optional[str] = None,
     specs: Optional[list[str]] = None,
+    ownership: bool = False,
     timeout: float = 600.0,
     stdin_text: str = "",
 ) -> Dict[str, Any]:
@@ -104,6 +113,14 @@ def _exec_adapter(
     executor = executor or RealDockerExecutor()
     argv = ["exec", "-i"]
     container = resolve_running_container(runtime_id, executor, registry_root)
+    from aisc.application.extension_operation_scope import expected_container, operation_marker, READ_OPS
+    if expected_container.get():
+        identity = executor.run_captured(['container', 'inspect', container, '--format', '{{.Id}}'], timeout=15.0)
+        if identity.exit_code != 0 or identity.stdout.strip() != expected_container.get():
+            raise CliError(message='Runtime container changed; prepare the module operation again',
+                           exit_code=1, error_code='AISC_ERR_EXTENSIONS_TARGET_CHANGED')
+    if operation_marker.get() and op not in READ_OPS:
+        argv.extend(['-e', 'AISC_MODULE_OPERATION_ID=' + operation_marker.get()])
     argv.append(container)
     argv.extend([
         "bash", "-c",
@@ -111,6 +128,8 @@ def _exec_adapter(
         "aisc-scope", "/proc/1/environ", "--",
         ADAPTER_PATH, op,
     ])
+    if ownership:
+        argv.append('--ownership')
     if kind:
         argv.extend(["--kind", kind])
     if item_id:
@@ -134,6 +153,9 @@ def _exec_adapter(
     result = executor.run_captured(argv, timeout=timeout, input_text=stdin_text)
     if result.exit_code != 0 and not (result.stdout or "").strip():
         stderr = (result.stderr or "").strip()
+        if ownership and 'unrecognized arguments: --ownership' in stderr:
+            raise CliError(message='Runtime adapter cannot provide ownership fingerprints',
+                           exit_code=1, error_code=UNSUPPORTED_OP)
         if _legacy_argparse_source_unsupported(op, stderr):
             raise CliError(
                 message="当前运行环境不支持扩展来源维护，请升级或重建运行时镜像",
@@ -192,10 +214,10 @@ def _registry_root(workspace: Optional[str]) -> Path:
 
 
 def extensions_list(runtime_id: str, kind: str, workspace: Optional[str],
-                    executor: Any) -> Dict[str, Any]:
+                    executor: Any, *, ownership: bool = False) -> Dict[str, Any]:
     _validate("list", kind, None)
     envelope = _exec_adapter(
-        runtime_id, _registry_root(workspace), executor, "list", kind=kind
+        runtime_id, _registry_root(workspace), executor, "list", kind=kind, ownership=ownership
     )
     return {"kind": kind, "items": envelope.get("items") or [],
             "operation_id": envelope.get("operation_id")}

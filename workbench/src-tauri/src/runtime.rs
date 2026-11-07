@@ -47,7 +47,8 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 24] = [
+const EXTENSIONS_OPS: [&str; 27] = [
+    "module-plan", "module-step", "module-status",
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
@@ -1044,7 +1045,13 @@ pub async fn extensions_call(
             })?);
         }
     }
-    let timeout = if (op == "skill-install-group" || op == "skill-update-group")
+    let timeout = if op == "module-step" {
+        // One existing adapter install (600s) plus lock, before/after snapshots
+        // and recovery probes. Each member is a separate durable request.
+        Duration::from_secs(900)
+    } else if op == "module-plan" || op == "module-status" {
+        Duration::from_secs(120)
+    } else if (op == "skill-install-group" || op == "skill-update-group")
         && specs.as_ref().is_some_and(|values| !values.is_empty())
     {
         extensions_group_timeout(specs.as_deref().unwrap_or_default())

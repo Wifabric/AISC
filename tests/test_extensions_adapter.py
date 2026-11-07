@@ -73,6 +73,58 @@ class TempEnv(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
 
 
+class ModuleOwnershipTests(TempEnv):
+    def test_mcp_fingerprint_detects_secret_edits_without_revealing_values(self):
+        items = A.list_items('mcp')
+        self.assertNotIn('ownership_fingerprint', items[0])
+        A.add_ownership_fingerprints('mcp', items)
+        original = items[0]['ownership_fingerprint']
+        self.assertEqual(len(original), 64)
+        self.assertNotIn('sk-live-secret123', json.dumps(items))
+        connection = sqlite3.connect(self.root / 'cc-switch.db')
+        try:
+            connection.execute('UPDATE mcp_servers SET server_config=?', (json.dumps({'url': 'http://x/mcp', 'env': {'TOKEN': 'changed-secret'}}),))
+            connection.commit()
+        finally:
+            connection.close()
+        A.add_ownership_fingerprints('mcp', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], original)
+        self.assertNotIn('changed-secret', json.dumps(items))
+
+    def test_skill_proof_detects_content_changes_and_added_user_files(self):
+        folder = self.root / 'skills' / 'superpowers'
+        folder.mkdir(parents=True)
+        skill = folder / 'SKILL.md'
+        skill.write_text('original')
+        items = A.list_items('skills')
+        A.add_ownership_fingerprints('skills', items)
+        original = items[0]['ownership_fingerprint']
+        self.assertTrue(original)
+        before = skill.stat()
+        skill.write_text('modified')
+        os.utime(skill, ns=(before.st_atime_ns, before.st_mtime_ns))
+        A.add_ownership_fingerprints('skills', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], original)
+        modified = items[0]['ownership_fingerprint']
+        (folder / 'user-notes.txt').write_text('Keep these notes')
+        A.add_ownership_fingerprints('skills', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], modified)
+
+    def test_plugin_proof_requires_a_bounded_owned_cache_location(self):
+        root = self.root / 'claude' / 'plugins'
+        folder = root / 'cache' / 'market' / 'qa' / '1'
+        folder.mkdir(parents=True)
+        (folder / 'plugin.txt').write_text('original')
+        registry = root / 'installed_plugins.json'
+        registry.write_text(json.dumps({'plugins': {'qa@market': [{'installPath': str(folder)}]}}))
+        items = A.list_items('plugins')
+        A.add_ownership_fingerprints('plugins', items)
+        self.assertTrue(items[0]['ownership_fingerprint'])
+        registry.write_text(json.dumps({'plugins': {'qa@market': [{'installPath': str(self.root)}]}}))
+        A.add_ownership_fingerprints('plugins', items)
+        self.assertEqual(items[0]['ownership_fingerprint'], '')
+
+
 class GithubMcpAuthSummaryTests(unittest.TestCase):
     def test_official_github_mcp_requires_auth_and_hides_values(self):
         summary = A._mcp_summary(json.dumps({
