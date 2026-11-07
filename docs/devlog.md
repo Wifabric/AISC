@@ -12,6 +12,26 @@
 - Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
 - Local validation: 9 recovery probes and 18 existing topic regressions passed. [Details](reviews/pr62-sync-recovery-20261106.md). GUI/user acceptance remains outstanding.
 
+## 2026-11-02：2.1.18 b2 PR 交接（未合并）
+
+- 用户授权“提 pr”后，推送 b2 并创建 [PR #64](https://github.com/Wifabric/AISC/pull/64)，依赖 #63，测试对应产品提交 `247fbf97`；#62/#63 保持不变。新回归用例、QA 数据和日志仍留本机。
+- 现有 Workbench CI 不自动检查以此依赖分支为 base 的 PR，不把本地 852 项通过写成远端 CI PASS。用户验收待定，b3 未启动。之前“未创建 b2 PR”记录为历史状态。
+
+## 2026-11-02：2.1.18 b2 Windows CU 补测与误移修复（本地，未发布）
+
+- 用户 D-8 重新委托自动操作后，将实际客户端切到 b2 前端，使用隔离 QA 工作区完成底部/右侧避让、窄短窗口、内部/外部滚动、键盘焦点及实际改名/移动检查。
+- 真实 CU 发现长子菜单 clamp 后覆盖 hover 触发按钮，随后的点击误移会话。限制子菜单到所选侧可用宽度、换行并重新测量后，同路径复测没有再次误移；真实账本确认改名/移入只命中指定会话。
+- 最终定向 45 项、前端 98 文件/852 项、vue-tsc/Vite PASS；首次 Python 沙箱环境失败与真实 GUI FAIL 均保留，新增测试/数据/日志留本机。尺寸、产物哈希、覆盖边界与未测项见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- b2 待用户本人验收；未创建 b2 PR，PR #62/#63 保留不动，b3 未启动。下方首轮停止 CU 的记录为历史状态，后续授权与实测以本条/D-8 为准。
+
+## 2026-11-02：2.1.18 b2 工作记录菜单边界（本地已实现，未发布）
+
+- 用户要求保留 PR #62/#63 不合并并开发 b2；独立 `codex/2.1.18-b2-work-record-menu` 分支本地依赖 b1 `cb528cad`，没有修改两个 PR 或远端长期线。
+- 主菜单实测尺寸后在视口内翻转/限制；子菜单独立 Teleport、支持左展，菜单过高时内部滚动。补 ContextMenu/Shift+F10、方向键/Home/End/Escape 与焦点回归；外部滚动/resize 关闭，内部滚动保留主菜单。
+- 加入可见后聚焦时序及旧异步 move 不关闭新菜单的保护，未改归属模型、store/IPC 或后端。
+- 本地 7 项布局回归先 RED；最终组件 44 项、前端全套 98 文件/851 项、vue-tsc/Vite 全 PASS。新增 10 项回归留本机，不随产品提交上传；详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- 用户停止 CU 的要求继续有效，未操作桌面或切换客户端；真实 Windows H2 与用户验收 NOT RUN。本批未新建 PR、未发布，b3 未启动。
+
 ## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
 
 - 后续用户委托补测：恢复普通窗口与键盘输入后，文件/目录改名、刷新、关闭重入、磁盘不覆盖及内容保留 PASS。冲突文案不可见属真实 CU FAIL，已在本批给重命名行补定位容器；前端 840 项首轮通过、1 项因缺 Python 失败后补环境复测通过，vue-tsc/Vite PASS。用户取消 CU 后已停止输入和候选切换，修后提示可见性仍 NOT RUN；尚无 b1 PR/CI，不启动 b2。
@@ -4430,3 +4450,7 @@ HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。
 - 2026-11-01：发布 Workbench `v2.1.17-preview.2` 与 CLI `v0.1.10.dev1`。release PR #59 CI SUCCESS 并合入 develop `5076fb2`；CLI Artifact/TestPyPI、Workbench NSIS 全绿，误触的 CLI tag 重复 NSIS 已取消。GitHub prerelease 资产完整，等待用户按 HANDTEST 统一实测 B1–B6。
 - 2026-11-01：进入 v2.1.17 final 收口。用户确认 preview.2 B1–B6 统一实测无问题；CLI 版本升至 0.1.10，新增 Workbench/CLI final release notes，preview-fixes 计划集归档。全门禁、版本/docs、vendor 工作树校验与 bundle stage/verify 通过；main/final 发布流程执行中。
 - 2026-11-01：`v2.1.17` final 收口完成。用户确认 preview.2 B1–B6 实测无问题；PR #60 合入 develop `8b001e7`，PR #61 合入 main `bf95ce0`。tag `v2.1.17` NSIS run `41289043641`、CLI `v0.1.10` Artifact run `41289887157`、正式 PyPI run `41289052001` 全部 SUCCESS；下载 NSIS SHA256 `ed1955…c6b6` 校验 PASS。四个 preview/draft Release 已删除，git tag 保留；反馈站纳入项已以 final 回复置 resolved（反馈仓库 `bdd27a4`）。临时分支清理执行中。
+
+## 2026-11-07 b2 单人流程续接验证（本地未发布）
+
+从 develop 9db6f642 集成 PR #64 head 36314112，保留原有成果。前端、Rust、类型与生产构建通过，Python 环境失败经定向复验消除；本轮 CU 环境启动失败，用户验收未进行。独立候选与隔离合成 QA 数据已准备；详见 2.1.18 PRETEST 最新记录。
