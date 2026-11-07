@@ -190,3 +190,7 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 
 
 最终候选记录：PR #76 head be39b2a9 的 Workbench CI run 42411011239 三项 PASS，合入 develop 41d046d9。含最终资源修正的 Windows NSIS 构建 PASS，复制后的独立 bundle 再校验 PASS；候选启动与 About 实机检查 PASS，仅覆盖基础启动，完整 H1–H10/SSH/真实授权及安装升级仍 NOT RUN。候选窗口检查后关闭，原平台保留。产物、哈希、启动脚本和验证边界见 [DELIVERY](DELIVERY.md)。
+
+## 2026-11-08 统一 GUI 复测与 S3
+
+真实候选已完成工作区预检/启动和 H5 创建、重新读取、编辑保存子集。H6 发现模块预检约 47 秒占住共享 CLI 通道并造成工作记录同步超时，已改为独立通道；Rust 定向 35 passed，修后真实候选和 CI 另记。测试隔离、旧镜像上候选适配器部署及未测边界见 [preview-gui](preview-gui.md)。
