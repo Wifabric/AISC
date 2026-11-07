@@ -22,7 +22,11 @@ def _runtime(args: argparse.Namespace):
 def cmd_extensions_module(args: argparse.Namespace) -> Dict[str, Any]:
     from aisc.application.extension_modules import module_plan, module_step, module_status
     try:
-        text = sys.stdin.read(1_000_001)
+        # Rust writes UTF-8 bytes. Frozen Windows CLI stdin can instead use
+        # a locale codec with surrogateescape; do not silently corrupt names.
+        # Pooled serve supplies StringIO, whose text was already decoded.
+        binary = getattr(sys.stdin, 'buffer', None)
+        text = binary.read(1_000_001).decode('utf-8') if binary is not None else sys.stdin.read(1_000_001)
         if len(text) > 1_000_000:
             raise ValueError('request too large')
         request = json.loads(text)
