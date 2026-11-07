@@ -882,6 +882,8 @@ export const zhCN = {
   "extensions.tab.mcp": "MCP",
   "extensions.tab.plugins": "插件",
   "extensions.empty": "暂无内容。",
+  "extensions.pluginInstallAbsent": "安装进程已结束，核对后插件尚未安装，可以重试。",
+  "extensions.pluginInstallRunning": "插件操作仍在运行，请刷新安装状态后再重试。",
   "extensions.noRuntime": "工作区未启动，无法读取扩展。",
   "extensions.toggle": "为 {agent} 启用/停用",
   "extensions.remove": "卸载/删除",

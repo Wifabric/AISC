@@ -36,3 +36,7 @@
 - 最终冻结 CLI 的 plan → step → status → 卸载全链通过，SHA256 `8454c3eac9980c73589c73cf3f0873c9b74315b25d57d86e8be4eb0c5a506547`。所有 QA 容器均核对专属标签后清理，无用户挂载。
 - 原始证据在本工作树 `output/verification`：`ownership-tests-final.log`、`frontend-build-retry.log`、`real-modules.json`、`real-marker-probe.json`、`frozen-modules-smoke.json`；不提交合成数据/产物。
 - 自查不是独立评审。远端 CI 尚未执行；真实 Workbench GUI、SSH 目标与用户 H6 均 NOT RUN，按 D-15 留到统一 Preview。U-4 与反馈站写权限仍待后续处理，不以本批实现冒充反馈关闭。
+
+## 远端集成
+
+[PR #70](https://github.com/Wifabric/AISC/pull/70) 精确 head `98187f9b681bc68ee227ecb0823c5f1e645be27e` 在 [CI run 42404418532](https://github.com/Wifabric/AISC/actions/runs/42404418532) 三项全部 PASS，已合入 develop `ffc848855161ad4c08935f7f1b8f485388124e3a`。GUI/用户验收仍待统一 Preview。

@@ -1049,6 +1049,10 @@ pub async fn extensions_call(
         // One existing adapter install (600s) plus lock, before/after snapshots
         // and recovery probes. Each member is a separate durable request.
         Duration::from_secs(900)
+    } else if matches!(op.as_str(), "plugin-install" | "plugin-update" | "plugin-market-add") {
+        // Adapter: up to 3 x 180s; host Docker bridge: 600s plus target lock.
+        // Short reads retain PROVIDER_TIMEOUT.
+        Duration::from_secs(660)
     } else if op == "module-plan" || op == "module-status" {
         Duration::from_secs(120)
     } else if (op == "skill-install-group" || op == "skill-update-group")

@@ -346,7 +346,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
           if (!isCurrentContext(token)) return;
           const message = errorText(e);
           const code = (e as { code?: string })?.code ?? "";
-          const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED"].includes(code)
+          const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED", "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS", "AISC_ERR_EXTENSIONS_PLUGIN_TIMEOUT"].includes(code)
             || /timed?\s*out|timeout|non-envelope|connection.*closed|unexpected.*eof/i.test(message);
           logOperation(target, action, itemId, label, started, unknown ? "unknown" : "failed", message, run, attempt);
           failures.push(operations.length === 1 ? message : `${itemId}: ${message}`);
@@ -595,8 +595,30 @@ export const useExtensionsStore = defineStore("extensions", () => {
     op: "plugin-install" | "plugin-update",
     id: string,
   ): Promise<void> {
+    const token = contextToken();
     await runOperation("plugins", op === "plugin-install" ? "install" : "update", id, id, [
-      () => call(op, { id }),
+      async () => {
+        try {
+          return await call(op, { id });
+        } catch (error) {
+          if (op !== "plugin-install" || !isCurrentContext(token)) throw error;
+          // A detached Docker exec may outlive the host request. Only a new
+          // adapter's explicit idle flag permits reconciliation; an old image
+          // or a failed snapshot leaves the original result unknown.
+          let state: { items?: ExtensionsItem[]; mutation_running?: boolean };
+          try { state = await call("list", { kind: "plugins" }); } catch { throw error; }
+          if (!isCurrentContext(token)) throw error;
+          if (state.mutation_running === true) throw { code: "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS", message: i18n.global.t("extensions.pluginInstallRunning") };
+          if (state.mutation_running !== false) throw error;
+          if (state.items?.some(item => item.id === id)) return;
+          const code = (error as { code?: string })?.code ?? "";
+          if (["WB_ERR_CLI_TIMEOUT", "AISC_ERR_EXTENSIONS_PLUGIN_TIMEOUT", "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS"].includes(code)
+            || /timed?\s*out|timeout/i.test(errorText(error))) {
+            throw { code: "AISC_ERR_EXTENSIONS_PLUGIN_NOT_INSTALLED", message: i18n.global.t("extensions.pluginInstallAbsent") };
+          }
+          throw error;
+        }
+      },
     ]);
   }
 
