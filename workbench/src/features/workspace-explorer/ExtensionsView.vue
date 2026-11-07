@@ -12,10 +12,13 @@ import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
 import { skillGroupSummary } from "./extensionSummaries";
 import ExtensionFailureNotice from "./ExtensionFailureNotice.vue";
 import ExtensionMarketDialog from "./ExtensionMarketDialog.vue";
+import GitHubMcpAuth from "./GitHubMcpAuth.vue";
 
 const { t, locale } = useI18n();
 const store = useExtensionsStore();
 const runtime = useRuntimeStore();
+const githubAuthOpen = ref(false);
+watch(() => store.context, () => { githubAuthOpen.value = false; });
 
 const KIND_TABS: { key: ExtensionsKind; labelKey: string }[] = [
   { key: "skills", labelKey: "extensions.tab.skills" },
@@ -273,6 +276,8 @@ async function closeMarket(): Promise<void> {
             </span>
           </button>
           <template v-if="store.kind === 'mcp'">
+            <button v-if="item.id === 'github' && item.auth_required" type="button" class="ui-button sm"
+              :disabled="store.busy" data-testid="github-auth-open" @click.stop="githubAuthOpen = !githubAuthOpen">{{ t("githubAuth.configure") }}</button>
             <button
               v-for="agent in (['claude', 'codex'] as const)"
               :key="agent"
@@ -312,6 +317,7 @@ async function closeMarket(): Promise<void> {
         </div>
         <ExtensionDetailPanel v-if="selected?.id === item.id" class="installed-detail"
           :id="'installed-detail-' + item.id" :item="item" :update="updateFor(item.id)" @close="closeDetail(item)" />
+        <GitHubMcpAuth v-if="githubAuthOpen && store.kind === 'mcp' && item.id === 'github'" @close="githubAuthOpen = false" />
       </div>
 
     </template>

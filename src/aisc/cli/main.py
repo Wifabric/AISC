@@ -347,6 +347,9 @@ def _build_parser() -> _AiscArgumentParser:
         module_parser = extsub.add_parser(module_op, help="Durable module operation (request JSON on stdin)", allow_abbrev=False)
         _extensions_common(module_parser)
 
+    for auth_op in ('github-auth-status', 'github-auth-save', 'github-auth-check'):
+        _extensions_common(extsub.add_parser(auth_op, help='GitHub MCP authentication (JSON on stdin)', allow_abbrev=False))
+
     extt = extsub.add_parser("toggle", help="Enable/disable a skill or MCP server",
                              allow_abbrev=False)
     _extensions_common(extt)
@@ -2086,7 +2089,9 @@ def _cmd_extensions(
     from aisc.cli.commands import extensions as ext_cmd
 
     sub = getattr(args, "extensions_command", None)
-    if sub in ("module-plan", "module-step", "module-status"):
+    if sub in ('github-auth-status', 'github-auth-save', 'github-auth-check'):
+        data = ext_cmd.cmd_extensions_github_auth(args)
+    elif sub in ("module-plan", "module-step", "module-status"):
         data = ext_cmd.cmd_extensions_module(args)
     elif sub == "list":
         data = ext_cmd.cmd_extensions_list(args)

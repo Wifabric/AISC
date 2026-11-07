@@ -31,6 +31,7 @@ _OPS = (
     "skill-update", "plugin-market-list", "plugin-market-add",
     "plugin-market-remove", "plugin-search",
     "mcp-search", "mcp-market-install", "updates-check",
+    "github-auth-status", "github-auth-save", "github-auth-check",
 )
 _KINDS = ("skills", "mcp", "plugins")
 _AGENTS = ("claude", "codex")
@@ -211,6 +212,13 @@ def _registry_root(workspace: Optional[str]) -> Path:
 
     ws_path = Path(workspace).resolve() if workspace else Path.cwd()
     return workspace_state_dir(ws_path)
+
+
+def extensions_github_auth(runtime_id, op, workspace, request, executor=None):
+    _validate(op, None, None)
+    envelope = _exec_adapter(runtime_id, _registry_root(workspace), executor, op,
+                             stdin_text=json.dumps(request), timeout=60.0)
+    return envelope.get('data') or {}
 
 
 def extensions_list(runtime_id: str, kind: str, workspace: Optional[str],

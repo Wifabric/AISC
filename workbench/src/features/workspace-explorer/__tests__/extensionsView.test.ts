@@ -44,6 +44,16 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     wrapper.unmount();
   });
 
+  it("opens GitHub authentication from the installed MCP row", async () => {
+    vi.mocked(ipc.extensionsCall).mockImplementation(async p => p.op === 'github-auth-status'
+      ? { revision: 'r', engines: { claude: { enabled: true, configured: false, connection: 'not_verified' }, codex: { enabled: true, configured: false, connection: 'not_verified' } } }
+      : { items: [{ kind: 'mcp', id: 'github', name: 'GitHub', auth_required: true, enabled_claude: true, enabled_codex: true }] });
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } }); await flushPromises();
+    await wrapper.get('[data-testid="ext-tab-mcp"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="github-auth-open"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="github-auth"]').text()).toContain('GitHub MCP 认证配置'); wrapper.unmount();
+  });
+
   it("keeps rendering after switching skills -> mcp -> plugins", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();

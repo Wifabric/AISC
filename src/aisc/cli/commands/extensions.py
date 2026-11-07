@@ -34,6 +34,20 @@ def cmd_extensions_module(args: argparse.Namespace) -> Dict[str, Any]:
     return operation(args.runtime_id, args.workspace, request)
 
 
+def cmd_extensions_github_auth(args):
+    from aisc.application.extensions import extensions_github_auth
+    try:
+        text = sys.stdin.read(16385)
+        if len(text) > 16384:
+            raise ValueError()
+        request = json.loads(text or '{}')
+        if not isinstance(request, dict):
+            raise ValueError()
+    except Exception:
+        raise CliError(message='Invalid GitHub MCP request', exit_code=2, error_code='AISC_ERR_USAGE') from None
+    return extensions_github_auth(args.runtime_id, args.extensions_command, args.workspace, request)
+
+
 def _group_specs(raw: str) -> list[str]:
     try:
         specs = json.loads(raw)

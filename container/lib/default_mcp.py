@@ -14,6 +14,9 @@ import os
 import re
 import sqlite3
 import time
+import tempfile
+import tomllib
+import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -112,12 +115,20 @@ def _live_has_custom(project_dir: Path, codex_config_dir: Path) -> bool:
 
 def _atomic_write(path: Path, text: str, *, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(text)
-    if mode is not None:
-        os.chmod(temporary, mode)
-    os.replace(temporary, path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', newline='\n',
+                                         dir=path.parent, prefix=path.name+'.', delete=False) as output:
+            temporary = Path(output.name)
+            if mode is not None:
+                os.chmod(temporary, mode)
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _sync_claude(project_dir: Path, server: dict[str, Any], enabled: bool) -> None:
@@ -127,7 +138,8 @@ def _sync_claude(project_dir: Path, server: dict[str, Any], enabled: bool) -> No
     if not isinstance(servers, dict):
         servers = {}
     if enabled:
-        entry: dict[str, Any] = {"type": "http", "url": str(server.get("url", ""))}
+        entry = dict(servers.get(SERVER_ID) or {})
+        entry.update(type="http", url=str(server.get("url", "")))
         headers = server.get("headers")
         if isinstance(headers, dict) and headers:
             entry["headers"] = headers
@@ -148,22 +160,58 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _toml_value(value: Any) -> str:
+    if isinstance(value, str):
+        return _toml_string(value)
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return '[' + ', '.join(_toml_value(v) for v in value) + ']'
+    if isinstance(value, dict):
+        return '{ ' + ', '.join(_toml_string(k)+' = '+_toml_value(v) for k, v in value.items()) + ' }'
+    raise ValueError('Unsupported MCP TOML value')
+
+
+def _codex_text(text: str, server: dict[str, Any], enabled: bool) -> str:
+    document = tomllib.loads(text)
+    existing = document.get('mcp_servers', {}).get(SERVER_ID, {})
+    # Replace only this server's table/subtables; unrelated text stays intact.
+    header = re.compile(r'^\s*\[mcp_servers\.(?:github|"github"|\'github\')(?:\.[^\]]+)?\]\s*(?:#.*)?$')
+    lines, dropping, found = [], False, False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith('['):
+            dropping = bool(header.match(line.strip()))
+            found = found or dropping
+        if not dropping:
+            lines.append(line)
+    if existing and not found:
+        raise ValueError('Unsupported GitHub MCP table layout; preserve custom configuration')
+    output = ''.join(lines).rstrip('\n') + '\n'
+    if enabled:
+        entry = dict(existing)
+        entry['url'] = str(server.get('url', ''))
+        headers = server.get('http_headers')
+        if isinstance(headers, dict) and headers.get('Authorization'):
+            entry['http_headers'] = headers
+            entry.pop('bearer_token_env_var', None)
+        else:
+            entry['bearer_token_env_var'] = server.get('bearer_token_env_var') or DEFAULT_TOKEN_ENV
+        output += '\n[mcp_servers.github]\n' + ''.join(f'{k if re.fullmatch("[A-Za-z0-9_-]+", k) else _toml_string(k)} = {_toml_value(v)}\n' for k,v in entry.items())
+    tomllib.loads(output)
+    return output
+
+
 def _sync_codex(codex_config_dir: Path, server: dict[str, Any], enabled: bool) -> None:
     path = codex_config_dir / "config.toml"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         text = ""
-    text = _CODEX_TABLE.sub("", text).rstrip("\n") + "\n"
-    if enabled:
-        token_env = server.get("bearer_token_env_var")
-        token_env = token_env if isinstance(token_env, str) and token_env.strip() else DEFAULT_TOKEN_ENV
-        text += (
-            f"\n[mcp_servers.{SERVER_ID}]\n"
-            f"url = {_toml_string(str(server.get('url', '')))}\n"
-            f"bearer_token_env_var = {_toml_string(token_env)}\n"
-        )
-    _atomic_write(path, text, mode=0o600)
+    _atomic_write(path, _codex_text(text, server, enabled), mode=0o600)
 
 
 def synchronize(
