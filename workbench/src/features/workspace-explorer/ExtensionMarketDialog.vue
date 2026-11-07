@@ -7,6 +7,7 @@ import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
 import ExtensionMarketResult from "./ExtensionMarketResult.vue";
 import { skillGroupSummary } from "./extensionSummaries";
 import ExtensionSourceManager from "./ExtensionSourceManager.vue";
+import ExtensionModulesPanel from "./ExtensionModulesPanel.vue";
 import {
   EXTENSION_RECOMMENDATION_CATEGORIES,
   EXTENSION_RECOMMENDATIONS_BY_CATEGORY,
@@ -30,6 +31,7 @@ const tabs: { key: MarketTab; labelKey: string }[] = [
 const activeTab = ref<MarketTab>("recommendations");
 const activeCategory = ref<RecommendationCategoryId>("research");
 const query = ref("");
+const showModules = ref(false);
 function setKeyboardMode(event: Event, enabled: boolean): void {
   (event.currentTarget as HTMLElement).classList.toggle("keyboard-navigation", enabled);
 }
@@ -262,7 +264,9 @@ onMounted(() => { closeRef.value?.focus(); });
           :aria-labelledby="'market-tab-' + activeTab"
         >
           <div v-if="activeTab === 'recommendations'" class="recommendation-pane">
-            <div class="category-chips" role="group" :aria-label="t('extensions.market.categories')">
+            <button type="button" data-testid="market-modules" :aria-expanded="showModules" @click="showModules = !showModules">{{ showModules ? t("modules.back") : t("modules.title") }}</button>
+            <ExtensionModulesPanel v-if="showModules" />
+            <div v-if="!showModules" class="category-chips" role="group" :aria-label="t('extensions.market.categories')">
               <button
                 v-for="category in EXTENSION_RECOMMENDATION_CATEGORIES"
                 :key="category.id"
@@ -273,7 +277,7 @@ onMounted(() => { closeRef.value?.focus(); });
                 @click="activeCategory = category.id; selectedRecommendation = null"
               >{{ categoryLabel(category) }}</button>
             </div>
-            <div class="recommendation-list">
+            <div v-if="!showModules" class="recommendation-list">
               <article
                 v-for="(entry, entryIndex) in recommendations"
                 :key="`${entry.kind}:${entry.identity}`"

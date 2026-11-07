@@ -1,6 +1,6 @@
 # b4 镜像重建与进度
 
-状态：IN PROGRESS。来源 F3.2–4；验收 R-4/H4。U-2 已由 D-13 确认。b3 PR #67 最新提交 `89971647` 三项 CI PASS，合并基线 `c0f9ab11`；本批从该 develop 提交建立独立分支。
+状态：已合入 develop，统一 Preview / H4 待验收。来源 F3.2–4；验收 R-4/H4。U-2 已由 D-13 确认；实施基线 `c0f9ab11`。
 
 ## 本批协议与执行细化
 
@@ -39,3 +39,5 @@ settings、runtimeBuild、launchSummary 定向测试；Python docker_lifecycle/d
 - 本地证据：`output/verification/real-image-rebuild.json`、`frozen-smoke.json` 及各层测试日志。原始日志/临时 QA 数据不上传。
 - 自查修正：刷新启动摘要不触发 reconcile；对话框使用现有主题变量与焦点管理；极早取消未命中时在收到该任务 start 后重发取消；原任务完成后不刷新新目标。
 - 远端 CI、真实 GUI 两入口/交互与用户 H4 尚 NOT RUN；按 D-15 留到对应阶段，不能将 DOM、CLI 或数据面结果冒充 GUI PASS。
+
+最终提交 `80e90919016a9e4874a81735d2600161c55f5a12` 的 frontend/rust/cli 全部 PASS：[CI](https://github.com/Wifabric/AISC/actions/runs/42400554462)。[PR #68](https://github.com/Wifabric/AISC/pull/68) 已合入 develop `1efe0904b3770bf1bdc530b8c8b474f48fb00cd6`。上述 CI NOT RUN 为提交前记录；GUI 与 H4 仍 NOT RUN。

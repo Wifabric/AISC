@@ -711,7 +711,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   return {
     describeSkill, describedItem, descriptionState,
-    kind, itemsByKind, items, loading, busy, error, canLoad,
+    kind, itemsByKind, items, loading, busy, error, errorsByKind, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
     skillRepos, skillReposBusy, skillReposUnsupported,

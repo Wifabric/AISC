@@ -30,6 +30,7 @@ pub mod runtime;
 pub mod serve;
 pub mod session;
 pub mod settings;
+pub mod extension_modules;
 pub mod storage;
 pub mod subscription;
 pub mod target;
@@ -234,6 +235,8 @@ pub fn run(cli_arg: Option<String>) {
             start_docker,
             load_settings,
             save_settings,
+            extension_modules::load_extension_modules,
+            extension_modules::save_extension_modules,
             reset_gui_settings,
             resolve_locale,
             session::hide_window,

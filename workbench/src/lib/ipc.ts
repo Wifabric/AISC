@@ -730,6 +730,27 @@ export interface ExtensionsItem {
   enabled_codex?: boolean;
 }
 
+export interface ExtensionModuleMember {
+  kind: "skills" | "mcp" | "plugins";
+  identity: string;
+  name: string;
+  source_url: string;
+}
+export interface ExtensionModuleDefinition {
+  id: string;
+  name: string;
+  members: ExtensionModuleMember[];
+}
+export interface ExtensionModuleDocument {
+  schema_version: number;
+  revision: number;
+  definitions: ExtensionModuleDefinition[];
+  hidden_builtin_ids: string[];
+}
+export const loadExtensionModules = () => invoke<ExtensionModuleDocument>("load_extension_modules");
+export const saveExtensionModules = (expectedRevision: number, document: ExtensionModuleDocument) =>
+  invoke<ExtensionModuleDocument>("save_extension_modules", { expectedRevision, document });
+
 export interface ExtensionsCallParams {
   workspace: string;
   runtimeId: string;
