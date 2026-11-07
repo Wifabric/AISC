@@ -40,3 +40,10 @@ D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代�
 | b8 / [#72](https://github.com/Wifabric/AISC/pull/72) | `deb15d19171132b475501c940691ba2c1a2a8ebb` | `4ff4881fbe8831ce2f68118eca994dc2cb55a375` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42407318416) |
 | b9 / [#73](https://github.com/Wifabric/AISC/pull/73) | `0ba8a1054526a6b1095387d31b86164eb1f7ba6b` | `c8a39b8a5c9fc36c1c1b3a2727fc28224ee8edde` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42408462987) |
 | b10 / [#74](https://github.com/Wifabric/AISC/pull/74) | `4bad14edff4d25bbc71bf7a93f2fe8c668ee7586` | `b548728b8dc2ed58f1a4f7c5d54855929d8535c7` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42409016199) |
+
+
+## 流程与整合修正
+
+- [PR #75](https://github.com/Wifabric/AISC/pull/75)：head 2816083e，合入 8502f7dd。纯文档/仓库 Skill；格式、105 个本地文件链接及差异检查 PASS，产品 CI 按路径未触发，不记远端 CI PASS。
+- [PR #76](https://github.com/Wifabric/AISC/pull/76)：head be39b2a9，base 8502f7dd，合入 41d046d9。本地 Python 1791/适配器 87、真实资源链与 bundle 验证 PASS；路径未自动触发 CI，显式 dispatch [run 42411011239](https://github.com/Wifabric/AISC/actions/runs/42411011239)，frontend/rust/cli 三项成功后集成。
+- 两项均单代理自查，无独立评审；用户验收、main/final 发布仍待完成。

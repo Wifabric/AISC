@@ -364,3 +364,5 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；个人功能整合
 - [ ] 实证后提炼通用小团队开发元 Skill。
 
 - [ ] 2.1.18 协作流程与开发 Skill：主开发者统一 Preview、小修正直接处理、贡献者自测后 PR 的文档及 Skill 已实现，待流程 PR/候选验证和最终用户验收；见 [team-workflow](plans/2.1.18-dev-plans/team-workflow.md)。
+
+2026-11-08 夜间交付：本版实现、流程和整合修正已进入 develop；本机候选/安装包及基础启动检查完成。仍保持未验收 TODO，U-4 与统一 Preview 用户验收等见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。

@@ -187,3 +187,6 @@ S1：完整 stage 首次失败，适配器/default_mcp 两项校验值过期且�
 首轮 Windows 主程序编译 PASS，NSIS 因工作树绝对路径过长失败；以短路径 junction 引用相同 bundle 重试，未改变产品资源。冻结 CLI 与实际打包资源的模块应用/卸载、双引擎合成配置、grill-me 读取已通过，QA 容器已清理；合成令牌不代表真实授权。最终候选标识与修后验证另记。
 
 S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 skipped / 207 subtests。真实容器 arXiv/OpenAlex 详情和重复读取 PASS，固定来源 4de67861。U-4 四项提案分别通过模块 installed→removed，QA 容器已清理。修后完整 bundle 校验 PASS；Windows 最终安装包正在重新生成，结果另记。CLI SHA256 `165b5ff38fc555eed02b551a5c90fa54ee2b315e06b111bdf5c3857c7c1f9f44`。
+
+
+最终候选记录：PR #76 head be39b2a9 的 Workbench CI run 42411011239 三项 PASS，合入 develop 41d046d9。含最终资源修正的 Windows NSIS 构建 PASS，复制后的独立 bundle 再校验 PASS；候选启动与 About 实机检查 PASS，仅覆盖基础启动，完整 H1–H10/SSH/真实授权及安装升级仍 NOT RUN。候选窗口检查后关闭，原平台保留。产物、哈希、启动脚本和验证边界见 [DELIVERY](DELIVERY.md)。
