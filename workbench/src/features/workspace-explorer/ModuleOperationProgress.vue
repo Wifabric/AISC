@@ -16,7 +16,7 @@ const reason = (value: string) => te(`modules.reason.${value}`) ? t(`modules.rea
     <ul v-if="operations.plan">
       <li v-for="row in operations.plan.rows" :key="row.key">
         <span>{{ row.member.name }} · {{ t(`extensions.tab.${row.member.kind}`) }}<small>{{ row.member.identity }}</small></span>
-        <span>{{ t(`modules.action.${row.action}`) }} · {{ t(`modules.status.${row.status}`) }}<small>{{ reason(row.reason) }}</small></span>
+        <span>{{ t(`modules.action.${row.action}`) }} · {{ t(`modules.status.${row.status}`) }}<small v-if="!['installed', 'removed', 'auth_required'].includes(row.status)">{{ reason(row.reason) }}</small></span>
       </li>
     </ul>
     <div class="progress-actions">
