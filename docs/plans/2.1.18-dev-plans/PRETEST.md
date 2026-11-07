@@ -200,3 +200,5 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 2026-11-08 Preview.3 追加：本机 H1 文件/目录大小写、刷新重入、冲突不覆盖及底部非法名称提示 PASS，正常键盘输入解决此前 UI Automation 行内输入限制。H10 可控失败的键盘/鼠标关闭、焦点返回、新失败再次出现、切换视图不重显 PASS；故障调用计数与插件清单证明关闭没有隐式重试或安装变更。仅为隔离 QA 容器故障注入，不能替代 H7 安装或 H10 跨目标/未知结果等未执行路径。逐项证据、部署恢复及重入回收提示的未定位观察见 [preview-gui](preview-gui.md)。
 
 2026-11-08 Preview.3 镜像命名：H3 本机默认名/取消、显式旧标签选择、完整引用改名、其他标签保留、非法及冲突拒绝、registry port 保留均通过真实 GUI + Docker inspect。两个独立 scratch QA 镜像与标签已精确清理；候选产品没有变化。H4 重建、SSH、部分失败 GUI 未由本轮覆盖，详见 preview-gui。
+
+2026-11-08 H4/S6：真实 GUI 通过运行引用阻止、显式停止后预检、默认无缓存参数和失败日志/旧镜像保留。构建触发首选镜像源 EOF，定位 guarded_rebuild 缺少普通构建的基础镜像回退和 digest 准备；现共用 prepare_build_argv。定向 52、全套 Python 1796/54 skipped/207 subtests 通过；修后冻结 CLI 使用完整 bundle 真实重建成功，新 ID 发布到所选 tag、其他 tag 和停止容器保留。当前标准 Preview.3 未含 S6，重打包、修后 GUI 及未测项见 [preview-gui](preview-gui.md)，不预记整体通过。

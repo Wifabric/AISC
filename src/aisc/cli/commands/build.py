@@ -554,6 +554,21 @@ def _rewrite_node_image(argv: list, new_value: str) -> list:
     return out
 
 
+def prepare_build_argv(plan: BuildPlan, executor: DockerExecutor, *, emitter=None,
+                       streaming: bool = False) -> list:
+    """Resolve the pinned base once for ordinary builds and guarded rebuilds."""
+    builder = _local_digest_builder(executor) if "@" in plan.build_arg_node_image else ""
+    effective_node_image = _ensure_base_image(executor, plan, emitter, streaming)
+    argv = _rewrite_node_image(plan.docker_argv, effective_node_image)
+    if builder:
+        argv[1:1] = ["--builder", builder]
+    if "@" in plan.build_arg_node_image and "--pull" in argv:
+        # The digest pre-pull already honored --pull. The verified local alias
+        # must never be resolved against Docker Hub by the builder.
+        argv.remove("--pull")
+    return argv
+
+
 def run_build(
     plan: BuildPlan,
     *,
@@ -658,17 +673,7 @@ def run_build(
 
     # --- T8a: pre-pull the base image through the mirror chain (CN 网络兜底;
     # local hit is a zero-IPC no-op) and point the build at the local name ---
-    builder = _local_digest_builder(exec_) if "@" in plan.build_arg_node_image else ""
-    effective_node_image = _ensure_base_image(exec_, plan, emitter, streaming)
-
-    # --- execute docker build ---
-    argv = _rewrite_node_image(plan.docker_argv, effective_node_image)
-    if builder:
-        argv[1:1] = ["--builder", builder]
-    if "@" in plan.build_arg_node_image and "--pull" in argv:
-        # --pull was honored by the digest pre-pull. Asking the builder to
-        # pull our local-only alias would reintroduce a Docker Hub lookup.
-        argv.remove("--pull")
+    argv = prepare_build_argv(plan, exec_, emitter=emitter, streaming=streaming)
     result.docker_argv = argv  # error payloads carry the argv that actually ran
 
     if streaming:

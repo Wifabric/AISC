@@ -71,3 +71,19 @@ S5：修后独立通道使中文名称经过 Windows 冻结 CLI 的系统编码 
 - WebView 原生下拉弹层的鼠标输入被自动化工具目标窗口检查拒绝，改用 End/Enter 正常选择，实际旧标签在提交前已核对；没有绕过工具检查或把它记作产品故障。
 
 证据：h3-gui-before.json、gui-h3-default.txt、gui-h3-renamed.txt、gui-h3-invalid.txt、gui-h3-conflict.txt、gui-h3-port.txt、h3-gui-after.json、h3-gui-cleanup.json，均在本机 verification 目录。部分失败时旧标签删除失败的 GUI、SSH 及 H4 重建未由本轮覆盖。设置页保留历次操作结果文案，冲突错误出现在成功后的历史结果区域；未将该区域误记为扩展失败提示 H10。
+
+## H4 实机发现 S6：重建缺少基础镜像准备
+
+Preview.3、893×859 窗口，独立镜像 `aisc-h4-gui-94db20a7:keep/selected`，旧 ID `sha256:73426400b52c4883bf6762b7a0a013f9f7e6e9dd98e3bc1127a9f5b8f6f2d25a`，测试容器 `f69201ad41c4`。原平台不参与测试。
+
+- 运行中拒绝 PASS：镜像行重建的只读预检列出 `aisc-h4-gui-94db20a7-container`，确认构建禁用，默认无缓存勾选；没有自动停止或删除。取消后通过该容器行的“停止”及确认，inspect 证明它已停止，旧 ID 不变。
+- 停止后预检 PASS：对话框显示同一完整 ID 和 keep 标签，确认可用。实际冻结 CLI argv 含 keep、expected-image-id、--guarded、--no-cache、--events，根目录为完整候选 bundle。
+- 真实构建到基础镜像元数据阶段，首选源 docker.1ms.run 返回 EOF，31.8 秒后 UI 正确显示失败和日志；两个原标签和停止容器都保留。构建成功仍未完成。
+- S6 定位：guarded_rebuild 直接执行 plan.docker_argv，绕过普通 run_build 的镜像源回退、固定 digest 验证和本机 builder 绑定。抽出共用 prepare_build_argv，普通构建与重建都调用；不放宽固定来源校验，不修改用户网络配置或所选镜像替换保护。
+- 定向 52 passed：重建生命周期、基础镜像回退和固定版本回归；新增实际接线覆盖首选源失败后 fallback、digest 无法验证和非 docker builder 拒绝，失败前不发布所选标签。完整回归、修后冻结 CLI 的实际构建和 GUI 复测另记，不能用旧 Preview.3 代表修正。
+
+本地证据：gui-h4-running-block.txt、gui-h4-stopped-confirm.txt、h4-nocache-command.json、gui-h4-mirror-failure.txt（临时签名下载 URL 已省略）、h4-gui-before.json。重建 QA 资源暂保留供修后复测，处于停止状态；原平台继续运行。
+
+S6 修后冻结 CLI + 完整候选 bundle 实测 PASS：依次尝试三个配置源，验证固定 digest 后使用 `aisc-node-base:sha256-bc0a2afd…` 和 `--builder desktop-linux --no-cache` 完成构建，610 条输出事件、76 条进度事件，最终 build.complete / exit_code=0。新 ID `sha256:22d36db0de22650fef865e00749879a472efff5e2bb40ebfa90f4d4aad379582` 只发布到 keep；selected 仍指向旧 ID，停止容器仍引用旧 ID，结果 kept_referenced 与实际一致。期间另做同 digest 的官方拉取可达性探针成功，但未修改候选配置或回退链。此处为真实冻结 CLI 数据面，不记修后 GUI 成功路径已完成。
+
+完整 Python 回归 1796 passed、54 skipped、207 subtests；本机路径适配沿用既有验证插件，无断言修改。冻结 CLI SHA256 `ded9ed26f029afb00350e8fa67354cf93cd08e89fa7028e248ea06d5eedc2eaf`。本地补充证据 h4-fixed-frozen-events.jsonl、h4-fixed-docker-command.json、h4-fixed-result.json、rebuild-python-full.log；标准 Preview.3 尚未替换此 CLI，重打包、修后 GUI/取消/第二入口与远端 CI 继续补记。

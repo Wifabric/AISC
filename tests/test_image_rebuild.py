@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from aisc.application.image_rebuild import rebuild_check, guarded_rebuild
-from aisc.domain.models import CliError, ProcessResult
+from aisc.domain.models import CliError, ImageInspectStatus, ProcessResult
 
 OLD = 'sha256:' + 'a' * 64
 NEW = 'sha256:' + 'b' * 64
@@ -18,6 +18,8 @@ class Docker:
         self.build_failure = False
         self.cancel = False
         self.during_build = None
+    def inspect_image(self, ref):
+        return SimpleNamespace(status=ImageInspectStatus.EXISTS, image_id=OLD)
     def run_captured(self, argv, timeout=None):
         self.calls.append(argv)
         out, err, code = '', '', 0
@@ -51,7 +53,9 @@ class Events:
 @pytest.fixture
 def setup_rebuild(tmp_path):
     def plan(root, *, tag, no_cache, **kw):
-        return SimpleNamespace(docker_argv=['build', '-t', tag, *(['--no-cache'] if no_cache else []), str(root)])
+        return SimpleNamespace(build_arg_node_image='node:22-slim', node_image_mirrors=(), pull=False,
+            docker_argv=['build', '-t', tag, '--build-arg', 'NODE_IMAGE=node:22-slim',
+                         *(['--no-cache'] if no_cache else []), str(root)])
     with patch('aisc.application.image_rebuild._assert_image_operable', return_value={'id': OLD}), \
          patch('aisc.application.image_rebuild._cc_switch_for_rebuild', return_value=None), \
          patch('aisc.application.image_rebuild.plan_build', side_effect=plan), \
@@ -128,6 +132,65 @@ def test_reference_changed_during_build_is_not_overwritten(setup_rebuild):
     with pytest.raises(CliError): run(docker, setup_rebuild)
     assert docker.refs[REF] == 'sha256:' + 'c' * 64
     assert not any(c[0] == 'tag' for c in docker.calls)
+
+@pytest.mark.parametrize('failure', ['', 'unverified', 'builder'])
+def test_guarded_rebuild_uses_verified_mirror_fallback_before_publication(setup_rebuild, failure):
+    digest = 'sha256:' + 'd' * 64
+    base_id = 'sha256:' + 'c' * 64
+    first = 'first.example/node:22-slim@' + digest
+    fallback = 'fallback.example/node:22-slim@' + digest
+    local = 'aisc-node-base:' + digest.replace(':', '-')
+
+    class PinnedDocker(Docker):
+        def __init__(self):
+            super().__init__()
+            self.bases = {}
+        def inspect_image(self, ref):
+            return SimpleNamespace(status=ImageInspectStatus.EXISTS if ref in self.bases else ImageInspectStatus.MISSING,
+                                   image_id=self.bases.get(ref, {}).get('Id', ''))
+        def run_captured(self, argv, timeout=None):
+            if argv == ['context', 'show']:
+                self.calls.append(argv)
+                return ProcessResult(exit_code=0, stdout='desktop-linux\n')
+            if argv == ['buildx', 'inspect', 'desktop-linux']:
+                self.calls.append(argv)
+                driver = 'remote' if failure == 'builder' else 'docker'
+                return ProcessResult(exit_code=0, stdout=f'Driver: {driver}\nEndpoint: desktop-linux\n')
+            if argv[0] == 'pull':
+                self.calls.append(argv)
+                if argv[1] != fallback:
+                    return ProcessResult(exit_code=1, stderr='first mirror unavailable')
+                self.bases[fallback] = {'Id': base_id, 'RepoDigests': [] if failure == 'unverified' else ['node@' + digest]}
+                return ProcessResult(exit_code=0)
+            if argv[:2] == ['image', 'inspect'] and len(argv) == 3:
+                self.calls.append(argv)
+                doc = self.bases.get(argv[2])
+                return ProcessResult(exit_code=0 if doc else 1, stdout=json.dumps([doc]) if doc else '[]')
+            if argv[:2] == ['tag', base_id]:
+                self.calls.append(argv)
+                self.bases[argv[2]] = self.bases[fallback]
+                return ProcessResult(exit_code=0)
+            return super().run_captured(argv, timeout)
+
+    def pinned_plan(root, *, tag, no_cache, pull, **kw):
+        return SimpleNamespace(build_arg_node_image=first, node_image_mirrors=('fallback.example',), pull=pull,
+            docker_argv=['build', '--pull', '-t', tag, '--build-arg', 'NODE_IMAGE=' + first,
+                         *(['--no-cache'] if no_cache else []), str(root)])
+    docker = PinnedDocker(); events = Events()
+    with patch('aisc.application.image_rebuild.plan_build', side_effect=pinned_plan):
+        if failure:
+            with pytest.raises(CliError): run(docker, setup_rebuild, pull=True, emitter=events)
+            assert docker.refs == {REF: OLD, 'super-claude:keep': OLD}
+            assert not any(c[0] in ('build', 'tag') for c in docker.calls)
+        else:
+            result = run(docker, setup_rebuild, pull=True, emitter=events)
+            build = next(c for c in docker.calls if c[0] == 'build')
+            assert [c for c in docker.calls if c[0] == 'pull'] == [['pull', first], ['pull', fallback]]
+            assert build[1:3] == ['--builder', 'desktop-linux']
+            assert 'NODE_IMAGE=' + local in build and '--pull' not in build and '--no-cache' in build
+            assert result['new_image_id'] == NEW and docker.refs['super-claude:keep'] == OLD
+            assert any(kind == 'build.output' and fallback in data['chunk'] for kind, data in events.rows)
+
 
 def test_cli_cache_switch_and_expected_identity():
     from aisc.cli.main import _build_parser
