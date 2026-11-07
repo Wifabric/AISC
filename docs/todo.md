@@ -342,8 +342,8 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；个人功能整合
 - [ ] b3 / F3.1：镜像自定义/默认名称与完整引用校验；PR #67 已合入，自动化/真实 Docker/CI 通过；GUI/用户验收待统一 Preview。
 - [ ] b4 / F3.2–4：镜像行和启动摘要重建、容器预检查、缓存选项、流式进度与失败保护；PR #68 已合入，本地验证/真实 Docker/冻结 CLI/CI 通过，GUI/用户验收待 Preview。
 - [ ] b5 / F4：保留单项推荐，新增可编辑基础模块及持久化；定义机制与离线入口已由 PR #69 合入，三项 CI PASS；U-4 具体默认成员清单待确认，GUI/用户验收待 Preview。
-- [ ] b6 / F4：模块应用/卸载、共享/预装/用户修改保护与逐项恢复已实现；自动化、真实三类扩展与冻结 CLI 验证通过，准备 PR；GUI/用户验收待 Preview。
-- [ ] b7 / F5：插件安装超时与真实终态核对，防止未知状态下重复安装；[方案](plans/2.1.18-dev-plans/b7-plugin-install.md)，R-7/H7，D-11。
+- [ ] b6 / F4：模块应用/卸载、共享/预装/用户修改保护与逐项恢复已实现；自动化、真实三类扩展与冻结 CLI 验证通过，PR #70 三项 CI PASS 并已合入；GUI/用户验收待 Preview。
+- [ ] b7 / F5：插件安装超时与真实终态核对已实现，本地门禁、官方插件安装及慢进程恢复验证通过，准备 PR；GUI 待 Preview；[方案](plans/2.1.18-dev-plans/b7-plugin-install.md)，R-7/H7，D-11。
 - [ ] b8 / F6：GitHub MCP 首次认证配置入口与双引擎状态闭环；[方案](plans/2.1.18-dev-plans/b8-github-mcp-auth.md)，R-8/H8，D-11。
 - [ ] b9 / F7：grill 搜索结果简介与 grill-me 子技能详情读取/恢复；[方案](plans/2.1.18-dev-plans/b9-skill-details.md)，R-9/H9，D-11。
 - [ ] b10 / F8：关闭当前扩展失败提示，保留历史与新失败提醒；[方案](plans/2.1.18-dev-plans/b10-failure-dismiss.md)，R-10/H10，D-11。

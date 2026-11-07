@@ -289,6 +289,12 @@ class MutationTests(TempEnv):
 
 
 class EnvelopeTests(TempEnv):
+    def test_plugin_list_exposes_busy_without_claiming_idle_for_other_kinds(self):
+        with mock.patch.object(A, '_plugin_busy', side_effect=[False, True]), \
+             mock.patch('sys.stdout', new_callable=__import__('io').StringIO) as out:
+            self.assertEqual(A.main(['list', '--kind', 'plugins']), 0)
+        self.assertTrue(json.loads(out.getvalue())['mutation_running'])
+
     def test_main_list_envelope(self):
         with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
             rc = A.main(["list", "--kind", "skills"])
@@ -1184,12 +1190,54 @@ class MarketTests(TempEnv):
                 return subprocess.CompletedProcess(argv, 1, "", "network down")
             return subprocess.CompletedProcess(argv, 0, "", "")
 
-        with mock.patch.object(A.subprocess, "run", run):
+        with mock.patch.object(A, "_run_plugin_process", side_effect=run), \
+             mock.patch.object(A, "_plugin_items", side_effect=[[], [{'id': 'demo@market'}]]):
             A.plugin_install("demo@market")
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[1]["env"]["GIT_CONFIG_COUNT"], "1")
         self.assertIn("ghfast.top", calls[1]["env"]["GIT_CONFIG_KEY_0"])
         self.assertEqual(calls[1]["env"]["GIT_CONFIG_VALUE_0"], "https://github.com/")
+
+    def test_plugin_timeout_never_retries_mirrors(self):
+        with mock.patch.object(A, '_run_plugin_process', side_effect=A.AdapterError(A.ERR_PLUGIN_TIMEOUT, 'stopped')) as run, \
+             mock.patch.object(A, '_plugin_items', return_value=[]):
+            with self.assertRaises(A.AdapterError) as error:
+                A.plugin_install('demo@market')
+        self.assertEqual(error.exception.code, A.ERR_PLUGIN_TIMEOUT)
+        self.assertEqual(run.call_count, 1)
+
+    def test_plugin_semantic_failure_does_not_retry_network(self):
+        with mock.patch.object(A, '_run_plugin_process', return_value=subprocess.CompletedProcess([], 1, '', 'plugin not found')) as run:
+            with self.assertRaises(A.AdapterError):
+                A.plugin_install('demo@market')
+        self.assertEqual(run.call_count, 1)
+
+    def test_plugin_install_checks_real_result_and_skips_already_installed(self):
+        with mock.patch.object(A, '_run_cli_git_fallback') as run, \
+             mock.patch.object(A, '_plugin_items', return_value=[{'id':'demo@market'}]):
+            A.plugin_install('demo@market')
+            run.assert_not_called()
+        with mock.patch.object(A, '_run_cli_git_fallback'), mock.patch.object(A, '_plugin_items', return_value=[]):
+            with self.assertRaises(A.AdapterError) as error:
+                A.plugin_install('demo@market')
+            self.assertEqual(error.exception.code, A.ERR_SNAPSHOT)
+
+    def test_completed_install_wins_over_timeout_when_registry_confirms_exact_id(self):
+        with mock.patch.object(A, '_run_cli_git_fallback', side_effect=A.AdapterError(A.ERR_PLUGIN_TIMEOUT,'stopped')), \
+             mock.patch.object(A, '_plugin_items', side_effect=[[], [{'id':'demo@market'}]]):
+            A.plugin_install('demo@market')
+
+    def test_plugin_timeout_kills_owned_process_group_and_waits(self):
+        proc = mock.Mock(pid=123, returncode=-9)
+        proc.communicate.side_effect = [subprocess.TimeoutExpired('cli', 1), ('', '')]
+        with mock.patch.object(A.subprocess, 'Popen', return_value=proc), \
+             mock.patch.object(A.os, 'killpg', create=True) as kill, \
+             mock.patch.object(A.signal, 'SIGKILL', 9, create=True):
+            with self.assertRaises(A.AdapterError) as error:
+                A._run_plugin_process(['cli'],timeout=1,input_text='',env={})
+        self.assertEqual(error.exception.code, A.ERR_PLUGIN_TIMEOUT)
+        kill.assert_called_once_with(123, 9)
+        self.assertEqual(proc.communicate.call_count, 2)
 
     def test_skill_search_falls_back_to_skills_api(self):
         import urllib.request

@@ -219,8 +219,11 @@ def extensions_list(runtime_id: str, kind: str, workspace: Optional[str],
     envelope = _exec_adapter(
         runtime_id, _registry_root(workspace), executor, "list", kind=kind, ownership=ownership
     )
-    return {"kind": kind, "items": envelope.get("items") or [],
-            "operation_id": envelope.get("operation_id")}
+    result = {"kind": kind, "items": envelope.get("items") or [],
+              "operation_id": envelope.get("operation_id")}
+    if isinstance(envelope.get('mutation_running'), bool):
+        result['mutation_running'] = envelope['mutation_running']
+    return result
 
 
 def extensions_toggle(runtime_id: str, kind: str, item_id: str, agent: str,

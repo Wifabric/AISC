@@ -882,6 +882,8 @@ export const enUS: Record<string, string> = {
   "extensions.tab.mcp": "MCP",
   "extensions.tab.plugins": "Plugins",
   "extensions.empty": "Nothing here yet.",
+  "extensions.pluginInstallAbsent": "The installer has stopped and the plugin is not installed. You can retry.",
+  "extensions.pluginInstallRunning": "A plugin operation is still running. Refresh its installed state before retrying.",
   "extensions.noRuntime": "Workspace runtime is not running.",
   "extensions.toggle": "Toggle for {agent}",
   "extensions.remove": "Uninstall/delete",

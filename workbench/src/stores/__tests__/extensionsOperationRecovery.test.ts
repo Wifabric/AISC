@@ -8,6 +8,25 @@ const call=vi.mocked(extensionsCall);
 beforeEach(()=>{setActivePinia(createPinia());call.mockReset();});
 function setup(){const s=useExtensionsStore();s.setContext("/ws","r1");return s;}
 describe("extension operation recovery",()=>{
+ it("reconciles timed-out plugin installation only after the adapter confirms idle",async()=>{
+  call.mockImplementation(async p=>{if(p.op==='plugin-install')throw {code:'WB_ERR_CLI_TIMEOUT',message:'AISC CLI 响应超时'};return {items:[{id:'p@m',kind:'plugins',name:'p'}],mutation_running:false};});
+  const s=setup();await s.pluginAction('plugin-install','p@m');expect(s.operationLog[0].status).toBe('success');
+  expect(call.mock.calls.filter(([p])=>p.op==='plugin-install')).toHaveLength(1);
+ });
+ it("keeps a still-running plugin result unknown even if its registry entry is visible",async()=>{
+  call.mockImplementation(async p=>{if(p.op==='plugin-install')throw {code:'WB_ERR_CLI_TIMEOUT',message:'响应超时'};return {items:[{id:'p@m'}],mutation_running:true};});
+  const s=setup();await s.pluginAction('plugin-install','p@m');expect(s.operationLog[0].status).toBe('unknown');expect(s.canRetryOperation(s.operationLog[0].operationId)).toBe(false);
+ });
+ it("allows retry only after idle and absent are both verified",async()=>{
+  call.mockImplementation(async p=>{if(p.op==='plugin-install')throw {code:'WB_ERR_CLI_TIMEOUT',message:'响应超时'};return {items:[],mutation_running:false};});
+  const s=setup();await s.pluginAction('plugin-install','p@m');expect(s.operationLog[0].status).toBe('failed');expect(s.canRetryOperation(s.operationLog[0].operationId)).toBe(true);
+ });
+ it("does not infer idle from an older adapter or publish a stale reconciliation",async()=>{
+  call.mockImplementation(async p=>{if(p.op==='plugin-install')throw {code:'WB_ERR_CLI_TIMEOUT',message:'响应超时'};return {items:[{id:'p@m'}]};});
+  const s=setup();await s.pluginAction('plugin-install','p@m');expect(s.operationLog[0].status).toBe('unknown');
+  let finish!:(v:any)=>void;call.mockImplementation(p=>p.op==='plugin-install'?Promise.reject({code:'WB_ERR_CLI_TIMEOUT'}):new Promise(r=>{finish=r;}));
+  const pending=s.pluginAction('plugin-install','p@m');await Promise.resolve();await Promise.resolve();s.setContext('/new','r2');finish({items:[{id:'p@m'}],mutation_running:false});await pending;expect(s.operationLog).toEqual([]);
+ });
  it("keeps original failure after successful SSOT refresh and retries original parameters",async()=>{
   call.mockImplementation(async p=>{if(p.op==="plugin-install")throw new Error("upstream failed token=secret");return {items:[]};});
   const s=setup();s.kind="plugins";await s.pluginAction("plugin-install","p@m");
