@@ -1,12 +1,12 @@
 # 实施顺序与门禁
 
-状态：D-7 明确保留 PR #62/#63 不合并并进入 b2；D-8 委托 CU 后发现子菜单遮挡误移，已修复并通过已执行路径复测，最终前端 852 项/构建通过，待用户验收，b3–b6 未实施。采用 [DEVELOP_WIKI](../../../DEVELOP_WIKI.md) §1.4.1 **开发阶段逐批门**；未测边界与 b1 未测项继续保留在 PRETEST。
+状态：b1/b2 已由 PR #63/#64 合入 develop，b2 PR CI 与已执行 CU 通过，用户验收状态仍待确认；D-11 已纳入 F5–F8，新增 b7–b10。b3–b10 均未实施，采用 DEVELOP_WIKI §1.4.1 开发阶段逐批门。
 
 ## 从问题到闭环
 
 `反馈 → intake 与来源 → todo target → PRD 验收点 → decisions 产品裁定 → b* 文件级方案 → 定向验证/必要数据面 → 本地门禁 → Windows CU → 用户本批验收 → 后续集成及下一批裁定`
 
-实施分支从 develop 切出；记录起点 SHA。若走集成，必须保留本地门禁、远端 CI 和精确提交证据，不以本地绿替代远端绿。b1 分支从 `1d26f237` 建立后本地快进至个人功能整合 `1926b5a1`（PR #62），已提交 [PR #63](https://github.com/Wifabric/AISC/pull/63)，base 为 #62 的分支。按 D-7 两个 PR 均不合并/不改目标。b2 分支 `codex/2.1.18-b2-work-record-menu` 从 develop `1d26f237` 创建后本地快进到 b1 `cb528cad`；这是开发依赖，不代表已集成远端。D-9 后已创建 [b2 PR #64](https://github.com/Wifabric/AISC/pull/64)，base 为 b1 分支；测试对应产品提交 `247fbf97`，没有远端 CI PASS 结论。
+实施分支从当时最新 develop 切出，记录起点 SHA。当前规划基线 `051d5960`，已包含 b2 合并提交 `b90d85ab`；历史依赖分支关系以 PR_INTAKE 为准，不继续沿用已失效的“#63/#64 打开、base 为 b1”状态。每批记录本地门禁、远端 CI 和精确提交证据，不以本地绿替代远端绿。
 
 ## 批次顺序
 
@@ -18,12 +18,18 @@
 | b4 | `codex/2.1.18-b4-image-rebuild` | [重建](b4-image-rebuild.md) | target/缓存 argv/事件/取消/旧 ID、H4 |
 | b5 | `codex/2.1.18-b5-extension-modules` | [模块定义](b5-extension-modules.md) | 定义 schema/迁移、重启、成员表、H5 |
 | b6 | `codex/2.1.18-b6-module-operations` | [模块执行](b6-module-operations.md) | 真实三类安装/失败/共享保护、H6 |
+| b7 | `codex/2.1.18-b7-plugin-install` | [插件安装](b7-plugin-install.md) | 实际安装终态、超时后核对与重复操作、H7 |
+| b8 | `codex/2.1.18-b8-github-mcp-auth` | [MCP 配置](b8-github-mcp-auth.md) | 双引擎认证状态、取消/失败保护与脱敏、H8 |
+| b9 | `codex/2.1.18-b9-skill-details` | [技能详情](b9-skill-details.md) | 精确 grill 查询、详情来源及断网恢复、H9 |
+| b10 | `codex/2.1.18-b10-failure-dismiss` | [失败提示](b10-failure-dismiss.md) | 当前关闭/历史保留/新失败与工作区隔离、H10 |
+
+D-11 调整的是实施优先级，编号不重排：**b7 → b8 → b9 → b10 → b3 → b4 → b5 → b6**。新四批无需等待镜像/模块的 U 项，但仍不能跳过前一批用户验收门；b2 验收尚未记录为 PASS。b7/b9 可复用网络证据，不能合并两条需求的验收结果。
 
 b1/b2 是可独立验证的小修复；b3→b4 共用镜像身份；b5→b6 先定数据与归属，再执行实际安装/卸载。即便代码依赖独立，也不越过前一批用户门连续实施。
 
 ### 每批 PR 与集成
 
-依据开发交接 §③ 与 DEVELOP_WIKI §1.2，每批独立分支，在分支上提交，完成本地门禁和远端 CI 后并回 develop。按历史实践以每批一个 PR 为默认，较大批次可拆多个 PR（2.1.17 b7 为 #46/#47）；不要求“每批恰好一个”，也不等整版完成才提交。纯账本文档可直接落 develop。PR 创建、CI 通过、合入及用户验收分别记账；main 合并/推送仍需负责人批准。D-7 阶段保留已有 PR；D-9 用户随后授权推送 b2 并创建 #64，现仍不自动合并任何 PR。
+依据开发交接 §③ 与 DEVELOP_WIKI §1.2，每批独立分支，在分支上提交，完成本地门禁和远端 CI 后并回 develop。按历史实践以每批一个 PR 为默认，较大批次可拆多个 PR（2.1.17 b7 为 #46/#47）；不要求“每批恰好一个”，也不等整版完成才提交。纯账本文档可直接落 develop。PR 创建、CI 通过、合入及用户验收分别记账；main 合并/推送仍需负责人批准。历史 D-7/D-9 的依赖 PR 已由后续实际合并状态更新；本轮新增批次尚无实施 PR。
 
 ## 每批执行清单
 
