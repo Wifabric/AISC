@@ -24,3 +24,19 @@
 PR #64 已于北京时间 00:48 合入 develop，实际 merge commit 为 `b90d85ab38c56eb859ed42e762639d5d371d7a60`，合并父提交为 `9db6f642` 与 `4a2a8d12`。后者的 [Workbench CI #42392564054](https://github.com/Wifabric/AISC/actions/runs/42392564054) frontend/rust/cli 均 success；包括 Python tests、clean-room install smoke 与 baseline probe。上述“准备推送/无 CI”是早先快照，已由本条更新。
 
 本轮已按签名提交 payload 重建并验证合并提交 SHA，tree `235de608a90ba6d68393fa28224c11ed0d85e811` 与此前验证 head 相同，无额外合并代码差异；本次反馈登记基于该实际 develop。用户功能验收与未测边界仍不因合并自动改为通过。增量扫描全仓 open PR 返回 0 条，F5–F8 无可直接承接的打开 PR。
+
+
+## 2026-11-08 b3–b10 集成总账（当前状态）
+
+D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代理自查，无独立评审；用户验收未完成。每批范围和本地证据见对应 b*.md/PRETEST。远端实时核对全部 merged，精确 head 的 frontend/rust/cli 三项 success。
+
+| 批次 / PR | head | 实际合入 | CI |
+| --- | --- | --- | --- |
+| b3 / [#67](https://github.com/Wifabric/AISC/pull/67) | `89971647905822f23c8f7fd671982832d3c3a99c` | `c0f9ab11b345502832ac114bc422348da1384502` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42397722859) |
+| b4 / [#68](https://github.com/Wifabric/AISC/pull/68) | `80e90919016a9e4874a81735d2600161c55f5a12` | `1efe0904b3770bf1bdc530b8c8b474f48fb00cd6` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42400554462) |
+| b5 / [#69](https://github.com/Wifabric/AISC/pull/69) | `ea5170c11f5df864c41be12e840c3fccfa400e55` | `d3798c062a4da431d75e9acffdfbfa4cff8ebf7a` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42401663375) |
+| b6 / [#70](https://github.com/Wifabric/AISC/pull/70) | `98187f9b681bc68ee227ecb0823c5f1e645be27e` | `ffc848855161ad4c08935f7f1b8f485388124e3a` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42404418532) |
+| b7 / [#71](https://github.com/Wifabric/AISC/pull/71) | `6c33d6c8a1262159a1b7dde90915a4514734cc0a` | `61c70540e497c8568be1be55fc99869b1ef863c0` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42405637940) |
+| b8 / [#72](https://github.com/Wifabric/AISC/pull/72) | `deb15d19171132b475501c940691ba2c1a2a8ebb` | `4ff4881fbe8831ce2f68118eca994dc2cb55a375` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42407318416) |
+| b9 / [#73](https://github.com/Wifabric/AISC/pull/73) | `0ba8a1054526a6b1095387d31b86164eb1f7ba6b` | `c8a39b8a5c9fc36c1c1b3a2727fc28224ee8edde` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42408462987) |
+| b10 / [#74](https://github.com/Wifabric/AISC/pull/74) | `4bad14edff4d25bbc71bf7a93f2fe8c668ee7586` | `b548728b8dc2ed58f1a4f7c5d54855929d8535c7` | [三项 PASS](https://github.com/Wifabric/AISC/actions/runs/42409016199) |

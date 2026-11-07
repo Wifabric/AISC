@@ -25,7 +25,7 @@ git status --short
 
 阶段输入除既有反馈 Issue 和开发人员提议外，还应按 §1.5 收集贡献者 PR；已排期的 PR 进入审查与集成批次，与原任务共用验收条件。
 
-1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。文件夹按 **vibe-coding-skill** 标准文件组织（skill 位于 `~/.claude/skills/vibe-coding-skill/`，模板取 `templates/`：PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等；Full/Focused 分流按 skill 自身规则）。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。计划沿用已有 PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等结构，小修复直接补充现有批次，复杂任务按需要使用 Full 结构；个人环境已有 vibe-coding-skill 时可复用模板。仓库内开发执行入口为 [aisc-development Skill](skills/aisc-development/SKILL.md)，不依赖未安装的个人技能。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
 2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
@@ -74,12 +74,11 @@ git status --short
 
 ### 1.4 批次验收模式：开发阶段逐批门 vs preview 迭代批量门（2026-11-01 用户裁定）
 
-批次验收分两种模式；进入阶段或 preview 修复迭代时必须在计划 README/IMPLEMENTATION
-中声明使用哪一种，不得混用。
+批次验收分两种模式；进入阶段或 preview 修复迭代时在计划 README/IMPLEMENTATION 声明。小团队默认采用 §1.4.2：各批必要测试后 PR/集成，由主开发人员统一 Preview 和最终验证；贡献者不各自发布 Preview。用户明确要求逐批验收时采用 §1.4.1。已有阶段决定优先，不自动改写历史验收结果。
 
 #### 1.4.1 开发阶段：逐批实现、CU 预测试、用户验收、再进下一批
 
-适用于一个新开发阶段的常规 `b*` 批次。宿主系统是 **Windows** 且当前 agent 可用
+适用于用户明确选择逐批验收的新阶段 `b*` 批次。宿主系统是 **Windows** 且当前 agent 可用
 **Computer Use** 时，每个批次必须按以下顺序闭环：
 
 1. 批次实现、targeted 验证、本地门禁与必要的真实容器/数据面验证完成。
@@ -93,14 +92,13 @@ git status --short
 非 Windows 或 Computer Use 不可用时，仍执行逐批节奏：记录 CU `NOT RUN` 与阻塞原因；
 agent 不得把自动化、数据面或注入测试冒充 CU PASS，也不得静默把逐批验收合并。
 
-#### 1.4.2 preview 修复/迭代阶段：全批开发、发布 preview、用户整体实测
+#### 1.4.2 小团队开发与 preview 迭代：分批测试集成、统一 preview、用户整体实测
 
-适用于已发布 `preview.*` 之后由用户手测反馈驱动的修复/迭代阶段。此模式不使用
-agent Computer Use 预测试门，也不要求每个 `b*` 单独等用户验收：
+适用于采用统一 Preview 的新阶段，以及已发布 `preview.*` 后的修复迭代。本模式不设置逐批 CU 或用户等待门；主开发人员整合后统一组织真实候选的界面/安装验证和用户验收。用户已明确推迟的手测按该安排执行，未测如实记录：
 
 1. 阶段计划登记全部分批；各 `b*` 仍按 §1.2 分支先行，完成实现、自动化回归、必要
    的真实数据面/构建/安装验证，并更新 HANDTEST 与证据记录。
-2. 各批通过分支/PR/远端 CI 后合入 develop；不得把发布材料当成已完成用户验收。
+2. 贡献者完成必要测试后提交 PR，主开发人员检查范围、差异和远端 CI 并按授权合入 develop。审查的小问题由主开发人员直接修正并复验；跨范围或共享契约问题再协调。不得把发布材料当成已完成用户验收。
 3. 全部计划批次合入并完成发布准备后，发布新的 `preview.N`。
 4. 用户直接从发布的 preview 更新/安装，然后按 HANDTEST 做整体实测；发现的问题
    转入下一轮 preview 修复批次。
@@ -142,7 +140,7 @@ agent Computer Use 预测试门，也不要求每个 `b*` 单独等用户验收�
 
 审查记录绑定 base/head SHA；作者自报、主审验证、CI、用户验收分别记账。合并后检查实际目标提交，再按当前阶段验收条件闭环；可自动合并、已合并或已发布不能代替验收。本文 §1.2 范围纪律、§1.4 验收模式及发布规则继续适用。
 
-修改前后对照与完整示例见[使用效果示例](docs/workflows/pr-intake.md#workflow-example)；本次[专题计划与演练](docs/plans/pr-intake-workflow.md)记录真实 PR 依赖和验证边界。贡献者的对应流程见 §1.6；通用元 Skill 在实践后提炼。
+修改前后对照与完整示例见[使用效果示例](docs/workflows/pr-intake.md#workflow-example)；本次[专题计划与演练](docs/plans/pr-intake-workflow.md)记录真实 PR 依赖和验证边界。贡献者的对应流程见 §1.6；仓库开发 Skill 见 [aisc-development](skills/aisc-development/SKILL.md)，真实多人使用效果继续记录。
 
 ### 1.6 开发职责与贡献者流程
 
@@ -150,13 +148,13 @@ agent Computer Use 预测试门，也不要求每个 `b*` 单独等用户验收�
 
 | 当前角色／工作 | 使用入口 | 应完成的交接 |
 | --- | --- | --- |
-| 确定各环节由谁负责 | [开发职责 v1.0](docs/workflows/development-roles.md) | 在阶段计划登记主开发人员、任务执行人和主审；人员兼任时仍区分执行与结论 |
+| 确定各环节由谁负责 | [开发职责 v1.1](docs/workflows/development-roles.md) | 在阶段计划登记主开发人员、任务执行人和主审；人员兼任时仍区分执行与结论 |
 | 主开发人员接收、审查和集成贡献 | [PR intake 工作流](docs/workflows/pr-intake.md) | 关联 TODO／批次，说明审查结果、修正要求、集成与验收状态 |
 | 开发人员承接具体任务 | [贡献者工作流 v1.0](docs/workflows/contributor-workflow.md) | 任务方案、实现、自测、PR、修正及最终交付；无法继续时明确交接 |
 
 贡献者按“查已有任务和 PR → 确认承接范围 → 任务内方案 → 分支开发 → 自测与文档 → PR → 修正复审 → 配合集成验收 → 记录完成或交接”执行。已有实现直接走成果交付入口，不重复开发；新提议先走范围流程。批次并行、进入下一批与用户验收仍遵守 §1.2、§1.4 及当前有效阶段计划。
 
-任务进度、主审和修正责任人写入既有批次与 PR 记录，不另建平行管理体系。提交 PR 不等于任务完成，合并不等于用户验收；主开发人员也不默认代替所有贡献者返修。
+任务进度、主审和修正责任人写入既有批次与 PR 记录，不另建平行管理体系。提交 PR 不等于任务完成，合并不等于用户验收。主开发人员直接处理范围内的小修正；较大或跨契约变更才明确约定返修责任，不为小团队增加反复审批与交接。
 
 协作文档 v1.0 已完成静态交接走查及一次[隔离仓库本地演练](docs/reviews/local-workflow-trial.md)：同一代理模拟角色，实际执行提交、返修、冲突处理和集成测试；真实多人试用与用户验收尚未完成。[评审记录](docs/reviews/develop-wiki-workflow.md)保留文档走查边界。原始职责讨论稿与修改前 WIKI 备份保留。
 
