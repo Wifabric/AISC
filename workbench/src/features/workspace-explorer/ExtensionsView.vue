@@ -102,7 +102,6 @@ async function closeMarket(): Promise<void> {
         class="ui-button primary"
         ref="marketButtonRef"
         data-testid="open-extension-market"
-        :disabled="!store.canLoad"
         @click="openMarket"
       >{{ t("extensions.market.title") }}</button>
       <span v-if="store.updatesError" class="explorer-error" role="alert">

@@ -32,6 +32,18 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind) }));
   });
 
+  it("opens offline recommendations and the module entry without a runtime", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n], stubs: { Teleport: true } } });
+    await flushPromises();
+    useExtensionsStore().setContext("", "");
+    await nextTick();
+    const opener = wrapper.get('[data-testid="open-extension-market"]');
+    expect(opener.attributes("disabled")).toBeUndefined();
+    await opener.trigger("click");
+    expect(wrapper.get('[data-testid="market-modules"]').text()).toBe("基础模块");
+    wrapper.unmount();
+  });
+
   it("keeps rendering after switching skills -> mcp -> plugins", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();

@@ -7,8 +7,8 @@
 | b1 | Rust PASS：415 passed / 2 ignored；前端 840+1 复测通过 | PASS：Windows 普通 NTFS 文件/目录；其他环境 NOT RUN | PASS：debug Workbench；前端修正版 build PASS | 改名/刷新/重入/不覆盖 PASS；冲突提示初测 FAIL，修后复测 NOT RUN | 未本人复测；D-6/D-7 明确进入 b2 | PR #63 打开、不合并；未补远端 CI 结论 |
 | b2 | PASS：最终定向 45 项；前端全套 852 项 | PASS：实际改名/移入目标及无误移核对 | PASS：vue-tsc/Vite | 初测误移 FAIL；修后已执行路径 PASS，覆盖边界见下 | NOT RUN | D-9：PR #64 打开，依赖 #63；无远端 CI PASS 结论 |
 | b3 | PASS：前端 846、Rust 414、Python 1734 及定向复验；PR #67 三项 CI PASS | PASS：真实 Docker 重命名/标签保留/冲突保护 | 前端构建 PASS；新版 GUI 候选待统一构建 | NOT RUN | NOT RUN | 已合入 c0f9ab11；详见 b3 |
-| b4 | PASS：Python 1749、前端全套 851 加修后 26 项、Rust 414 加新增 argv 单测 | PASS：真实 Docker 运行引用拒绝/缓存双向/成功/失败/取消/旧 ID 保留 | PASS：前端构建、冻结 CLI 命令 smoke；GUI 候选待统一构建 | NOT RUN | NOT RUN | PR/CI 待执行；详情和证据路径见 b4 |
-| b5 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；U-3/U-4 |
+| b4 | PASS：Python 1749、前端全套 851 加修后 26 项、Rust 414 加新增 argv 单测；PR #68 三项 CI PASS | PASS：真实 Docker 运行引用拒绝/缓存双向/成功/失败/取消/旧 ID 保留 | PASS：前端构建、冻结 CLI 命令 smoke；GUI 候选待统一构建 | NOT RUN | NOT RUN | 已合入 1efe0904；详情和证据路径见 b4 |
+| b5 | PASS：前端 858 及修后 29 项；Rust 420 / 2 ignored | PASS：Rust 真实临时文件持久化、损坏保护、并发冲突和备份恢复；三类安装不在本批范围 | 前端生产构建 PASS；GUI 候选待统一构建 | NOT RUN | NOT RUN | 定义机制完成，PR/CI 待执行；U-4 默认成员保留待批准 |
 | b6 | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | 未实施；依赖 b5/U-3 |
 
 本轮文档检查结果单独记 [PROGRESS](PROGRESS.md)，不填成上表功能 PASS。
