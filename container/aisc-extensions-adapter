@@ -1256,6 +1256,72 @@ def _read_skill_url(url: str) -> str:
     return raw.decode("utf-8-sig")
 
 
+def _skill_api(url: str) -> dict[str, Any]:
+    import urllib.request
+    request = urllib.request.Request(url, headers={'User-Agent': 'AISC/2.1.18', 'Accept': 'application/vnd.github+json'})
+    with urllib.request.urlopen(request, timeout=4.0) as response:
+        raw = response.read(2_000_001)
+    if len(raw) > 2_000_000:
+        raise ValueError('Skill metadata exceeds size limit')
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError('Invalid skill metadata')
+    return data
+
+
+def _skill_tree(repo: str) -> dict[str, Any]:
+    root = Path(os.environ.get('AISC_EXTENSION_CACHE_DIR') or str(_db_path().parent/'market-cache'))
+    cache = root / ('skill-tree-'+hashlib.sha256(repo.encode()).hexdigest()+'.json')
+    try:
+        if cache.stat().st_size <= 2_000_000:
+            cached = json.loads(cache.read_text(encoding='utf-8'))
+            if (cached.get('repo') == repo and 0 <= time.time()-cached.get('time', 0) < 300
+                    and re.fullmatch('[0-9a-f]{40}', cached.get('commit', '')) and isinstance(cached.get('paths'), list)):
+                return cached
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    commit = _skill_api(f'https://api.github.com/repos/{repo}/commits/HEAD')
+    sha = commit.get('sha', '')
+    if not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{40}', sha):
+        raise ValueError('Invalid upstream commit')
+    tree = _skill_api(f'https://api.github.com/repos/{repo}/git/trees/{sha}?recursive=1')
+    if tree.get('truncated') or not isinstance(tree.get('tree'), list):
+        raise ValueError('Incomplete upstream tree')
+    paths = [entry for entry in tree['tree'] if isinstance(entry, dict) and entry.get('type') == 'blob'
+             and str(entry.get('path', '')).endswith('/SKILL.md')]
+    if len(paths) > 2000:
+        raise ValueError('Too many skill paths')
+    result = {'repo': repo, 'time': time.time(), 'commit': sha, 'paths': paths}
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        temp = cache.with_suffix('.'+uuid.uuid4().hex+'.tmp')
+        try:
+            temp.write_text(json.dumps(result), encoding='utf-8')
+            os.replace(temp, cache)
+        finally:
+            temp.unlink(missing_ok=True)
+        owned = [p for p in root.glob('skill-tree-*.json') if re.fullmatch(r'skill-tree-[0-9a-f]{64}\.json', p.name)]
+        for old in sorted(owned, key=lambda p:p.stat().st_mtime, reverse=True)[30:]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass  # A read-only cache must not break a valid upstream result.
+    return result
+
+
+def _skill_detail_item(spec: str, directory: str, text: str, url: str, *, root=False):
+    normalized = text.lstrip('\ufeff').replace('\r\n', '\n')
+    front = normalized.split('\n---', 1)[0] if normalized.startswith('---\n') else ''
+    name = re.search(r'(?m)^name:\s*(.+)$', front)
+    if name and name.group(1).strip().strip('\"\'') != directory.rsplit('/', 1)[-1]:
+        return None
+    if root and not name:
+        return None
+    description = _skill_description(text, directory)
+    return [{'kind': 'market-skill', 'id': spec, 'name': directory,
+             'description': description, 'description_url': url,
+             'description_status': 'available' if description else 'empty'}]
+
+
 def skill_describe(spec: str) -> list[dict[str, Any]]:
     repo, separator, directory = spec.partition(":")
     if (not separator or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
@@ -1263,19 +1329,38 @@ def skill_describe(spec: str) -> list[dict[str, Any]]:
             or any(part in (".", "..") for part in directory.split("/"))):
         raise AdapterError(ERR_BAD_REQUEST, "skill description requires owner/repo:directory")
     paths = [f"skills/{directory}/SKILL.md", f"{directory}/SKILL.md", "SKILL.md"]
-    failures = 0
     for path in paths:
         url = f"https://raw.githubusercontent.com/{repo}/HEAD/{path}"
         try:
-            description = _skill_description(_read_skill_url(url), directory)
-            if description:
-                return [{"kind": "market-skill", "id": spec, "name": directory,
-                         "description": description, "description_url": url}]
+            result = _skill_detail_item(spec, directory, _read_skill_url(url), url, root=path == 'SKILL.md')
+            if result is not None:
+                return result
         except (OSError, ValueError):
-            failures += 1
-    if failures == len(paths):
-        raise AdapterError(ERR_CLI, "Cannot read upstream SKILL.md; retry or open the source repository")
-    raise AdapterError(ERR_NOT_FOUND, "No matching skill description found in upstream SKILL.md")
+            pass
+    try:
+        tree = _skill_tree(repo)
+        matches = [entry for entry in tree['paths'] if isinstance(entry, dict) and isinstance(entry.get('path'), str)
+                   and (entry['path'] == directory+'/SKILL.md' or entry['path'].endswith('/'+directory+'/SKILL.md'))]
+        if len(matches) != 1:
+            raise AdapterError(ERR_NOT_FOUND, 'No unique matching skill path; open the source repository')
+        entry = matches[0]
+        if (not re.fullmatch('[0-9a-f]{40}', str(entry.get('sha', '')))
+                or any(part in ('', '.', '..') for part in entry['path'].split('/'))
+                or not isinstance(entry.get('size'), int) or entry['size'] > 65536):
+            raise ValueError('Invalid or oversized upstream skill')
+        blob = _skill_api(f'https://api.github.com/repos/{repo}/git/blobs/{entry["sha"]}')
+        if blob.get('encoding') != 'base64':
+            raise ValueError('Invalid upstream skill encoding')
+        raw = base64.b64decode(''.join(str(blob.get('content', '')).split()), validate=True)
+        if len(raw) > 65536:
+            raise ValueError('SKILL.md exceeds 64 KiB')
+        url = f'https://github.com/{repo}/blob/{tree["commit"]}/{urllib.parse.quote(entry["path"], safe="/")}'
+        result = _skill_detail_item(spec, directory, raw.decode('utf-8-sig'), url)
+        if result is not None:
+            return result
+    except (OSError, ValueError, KeyError, TypeError):
+        raise AdapterError(ERR_CLI, 'Cannot read upstream SKILL.md; retry or open the source repository')
+    raise AdapterError(ERR_NOT_FOUND, 'Upstream skill identity does not match the selected result')
 
 
 def skill_search(query: str) -> list[dict[str, Any]]:

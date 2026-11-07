@@ -701,6 +701,8 @@ export interface ExtensionsItem {
   id: string;
   name: string;
   description?: string;
+    description_url?: string;
+    description_status?: "available" | "empty";
   repo?: string;
   transport?: string;
   url?: string;

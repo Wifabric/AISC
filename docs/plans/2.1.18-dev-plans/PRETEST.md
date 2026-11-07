@@ -159,3 +159,15 @@
 | b8 / F6 | NOT RUN | D-11 已排期，未实施；默认安装通过不代表首次认证配置闭环 |
 | b9 / F7 | NOT RUN | D-11 已排期，未实施；其他查询成功不覆盖 grill/grill-me |
 | b10 / F8 | NOT RUN | D-11 已排期，只有静态入口核查，未进行关闭行为实测 |
+
+
+## 2026-11-08 b9 本地及真实容器验证
+
+上游 `mattpocock/skills:grill-me` 位于多层目录 `skills/productivity/grill-me/SKILL.md`，原三个浅层路径均无法覆盖。保留浅层快速读取，未匹配时读取受大小限制的 GitHub tree，唯一目录匹配后按 blob SHA 读取；拒绝歧义、截断 tree、超大内容和身份不符，五分钟有界缓存避免重复 tree 请求。仅解析简介，不执行文档指令。真实来源固定为 [4ae2317d](https://github.com/mattpocock/skills/blob/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d/skills/productivity/grill-me/SKILL.md)。
+
+搜索后后台串行补充至多三条缺失摘要，其余按需读取；上下文和查询代数隔离。详情区区分有效空简介、加载和失败，显式重试保留已有摘要并显示来源。监听稳定身份，避免摘要回写引发自动无限重试；非技能条目不继承技能缓存。Rust 详情读取预算 60 秒且使用独立通路。
+
+- Python 全套 1789 passed / 54 skipped / 207 subtests；适配器定向 85 passed / 11 subtests。
+- 前端全套 876 passed（新增组件用例前）；最终描述与真实组件回归 7 passed，最终类型与生产构建 PASS。Rust 420 passed / 2 ignored。
+- 真实隔离 Docker 搜索 `grill` 包含准确 `grill-me`；读取 4.00 秒，重复 2.14 秒，返回准确简介及固定提交来源。QA 容器已清理。证据在本机 `output/verification/real-details.json` 及测试日志。
+- 自查完成，无独立评审；GUI/H9、SSH 尚 NOT RUN，按 D-15 留到统一 Preview。真实上游成功不代表人为断网 GUI 已验证。

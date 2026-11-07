@@ -34,3 +34,6 @@
 - Python 全套 1782 passed / 54 skipped / 207 subtests；最终保护补充后定向 101 passed / 29 subtests。前端最终全套 874 passed / 103 files、类型与生产构建 PASS；Rust 420 passed / 2 ignored。
 - 冻结 CLI SHA256 `d729096813d1c9187a37df99d4fb560a3ab716916494d3332526dd6b9d985503`，在独立容器完整复验 status/save、双引擎隔离、真实客户端读取、开关与重新同步；证据 `output/verification/frozen-auth.json`。使用合成无效令牌，不等于授权连接成功。
 - 原始日志和合成数据留本机，不入提交。自查不是独立评审；远端 CI 尚未执行，真实 GUI/H8、用户凭据授权和实际 MCP 工具调用、SSH 均 NOT RUN。
+
+
+PR #72 精确 head `deb15d19` 的 frontend/rust/cli 全部 PASS（run 42407318416），已合入 develop `4ff4881fbe8831ce2f68118eca994dc2cb55a375`。GUI/真实授权仍待 Preview。
