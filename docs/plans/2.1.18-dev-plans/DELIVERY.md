@@ -1,6 +1,6 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83/#85 已合入。当前产品集成提交 `5467c9cf4a6cb58d0f1382da1982f8e45f6765f2`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
+2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83/#85/#87 已合入。当前产品集成提交 `5677a6e67fd12283577d1efe73d5365092112dfd`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
 
 ## 变更说明
 
@@ -21,21 +21,21 @@
 | --- | --- |
 | 隔离候选启动脚本 | `D:\AISC\p18\start-candidate.ps1` |
 | 完整可运行目录 | `D:\AISC\p18\candidate` |
-| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.5_x64-setup.exe` |
+| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.6_x64-setup.exe` |
 | 源码、哈希与状态清单 | `D:\AISC\p18\candidate-manifest.json` |
 | 详细测试日志 | `D:\AISC\output\preview-2.1.18-20261108\output\verification` |
 
 PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选。数据根为 `D:\AISC\p18\qa-data`，WebView 数据也独立；原平台安装和原工作区未替换。每轮检查后正常退出独立候选，原平台进程保留。QA 工作区与证据保留；QA-A 科研模块、QA-C 混合定义及历史保留供继续复测，QA-B 已验证删除定义不删资产。选择隔离工作区完成 HANDTEST，避免把原工作区当测试数据。
 
-本地 Workbench 版本覆盖为 `2.1.18-preview.5`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
+本地 Workbench 版本覆盖为 `2.1.18-preview.6`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
 
-候选产品源码为 PR #85 head `d06b3269cc30bff8d5f2dfd7bf422fdd5c7bb704`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
+候选产品源码为 PR #87 head `195ff2b6d42e628d36be97180c7e2ff0079ef9b7`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
 
 | 文件 | SHA256 |
 | --- | --- |
-| workbench.exe | `53ec6763d37a6c37e2ec147b337d6463881a686dc8ece261330686369774c1c1` |
+| workbench.exe | `68bc43c81a3e70069588eaef2f346149504fcbdbd44ef1c31c6fad38e4eee5f1` |
 | aisc.exe | `ded9ed26f029afb00350e8fa67354cf93cd08e89fa7028e248ea06d5eedc2eaf` |
-| setup.exe | `b1264443b02409833fb9cc175719becf4ec42a9232c9359eaa8b714f9b90648e` |
+| setup.exe | `de38de6ccdf92e160a51555ae311c3b6534d50dd39cb21e2cfb1583c1430c6e7` |
 
 ## 验证结果
 
@@ -50,6 +50,8 @@ PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选
 Preview.4 补充：#83 [CI](https://github.com/Wifabric/AISC/actions/runs/42417635698) frontend/rust/cli 全部 success。真实完整镜像重建验证了基础镜像回退、固定 digest、本机 builder 和无缓存参数，选中标签更新、其他标签及停止容器引用保持；新镜像适配器哈希与 Node/Claude/Codex 版本探针通过，Codex 另有旧临时目录跨设备清理警告，未据此宣称所有工具运行场景通过。Preview.4 的真实 GUI 两入口缓存重建成功、无缓存取消与镜像保护、About 版本核验通过；缓存取消尝试时构建已先完成，未记取消通过。修正后的冻结 CLI、Workbench 和 384431133 字节 NSIS 安装包已重新生成并替换当前候选；旧 Preview.3 仅留作历史。具体 GUI 覆盖及未测项目继续见 [统一候选复测](preview-gui.md)。
 
 Preview.5 补充：#85 [CI](https://github.com/Wifabric/AISC/actions/runs/42420724178) 三项 success 后合入。修正四个科研推荐的真实安装目录，前端 28 项/类型/构建及冻结 CLI 四项 installed→removed 通过；384419837 字节 NSIS 与独立 Workbench 已生成。CLI 与 bundle 相对 Preview.4 未变化，旧 Preview.4 保留作历史。H7 正常插件安装已在 Preview.4 实机通过。Preview.5 GUI 已实际安装 arXiv/OpenAlex，验证预装 research 保留、当前项完成后停止、重新预检仅补缺项，以及关闭市场/切换视图后执行终态保留；共享卸载等后续结果见 preview-gui。H2 追加键盘 Home/上下键、底部菜单、窄短窗口左展与内部滚动，以及实际改名/移动后磁盘逐项比对通过，未扩写为完整手测通过。
+
+Preview.6 补充：#87 [CI](https://github.com/Wifabric/AISC/actions/runs/42425026074) 三项 success 后合入。修正短窗口编辑器底部保存时看不到上方错误的问题，模块相关 13 项、类型/生产构建通过；384429548 字节 NSIS 与独立 Workbench 已生成。CLI/bundle 未变，Preview.5 留作历史。双窗口冲突保护、明确重新读取后保存和目标容器离线保存已在 Preview.5 通过；Preview.6 实机重复空名称提示、冲突自动可见、草稿保留与显式恢复保存通过，磁盘核对外部修改没有被覆盖。H2 追加侧栏滚动和实际缩窄后菜单关闭、数据不变通过；About 显示 Preview.6 / CLI/Bundle 0.1.10。完整覆盖与未测边界见 [统一候选复测](preview-gui.md)。
 
 ## 次日集中处理
 
