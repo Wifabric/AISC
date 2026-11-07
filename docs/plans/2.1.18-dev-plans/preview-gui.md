@@ -188,3 +188,15 @@ PR #87 head 195ff2b6d 的 CI 42425026074 frontend/rust/cli 均 success，合入 
 打开未归档 Session 17 的右键菜单后滚动菜单外的工作记录侧栏，菜单正常关闭。重新打开后通过 Windows 原生“大小”操作从 818×669 缩窄到 646×669；进入原生调整模式时应用菜单仍在，完成实际尺寸变化后菜单关闭，没有残留脱离目标的菜单。直接拖边首次未改变尺寸，不将该次尝试计作 resize 通过。
 
 check_workrecords_preview6.py 与 Preview.5 保存后的记录对比：24 个集合 ID/名称/状态/成员以及 30 条未归档会话标题均不变。证据 gui-preview6-h2-sidebar-scroll-closed.txt、gui-preview6-h2-resize-closed.txt、preview6-workrecords-after.json。本轮补齐侧栏滚动和实际窗口缩窄关闭；主菜单最右边缘翻转仍未单独实测，用户最终验收仍待完成。
+
+## Preview.6 / H9 离线失败、显式恢复与来源
+
+重新启动同一 Preview.6，独立 ui-workspace 容器 c8bfc514a6c6 使用完整 keep 62d358f2… 镜像。记录三侧技能文件基线后，仅断开此容器的 bridge 网络；inspect 网络端点为空，未改 Windows 网络或原平台容器。
+
+真实界面搜索 grill，显示“缓存结果”、上次成功时间与 DNS 失败说明，仍保留已缓存结果。展开 grill-me 后先显示读取中，随后明确显示 Cannot read upstream SKILL.md 错误、来源仓库链接及“重新读取”按钮，未将占位文案记成功。恢复同一容器 bridge 后首次明确重试仍返回读取失败；本轮未定位该次请求失败的底层原因。随后只读探测同容器的公开 GitHub commit/raw 接口均返回 200，再次点击“重新读取”成功，错误消失，显示实际简介。不能把恢复网络后的第一次尝试写成成功。
+
+切换 caveman 查询后结果不含旧 grill 详情；再搜索 grill，grill-me 简介仍在，另外两条 grill-with-docs/grilling 简介恢复。重新打开 grill-me 的来源链接指向固定提交 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d 的 skills/productivity/grill-me/SKILL.md。可访问性读取器曾在原链接节点更新后保留旧仓库地址，重新打开的新节点与直接只读适配器结果一致，未据此改产品代码。
+
+市场还返回 batch-grill-me，但该固定提交的 tree 中只有 grill-me、grill-with-docs、grilling 三个匹配路径，没有 batch-grill-me。展开该陈旧条目明确显示 No unique matching skill path 并保留重试/来源入口。此项是市场元数据与上游目录差异，不编造成功内容。曾尝试在其读取期间切换查询，但错误在提交新查询前已返回，因此本轮只证明普通查询切换隔离，不记迟到响应竞态 PASS。
+
+1,545 个三侧已安装技能文件的路径/哈希前后一致，未执行安装/卸载。网络已恢复；证据 gui-preview6-h9-{offline-detail,first-reconnect-failure,recovered-detail,query-caveman,reopened-source}.txt、h9-preview6-network-{offline,online}.json、h9-preview6-online-probe.jsonl、h9-preview6-upstream-paths.json、h9-preview6-assets-{before,after}.json。H9 离线失败、明确重试恢复、缓存/固定来源子集 PASS；跨工作区切换和真实迟到响应仍由自动化覆盖，GUI 未补齐。用户最终验收继续待完成。

@@ -53,6 +53,8 @@ Preview.5 补充：#85 [CI](https://github.com/Wifabric/AISC/actions/runs/424207
 
 Preview.6 补充：#87 [CI](https://github.com/Wifabric/AISC/actions/runs/42425026074) 三项 success 后合入。修正短窗口编辑器底部保存时看不到上方错误的问题，模块相关 13 项、类型/生产构建通过；384429548 字节 NSIS 与独立 Workbench 已生成。CLI/bundle 未变，Preview.5 留作历史。双窗口冲突保护、明确重新读取后保存和目标容器离线保存已在 Preview.5 通过；Preview.6 实机重复空名称提示、冲突自动可见、草稿保留与显式恢复保存通过，磁盘核对外部修改没有被覆盖。H2 追加侧栏滚动和实际缩窄后菜单关闭、数据不变通过；About 显示 Preview.6 / CLI/Bundle 0.1.10。完整覆盖与未测边界见 [统一候选复测](preview-gui.md)。
 
+H9 后续实机补测：隔离目标断网时返回带说明的搜索缓存，技能详情明确失败并提供来源/重试。恢复网络后首次重试仍失败，确认实际连通后再次重试成功；固定提交来源、普通查询切换和摘要缓存通过，1,545 个技能文件哈希保持不变。网络恢复完毕。跨工作区和真实迟到响应 GUI 仍未完成；精确结果见 [统一候选复测](preview-gui.md)。本轮只有验证文档变化，Preview.6 二进制与哈希不变。
+
 ## 次日集中处理
 
 1. **U-4 默认成员**：批准或调整 [四项具体提案](default-modules-proposal.md)。科研基础为 arXiv/OpenAlex，开发基础为 systematic-debugging/test-driven-development；四项安装/卸载已验证。批准后落默认清单并重建候选，未批准前保持空清单。
