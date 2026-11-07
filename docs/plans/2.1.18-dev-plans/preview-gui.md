@@ -121,3 +121,42 @@ PR #83 的精确 head 51b5cff5 在 CI 42417635698 三项通过后合入 develop 
 证据：h6-arxiv-install-failure.json、h6-science-source-paths.json、science-catalog-frontend.log、science-catalog-build.log。本轮预装项保留和部分失败的实际行为通过，不将未完成的全量应用/卸载记为 H6 PASS。
 
 修后安装标识数据面 PASS：使用当前冻结 CLI（ded9ed26…）和完整候选镜像，新建无用户挂载的独立临时容器，四项分别通过模块计划、逐项 installed、状态回读，再逐项 removed、状态回读。不存在的 plan_id 明确拒绝。测试容器按本轮唯一 QA 标签核对后已清理，证据 science-members-install.json。资产安装/移除通过不代表技能内部科研任务或外部 API 已验收；GUI 仍须用含 S7 的新候选复测。
+
+## Preview.5 / S7 与 H6 继续复测
+
+PR #85 head d06b3269 在 CI 42420724178 三项通过后合入 5467c9cf。本机 Preview.5 Workbench/NSIS 已重新构建；CLI 和 bundle 相对 Preview.4 未变。窗口 923×935，仍用独立 QA 数据；当前 runtime d8106f6f-c0fd-4e93-b9e8-780afdc63398 / 容器 f351f02d56e1，镜像 keep 62d358f2…，原平台保持运行。
+
+- 推荐与编辑器显示四个实际下划线目录，原先保存的错误 QA 定义未被自动改写。通过界面删除旧 arXiv 成员、加入修正后的 arXiv 和 OpenAlex 并保存，QA-A 变为三项：预装 research、待装 arXiv/OpenAlex。滚动后保存按钮可正常操作。
+- 应用计划明确保留预装 research，只补 arXiv/OpenAlex。research 完成保留、arXiv 正在处理时点击“当前项完成后停止”；最终显示“已停止后续步骤”，research 已保留、arXiv 已安装、OpenAlex 尚未执行。磁盘三侧 skills 目录确认 arXiv 存在、OpenAlex 不存在，research 的 SKILL.md 哈希仍为 1f629e18…。
+- 执行期间正常创建并保存只含 arXiv 的“QA-B 共享科研成员”，仅保存定义；所有模块执行按钮在 A 运行时禁用。后续重新预检/补齐和共享卸载另记，不预写通过。
+
+证据：gui-preview5-h6-a-plan.txt、gui-preview5-h6-a-stopped.txt、h6-preview5-baseline.json、h6-preview5-stopped.json；本轮 QA 定义保留供继续验证。
+
+恢复子集 PASS：点击“重新预检／重试”，新计划将 arXiv 标为“已安装，模块归属可核对 / 保留”，只补 OpenAlex。执行期间关闭市场并切换工作记录，返回模块面板后仍显示完整终态：research/arXiv 已保留、OpenAlex 已安装。三侧 SKILL.md 均与各自源内容一致；research 和首次安装 arXiv 的哈希不变。证据 gui-preview5-h6-a-retry-plan.txt、gui-preview5-h6-a-complete.txt、h6-preview5-a-progress.json。此处为手动停止后的继续，不混写为网络故障或未知结果恢复。
+
+## Preview.5 / H2 工作记录增量复测
+
+在同一独立 QA 工作区准备 30 条仅含合成标题的 Codex 会话和 24 个空集合，另有环境自带 init 会话；没有模型调用或私人会话内容。后台模块执行期间进入工作记录，列表可正常读取和操作。
+
+- 923×935 窗口底部 Session 15 右键菜单向上避让，子菜单向右展开，24 项可见。Home/Down/Up/End 分别将可见焦点环移至 01/02/01/24；Left 返回父菜单，Escape 返回原会话行焦点，Shift+F10 从该行重新打开菜单。菜单重命名实际命中 Session 15，保存为 Preview QA Session 15 renamed。
+- 通过 Windows 原生窗口菜单调整至 647×593，底部 Session 30 的子菜单独立向左展开，保留父菜单可点击区域；内部滚动后 24 项长名称完整换行可见。点击第 24 项后，只有 Session 30 移入对应集合。
+- 数据核对 PASS：24 个集合的 ID/名称/状态不变，只有 Collection 24 新增 Session 30，未归档从 31 减至 30；其余会话标题不变，只有 Session 15 发生指定改名。证据 preview5-workrecords-baseline.json、preview5-workrecords-after.json，以及 gui-preview5-h2-submenu.txt、gui-preview5-h2-left-scroll.txt。
+- 本轮主菜单最右边缘翻转、菜单打开时由 resize 事件关闭、侧栏滚动关闭未单独验证。首次角部拖动未改变尺寸，未记 resize PASS；最大化后可访问性树一度不可用，恢复普通窗口后继续。工具状态不作产品缺陷；本轮也不替代用户最终验收。
+
+## Preview.5 / H6 共享卸载与版本核对
+
+QA-B 应用完成，arXiv 保留而非重复安装；持久化记录显示同一资产由 A/B 两个模块引用，仍保留已验证的归属指纹。A 卸载预检明确给出 research 预装保留、arXiv 共享保留、OpenAlex 独占移除。确认后逐项终态与磁盘一致：三侧 research/arXiv 的 SKILL.md 哈希不变，三侧 OpenAlex 已不存在，A 的三项关联解除；B 的 arXiv 关联保留。操作期间可关闭市场、查看 About，再返回读取执行终态。
+
+本轮使用当前完整 QA 镜像与真实适配器，无模拟卸载。证据 gui-preview5-h6-b-complete.txt、gui-preview5-h6-a-uninstall-plan.txt、gui-preview5-h6-a-uninstalled.txt、h6-preview5-b-complete.json、h6-preview5-a-uninstalled.json。H6 的技能共享/预装/独占卸载子集 PASS，其他种类成员和跨目标边界不据此记通过。
+
+帮助 → 关于实机显示 Workbench 2.1.18-preview.5、CLI/Bundle 0.1.10、Claude 2.1.314、Python 3.12.9；Workbench Image 显示未知，实际测试镜像按 Docker inspect 证据标识，不由该字段推测。版本证据 gui-preview5-about.txt。
+
+用户修改保护 PASS：A 已卸载后，仅向 QA Claude 侧 arXiv 的 SKILL.md 追加可恢复注释，未改归属记录。B 此时为唯一引用，预检却正确改为“解除关联，保留资产 / 预装、归属不明，或已被模块外操作修改”；确认执行后仍保留修改内容，三侧文件均在，归属记录 owned=false、关联清空。之后通过 B 的“删除定义 → 确认移除”删除定义，界面先明确保留已安装扩展；磁盘比对只有定义与 revision 变化，资产与执行历史完全不变。QA 注释与原文备份留在隔离数据/证据目录，不写入产品源码。
+
+证据 h6-user-edit.json、gui-preview5-h6-user-edit-plan.txt、gui-preview5-h6-user-edit-retained.txt、gui-preview5-h6-delete-definition-confirm.txt、h6-preview5-user-edit-retained.json、h6-preview5-b-definition-deleted.json。check_h6_preview5.py 对共享/预装/独占、修改保护和删除定义进行了交叉断言；MCP 配置修改保护、旧 adapter 与跨目标 GUI 仍不由本轮代替。
+
+## Preview.5 / H5 混合类型定义
+
+真实界面创建 QA-C，依次加入 research 技能、PubMed MCP、learn-with-coursera 插件，三者均显示实际安装标识及来源 URL，已选项按钮禁用。保存后磁盘定义含三种类型；再打开编辑器移除 PubMed，保存后显示两个成员，磁盘只保留技能和插件。期间没有为 C 创建或执行任何模块计划，技能文件状态不变；此处为定义编辑，不宣称 PubMed/Coursera 实际安装或调用已通过。
+
+证据 gui-preview5-h5-mixed-editor.txt、h6-preview5-c-saved-user-edited.json、h6-preview5-c-two-saved.json。离线编辑、双窗口冲突及 U-4 默认模块仍未实测/未批准，继续保留边界。
