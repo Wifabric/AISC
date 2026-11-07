@@ -87,3 +87,17 @@ Preview.3、893×859 窗口，独立镜像 `aisc-h4-gui-94db20a7:keep/selected`�
 S6 修后冻结 CLI + 完整候选 bundle 实测 PASS：依次尝试三个配置源，验证固定 digest 后使用 `aisc-node-base:sha256-bc0a2afd…` 和 `--builder desktop-linux --no-cache` 完成构建，610 条输出事件、76 条进度事件，最终 build.complete / exit_code=0。新 ID `sha256:22d36db0de22650fef865e00749879a472efff5e2bb40ebfa90f4d4aad379582` 只发布到 keep；selected 仍指向旧 ID，停止容器仍引用旧 ID，结果 kept_referenced 与实际一致。期间另做同 digest 的官方拉取可达性探针成功，但未修改候选配置或回退链。此处为真实冻结 CLI 数据面，不记修后 GUI 成功路径已完成。
 
 完整 Python 回归 1796 passed、54 skipped、207 subtests；本机路径适配沿用既有验证插件，无断言修改。冻结 CLI SHA256 `ded9ed26f029afb00350e8fa67354cf93cd08e89fa7028e248ea06d5eedc2eaf`。本地补充证据 h4-fixed-frozen-events.jsonl、h4-fixed-docker-command.json、h4-fixed-result.json、rebuild-python-full.log；标准 Preview.3 尚未替换此 CLI，重打包、修后 GUI/取消/第二入口与远端 CI 继续补记。
+
+## Preview.4 / S6 修后真实 GUI
+
+PR #83 的精确 head 51b5cff5 在 CI 42417635698 三项通过后合入 develop 24d03cd3。重新冻结 CLI、构建 Workbench 与 NSIS，更新独立 candidate；完整 SHA256 见 DELIVERY。以下为新二进制的实机自测，窗口 908×897，仍使用独立 QA 数据和镜像。
+
+- 设置镜像行入口：预检显示 keep 的完整 ID 22d36db0…，无缓存默认勾选。取消勾选后确认，真实候选 argv 含 `--use-cache`；12.2 秒显示“构建完成 / 100%”，日志实际复用各层缓存。新 ID `sha256:423dd6dfaf44930a1eca28e378e37e8b55e3bd43f420b3f5d9b96627eebdb94c` 发布到 keep；未被引用的上一完整构建 ID 22d36db0… 已删除，UI 提示与 inspect 一致。
+- 另一标签 selected 和停止容器仍指向最初 73426400…，未被这次构建覆盖或删除。再次打开 keep，默认恢复无缓存；实际 argv 为 `--no-cache`。构建已传入 context 后点击“取消构建”，19.3 秒明确显示“已取消 / 操作已取消”，没有显示成功。keep 仍为 423dd6df…，selected 和停止容器不变；本次 CLI 进程结束，无 aisc-rebuild 临时标签残留。
+- 本次顺序为缓存成功、无缓存取消；不能把它写成 HANDTEST 所列缓存构建取消已执行。无缓存完整成功由上一节冻结 CLI 实测覆盖。
+
+本地证据：gui-preview4-h4-cache-success.txt、h4-gui-cache-command.json、gui-preview4-h4-cancelled.txt、h4-gui-nocache-cancel-command.json、h4-preview4-postcancel.json。原平台镜像和运行容器未修改。
+
+第二入口：在独立 QA 工作区的启动摘要“更改设置”中，将镜像明确改为同一 keep，从“重建镜像”打开的只读预检显示当前完整 ID，默认无缓存勾选。取消勾选后提交，实际 argv 含 `--use-cache`，进度到“导出镜像”，12.5 秒完成；新 ID `sha256:62d358f2b5c5f796de5efe95a28f1257b837645774ce55218d8523432c0ec759`，selected 和停止容器仍为最初旧 ID。尝试取消时已进入发布结束阶段，最终正确显示完成及新 ID，因此本次记第二入口成功，不记缓存取消通过。当前 QA 镜像保留供后续扩展复测；尚未运行此镜像的工作区容器。
+
+“帮助 → 关于”确认 Workbench 2.1.18-preview.4、CLI/Bundle 0.1.10、Claude 2.1.314；Image 仍显示未知（未启动 runtime）。对应 gui-preview4-h4-summary-success.txt、h4-gui-summary-cache-command.json、gui-preview4-about.txt。Remote 入口禁用实机、缓存构建在完成前取消、完整无缓存 GUI 成功、安装/升级仍未由本轮覆盖；保留此前数据面与组件测试证据，不扩写为完整 H4 或用户验收。
