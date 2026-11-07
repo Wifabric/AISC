@@ -115,3 +115,13 @@
 - 冻结 CLI version 与隔离 QA work-record list PASS：24 collections / 30 unfiled。QA 采用合成数据，独立 AISC_DATA_ROOT；启动脚本 output/启动-b2-验收.ps1。尚未启动本轮窗口，未替换安装版。
 - 原始日志、候选 SHA256、环境适配脚本在 output/verification，仅留本机。远端 CI 本轮 NOT RUN；不得记待合入。
 - 当前确认点：用户是否接手本轮 H2 实机验收（CU NOT RUN 保留）或先恢复 CU。b3 的 U-1 仍未裁定，不启动 b3。
+
+## 2026-11-07 用户修复自动测试环境后的重试
+
+- 用户要求再次自动测试。本轮 @oai/sky 初始化、list_apps/list_windows、窗口激活、UIA 文本、前台截图与点击均实际执行成功；旧的初始化阻塞已解除。窗口被遮挡时截图有捕获前台内容的现象，显式激活候选后截图恢复对应，UIA 倒计时文本有滞后，采用可见截图核对。
+- 运行候选 output/candidate/workbench.exe（本地集成提交 b109f1e7），以独立 AISC_DATA_ROOT 使用合成 QA 数据。选择最近工作区，进入真实启动摘要，工作区/网络/运行时冲突检查通过。
+- Docker 与镜像检查失败 AISC_ERR_DOCKER_UNAVAILABLE；Workbench 自动尝试启动 Docker，约 120 秒后显示 Docker 引擎启动超时。
+- Docker Desktop 实际错误：starting services: initializing Ingest server ... sailor-ingest.sock ... The file cannot be accessed by the system。只读 docker info 也确认 dockerDesktopLinuxEngine 管道不存在。socket 条目存在，属性 Archive/ReparsePoint；没有删除 socket、重置 Docker、修改安全设置或上传诊断。
+- 已取消候选启动等待，返回工作区选择页；候选及 Docker 错误窗口保留供检查。
+- 结论：自动操作基础通道恢复；b2/H2 菜单功能仍 NOT RUN，因为 Docker 引擎启动失败，尚未进入工作记录页。本轮不是 b2 功能 FAIL 或 PASS，用户验收未完成，不进入 b3。
+- 下一步：Docker 引擎恢复后继续原候选 H2；无需因本次环境失败重跑已通过的代码测试。
