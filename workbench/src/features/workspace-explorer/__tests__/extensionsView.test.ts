@@ -32,6 +32,33 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind) }));
   });
 
+  it("dismisses the actual failure card and duplicate error, restores focus, and stays closed after remount", async () => {
+    vi.mocked(ipc.extensionsCall).mockImplementation(async p => {
+      if (p.op === 'plugin-install') throw new Error('installation rejected');
+      return { items: [] };
+    });
+    const options = { attachTo: document.body, global: { plugins: [i18n], stubs: { Teleport: true } } };
+    const wrapper = mount(ExtensionsView, options);
+    await flushPromises();
+    const store = useExtensionsStore(); store.kind = 'plugins';
+    await store.pluginAction('plugin-install', 'bad@market');
+    await nextTick();
+    const close = wrapper.get<HTMLButtonElement>('[data-testid="extension-failure-close"]');
+    close.element.focus();
+    expect(document.activeElement).toBe(close.element);
+    await close.trigger('click');
+    expect(wrapper.find('[data-testid="extension-failure"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('installation rejected');
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="open-extension-market"]').element);
+    expect(store.operationLog).toHaveLength(1);
+    wrapper.unmount();
+    const remounted = mount(ExtensionsView, options); await flushPromises();
+    expect(remounted.find('[data-testid="extension-failure"]').exists()).toBe(false);
+    await store.pluginAction('plugin-install', 'new@market'); await nextTick();
+    expect(remounted.find('[data-testid="extension-failure"]').exists()).toBe(true);
+    remounted.unmount();
+  });
+
   it("opens offline recommendations and the module entry without a runtime", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n], stubs: { Teleport: true } } });
     await flushPromises();

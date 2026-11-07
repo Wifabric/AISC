@@ -149,6 +149,24 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketPlugins = ref<ExtensionsItem[]>([]);
   const pluginMarkets = ref<ExtensionsItem[]>([]);
   const operationLog = ref<ExtensionOperationRecord[]>([]);
+  const dismissedFailures = ref(new Set<string>());
+  const operationErrorIds = ref<KindRecord<string | null>>(kindRecord(null));
+  const latestFailure = computed(() => {
+    const row = operationLog.value.filter(row => row.status !== "success").slice(-1)[0];
+    return row && !dismissedFailures.value.has(row.operationId) ? row : null;
+  });
+  function dismissFailureNotice(operationId: string): void {
+    // A stale click must not dismiss a newer result. Never fall back to an older failure.
+    if (latestFailure.value?.operationId !== operationId) return;
+    for (const row of operationLog.value) {
+      if (row.status !== "success") dismissedFailures.value.add(row.operationId);
+      if (row.operationId === operationId) break;
+    }
+  }
+  function setError(target: ExtensionsKind, message: string | null, operationId: string | null = null): void {
+    errorsByKind.value[target] = message;
+    operationErrorIds.value[target] = operationId;
+  }
   let logSequence = 0;
   const retryRecipes = new Map<string, { token: string | null; run: () => Promise<unknown> }>();
 
@@ -173,7 +191,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
       diagnostic: diagnosticText(diagnostic) });
     if (status === "failed") retryRecipes.set(operationId, { token: contextToken(), run });
     while (operationLog.value.length > 100) {
-      retryRecipes.delete(operationLog.value.shift()!.operationId);
+      const removed = operationLog.value.shift()!.operationId;
+      retryRecipes.delete(removed);
+      dismissedFailures.value.delete(removed);
     }
   }
 
@@ -226,6 +246,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     updatesError.value = null;
     updatesBusy.value = false;
     operationLog.value = [];
+    dismissedFailures.value.clear();
+    operationErrorIds.value = kindRecord(null);
     retryRecipes.clear();
     loadingByKind.value = kindRecord(false);
     busyByKind.value = kindRecord(false);
@@ -262,7 +284,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketBusy = computed(() => searchBusyByKind.value[kind.value]
     || (kind.value === "plugins" && pluginMarketsBusy.value));
   const marketCache = computed(() => marketCacheByKind.value[kind.value]);
-  const error = computed(() => errorsByKind.value[kind.value]);
+  const error = computed(() => {
+    const id = operationErrorIds.value[kind.value];
+    return id && dismissedFailures.value.has(id) ? null : errorsByKind.value[kind.value];
+  });
   const updateItems = computed(() => updateItemsByKind.value[kind.value]);
   const activeOperation = computed(() => operationsByKind.value[kind.value]);
   const sourceMaintenanceBusy = computed(() =>
@@ -293,14 +318,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value) return;
     const token = contextToken();
     if (!options.silent) loadingByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("list", { kind: target });
       if (!isCurrentContext(token)) return;
       itemsByKind.value[target] = out.items ?? [];
     } catch (e) {
       if (!isCurrentContext(token)) return;
-      errorsByKind.value[target] = errorText(e);
+      setError(target, errorText(e));
     } finally {
       if (isCurrentContext(token) && !options.silent) loadingByKind.value[target] = false;
     }
@@ -332,7 +357,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value || operations.length === 0 || busyByKind.value[target]) return;
     const token = contextToken();
     busyByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     operationsByKind.value[target] = {
       kind: target, action, id, label, completed: 0, total: operations.length,
     };
@@ -364,7 +389,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await refresh(target, { silent: true });
       if (!isCurrentContext(token)) return;
       if (failures.length) {
-        errorsByKind.value[target] = failures.join("; ");
+        setError(target, failures.join("; "), operationLog.value.filter(row => row.kind === target && row.status !== "success").slice(-1)[0]?.operationId ?? null);
         toast.error(operationFailure(label, failures.join("; ")));
       } else {
         toast.success(operationSuccess(action, label));
@@ -391,14 +416,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
     setter([]);
     marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     try {
       const out = await call<{ items?: ExtensionsItem[]; cache?: MarketCacheState }>(op, { query });
       if (!current()) return;
       setter(out.items ?? []);
       marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
-      if (current()) errorsByKind.value[target] = errorText(e);
+      if (current()) setError(target, errorText(e));
     } finally {
       if (current()) searchBusyByKind.value[target] = false;
     }
@@ -411,7 +436,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     else marketPlugins.value = [];
     marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = false;
-    errorsByKind.value[target] = null;
+    setError(target, null);
   }
 
   async function discoverRecommendation(target: ExtensionsKind, query: string): Promise<void> {
@@ -493,7 +518,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value || specs.length === 0 || busyByKind.value.skills) return;
     const token = contextToken();
     busyByKind.value.skills = true;
-    errorsByKind.value.skills = null;
+    setError("skills", null);
     operationsByKind.value.skills = {
       kind: "skills", action,
       id: `${action === "install" ? "market" : "installed"}:${group.id}`,
@@ -551,7 +576,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       toast.error(operationFailure(group.name, message));
       await refresh("skills", { silent: true }).catch(() => undefined);
       if (!isCurrentContext(token)) return;
-      errorsByKind.value.skills = message;
+      setError("skills", message, operationLog.value.filter(row => row.kind === "skills" && row.status !== "success").slice(-1)[0]?.operationId ?? null);
     } finally {
       if (isCurrentContext(token)) {
         busyByKind.value.skills = false;
@@ -764,7 +789,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
     skillRepos, skillReposBusy, skillReposUnsupported,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
-    operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
+    operationsByKind, operationLog, latestFailure, dismissFailureNotice, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,
     clearMarketResults, checkUpdates, discoverRecommendation,

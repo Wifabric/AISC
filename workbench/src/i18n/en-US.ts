@@ -927,6 +927,7 @@ export const enUS: Record<string, string> = {
     "extensions.toast.addSuccess": "Added: {target}",
     "extensions.toast.importSuccess": "Imported: {target}",
     "extensions.toast.operationFailed": "Operation failed: {target} — {message}",
+    "extensions.failure.dismiss": "Dismiss failure notice",
     "extensions.failure.title": "Latest operation failed",
     "extensions.log.title": "Operation log",
     "extensions.log.empty": "No operations yet",

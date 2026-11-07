@@ -927,6 +927,7 @@ export const zhCN = {
     "extensions.toast.addSuccess": "添加完成：{target}",
     "extensions.toast.importSuccess": "导入完成：{target}",
     "extensions.toast.operationFailed": "操作失败：{target} — {message}",
+    "extensions.failure.dismiss": "关闭失败提示",
     "extensions.failure.title": "最近一次操作失败",
     "extensions.log.title": "操作日志",
     "extensions.log.empty": "暂无操作记录",
