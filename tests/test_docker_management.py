@@ -36,10 +36,18 @@ class FakeExec:
         self.label_ids = label_ids
         self.dangling_ids = dangling_ids
         self.argvs: list = []
+        self.refs = {f"{r}:{t}": i for r, t, i in (line.split("\t") for line in images.splitlines() if line)}
 
     def run_captured(self, argv, timeout=None):
         self.argvs.append(list(argv))
         head = argv[0]
+        if argv[:2] == ["image", "inspect"]:
+            identity = self.refs.get(argv[2], argv[2] if argv[2] in self.refs.values() else "")
+            if identity:
+                return _ok(identity)
+            return ProcessResult(exit_code=1, stdout="", stderr="No such image", command_not_found=False, timed_out=False)
+        if head == "tag":
+            self.refs[argv[2]] = argv[1]
         if head == "ps":
             if any("ancestor=" in a for a in argv):
                 return _ok(self.ancestor)

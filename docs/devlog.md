@@ -2,6 +2,12 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: 2.1.18 b3 镜像重命名（2026-11-08）
+
+- 磁盘页可编辑默认名称并选择要替换的旧 tag；支持 registry port。创建和核验新 tag 后只移除所选旧 tag，保留其他标签；冲突拒绝覆盖，移除失败显示部分结果。
+- CLI 新增可选 `--old-ref`，未提供时保留新增别名兼容行为；修复 Docker 列表短 ID 与完整 inspect ID 的归属匹配。
+- 前端 846 项与构建、Rust 414 项、Python 全套 1734 项及修后镜像定向 24 项通过；独立 Docker 镜像验证同一 ID、其他标签保留及冲突保护。跳过项和 GUI/用户验收边界见 [批次记录](plans/2.1.18-dev-plans/b3-image-name.md)。
+
 ## Unreleased: topic sync edge-case follow-up (2026-11-06)
 
 - Stop draining on EOF after truncation; validate marker payload types; scan a bounded prefix of large discovery candidates and report exhausted discovery budgets.

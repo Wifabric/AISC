@@ -362,18 +362,22 @@ export const useSettingsStore = defineStore("settings", () => {
   const managementBusy = ref<string | null>(null);
   async function runManagement(
     kind: "container" | "image",
-    fn: () => Promise<unknown>,
+    fn: () => Promise<ipc.ManagementResult>,
   ): Promise<string | null> {
     if (managementBusy.value) return "busy";
     managementBusy.value = kind;
+    const targetKey = JSON.stringify(targetRef.value);
     try {
-      await fn();
-      dockerLogLine(i18n.global.t("settings.docker.manage.done"));
+      const result = await fn();
+      if (JSON.stringify(targetRef.value) !== targetKey) return "target changed";
+      const warnings = result?.warnings ?? [];
+      if (!warnings.length) dockerLogLine(i18n.global.t("settings.docker.manage.done"));
+      for (const warning of warnings) dockerLogLine(`⚠ ${warning}`);
       await loadDockerScan(); // re-scan refreshes rows (删前必重扫的 UI 面)
-      return null;
+      return warnings.length ? warnings.join("; ") : null;
     } catch (e) {
       const msg = errorText(e);
-      dockerLogLine(`\u26a0 ${msg}`);
+      if (JSON.stringify(targetRef.value) === targetKey) dockerLogLine(`\u26a0 ${msg}`);
       return msg;
     } finally {
       managementBusy.value = null;
@@ -383,8 +387,8 @@ export const useSettingsStore = defineStore("settings", () => {
     runManagement("container", () => ipc.containerAction(name, action));
   const imageRm = (id: string) =>
     runManagement("image", () => ipc.imageRm(id));
-  const imageTag = (id: string, repository: string, tag: string) =>
-    runManagement("image", () => ipc.imageTag(id, repository, tag));
+  const imageTag = (id: string, repository: string, tag: string, oldRef?: string) =>
+    runManagement("image", () => ipc.imageTag(id, repository, tag, oldRef));
   const inspectReport = ref<ipc.CacheInspectReport | null>(null);
   const inspectBusy = ref(false);
   const inspectError = ref<string | null>(null);
