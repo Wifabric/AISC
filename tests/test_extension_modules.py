@@ -208,6 +208,32 @@ def test_module_cli_reads_structured_request_from_stdin(world, monkeypatch):
         cmd_extensions_module(SimpleNamespace(extensions_command='module-step', runtime_id='runtime-a', workspace='/qa'))
 
 
+def test_module_cli_decodes_utf8_bytes_despite_windows_stdin_locale(world, monkeypatch):
+    import io
+    from types import SimpleNamespace
+    from aisc.cli.commands.extensions import cmd_extensions_module
+    item = definition()
+    item['name'] = '科研模块 日本語 🧪'
+    request = json.dumps({'definition': item, 'action': 'apply'}, ensure_ascii=False).encode('utf-8')
+    monkeypatch.setattr('sys.stdin', io.TextIOWrapper(io.BytesIO(request), encoding='ascii', errors='surrogateescape'))
+    result = cmd_extensions_module(SimpleNamespace(extensions_command='module-plan', runtime_id='runtime-a', workspace='/qa'))
+    assert result['module_name'] == item['name']
+    assert json.loads(world['path'].read_text(encoding='utf-8'))['plans'][result['plan_id']]['module_name'] == item['name']
+    assert world['installs'] == []
+
+
+def test_module_cli_rejects_invalid_utf8_before_mutation(world, monkeypatch):
+    import io
+    from types import SimpleNamespace
+    from aisc.cli.commands.extensions import cmd_extensions_module
+    monkeypatch.setattr('sys.stdin', io.TextIOWrapper(io.BytesIO(b'{"name":"\xff"}'), encoding='latin1'))
+    with pytest.raises(CliError) as caught:
+        cmd_extensions_module(SimpleNamespace(extensions_command='module-plan', runtime_id='runtime-a', workspace='/qa'))
+    assert caught.value.error_code == 'AISC_ERR_USAGE'
+    assert not world['path'].exists()
+    assert world['installs'] == world['removes'] == []
+
+
 def test_marker_and_container_identity_reach_real_adapter_bridge(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from aisc.application import extensions as ext
