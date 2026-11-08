@@ -18,8 +18,10 @@ import zipfile
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-BASH = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else shutil.which("bash")
-NODE = ROOT / ".tools/node22/node.exe" if os.name == "nt" else shutil.which("node")
+GIT = shutil.which("git")
+BASH = (Path(GIT).resolve().parents[1] / "bin/bash.exe"
+        if os.name == "nt" and GIT else shutil.which("bash"))
+NODE = shutil.which("node") or ROOT / ".tools/node22/node.exe"
 COMMIT = "02ae05ac06e8c9287916fbabfe61ef5c8591407f"
 GEO = ("geoip.metadb", "geosite.dat", "country.mmdb")
 PINS = {
@@ -45,7 +47,10 @@ export -f python3 python node
 '''
     return subprocess.run([str(BASH), "--noprofile", "--norc", "-s"], input=prelude + script,
                           cwd=root, env=process_env, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=30)
+                          encoding="utf-8", errors="replace",
+                          # Git Bash starts native Python for each digest; CI
+                          # and concurrent packaging can exceed 30s on Windows.
+                          timeout=120 if os.name == "nt" else 30)
 
 
 def run_block(marker: str) -> str:
@@ -281,7 +286,7 @@ def test_stage_failed_group_keeps_previous_payloads_unchanged(sandbox: Path, fai
 
 
 def test_docker_defaults_are_release_pins_and_preserve_resolver_receipt():
-    text = (ROOT / "container/Dockerfile").read_text()
+    text = (ROOT / "container/Dockerfile").read_text(encoding="utf-8")
     expected = {**PINS, "NODE_IMAGE": "node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9",
                 "CODEX_VERSION": "0.166.0", "CLAUDE_CODE_VERSION": "2.1.314",
                 "GEODATA_VERSION": "20261030", "GEODATA_COMMIT": "10f120b9f0cd1bcae8b8ff88b3f999237b919702"}

@@ -31,6 +31,8 @@ const mockIpc = vi.hoisted(() => ({
   dockerScan: vi.fn(),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
+  imageTag: vi.fn(),
+  targetSet: vi.fn(),
   appCheckUpdate: vi.fn(),
   appDownloadUpdate: vi.fn(),
   appInstallUpdate: vi.fn(),
@@ -329,6 +331,79 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     return wrapper;
   }
 
+  async function openImageRename() {
+    mockUnifiedScan();
+    const wrapper = await openDisk();
+    await useSettingsStore().loadDockerScan();
+    await flushPromises();
+    await wrapper.findAll("button").find((b) => b.text() === i18n.global.t("settings.docker.manage.retag"))!.trigger("click");
+    return wrapper;
+  }
+
+  it("offers an editable generated image name and cancels without a Docker operation", async () => {
+    const wrapper = await openImageRename();
+    const input = wrapper.get<HTMLInputElement>("[data-testid='image-rename-input']");
+    expect(input.element.value).toMatch(/^super-claude:[a-z0-9]{8}$/);
+    expect(wrapper.get("[data-testid='image-rename-source']").findAll("option")).toHaveLength(2);
+    await wrapper.get("[data-testid='image-rename-form']").trigger("keydown", { key: "Escape" });
+    expect(wrapper.find("[data-testid='image-rename-form']").exists()).toBe(false);
+    expect(mockIpc.imageTag).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("renames only the selected tag, supports registry ports, and prevents repeat submission", async () => {
+    let finish!: (value: { warnings: string[] }) => void;
+    mockIpc.imageTag.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const wrapper = await openImageRename();
+    await wrapper.get("[data-testid='image-rename-source']").setValue("mirror/node:22");
+    await wrapper.get("[data-testid='image-rename-input']").setValue("registry.example:5000/team/image:new");
+    const form = wrapper.get("[data-testid='image-rename-form']");
+    await form.trigger("submit");
+    await form.trigger("submit");
+    expect(mockIpc.imageTag).toHaveBeenCalledTimes(1);
+    expect(mockIpc.imageTag).toHaveBeenCalledWith("same", "registry.example:5000/team/image", "new", "mirror/node:22");
+    finish({ warnings: [] });
+    await flushPromises();
+    expect(wrapper.find("[data-testid='image-rename-form']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps partial rename warnings visible instead of reporting completion", async () => {
+    mockIpc.imageTag.mockResolvedValue({ warnings: ["New tag created; old tag is in use"] });
+    const wrapper = await openImageRename();
+    await wrapper.get("[data-testid='image-rename-form']").trigger("submit");
+    await flushPromises();
+    expect(wrapper.get("[data-testid='image-rename-form'] [role='alert']").text()).toContain("old tag is in use");
+    expect(useSettingsStore().dockerLog.join("\n")).not.toContain(i18n.global.t("settings.docker.manage.done"));
+    wrapper.unmount();
+  });
+
+  it("rejects incomplete input and preserves the form after a conflicting name", async () => {
+    const wrapper = await openImageRename();
+    for (const value of ["", " ", "missing-tag", "registry:5000/team/image"]) {
+      await wrapper.get("[data-testid='image-rename-input']").setValue(value);
+      await wrapper.get("[data-testid='image-rename-form']").trigger("submit");
+      expect(wrapper.find("[data-testid='image-rename-form'] [role='alert']").exists()).toBe(true);
+    }
+    expect(mockIpc.imageTag).not.toHaveBeenCalled();
+    mockIpc.imageTag.mockRejectedValue({ message: "image reference already exists" });
+    await wrapper.get("[data-testid='image-rename-input']").setValue("super-claude:occupied");
+    await wrapper.get("[data-testid='image-rename-form']").trigger("submit");
+    await flushPromises();
+    expect(wrapper.get("[data-testid='image-rename-form'] [role='alert']").text()).toContain("already exists");
+    wrapper.unmount();
+  });
+
+  it("discards an unsubmitted rename when the selected machine changes", async () => {
+    const wrapper = await openImageRename();
+    mockIpc.targetSet.mockResolvedValue({ kind: "ssh", machine: { name: "qa-remote" } });
+    await useSettingsStore().switchTarget("qa-remote", "/qa");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='image-rename-form']").exists()).toBe(false);
+    expect(mockIpc.imageTag).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("runs one unified Docker scan and reports ownership plus inspect totals", async () => {
     mockUnifiedScan();
     const wrapper = await openDisk();
@@ -366,7 +441,7 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     wrapper.unmount();
   });
 
-  it("cleanup/rebuild disabled before any scan, enabled after one loads", async () => {
+  it("enables cleanup after scanning but requires an image selection for rebuild", async () => {
     mockIpc.dockerScan.mockResolvedValue({
       dockerAvailable: true, dockerReason: "ok",
       containers: { owned: [], legacy_owned: [], unverified: [] },
@@ -385,6 +460,10 @@ describe("docker admin scan-first gate (2.1.12 B3, user ruling 2026-09-16)", () 
     await store.loadDockerScan();
     await Promise.resolve();
     expect((cleanup.element as HTMLButtonElement).disabled).toBe(false);
+    expect((rebuild.element as HTMLButtonElement).disabled).toBe(true);
+    mockUnifiedScan();
+    await store.loadDockerScan();
+    await flushPromises();
     expect((rebuild.element as HTMLButtonElement).disabled).toBe(false);
     wrapper.unmount();
   });

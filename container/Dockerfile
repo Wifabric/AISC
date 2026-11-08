@@ -623,12 +623,14 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo 'fi' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
-# cc-switch 离线 skills：preview b3 用户裁定预装 13 个 caveman-* skills 与 grill-me。
+# D-17 offline basics: 13 caveman skills, grill-me, grilling and Karpathy guidelines.
 # 仍走既有 cc-switch 注册/同步管理链路；其他技能由扩展商城安装。
 COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/
+COPY container/cc-switch-skills/grilling/ /opt/aisc/skills/grilling/
+COPY container/cc-switch-skills/karpathy-guidelines/ /opt/aisc/skills/karpathy-guidelines/
 COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/
 RUN set -eux; \
-    for skill in caveman caveman-commit caveman-compress caveman-discover caveman-evidence-review caveman-explore caveman-help caveman-learn caveman-manage caveman-optimize caveman-review caveman-setup caveman-stats grill-me; do \
+    for skill in caveman caveman-commit caveman-compress caveman-discover caveman-evidence-review caveman-explore caveman-help caveman-learn caveman-manage caveman-optimize caveman-review caveman-setup caveman-stats grill-me grilling karpathy-guidelines; do \
         test -f "/opt/aisc/skills/$skill/SKILL.md"; \
     done; \
     (cd /opt/aisc/skills && \
@@ -636,7 +638,7 @@ RUN set -eux; \
         sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
     mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256; \
     mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins; \
-    echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
+    echo '{"version":2,"plugins":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

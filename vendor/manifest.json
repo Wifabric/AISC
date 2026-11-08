@@ -112,6 +112,24 @@
       "files": [
         "container/downloads/yazi-x86_64-unknown-linux-musl-v26.9.1.zip"
       ]
+    },
+    {
+      "name": "grilling",
+      "version": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+      "source": "https://github.com/mattpocock/skills/tree/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d",
+      "license": "MIT",
+      "files": [
+        "container/cc-switch-skills/grilling/"
+      ]
+    },
+    {
+      "name": "karpathy-guidelines",
+      "version": "2c606141936f1eeef17fa3043a72095b4765b9c2",
+      "source": "https://github.com/multica-ai/andrej-karpathy-skills/tree/2c606141936f1eeef17fa3043a72095b4765b9c2",
+      "license": "MIT",
+      "files": [
+        "container/cc-switch-skills/karpathy-guidelines/"
+      ]
     }
   ]
 }

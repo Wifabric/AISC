@@ -73,6 +73,127 @@ class TempEnv(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
 
 
+class EmptyPluginRegistryTests(TempEnv):
+    def registry(self, content=None):
+        path = self.root / 'claude' / 'plugins' / 'installed_plugins.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if content is not None:
+            path.write_bytes(content)
+        return path
+
+    def test_first_install_upgrades_only_empty_factory_record_before_installer(self):
+        path = self.registry(b'{}\n')
+        record = {'version': 2, 'plugins': {'demo@market': [{'scope': 'user', 'version': '1.0'}]}}
+        def install(argv, **kwargs):
+            self.assertEqual(json.loads(path.read_bytes()), {'version': 2, 'plugins': {}})
+            self.assertEqual(argv, ['claude-real', 'plugin', 'install', 'demo@market'])
+            path.write_text(json.dumps(record), encoding='utf-8')
+        with mock.patch.object(A, '_run_cli_git_fallback', side_effect=install) as run:
+            A.plugin_install('demo@market')
+            after = path.read_bytes()
+            A.plugin_install('demo@market')
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(path.read_bytes(), after)
+        self.assertEqual(list(path.parent.glob('*.tmp')), [])
+
+    def test_missing_and_nonempty_registries_are_never_replaced(self):
+        path = self.registry()
+        A._upgrade_empty_plugin_registry()
+        self.assertFalse(path.exists())
+        for raw in [b'{"version":2,"plugins":{}}', b'{"plugins":{"existing@market":[]},"custom":true}',
+                    b'not json', b'[]', b'{"unknown":1}']:
+            with self.subTest(raw=raw):
+                path.write_bytes(raw)
+                A._upgrade_empty_plugin_registry()
+                self.assertEqual(path.read_bytes(), raw)
+
+    def test_unreadable_or_corrupt_record_never_launches_installer(self):
+        path = self.registry(b'broken-json')
+        with mock.patch.object(A, '_run_cli_git_fallback') as run:
+            with self.assertRaises(A.AdapterError): A.plugin_install('demo@market')
+            run.assert_not_called()
+        self.assertEqual(path.read_bytes(), b'broken-json')
+
+    def test_replace_failure_preserves_original_and_removes_only_temporary(self):
+        path = self.registry(b'{}\n')
+        other = path.parent / 'unrelated.tmp'; other.write_bytes(b'keep')
+        with mock.patch.object(A.os, 'replace', side_effect=PermissionError('denied')):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(path.read_bytes(), b'{}\n')
+        self.assertEqual(list(path.parent.glob('*.tmp')), [other])
+        self.assertEqual(other.read_bytes(), b'keep')
+
+    def test_changed_record_is_not_overwritten(self):
+        path = self.registry(b'{}\n')
+        external = b'{"version":2,"plugins":{"external@market":[]}}'
+        with mock.patch.object(A.os, 'fsync', side_effect=lambda _: path.write_bytes(external)):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(path.read_bytes(), external)
+        self.assertEqual(list(path.parent.glob('*.tmp')), [])
+
+    def test_existing_temporary_file_is_never_removed(self):
+        path = self.registry(b'{}\n')
+        identifier = '1' * 32
+        other = path.with_name(path.name + '.' + identifier + '.tmp')
+        other.write_bytes(b'keep')
+        with mock.patch.object(A.uuid, 'uuid4', return_value=mock.Mock(hex=identifier)):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(other.read_bytes(), b'keep')
+        self.assertEqual(path.read_bytes(), b'{}\n')
+
+
+class ModuleOwnershipTests(TempEnv):
+    def test_mcp_fingerprint_detects_secret_edits_without_revealing_values(self):
+        items = A.list_items('mcp')
+        self.assertNotIn('ownership_fingerprint', items[0])
+        A.add_ownership_fingerprints('mcp', items)
+        original = items[0]['ownership_fingerprint']
+        self.assertEqual(len(original), 64)
+        self.assertNotIn('sk-live-secret123', json.dumps(items))
+        connection = sqlite3.connect(self.root / 'cc-switch.db')
+        try:
+            connection.execute('UPDATE mcp_servers SET server_config=?', (json.dumps({'url': 'http://x/mcp', 'env': {'TOKEN': 'changed-secret'}}),))
+            connection.commit()
+        finally:
+            connection.close()
+        A.add_ownership_fingerprints('mcp', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], original)
+        self.assertNotIn('changed-secret', json.dumps(items))
+
+    def test_skill_proof_detects_content_changes_and_added_user_files(self):
+        folder = self.root / 'skills' / 'superpowers'
+        folder.mkdir(parents=True)
+        skill = folder / 'SKILL.md'
+        skill.write_text('original')
+        items = A.list_items('skills')
+        A.add_ownership_fingerprints('skills', items)
+        original = items[0]['ownership_fingerprint']
+        self.assertTrue(original)
+        before = skill.stat()
+        skill.write_text('modified')
+        os.utime(skill, ns=(before.st_atime_ns, before.st_mtime_ns))
+        A.add_ownership_fingerprints('skills', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], original)
+        modified = items[0]['ownership_fingerprint']
+        (folder / 'user-notes.txt').write_text('Keep these notes')
+        A.add_ownership_fingerprints('skills', items)
+        self.assertNotEqual(items[0]['ownership_fingerprint'], modified)
+
+    def test_plugin_proof_requires_a_bounded_owned_cache_location(self):
+        root = self.root / 'claude' / 'plugins'
+        folder = root / 'cache' / 'market' / 'qa' / '1'
+        folder.mkdir(parents=True)
+        (folder / 'plugin.txt').write_text('original')
+        registry = root / 'installed_plugins.json'
+        registry.write_text(json.dumps({'plugins': {'qa@market': [{'installPath': str(folder)}]}}))
+        items = A.list_items('plugins')
+        A.add_ownership_fingerprints('plugins', items)
+        self.assertTrue(items[0]['ownership_fingerprint'])
+        registry.write_text(json.dumps({'plugins': {'qa@market': [{'installPath': str(self.root)}]}}))
+        A.add_ownership_fingerprints('plugins', items)
+        self.assertEqual(items[0]['ownership_fingerprint'], '')
+
+
 class GithubMcpAuthSummaryTests(unittest.TestCase):
     def test_official_github_mcp_requires_auth_and_hides_values(self):
         summary = A._mcp_summary(json.dumps({
@@ -237,6 +358,12 @@ class MutationTests(TempEnv):
 
 
 class EnvelopeTests(TempEnv):
+    def test_plugin_list_exposes_busy_without_claiming_idle_for_other_kinds(self):
+        with mock.patch.object(A, '_plugin_busy', side_effect=[False, True]), \
+             mock.patch('sys.stdout', new_callable=__import__('io').StringIO) as out:
+            self.assertEqual(A.main(['list', '--kind', 'plugins']), 0)
+        self.assertTrue(json.loads(out.getvalue())['mutation_running'])
+
     def test_main_list_envelope(self):
         with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
             rc = A.main(["list", "--kind", "skills"])
@@ -1132,12 +1259,54 @@ class MarketTests(TempEnv):
                 return subprocess.CompletedProcess(argv, 1, "", "network down")
             return subprocess.CompletedProcess(argv, 0, "", "")
 
-        with mock.patch.object(A.subprocess, "run", run):
+        with mock.patch.object(A, "_run_plugin_process", side_effect=run), \
+             mock.patch.object(A, "_plugin_items", side_effect=[[], [{'id': 'demo@market'}]]):
             A.plugin_install("demo@market")
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[1]["env"]["GIT_CONFIG_COUNT"], "1")
         self.assertIn("ghfast.top", calls[1]["env"]["GIT_CONFIG_KEY_0"])
         self.assertEqual(calls[1]["env"]["GIT_CONFIG_VALUE_0"], "https://github.com/")
+
+    def test_plugin_timeout_never_retries_mirrors(self):
+        with mock.patch.object(A, '_run_plugin_process', side_effect=A.AdapterError(A.ERR_PLUGIN_TIMEOUT, 'stopped')) as run, \
+             mock.patch.object(A, '_plugin_items', return_value=[]):
+            with self.assertRaises(A.AdapterError) as error:
+                A.plugin_install('demo@market')
+        self.assertEqual(error.exception.code, A.ERR_PLUGIN_TIMEOUT)
+        self.assertEqual(run.call_count, 1)
+
+    def test_plugin_semantic_failure_does_not_retry_network(self):
+        with mock.patch.object(A, '_run_plugin_process', return_value=subprocess.CompletedProcess([], 1, '', 'plugin not found')) as run:
+            with self.assertRaises(A.AdapterError):
+                A.plugin_install('demo@market')
+        self.assertEqual(run.call_count, 1)
+
+    def test_plugin_install_checks_real_result_and_skips_already_installed(self):
+        with mock.patch.object(A, '_run_cli_git_fallback') as run, \
+             mock.patch.object(A, '_plugin_items', return_value=[{'id':'demo@market'}]):
+            A.plugin_install('demo@market')
+            run.assert_not_called()
+        with mock.patch.object(A, '_run_cli_git_fallback'), mock.patch.object(A, '_plugin_items', return_value=[]):
+            with self.assertRaises(A.AdapterError) as error:
+                A.plugin_install('demo@market')
+            self.assertEqual(error.exception.code, A.ERR_SNAPSHOT)
+
+    def test_completed_install_wins_over_timeout_when_registry_confirms_exact_id(self):
+        with mock.patch.object(A, '_run_cli_git_fallback', side_effect=A.AdapterError(A.ERR_PLUGIN_TIMEOUT,'stopped')), \
+             mock.patch.object(A, '_plugin_items', side_effect=[[], [{'id':'demo@market'}]]):
+            A.plugin_install('demo@market')
+
+    def test_plugin_timeout_kills_owned_process_group_and_waits(self):
+        proc = mock.Mock(pid=123, returncode=-9)
+        proc.communicate.side_effect = [subprocess.TimeoutExpired('cli', 1), ('', '')]
+        with mock.patch.object(A.subprocess, 'Popen', return_value=proc), \
+             mock.patch.object(A.os, 'killpg', create=True) as kill, \
+             mock.patch.object(A.signal, 'SIGKILL', 9, create=True):
+            with self.assertRaises(A.AdapterError) as error:
+                A._run_plugin_process(['cli'],timeout=1,input_text='',env={})
+        self.assertEqual(error.exception.code, A.ERR_PLUGIN_TIMEOUT)
+        kill.assert_called_once_with(123, 9)
+        self.assertEqual(proc.communicate.call_count, 2)
 
     def test_skill_search_falls_back_to_skills_api(self):
         import urllib.request
@@ -1246,6 +1415,70 @@ class SkillDescriptionTests(unittest.TestCase):
                 fetch.assert_not_called()
 
     def test_network_failure_is_an_error_not_a_fake_description(self):
-        with mock.patch.object(A, "_read_skill_url", side_effect=OSError("offline")):
+        with mock.patch.object(A, "_read_skill_url", side_effect=OSError("offline")), \
+             mock.patch.object(A, '_skill_tree', side_effect=OSError('offline')):
             with self.assertRaises(A.AdapterError):
                 A.skill_describe("owner/repo:audit")
+
+    def test_nested_skill_is_resolved_by_exact_suffix_and_pinned_blob(self):
+        import base64
+        text='---\nname: grill-me\ndescription: Ask focused questions.\n---\nNever execute this body'
+        tree={'commit':'a'*40,'paths':[{'path':'skills/productivity/grill-me/SKILL.md','sha':'b'*40,'size':len(text)}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), \
+             mock.patch.object(A,'_skill_api',return_value={'encoding':'base64','content':base64.b64encode(text.encode()).decode()}) as fetch:
+            result=A.skill_describe('mattpocock/skills:grill-me')[0]
+        self.assertEqual(result['description'],'Ask focused questions.')
+        self.assertEqual(result['description_status'],'available')
+        self.assertIn('/blob/'+'a'*40+'/skills/productivity/grill-me/SKILL.md',result['description_url'])
+        self.assertNotIn('Never execute',json.dumps(result))
+        self.assertTrue(fetch.call_args.args[0].endswith('/git/blobs/'+'b'*40))
+
+    def test_ambiguous_skill_paths_are_not_guessed(self):
+        tree={'commit':'a'*40,'paths':[{'path':f'skills/{group}/audit/SKILL.md','sha':'b'*40,'size':20} for group in ('one','two')]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as fetch:
+            with self.assertRaises(A.AdapterError) as error: A.skill_describe('owner/repo:audit')
+        self.assertEqual(error.exception.code,A.ERR_NOT_FOUND);fetch.assert_not_called()
+
+    def test_valid_empty_description_is_not_a_network_failure(self):
+        with mock.patch.object(A,'_read_skill_url',return_value='---\nname: audit\n---\nBody is not a summary'):
+            result=A.skill_describe('owner/repo:audit')[0]
+        self.assertEqual(result['description'],'');self.assertEqual(result['description_status'],'empty')
+
+    def test_hyphenated_name_resolves_unique_underscore_directory(self):
+        import base64
+        text='---\nname: literature-search-arxiv\ndescription: Search papers.\n---\nBody'
+        tree={'commit':'a'*40,'paths':[{'path':'skills/literature_search_arxiv/SKILL.md','sha':'b'*40,'size':len(text)}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), \
+             mock.patch.object(A,'_skill_api',return_value={'encoding':'base64','content':base64.b64encode(text.encode()).decode()}):
+            item=A.skill_describe('owner/repo:literature-search-arxiv')[0]
+        self.assertEqual(item['description'],'Search papers.')
+        self.assertIn('/literature_search_arxiv/',item['description_url'])
+        with mock.patch.object(A,'_read_skill_url',return_value=text):
+            self.assertEqual(A.skill_describe('owner/repo:literature_search_arxiv')[0]['description'],'Search papers.')
+
+    def test_aliases_do_not_guess_ambiguous_paths_or_accept_different_names(self):
+        tree={'commit':'a'*40,'paths':[{'path':f'skills/{group}/literature_search_arxiv/SKILL.md'} for group in ('one','two')]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as api:
+            with self.assertRaises(A.AdapterError): A.skill_describe('owner/repo:literature-search-arxiv')
+        api.assert_not_called()
+        self.assertIsNone(A._skill_detail_item('owner/repo:audit','audit','---\nname: different\ndescription: Wrong.\n---','https://example.test'))
+
+    def test_tree_cache_reuses_pinned_metadata_and_handles_corruption(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(A.os.environ,{'AISC_EXTENSION_CACHE_DIR':root}):
+            responses=[{'sha':'a'*40},{'tree':[{'path':'skills/nested/audit/SKILL.md','sha':'b'*40,'size':30,'type':'blob'}],'truncated':False}]
+            with mock.patch.object(A,'_skill_api',side_effect=responses) as api:
+                first=A._skill_tree('owner/repo');second=A._skill_tree('owner/repo')
+            self.assertEqual(first,second);self.assertEqual(api.call_count,2)
+            next(Path(root).glob('*.json')).write_text('corrupt')
+            with mock.patch.object(A,'_skill_api',side_effect=responses) as api:
+                self.assertEqual(A._skill_tree('owner/repo')['commit'],'a'*40)
+            self.assertEqual(api.call_count,2)
+
+    def test_truncated_tree_and_oversized_blob_never_become_valid_descriptions(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch.dict(A.os.environ,{'AISC_EXTENSION_CACHE_DIR':root}), \
+             mock.patch.object(A,'_skill_api',side_effect=[{'sha':'a'*40},{'tree':[],'truncated':True}]):
+            with self.assertRaises(ValueError): A._skill_tree('owner/repo')
+        tree={'commit':'a'*40,'paths':[{'path':'skills/audit/SKILL.md','sha':'b'*40,'size':65537}]}
+        with mock.patch.object(A,'_read_skill_url',side_effect=OSError('404')), mock.patch.object(A,'_skill_tree',return_value=tree), mock.patch.object(A,'_skill_api') as api:
+            with self.assertRaises(A.AdapterError): A.skill_describe('owner/repo:audit')
+        api.assert_not_called()

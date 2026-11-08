@@ -169,17 +169,29 @@ for rp in "${runtime_paths[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Check 2: cc-switch factory skills
+# Check 2: offline factory skills (README / Dockerfile)
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Check 2: cc-switch factory skills ---"
+echo "--- Check 2: offline factory skills ---"
 echo ""
 
-for skill in caveman document-skills grill-me superpowers; do
+for skill in grill-me grilling karpathy-guidelines; do
   if [ -f "container/cc-switch-skills/$skill/SKILL.md" ]; then
     _pass "cc-switch factory skill present: $skill"
   else
     _fail "cc-switch factory skill missing: $skill"
+  fi
+done
+
+# Caveman's 13 skills are copied from the bundled marketplace, not the
+# historical cc-switch copy. Online module skills are not offline requirements.
+for skill in caveman caveman-commit caveman-compress caveman-discover \
+  caveman-evidence-review caveman-explore caveman-help caveman-learn \
+  caveman-manage caveman-optimize caveman-review caveman-setup caveman-stats; do
+  if [ -f "container/_bundle/plugins/marketplaces/caveman/skills/$skill/SKILL.md" ]; then
+    _pass "bundled factory skill present: $skill"
+  else
+    _fail "bundled factory skill missing: $skill"
   fi
 done
 

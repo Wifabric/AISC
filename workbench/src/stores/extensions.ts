@@ -78,30 +78,36 @@ function errorText(e: unknown): string {
 
 export const useExtensionsStore = defineStore("extensions", () => {
   const toast = useToastStore();
-  const descriptions = ref<Record<string, { description?: string; loading: boolean; error?: string }>>({});
+  const descriptions = ref<Record<string, { description?: string; description_url?: string; loaded?: boolean; loading: boolean; error?: string }>>({});
   function descriptionKey(item: ExtensionsItem): string {
     return skillUpdateSpec(item);
   }
   function describedItem(item: ExtensionsItem): ExtensionsItem {
-    const description = descriptions.value[descriptionKey(item)]?.description;
-    return description ? { ...item, description } : item;
+    if (!["skills", "market-skill"].includes(item.kind)) return item;
+    const cached = descriptions.value[descriptionKey(item)];
+    return cached ? { ...item, description: cached.description ?? item.description,
+      description_url: cached.description_url ?? item.description_url } : item;
   }
   function descriptionState(item: ExtensionsItem) {
+    if (!["skills", "market-skill"].includes(item.kind)) return undefined;
     return descriptions.value[descriptionKey(item)];
   }
-  async function describeSkill(item: ExtensionsItem): Promise<void> {
-    if (!context.value || !["skills", "market-skill"].includes(item.kind) || item.description?.trim()) return;
+  async function describeSkill(item: ExtensionsItem, force = false): Promise<void> {
+    if (!context.value || !["skills", "market-skill"].includes(item.kind)) return;
     const id = descriptionKey(item);
-    if (!id.includes(":") || descriptions.value[id]?.loading || descriptions.value[id]?.description) return;
+    if (item.description?.trim() && !descriptions.value[id]) return;
+    if (!id.includes(":") || descriptions.value[id]?.loading || (!force && descriptions.value[id]?.loaded)) return;
     const token = contextToken();
-    descriptions.value[id] = { loading: true };
+    const cached = descriptions.value[id];
+    descriptions.value[id] = { ...cached, loading: true, error: undefined };
     try {
       const result = await call<{ items?: ExtensionsItem[] }>("skill-describe", { id });
       if (!isCurrentContext(token)) return;
-      const description = result.items?.find(row => row.id === id)?.description?.trim();
-      descriptions.value[id] = { loading: false, ...(description ? { description } : {}) };
+      const detail = result.items?.find(row => row.id === id);
+      descriptions.value[id] = { loading: false, loaded: true, description: detail?.description?.trim() ?? "",
+        description_url: detail?.description_url };
     } catch (error) {
-      if (isCurrentContext(token)) descriptions.value[id] = { loading: false, error: errorText(error) };
+      if (isCurrentContext(token)) descriptions.value[id] = { ...cached, loading: false, error: errorText(error) };
     }
   }
   const kind = ref<ExtensionsKind>("skills");
@@ -143,6 +149,24 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketPlugins = ref<ExtensionsItem[]>([]);
   const pluginMarkets = ref<ExtensionsItem[]>([]);
   const operationLog = ref<ExtensionOperationRecord[]>([]);
+  const dismissedFailures = ref(new Set<string>());
+  const operationErrorIds = ref<KindRecord<string | null>>(kindRecord(null));
+  const latestFailure = computed(() => {
+    const row = operationLog.value.filter(row => row.status !== "success").slice(-1)[0];
+    return row && !dismissedFailures.value.has(row.operationId) ? row : null;
+  });
+  function dismissFailureNotice(operationId: string): void {
+    // A stale click must not dismiss a newer result. Never fall back to an older failure.
+    if (latestFailure.value?.operationId !== operationId) return;
+    for (const row of operationLog.value) {
+      if (row.status !== "success") dismissedFailures.value.add(row.operationId);
+      if (row.operationId === operationId) break;
+    }
+  }
+  function setError(target: ExtensionsKind, message: string | null, operationId: string | null = null): void {
+    errorsByKind.value[target] = message;
+    operationErrorIds.value[target] = operationId;
+  }
   let logSequence = 0;
   const retryRecipes = new Map<string, { token: string | null; run: () => Promise<unknown> }>();
 
@@ -167,7 +191,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
       diagnostic: diagnosticText(diagnostic) });
     if (status === "failed") retryRecipes.set(operationId, { token: contextToken(), run });
     while (operationLog.value.length > 100) {
-      retryRecipes.delete(operationLog.value.shift()!.operationId);
+      const removed = operationLog.value.shift()!.operationId;
+      retryRecipes.delete(removed);
+      dismissedFailures.value.delete(removed);
     }
   }
 
@@ -220,6 +246,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     updatesError.value = null;
     updatesBusy.value = false;
     operationLog.value = [];
+    dismissedFailures.value.clear();
+    operationErrorIds.value = kindRecord(null);
     retryRecipes.clear();
     loadingByKind.value = kindRecord(false);
     busyByKind.value = kindRecord(false);
@@ -256,7 +284,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
   const marketBusy = computed(() => searchBusyByKind.value[kind.value]
     || (kind.value === "plugins" && pluginMarketsBusy.value));
   const marketCache = computed(() => marketCacheByKind.value[kind.value]);
-  const error = computed(() => errorsByKind.value[kind.value]);
+  const error = computed(() => {
+    const id = operationErrorIds.value[kind.value];
+    return id && dismissedFailures.value.has(id) ? null : errorsByKind.value[kind.value];
+  });
   const updateItems = computed(() => updateItemsByKind.value[kind.value]);
   const activeOperation = computed(() => operationsByKind.value[kind.value]);
   const sourceMaintenanceBusy = computed(() =>
@@ -264,7 +295,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   );
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
-  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value));
+  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value.map(describedItem)));
 
   async function call<T = Record<string, unknown>>(
     op: string,
@@ -287,14 +318,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value) return;
     const token = contextToken();
     if (!options.silent) loadingByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     try {
       const out = await call<{ items?: ExtensionsItem[] }>("list", { kind: target });
       if (!isCurrentContext(token)) return;
       itemsByKind.value[target] = out.items ?? [];
     } catch (e) {
       if (!isCurrentContext(token)) return;
-      errorsByKind.value[target] = errorText(e);
+      setError(target, errorText(e));
     } finally {
       if (isCurrentContext(token) && !options.silent) loadingByKind.value[target] = false;
     }
@@ -326,7 +357,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value || operations.length === 0 || busyByKind.value[target]) return;
     const token = contextToken();
     busyByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     operationsByKind.value[target] = {
       kind: target, action, id, label, completed: 0, total: operations.length,
     };
@@ -346,7 +377,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
           if (!isCurrentContext(token)) return;
           const message = errorText(e);
           const code = (e as { code?: string })?.code ?? "";
-          const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED"].includes(code)
+          const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED", "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS", "AISC_ERR_EXTENSIONS_PLUGIN_TIMEOUT"].includes(code)
             || /timed?\s*out|timeout|non-envelope|connection.*closed|unexpected.*eof/i.test(message);
           logOperation(target, action, itemId, label, started, unknown ? "unknown" : "failed", message, run, attempt);
           failures.push(operations.length === 1 ? message : `${itemId}: ${message}`);
@@ -358,7 +389,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       await refresh(target, { silent: true });
       if (!isCurrentContext(token)) return;
       if (failures.length) {
-        errorsByKind.value[target] = failures.join("; ");
+        setError(target, failures.join("; "), operationLog.value.filter(row => row.kind === target && row.status !== "success").slice(-1)[0]?.operationId ?? null);
         toast.error(operationFailure(label, failures.join("; ")));
       } else {
         toast.success(operationSuccess(action, label));
@@ -385,14 +416,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
     setter([]);
     marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = true;
-    errorsByKind.value[target] = null;
+    setError(target, null);
     try {
       const out = await call<{ items?: ExtensionsItem[]; cache?: MarketCacheState }>(op, { query });
       if (!current()) return;
       setter(out.items ?? []);
       marketCacheByKind.value[target] = out.cache ?? null;
     } catch (e) {
-      if (current()) errorsByKind.value[target] = errorText(e);
+      if (current()) setError(target, errorText(e));
     } finally {
       if (current()) searchBusyByKind.value[target] = false;
     }
@@ -405,7 +436,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     else marketPlugins.value = [];
     marketCacheByKind.value[target] = null;
     searchBusyByKind.value[target] = false;
-    errorsByKind.value[target] = null;
+    setError(target, null);
   }
 
   async function discoverRecommendation(target: ExtensionsKind, query: string): Promise<void> {
@@ -487,7 +518,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     if (!context.value || specs.length === 0 || busyByKind.value.skills) return;
     const token = contextToken();
     busyByKind.value.skills = true;
-    errorsByKind.value.skills = null;
+    setError("skills", null);
     operationsByKind.value.skills = {
       kind: "skills", action,
       id: `${action === "install" ? "market" : "installed"}:${group.id}`,
@@ -545,7 +576,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       toast.error(operationFailure(group.name, message));
       await refresh("skills", { silent: true }).catch(() => undefined);
       if (!isCurrentContext(token)) return;
-      errorsByKind.value.skills = message;
+      setError("skills", message, operationLog.value.filter(row => row.kind === "skills" && row.status !== "success").slice(-1)[0]?.operationId ?? null);
     } finally {
       if (isCurrentContext(token)) {
         busyByKind.value.skills = false;
@@ -595,8 +626,30 @@ export const useExtensionsStore = defineStore("extensions", () => {
     op: "plugin-install" | "plugin-update",
     id: string,
   ): Promise<void> {
+    const token = contextToken();
     await runOperation("plugins", op === "plugin-install" ? "install" : "update", id, id, [
-      () => call(op, { id }),
+      async () => {
+        try {
+          return await call(op, { id });
+        } catch (error) {
+          if (op !== "plugin-install" || !isCurrentContext(token)) throw error;
+          // A detached Docker exec may outlive the host request. Only a new
+          // adapter's explicit idle flag permits reconciliation; an old image
+          // or a failed snapshot leaves the original result unknown.
+          let state: { items?: ExtensionsItem[]; mutation_running?: boolean };
+          try { state = await call("list", { kind: "plugins" }); } catch { throw error; }
+          if (!isCurrentContext(token)) throw error;
+          if (state.mutation_running === true) throw { code: "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS", message: i18n.global.t("extensions.pluginInstallRunning") };
+          if (state.mutation_running !== false) throw error;
+          if (state.items?.some(item => item.id === id)) return;
+          const code = (error as { code?: string })?.code ?? "";
+          if (["WB_ERR_CLI_TIMEOUT", "AISC_ERR_EXTENSIONS_PLUGIN_TIMEOUT", "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS"].includes(code)
+            || /timed?\s*out|timeout/i.test(errorText(error))) {
+            throw { code: "AISC_ERR_EXTENSIONS_PLUGIN_NOT_INSTALLED", message: i18n.global.t("extensions.pluginInstallAbsent") };
+          }
+          throw error;
+        }
+      },
     ]);
   }
 
@@ -607,9 +660,19 @@ export const useExtensionsStore = defineStore("extensions", () => {
   }
 
   async function searchSkills(query: string): Promise<void> {
+    const generation = searchGeneration.skills + 1;
+    const token = contextToken();
     await runSearch("skills", "skill-search", query, (items) => {
       marketSkills.value = items;
     });
+    // Keep search interactive. Hydrate a bounded number of missing summaries
+    // serially; every later item remains available through on-demand details.
+    void (async () => {
+      for (const item of marketSkills.value.filter(item => !item.description?.trim()).slice(0, 3)) {
+        if (!isCurrentContext(token) || generation !== searchGeneration.skills) return;
+        await describeSkill(item);
+      }
+    })();
   }
 
   async function importDeeplink(url: string): Promise<void> {
@@ -698,6 +761,16 @@ export const useExtensionsStore = defineStore("extensions", () => {
     await loadPluginMarkets();
   }
 
+  async function githubAuth(owner: { workspace: string; runtimeId: string },
+    op: "github-auth-status" | "github-auth-save" | "github-auth-check", request: Record<string, unknown>): Promise<unknown> {
+    if (context.value?.workspace !== owner.workspace || context.value?.runtimeId !== owner.runtimeId) {
+      throw new Error("GitHub MCP target changed");
+    }
+    // Authentication payloads never enter generic operation history or retry
+    // closures. The component owns a transient, masked input only.
+    return ipc.extensionsCall({ ...owner, op, config: JSON.stringify(request) });
+  }
+
   function setContext(workspace: string, runtimeId: string): void {
     const next = workspace && runtimeId ? { workspace, runtimeId } : null;
     const changed = context.value?.workspace !== next?.workspace
@@ -711,12 +784,12 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   return {
     describeSkill, describedItem, descriptionState,
-    kind, itemsByKind, items, loading, busy, error, canLoad,
+    kind, context, itemsByKind, items, loading, busy, busyByKind, error, errorsByKind, canLoad,
     marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
     skillRepos, skillReposBusy, skillReposUnsupported,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
-    operationsByKind, operationLog, canRetryOperation, retryOperation, copyOperationDiagnostic,
+    operationsByKind, operationLog, latestFailure, dismissFailureNotice, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,
     clearMarketResults, checkUpdates, discoverRecommendation,
@@ -724,7 +797,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     toggleSkillGroup, searchSkills, searchPlugins, searchMcp,
     installMcpMarket, importDeeplink, addSkillRepo, loadSkillRepos,
     removeSkillRepo, loadPluginMarkets, addPluginMarket, removePluginMarket,
-    load, toggle, remove, installSkill, addMcp,
-    pluginAction, setContext,
+    load, refreshKind: refresh, toggle, remove, installSkill, addMcp,
+    pluginAction, githubAuth, setContext,
   };
 });

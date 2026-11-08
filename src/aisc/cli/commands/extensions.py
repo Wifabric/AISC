@@ -19,6 +19,39 @@ def _runtime(args: argparse.Namespace):
     return args.runtime_id, args.workspace
 
 
+def cmd_extensions_module(args: argparse.Namespace) -> Dict[str, Any]:
+    from aisc.application.extension_modules import module_plan, module_step, module_status
+    try:
+        # Rust writes UTF-8 bytes. Frozen Windows CLI stdin can instead use
+        # a locale codec with surrogateescape; do not silently corrupt names.
+        # Pooled serve supplies StringIO, whose text was already decoded.
+        binary = getattr(sys.stdin, 'buffer', None)
+        text = binary.read(1_000_001).decode('utf-8') if binary is not None else sys.stdin.read(1_000_001)
+        if len(text) > 1_000_000:
+            raise ValueError('request too large')
+        request = json.loads(text)
+        if not isinstance(request, dict):
+            raise ValueError('request must be an object')
+    except (ValueError, OSError) as exc:
+        raise CliError(message='Invalid module request JSON', exit_code=2, error_code='AISC_ERR_USAGE') from exc
+    operation = {'module-plan': module_plan, 'module-step': module_step, 'module-status': module_status}[args.extensions_command]
+    return operation(args.runtime_id, args.workspace, request)
+
+
+def cmd_extensions_github_auth(args):
+    from aisc.application.extensions import extensions_github_auth
+    try:
+        text = sys.stdin.read(16385)
+        if len(text) > 16384:
+            raise ValueError()
+        request = json.loads(text or '{}')
+        if not isinstance(request, dict):
+            raise ValueError()
+    except Exception:
+        raise CliError(message='Invalid GitHub MCP request', exit_code=2, error_code='AISC_ERR_USAGE') from None
+    return extensions_github_auth(args.runtime_id, args.extensions_command, args.workspace, request)
+
+
 def _group_specs(raw: str) -> list[str]:
     try:
         specs = json.loads(raw)

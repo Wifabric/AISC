@@ -5,10 +5,13 @@ import { useExtensionsStore } from "../../stores/extensions";
 
 const { t } = useI18n();
 const store = useExtensionsStore();
-const latest = computed(() => {
-  const rows = store.operationLog.filter((row) => row.status !== "success");
-  return rows[rows.length - 1] ?? null;
-});
+const emit = defineEmits<{ dismissed: [] }>();
+const latest = computed(() => store.latestFailure);
+function dismiss(): void {
+  if (!latest.value) return;
+  store.dismissFailureNotice(latest.value.operationId);
+  emit("dismissed");
+}
 const statusLabel = computed(() =>
   latest.value ? t(`extensions.log.status.${latest.value.status}`) : "",
 );
@@ -24,6 +27,9 @@ const statusLabel = computed(() =>
     <header>
       <strong>{{ t("extensions.failure.title") }}</strong>
       <span>{{ statusLabel }}</span>
+      <button type="button" class="failure-close" data-testid="extension-failure-close"
+        :aria-label="t('extensions.failure.dismiss')" :title="t('extensions.failure.dismiss')"
+        @click="dismiss">×</button>
     </header>
     <p>
       {{ t(`extensions.tab.${latest.kind}`) }} ·
@@ -59,7 +65,9 @@ const statusLabel = computed(() =>
   color: var(--error-fg);
 }
 header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+header strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 header span { font-size: var(--font-xs); }
+.failure-close { flex-shrink: 0; min-width: 1.75rem; min-height: 1.75rem; cursor: pointer; }
 p { margin: 0; font-size: var(--font-xs); overflow-wrap: anywhere; }
 pre { max-height: 6rem; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-xs); }
 footer { justify-content: flex-end; }

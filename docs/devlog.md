@@ -2,6 +2,120 @@
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
+## Unreleased: 2.1.18 正式发布准备（2026-11-08）
+
+- 用户确认 Preview.13 验收无问题，已回写 b1–b10、三层能力和 S16 的用户验收；正式版本准备为 Workbench 2.1.18 / CLI 0.2.0，产品行为沿用已验收源码。
+- 用户授权安装所需隔离环境与权限后，通过正常管理员提升启用 Windows Sandbox；系统要求重启，交互安装实测在重启后继续，不把启用成功计为验证通过。
+- 正式版本、发布说明、构建与英文 main 发布 PR 准备中；未合入 main、未打 tag、未公开发布，最终状态见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
+
+## Unreleased: 2.1.18 个人能力与主题体验（2026-11-08）
+
+- PR #98 合入 develop `61db0b6f`：普通会话默认独立，主题入口绑定单个新会话，回答偏好独立；旧全局主题选择迁移停用，保留历史、手册和成果。
+- 新手双入口、精简偏好保存、目标/引擎创建主题、可编辑且不自动发送的开场草稿；顶栏只显示当前主题状态，诊断收起，异常暂停/去重/关闭/重试与停止采集保护已保存记录。
+- Python 1843 passed / 74 skipped、Rust 422 passed / 2 ignored、前端 901 passed；真实原生进程上下文隔离、候选 GUI 及关闭重开保留通过；精确产品提交的 Workbench、九组跨平台 Python、NSIS/静默安装验证通过。Preview.13 本机候选与 [定向验收步骤](plans/2.1.18-dev-plans/preview13-acceptance.md) 已准备。
+- 用户报告前轮手测通过；新改动未替用户验收，未提交模型任务，未公开发布。旧隔离交互安装及反馈站权限缺口保持单列。单代理自查。
+
+## Unreleased: 2.1.18 远程改名保护与统一验证（2026-11-08）
+
+- 真实 SSH 实测发现同名文件改名覆盖目标，已改为原生排他改名并显示现有冲突提示；文件/目录大小写保留，硬链接、悬空链接与独立条目冲突受保护，根目录和非法名称拒绝。PR #97 已合入 develop `20df2af8`。
+- Preview.12 真实远程 GUI 改名、冲突保留、刷新重入、指定旧镜像 tag 替换与远程重建禁用通过；NSIS 自动安装/重装/卸载保留通过，三平台三 Python 版本 CI 全部通过。既有测试修正工具发现、编码、事件等待及 macOS GNU 工具准备，新增回归只留本地。
+- 当前候选、哈希、覆盖边界及环境/本人认证/验收/发布条件见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。未公开发布，未替用户验收。
+
+## Unreleased: 2.1.18 截图三层能力与工厂保护（2026-11-08）
+
+- 固定来源补齐 grilling、Karpathy，离线默认技能共 16 项；工厂补装保留个人修改及双引擎启停选择，保留已有插件登记。科研/开发初始模块在线安装，旧未使用的 Superpowers 离线载荷移出安装资源。
+- 新增三项个人模板、工作区副本、个人规则/技能、反馈及验证记录、启停和不可覆盖的修订历史；恢复历史形成新版本。Claude/Codex 新会话使用固定个人快照，不改全局配置，保存冲突保留草稿。
+- Python 1834 passed / 57 skipped、Rust 422 passed / 2 ignored、前端 893 passed、Linux 补充 22 passed。真实 GUI 保存/迭代/恢复及科研模块在线安装通过；真实双引擎进程接收 GUI 快照通过。认证后的模型效果、最终用户验收和发布仍待完成，详见当前计划 DELIVERY。单代理自查，不计独立评审。
+
+## Unreleased: 2.1.18 b8 GitHub MCP 认证配置（2026-11-08）
+
+- 已安装 GitHub MCP 行新增配置认证入口，按 Claude/Codex 选择保存到已有 MCP 配置；取消不写入，普通保存错误回滚，损坏/自定义/过期配置拒绝覆盖，凭据仅走 stdin 且不进入历史或返回值。
+- 保存与连接检查分开，显式只读 MCP 握手区分未配置、认证拒绝、网络/协议错误；合成令牌验证不记为真实授权通过。
+- Python 1782 及最终定向 101、前端 874 和生产构建、Rust 420 项通过；真实双引擎 CLI 读取、开关和重新同步及冻结 CLI 全链通过。GUI/用户实际授权待 Preview，详见 [b8](plans/2.1.18-dev-plans/b8-github-mcp-auth.md)。
+
+## Unreleased: 2.1.18 b7 插件安装超时与状态恢复（2026-11-08）
+
+- 插件长操作采用独立 CLI 与匹配安装链的等待预算。容器锁跨宿主断连保留，超时清理本次进程组，网络重试不重放未知超时。
+- 安装前后及超时后核对精确来源和真实进程状态；运行中保留未知，确实未安装才允许重试，切目标不污染新状态。
+- Python 1774、前端 869 及构建、Rust 420 项通过；真实官方 mattpocock-skills 安装及受控 35 秒慢安装/并发/父进程终止/超时清理通过。GUI 待 Preview，详见 [b7](plans/2.1.18-dev-plans/b7-plugin-install.md)。
+
+## Unreleased: 2.1.18 b6 模块执行与归属保护（2026-11-08）
+
+- 应用前显示真实差异计划，确认后逐项执行；停止、切目标、失败重试和持久历史均保留真实状态，普通扩展操作共用目标锁。
+- 仅卸载本模块引入且未共享、内容未变化的成员；预装、未知、手工修改和旧 adapter 无证据资产保留。配置只返回摘要，不存凭据。
+- Python 全套 1763 项及最终定向 109 项、前端 865 项及构建、Rust 420 项通过；真实三类扩展、共享卸载及冻结 CLI 闭环通过。GUI/H6 待统一 Preview，详见 [b6](plans/2.1.18-dev-plans/b6-module-operations.md)。
+
+## Unreleased: 2.1.18 b5 用户扩展模块定义（2026-11-08）
+
+- 推荐市场新增基础模块入口，支持混合 Skill/MCP/Plugin 成员的创建、复制、编辑、去重和删除定义；无运行容器也可打开并离线编辑，已有六类单项推荐保持。
+- 用户配置目录保存独立版本化文件；跨进程锁与 revision 防止覆盖其他窗口修改，损坏/未知版本拒绝写入，保存失败保留编辑草稿。保存、删除定义均不安装或卸载扩展。
+- 前端全套 858 项及构建、Rust 420 passed / 2 ignored，通过离线入口修正后定向 29 项。真实 GUI 待统一 Preview；科研/开发默认成员仍待 U-4 批准，不宣称已交付默认清单。详见 [b5](plans/2.1.18-dev-plans/b5-extension-modules.md)。
+
+## Unreleased: 2.1.18 b4 镜像重建（2026-11-08）
+
+- 磁盘镜像行和启动摘要共用 Local 重建对话框：执行前检查镜像身份和运行容器，默认无缓存，可切换缓存；流式输出进度、日志和任务取消。Remote 明确禁用。
+- 在唯一临时标签构建成功并再次验证后才替换所选引用；运行容器阻止操作，停止容器及其他标签继续保留旧镜像。刷新摘要只读预检，不隐式回收容器。
+- Python 全套 1749 项，前端全套 851 项及修后定向 26 项，Rust 全套 414 项及新增协议单测通过；真实 Docker 覆盖缓存双向、运行引用拒绝、失败/取消和保留规则；冻结 CLI 命令 smoke 通过。GUI 与用户 H4 按 D-15 留到统一 Preview，详细边界见 [批次记录](plans/2.1.18-dev-plans/b4-image-rebuild.md)。
+
+## Unreleased: 2.1.18 b3 镜像重命名（2026-11-08）
+
+- 磁盘页可编辑默认名称并选择要替换的旧 tag；支持 registry port。创建和核验新 tag 后只移除所选旧 tag，保留其他标签；冲突拒绝覆盖，移除失败显示部分结果。
+- CLI 新增可选 `--old-ref`，未提供时保留新增别名兼容行为；修复 Docker 列表短 ID 与完整 inspect ID 的归属匹配。
+- 前端 846 项与构建、Rust 414 项、Python 全套 1734 项及修后镜像定向 24 项通过；独立 Docker 镜像验证同一 ID、其他标签保留及冲突保护。跳过项和 GUI/用户验收边界见 [批次记录](plans/2.1.18-dev-plans/b3-image-name.md)。
+
+## Unreleased: topic sync edge-case follow-up (2026-11-06)
+
+- Stop draining on EOF after truncation; validate marker payload types; scan a bounded prefix of large discovery candidates and report exhausted discovery budgets.
+- Local checks: 19 recovery/edge probes, 39 Python tests plus 11 subtests, 32 topic frontend tests passed. [Review](reviews/pr62-sync-recovery-20261106.md#follow-up-review-and-verification). GUI/user acceptance is separate.
+
+## Unreleased: topic sync recovery (2026-11-06)
+
+- Recover after complete malformed/oversized transcript records with persistent diagnostics; retain partial tails and stop safely at another session boundary.
+- Local validation: 9 recovery probes and 18 existing topic regressions passed. [Details](reviews/pr62-sync-recovery-20261106.md). GUI/user acceptance remains outstanding.
+
+## 2026-11-02：2.1.18 b2 PR 交接（未合并）
+
+- 用户授权“提 pr”后，推送 b2 并创建 [PR #64](https://github.com/Wifabric/AISC/pull/64)，依赖 #63，测试对应产品提交 `247fbf97`；#62/#63 保持不变。新回归用例、QA 数据和日志仍留本机。
+- 现有 Workbench CI 不自动检查以此依赖分支为 base 的 PR，不把本地 852 项通过写成远端 CI PASS。用户验收待定，b3 未启动。之前“未创建 b2 PR”记录为历史状态。
+
+## 2026-11-02：2.1.18 b2 Windows CU 补测与误移修复（本地，未发布）
+
+- 用户 D-8 重新委托自动操作后，将实际客户端切到 b2 前端，使用隔离 QA 工作区完成底部/右侧避让、窄短窗口、内部/外部滚动、键盘焦点及实际改名/移动检查。
+- 真实 CU 发现长子菜单 clamp 后覆盖 hover 触发按钮，随后的点击误移会话。限制子菜单到所选侧可用宽度、换行并重新测量后，同路径复测没有再次误移；真实账本确认改名/移入只命中指定会话。
+- 最终定向 45 项、前端 98 文件/852 项、vue-tsc/Vite PASS；首次 Python 沙箱环境失败与真实 GUI FAIL 均保留，新增测试/数据/日志留本机。尺寸、产物哈希、覆盖边界与未测项见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- b2 待用户本人验收；未创建 b2 PR，PR #62/#63 保留不动，b3 未启动。下方首轮停止 CU 的记录为历史状态，后续授权与实测以本条/D-8 为准。
+
+## 2026-11-02：2.1.18 b2 工作记录菜单边界（本地已实现，未发布）
+
+- 用户要求保留 PR #62/#63 不合并并开发 b2；独立 `codex/2.1.18-b2-work-record-menu` 分支本地依赖 b1 `cb528cad`，没有修改两个 PR 或远端长期线。
+- 主菜单实测尺寸后在视口内翻转/限制；子菜单独立 Teleport、支持左展，菜单过高时内部滚动。补 ContextMenu/Shift+F10、方向键/Home/End/Escape 与焦点回归；外部滚动/resize 关闭，内部滚动保留主菜单。
+- 加入可见后聚焦时序及旧异步 move 不关闭新菜单的保护，未改归属模型、store/IPC 或后端。
+- 本地 7 项布局回归先 RED；最终组件 44 项、前端全套 98 文件/851 项、vue-tsc/Vite 全 PASS。新增 10 项回归留本机，不随产品提交上传；详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- 用户停止 CU 的要求继续有效，未操作桌面或切换客户端；真实 Windows H2 与用户验收 NOT RUN。本批未新建 PR、未发布，b3 未启动。
+
+## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
+
+- 后续用户委托补测：恢复普通窗口与键盘输入后，文件/目录改名、刷新、关闭重入、磁盘不覆盖及内容保留 PASS。冲突文案不可见属真实 CU FAIL，已在本批给重命名行补定位容器；前端 840 项首轮通过、1 项因缺 Python 失败后补环境复测通过，vue-tsc/Vite PASS。用户取消 CU 后已停止输入和候选切换，修后提示可见性仍 NOT RUN；尚无 b1 PR/CI，不启动 b2。
+
+- 用户授权按开发指南和计划更新后，在独立 `codex/2.1.18-b1-case-rename` 分支实施 F1；依赖已验收的个人功能整合 PR #62，不替用户合并远端 PR。
+- 真实 NTFS RED 确认 canonicalize 返回旧 basename 导致改名无效。修复保留请求 basename 用于 fs::rename，并继续检查规范路径范围与目标冲突；文件和目录往返改名及内容断言 GREEN。
+- Rust 415 passed / 2 ignored，Windows debug 构建 PASS。Windows 大小写敏感目录、Linux/macOS/SSH 未实测；不继承历史整合测试为本次结果。新增测试留本机。
+- CU 已进入独立 QA 工作区并打开重命名框，但工具 set_value 报 0x80040201，H1 未完整执行，记 NOT RUN。用户验收与进入 b2 的裁定待定；b2–b6 未实施，未发布或关闭反馈。详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+
+## 2026-11-02：2.1.17 个人功能直接整合（本地，未发布）
+
+- 按用户纠正，将本人主题工坊及主标签后续改动实际整合到独立的 2.1.17 副本；采用本地 `66404c72` 来源和 Git 三方结果，保留正式版后续修复，当前分支 `codex/2.1.17-personal-integration`。
+- 合入主题技能/数据、普通对话桥接和同步、主标签 UI、CLI/IPC、相关测试及打包资源；个人功能不再占用 2.1.18 批次。版本号仍为 Workbench 2.1.17 / CLI 0.1.10。
+- 来源、冲突处理与本次验证见 [整合记录](integrations/2.1.17-personal-features.md)。未修改原个人仓库、未安装或发布应用；启动此副本客户端后，用户确认检查无问题并授权提交 PR。真实模型/Remote 未补测。
+- PR 按用户此前要求不带新增主题测试用例、个人信息/示例或本机日志；测试留本机，原有公开菜单测试只同步一处数量断言。
+- 回归含环境修正后的失败项复测：Python 合计覆盖 1761 项通过（55 skipped、212 subtests），前端 876 项、Rust 416 项（2 ignored）；vue-tsc/Vite、Workbench 编译、冻结 CLI 9 命令/9 技能文件、bundle stage/verify 通过。不是一次全量全绿，首轮失败及复测均留证。
+
+## 2026-11-02：2.1.18 反馈规划准备（未实施/未发布）
+
+- 四条新增反馈拆为 b1–b6：大小写改名、菜单边界、镜像命名/重建、扩展模块定义/执行。
+- 建立 [2.1.18 计划](plans/2.1.18-dev-plans/README.md) 的规格、批次、决策及手测账本，同步 todo 与活动索引。
+- 按用户纠正撤下误列的个人功能 b7/b8：已有功能直接整合进独立的 2.1.17 副本，不占用本版更新计划。四条反馈的实施仍待方案确认，相关验证全部 NOT RUN。
+
 # v2.1.17 preview 修复 b5（2026-11-01，合入待整体实测）
 
 - Work Record 分支会话保留原 conversation preflight/fork 链路，只新增独立 fork；Claude/Codex覆盖。
@@ -1921,6 +2035,12 @@
 
 > **阶段总结（2026-08-09 ~ 2026-08-10）**：GUI Fine-Tune 18 个目标（G-01..G-18）全部完成并合并回 develop。覆盖：契约/测试基础设施（A-INFRA）、sidecar 入 PATH、停止/关闭/退出性能、typed settings、i18n、动态多 tab、终端渲染升级、设置页交付、侧边栏分层 + Provider 引导、Resize 根因修复、窗口记忆、终端基础 + 右键菜单、一键诊断、构建通知、动态标题、托盘、Tab 内分屏、明暗主题。
 > 每步均按 06-implementation-plan 拆子步骤 → 验收清单（A-*）→ 自动化 + 手动测试 → 汇报；CI 全绿；已知遗留（分屏键盘导航等）记录于 `docs/todo.md`。
+
+## 未发布文档：开发协作流程（2026-11-05）
+
+- 在既有阶段流程中增加贡献者 PR 收集、去重、依赖、审查批次、返修复审与合入验证；原有范围、验收和发布规则保留。
+- 新增[开发职责](workflows/development-roles.md)及[贡献者流程](workflows/contributor-workflow.md)，明确任务交接与逐项验收证据；入口在 DEVELOP_WIKI §1.5–§1.6。
+- [专题计划](plans/pr-intake-workflow.md)记录交付范围；历史自查与本地隔离演练分别保留，不等同于真实多人试用或用户验收。
 
 ## Step 0 验收清单（契约与测试基础设施 A-INFRA-1..5，分支 step-0-*）
 
@@ -4390,3 +4510,33 @@ HANDTEST B2-T1–T3 预测试通过，等待用户单批验收后进入 b3。
 - 2026-11-01：preview-fixes b6 完成文件管理实现：Windows CF_HDROP 双向兼容、受控应用剪贴板回退、Explorer 多选/删除/批量粘贴、稳定顺序终端拖拽。批量操作逐项聚合失败；Rust 继续承担来源/目标 containment 与不覆盖暂存。全门禁和生产 Workbench 构建通过，CU/用户实测延后到 preview.N。
 - 2026-11-01：发布 Workbench `v2.1.17-preview.2` 与 CLI `v0.1.10.dev1`。release PR #59 CI SUCCESS 并合入 develop `5076fb2`；CLI Artifact/TestPyPI、Workbench NSIS 全绿，误触的 CLI tag 重复 NSIS 已取消。GitHub prerelease 资产完整，等待用户按 HANDTEST 统一实测 B1–B6。
 - 2026-11-01：进入 v2.1.17 final 收口。用户确认 preview.2 B1–B6 统一实测无问题；CLI 版本升至 0.1.10，新增 Workbench/CLI final release notes，preview-fixes 计划集归档。全门禁、版本/docs、vendor 工作树校验与 bundle stage/verify 通过；main/final 发布流程执行中。
+- 2026-11-01：`v2.1.17` final 收口完成。用户确认 preview.2 B1–B6 实测无问题；PR #60 合入 develop `8b001e7`，PR #61 合入 main `bf95ce0`。tag `v2.1.17` NSIS run `41289043641`、CLI `v0.1.10` Artifact run `41289887157`、正式 PyPI run `41289052001` 全部 SUCCESS；下载 NSIS SHA256 `ed1955…c6b6` 校验 PASS。四个 preview/draft Release 已删除，git tag 保留；反馈站纳入项已以 final 回复置 resolved（反馈仓库 `bdd27a4`）。临时分支清理执行中。
+
+## 2026-11-07 b2 单人流程续接验证（本地未发布）
+
+从 develop 9db6f642 集成 PR #64 head 36314112，保留原有成果。前端、Rust、类型与生产构建通过，Python 环境失败经定向复验消除；本轮 CU 环境启动失败，用户验收未进行。独立候选与隔离合成 QA 数据已准备；详见 2.1.18 PRETEST 最新记录。
+
+
+### 2026-11-08 · 2.1.18 b9 技能详情
+
+修复多层技能路径读取，补充受控摘要加载、空简介与显式重试，稳定身份监听防止失败重复请求。Python 1789、前端全套 876 + 定向 7、Rust 420 与构建通过；真实 grill/grill-me 查询及固定提交来源通过。b8 PR #72 已合入，b9 准备 PR。GUI/用户验收统一 Preview，未执行不记通过。
+
+
+### 2026-11-08 · 2.1.18 b10 失败提示关闭
+
+已实现当前及此前失败提示关闭、操作错误来源隔离、焦点返回和上下文生命周期；日志、诊断和安全重试保留。前端 882 项、兼容修正后定向 48 项与构建通过。b9 PR #73 三项 CI PASS 并合入 c8a39b8a，b10 准备 PR。GUI/用户验收统一 Preview。
+
+
+### 2026-11-08 · 2.1.18 协作流程整合
+
+B3–B10 均通过精确提交 CI 并合入 develop，当前 b548728b。同步 WIKI、职责、贡献者及 PR intake：小团队默认统一 Preview，必要测试在 PR 前完成，主开发者直接处理范围内小修正；新增仓库 aisc-development Skill 与同版交付计划。个人环境缺少的 vibe-coding-skill 不再作为硬依赖。真实多人协作、GUI/用户验收、默认模块成员及最终发布仍未完成。
+
+
+### 2026-11-08 · 2.1.18 整合候选修正
+
+统一打包发现两项过期 checksum 及新认证 helper 漏记，按规范字节刷新全部 1534 项覆盖；完整 bundle 校验通过。修复科研技能下划线目录与连字符名称的唯一匹配，歧义继续拒绝；适配器 87、完整 Python 1791 及真实容器读取通过。U-4 四成员提案实际安装/卸载通过，未启用默认清单。流程 PR #75 已合入，整合修正准备 PR；GUI/用户验收与最终发布未完成。
+
+
+### 2026-11-08 · 夜间候选交付
+
+整合修正 PR #76 三项 CI PASS 并合入 41d046d9；Windows 安装包与独立候选生成，完整 bundle 校验和实机启动/About 通过。DELIVERY 汇总产物哈希、启动入口、F1–F8 修复与流程变化、已测/未测及次日待批清单。默认四成员尚未启用，完整功能手测/真实授权/正式发布未完成，反馈站进度草稿未发布。

@@ -23,6 +23,8 @@ import { applyLocale } from "./i18n";
 import { applyTheme, createSystemListener } from "./theme";
 import { blockNativeContextMenu } from "./lib/contextMenu";
 import ToastHost from "./components/ToastHost.vue";
+import ImageRebuildDialog from "./features/startup/ImageRebuildDialog.vue";
+import { useImageRebuildStore } from "./stores/imageRebuild";
 import { layoutTierFor, type LayoutTier } from "./lib/layout";
 import { toggleExplorerCollapsed } from "./lib/panelLayout";
 import { setExplorerCollapsed } from "./lib/panelLayout";
@@ -51,6 +53,7 @@ const { t } = useI18n();
 const store = useRuntimeStore();
 const ws = useWorkspacesStore();
 const settingsStore = useSettingsStore();
+const imageRebuild = useImageRebuildStore();
 const doctorStore = useDoctorStore();
 watch(() => JSON.stringify([settingsStore.target, store.workspace]),
   key => doctorStore.setContext(key), { immediate: true, flush: "sync" });
@@ -632,6 +635,7 @@ onBeforeUnmount(() => {
     <!-- P2-1 (A2 反馈语法): the ONE global toast host — body-teleported,
          above every layer. Features push through useToastStore. -->
     <ToastHost />
+    <ImageRebuildDialog v-if="imageRebuild.visible" />
 
     <!-- P2-4 (A1): the command palette (Ctrl+Shift+P). -->
     <CommandPalette v-if="paletteOpen" :make-ctx="paletteCtx" @close="paletteOpen = false" />

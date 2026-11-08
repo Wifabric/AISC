@@ -1,5 +1,8 @@
 from pathlib import Path
 import importlib.util
+import hashlib
+import json
+import io
 import sqlite3
 import tempfile
 import unittest
@@ -14,6 +17,22 @@ _loader.loader.exec_module(A)
 
 
 class PreviewFactorySkillsTests(unittest.TestCase):
+    def test_supplemental_skills_match_pinned_upstream_bytes(self):
+        manifest = json.loads((ROOT / "container/cc-switch-skills/supplemental-sources.json").read_text())
+        for entry in manifest["files"]:
+            self.assertEqual(hashlib.sha256((ROOT / entry["file"]).read_bytes()).hexdigest(), entry["sha256"])
+
+    def test_factory_seed_preserves_user_edits_and_adds_new_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "source", Path(tmp) / "target"
+            source.mkdir(); target.mkdir()
+            (source / "SKILL.md").write_text("new factory")
+            (source / "reference.md").write_text("new reference")
+            (target / "SKILL.md").write_text("personal changes")
+            A._seed_missing(source, target)
+            self.assertEqual((target / "SKILL.md").read_text(), "personal changes")
+            self.assertEqual((target / "reference.md").read_text(), "new reference")
+
     def test_bundled_skills_are_complete_caveman_suite_and_grill_me(self):
         self.assertEqual(
             tuple(row[0] for row in A.BUNDLED_SKILLS),
@@ -22,7 +41,7 @@ class PreviewFactorySkillsTests(unittest.TestCase):
                 "caveman-discover", "caveman-evidence-review", "caveman-explore",
                 "caveman-help", "caveman-learn", "caveman-manage",
                 "caveman-optimize", "caveman-review", "caveman-setup",
-                "caveman-stats", "grill-me",
+                "caveman-stats", "grill-me", "grilling", "karpathy-guidelines",
             ),
         )
 
@@ -65,7 +84,7 @@ class PreviewFactorySkillsTests(unittest.TestCase):
 
     def test_entrypoint_reports_the_managed_factory_skills(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("已安装 13 个 caveman 技能与 grill-me", entrypoint)
+        self.assertIn("已配置 16 个通用技能", entrypoint)
         self.assertIn("/usr/local/bin/lib/cc_switch_skills.py", entrypoint)
         self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
 
@@ -112,11 +131,32 @@ class FactorySkillRegistrationTests(unittest.TestCase):
         connection.close()
         return rows
 
+    def test_upgrade_keeps_engine_edits_and_disabled_choices(self):
+        bundle = self.config_dir / "bundle"; bundle.mkdir()
+        home = self.config_dir / "home"; home.mkdir()
+        for name, *_ in A.BUNDLED_SKILLS:
+            folder = bundle / name; folder.mkdir()
+            (folder / "SKILL.md").write_text("factory " + name)
+        A._register_skills(self.config_dir)
+        connection = sqlite3.connect(self.db_path)
+        connection.execute("UPDATE skills SET enabled_codex=0 WHERE name='grill-me'")
+        connection.commit(); connection.close()
+        personal = home / ".claude/skills/caveman/SKILL.md"
+        personal.parent.mkdir(parents=True); personal.write_text("personal edition")
+        with patch.object(A, "_run_cc_switch") as run:
+            A.synchronize(config_dir=self.config_dir, skills_home=home, bundle_dir=bundle, revision="new", log=io.StringIO())
+        self.assertEqual(personal.read_text(), "personal edition")
+        self.assertFalse((home / ".codex/skills/grill-me").exists())
+        for engine in (".claude", ".codex"):
+            self.assertTrue((home / engine / "skills/grilling/SKILL.md").is_file())
+            self.assertTrue((home / engine / "skills/karpathy-guidelines/SKILL.md").is_file())
+        self.assertNotIn(["skills", "sync"], [c.args[0] for c in run.call_args_list])
+
     def test_all_fresh_rows_have_dual_defaults_identity_metadata_and_timestamps(self):
         with patch.object(A.time, "time", return_value=1234):
             A._register_skills(self.config_dir)
         rows = self._rows()
-        self.assertEqual(len(rows), 14)
+        self.assertEqual(len(rows), 16)
         for name, description, owner, repo in A.BUNDLED_SKILLS:
             with self.subTest(skill=name):
                 self.assertEqual(rows[name], {
@@ -145,7 +185,7 @@ class FactorySkillRegistrationTests(unittest.TestCase):
             A._register_skills(self.config_dir)
             A._register_skills(self.config_dir)
         rows = self._rows()
-        self.assertEqual(len(rows), 15)
+        self.assertEqual(len(rows), 17)
         self.assertEqual(rows["custom"], custom)
         for name, description, *_ in A.BUNDLED_SKILLS:
             with self.subTest(skill=name):
@@ -172,7 +212,7 @@ class FactorySkillRegistrationTests(unittest.TestCase):
                 with patch.object(A.time, "time", return_value=300):
                     A._register_skills(self.config_dir)
                 rows = self._rows()
-                self.assertEqual(len(rows), 14)
+                self.assertEqual(len(rows), 16)
                 self.assertEqual(rows[name]["id"], f"aisc:{name}")
                 self.assertEqual(rows[name]["installed_at"], 300)
                 self.assertEqual(rows[name]["updated_at"], 300)

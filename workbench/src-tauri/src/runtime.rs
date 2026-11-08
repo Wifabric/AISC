@@ -47,7 +47,9 @@ pub(crate) const LEASE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// v2.1.17 b2: `updates-check` reports only market metadata with comparable
 /// version evidence; unsupported sources remain explicit in adapter output.
-const EXTENSIONS_OPS: [&str; 24] = [
+const EXTENSIONS_OPS: [&str; 30] = [
+    "module-plan", "module-step", "module-status",
+    "github-auth-status", "github-auth-save", "github-auth-check",
     "list", "toggle", "delete", "skill-install", "skill-install-group",
     "skill-update", "skill-update-group", "mcp-add",
     "plugin-install", "plugin-uninstall", "plugin-update",
@@ -1044,7 +1046,22 @@ pub async fn extensions_call(
             })?);
         }
     }
-    let timeout = if (op == "skill-install-group" || op == "skill-update-group")
+    let timeout = if op == "module-step" {
+        // One existing adapter install (600s) plus lock, before/after snapshots
+        // and recovery probes. Each member is a separate durable request.
+        Duration::from_secs(900)
+    } else if matches!(op.as_str(), "plugin-install" | "plugin-update" | "plugin-market-add") {
+        // Adapter: up to 3 x 180s; host Docker bridge: 600s plus target lock.
+        // Short reads retain PROVIDER_TIMEOUT.
+        Duration::from_secs(660)
+    } else if op == "skill-describe" {
+        // Bounded shallow probes, commit/tree discovery and one skill blob.
+        Duration::from_secs(60)
+    } else if op.starts_with("github-auth-") {
+        Duration::from_secs(90)
+    } else if op == "module-plan" || op == "module-status" {
+        Duration::from_secs(120)
+    } else if (op == "skill-install-group" || op == "skill-update-group")
         && specs.as_ref().is_some_and(|values| !values.is_empty())
     {
         extensions_group_timeout(specs.as_deref().unwrap_or_default())
@@ -1746,6 +1763,132 @@ pub async fn get_provider_status(
 
 /// Build an image via `aisc build --events`, streaming JSONL events to the
 /// frontend Channel (05 §4.1). Cancellable via `cancel_build`.
+pub fn image_rebuild_argv(root: &str, tag: &str, expected: &str, no_cache: bool) -> Vec<String> {
+    vec!["maintenance".into(), "docker-rebuild".into(), "--root".into(), root.into(),
+        "--tag".into(), tag.into(), "--guarded".into(), "--expected-image-id".into(), expected.into(),
+        if no_cache { "--no-cache".into() } else { "--use-cache".into() }, "--events".into()]
+}
+
+fn rebuild_temporary_tag(event: &BuildEvent) -> Option<String> {
+    if event.event_type != "build.start" { return None; }
+    let tag = event.data.get("temporary_tag")?.as_str()?;
+    let suffix = tag.strip_prefix("aisc-rebuild:")?;
+    (suffix.len() == 32 && suffix.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+        .then(|| tag.to_string())
+}
+
+#[cfg(test)]
+mod rebuild_protocol_tests {
+    use super::{image_rebuild_argv, rebuild_temporary_tag};
+
+    #[test]
+    fn cache_choice_and_absent_identity_survive_the_streaming_protocol() {
+        for no_cache in [true, false] {
+            let argv = image_rebuild_argv("C:/QA Bundle", "registry:5000/team/image:qa", "", no_cache);
+            assert_eq!(argv[3], "C:/QA Bundle");
+            assert_eq!(argv[5], "registry:5000/team/image:qa");
+            assert_eq!(argv[8], "");
+            assert_eq!(argv[9], if no_cache { "--no-cache" } else { "--use-cache" });
+            assert_eq!(argv[10], "--events");
+            assert!(!argv.contains(&"--format".to_string()));
+        }
+    }
+
+    #[test]
+    fn cleanup_accepts_only_this_builds_reserved_start_tag() {
+        for (kind, tag, valid) in [
+            ("build.start", "aisc-rebuild:0123456789abcdef0123456789abcdef", true),
+            ("build.output", "aisc-rebuild:0123456789abcdef0123456789abcdef", false),
+            ("build.start", "super-claude:latest", false),
+            ("build.start", "sha256:0123456789abcdef0123456789abcdef", false),
+            ("build.start", "aisc-rebuild:short", false),
+            ("build.start", "aisc-rebuild:0123456789abcdef0123456789abcdeG", false),
+        ] {
+            let event = serde_json::from_value(serde_json::json!({
+                "type": kind, "data": {"temporary_tag": tag}
+            })).unwrap();
+            assert_eq!(rebuild_temporary_tag(&event).is_some(), valid);
+        }
+    }
+}
+
+async fn local_rebuild_target(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<crate::cli::CliTarget, WorkbenchError> {
+    let target = crate::target::resolve_target_for(app, window).await?;
+    if !matches!(target, crate::cli::CliTarget::Local(_)) {
+        return Err(WorkbenchError::cli_protocol().with_detail("Image rebuilding is available on Local only; remote rebuilding is disabled"));
+    }
+    Ok(target)
+}
+
+#[tauri::command]
+pub async fn check_image_rebuild(app: AppHandle, window: tauri::WebviewWindow,
+    tag: String, expected_image_id: Option<String>) -> Result<Value, WorkbenchError> {
+    let target = local_rebuild_target(&app, &window).await?;
+    let mut argv = vec!["maintenance".into(), "docker-rebuild-check".into(),
+        "--tag".into(), tag, "--format".into(), "json".into()];
+    if let Some(id) = expected_image_id { argv.extend(["--expected-image-id".into(), id]); }
+    let env = run_control_target(&target, argv, PREFLIGHT_TIMEOUT, CancellationToken::new()).await?;
+    if let Some(error) = envelope_error(&env) { return Err(error); }
+    Ok(env.data.unwrap_or(Value::Null))
+}
+
+#[tauri::command]
+pub async fn rebuild_image(app: AppHandle, window: tauri::WebviewWindow, tag: String,
+    expected_image_id: String, no_cache: bool, task_id: String,
+    on_event: Channel<BuildEvent>) -> Result<(), WorkbenchError> {
+    let target = local_rebuild_target(&app, &window).await?;
+    if task_id.is_empty() || task_id.len() > 80 || !task_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(WorkbenchError::cli_protocol().with_detail("Invalid rebuild task ID"));
+    }
+    let root = crate::docker_admin::bundle_root_beside_exe()?;
+    let build_ops = app.state::<BuildOps>().inner().clone();
+    let cancel = CancellationToken::new();
+    let key = format!("rebuild:{task_id}");
+    {
+        let mut operations = build_ops.0.lock().map_err(|_| WorkbenchError::cli_protocol())?;
+        if !operations.is_empty() {
+            return Err(WorkbenchError::cli_protocol().with_detail("Another image build is already running"));
+        }
+        operations.insert(key.clone(), cancel.clone());
+    }
+    let (tx, mut rx) = mpsc::channel::<BuildEvent>(256);
+    let bridge = tokio::spawn(async move {
+        let mut temporary_tag = None;
+        while let Some(event) = rx.recv().await {
+            if temporary_tag.is_none() { temporary_tag = rebuild_temporary_tag(&event); }
+            // Keep draining even if the window closes: cleanup still needs
+            // this operation's start event and the child must be reaped.
+            let _ = on_event.send(event);
+        }
+        temporary_tag
+    });
+    let mut result = run_build_stream_target(&target,
+        image_rebuild_argv(&root.display().to_string(), &tag, &expected_image_id, no_cache),
+        Duration::from_secs(2400), cancel, tx).await;
+    let temporary_tag = bridge.await.ok().flatten();
+    // Windows cancellation kills the CLI process tree, bypassing Python's
+    // finally block. Recover only this build's unique tag after the runner
+    // has reaped the child; keep BuildOps occupied until cleanup completes.
+    if result.is_err() {
+        if let Some(temporary_tag) = temporary_tag {
+            let cleanup = crate::cli::run_control_direct_target(&target,
+                vec!["maintenance".into(), "docker-rebuild-cleanup".into(),
+                     "--tag".into(), temporary_tag.clone(), "--format".into(), "json".into()],
+                Duration::from_secs(75), CancellationToken::new()).await
+                .and_then(|env| envelope_error(&env).map_or(Ok(()), Err));
+            if let (Err(error), Err(cleanup_error)) = (&mut result, cleanup) {
+                // Preserve cancellation/failure, but do not hide a cleanup
+                // failure behind the normal cancelled message.
+                error.message.push_str(&format!("; 临时构建标签可能仍存在：{temporary_tag}"));
+                let prior = error.technical_detail.take().unwrap_or_default();
+                error.technical_detail = Some(format!("{prior}; cleanup: {}", cleanup_error.technical_detail.unwrap_or(cleanup_error.message)));
+            }
+        }
+    }
+    remove_op(&build_ops.0, &key);
+    result
+}
+
 #[tauri::command]
 pub async fn build_image(
     app: AppHandle,
@@ -1757,7 +1900,13 @@ pub async fn build_image(
     let build_ops = app.state::<BuildOps>().inner().clone();
     let cancel = CancellationToken::new();
     let build_key = tag.clone();
-    insert_op(&build_ops.0, &build_key, cancel.clone());
+    {
+        let mut operations = build_ops.0.lock().map_err(|_| WorkbenchError::cli_protocol())?;
+        if operations.keys().any(|key| key.starts_with("rebuild:")) {
+            return Err(WorkbenchError::cli_protocol().with_detail("An image rebuild is already running"));
+        }
+        operations.insert(build_key.clone(), cancel.clone());
+    }
 
     let (tx, mut rx) = mpsc::channel::<BuildEvent>(256);
     // Bridge mpsc -> Tauri Channel.

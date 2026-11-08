@@ -552,12 +552,22 @@ async function focusNameInput(selectAll: boolean) {
   el.setSelectionRange(0, dot > 0 ? dot : el.value.length);
 }
 
+/** An alert below the last visible row can be clipped by explorer-body.
+ * Reveal it after rendering and (for backend errors) restoring input focus. */
+async function revealNameError() {
+  await nextTick();
+  nameInputEl.value?.parentElement
+    ?.querySelector<HTMLElement>(".name-error")
+    ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 /** Instant frontend validation (Rust re-validates on submit, D11-22). */
 function onNameInput() {
   pendingError.value = (() => {
     const err = validateBasename(pendingName.value);
     return err ? `explorer.nameError.${err}` : null;
   })();
+  void revealNameError();
 }
 
 async function submitName() {
@@ -583,6 +593,7 @@ async function submitName() {
     // show the stable error next to it (03 §4).
     pendingError.value = errorI18nKey(e);
     await focusNameInput(p.mode === "create");
+    await revealNameError();
   }
 }
 
@@ -1145,7 +1156,7 @@ function onTreeKeydown(e: KeyboardEvent) {
 
         <template v-for="(node, i) in explorer.visibleNodes" :key="node.relative_path">
           <div
-            :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path }]"
+            :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path, 'name-input-row': isRenaming(node) }]"
             :data-path="node.relative_path"
             role="treeitem"
             :aria-selected="selectedPaths.includes(node.relative_path)"

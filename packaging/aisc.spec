@@ -21,7 +21,12 @@ a = Analysis(
     binaries=[],
     # A2: VERSION lives in the package tree; still lands at the _MEIPASS root
     # so __init__'s frozen candidate is unchanged.
-    datas=[(str(REPO_ROOT / "src" / "aisc" / "VERSION"), ".")],
+    datas=[(str(REPO_ROOT / "src" / "aisc" / "VERSION"), ".")] + [
+        (str(path), str(Path("aisc/_topic_skill") / path.parent.relative_to(REPO_ROOT / "src/aisc/_topic_skill")))
+        for path in (REPO_ROOT / "src/aisc/_topic_skill").rglob("*")
+        if path.is_file() and path.suffix in {".md", ".yaml", ".py"}
+        and path.name != "__init__.py" and "__pycache__" not in path.parts
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

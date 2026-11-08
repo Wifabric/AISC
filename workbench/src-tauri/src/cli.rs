@@ -705,7 +705,9 @@ fn is_long_extension_group_op(argv: &[String]) -> bool {
     argv.first().map(String::as_str) == Some("extensions")
         && matches!(
             argv.get(1).map(String::as_str),
-            Some("skill-install-group") | Some("skill-update-group")
+            Some("skill-install-group") | Some("skill-update-group") | Some("module-step")
+                | Some("plugin-install") | Some("plugin-update") | Some("plugin-market-add")
+                | Some("skill-describe") | Some("module-plan")
         )
 }
 
@@ -1451,7 +1453,7 @@ mod tests {
         // group operation must not occupy the only resident control-plane
         // session until the UI's short services/list request times out.
         let local = CliTarget::Local(PathBuf::from("aisc.exe"));
-        for command in ["skill-install-group", "skill-update-group"] {
+        for command in ["skill-install-group", "skill-update-group", "module-step", "plugin-install", "plugin-update", "plugin-market-add", "skill-describe"] {
             assert_eq!(
                 control_transport_for(
                     &local,
@@ -1487,6 +1489,30 @@ mod tests {
                 control_transport_for(&local, &argv),
                 ControlTransport::Pooled
             );
+        }
+    }
+
+    #[test]
+    fn module_preflight_does_not_block_short_control_plane_calls() {
+        // Ownership snapshots can read large bind-mounted skill trees. The
+        // real Windows Preview took 47s and starved 30s worklog refreshes.
+        // Keep its existing 120s budget, but isolate it from serial serve.
+        let targets = [
+            CliTarget::Local(PathBuf::from("aisc.exe")),
+            CliTarget::Remote(SshTarget {
+                host: "qa-host".into(), port: None, key_path: None, extra_args: vec![],
+            }),
+        ];
+        for target in targets {
+            let plan = vec!["extensions".into(), "module-plan".into(),
+                "--runtime-id".into(), "qa-runtime".into(), "--format".into(), "json".into()];
+            assert_eq!(control_transport_for(&target, &plan), ControlTransport::Direct);
+            // Status only reads the durable journal; it does not fingerprint
+            // installed assets and need not create an extra CLI process.
+            for op in ["module-status", "list"] {
+                assert_eq!(control_transport_for(&target, &["extensions".into(), op.into()]),
+                    ControlTransport::Pooled);
+            }
         }
     }
 

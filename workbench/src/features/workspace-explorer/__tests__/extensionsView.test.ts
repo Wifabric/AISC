@@ -32,6 +32,55 @@ describe("ExtensionsView tab switching (b6 retest repro)", () => {
     vi.mocked(ipc.extensionsCall).mockImplementation(async (p: any) => ({ items: items(p.kind) }));
   });
 
+  it("dismisses the actual failure card and duplicate error, restores focus, and stays closed after remount", async () => {
+    vi.mocked(ipc.extensionsCall).mockImplementation(async p => {
+      if (p.op === 'plugin-install') throw new Error('installation rejected');
+      return { items: [] };
+    });
+    const options = { attachTo: document.body, global: { plugins: [i18n], stubs: { Teleport: true } } };
+    const wrapper = mount(ExtensionsView, options);
+    await flushPromises();
+    const store = useExtensionsStore(); store.kind = 'plugins';
+    await store.pluginAction('plugin-install', 'bad@market');
+    await nextTick();
+    const close = wrapper.get<HTMLButtonElement>('[data-testid="extension-failure-close"]');
+    close.element.focus();
+    expect(document.activeElement).toBe(close.element);
+    await close.trigger('click');
+    expect(wrapper.find('[data-testid="extension-failure"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('installation rejected');
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="open-extension-market"]').element);
+    expect(store.operationLog).toHaveLength(1);
+    wrapper.unmount();
+    const remounted = mount(ExtensionsView, options); await flushPromises();
+    expect(remounted.find('[data-testid="extension-failure"]').exists()).toBe(false);
+    await store.pluginAction('plugin-install', 'new@market'); await nextTick();
+    expect(remounted.find('[data-testid="extension-failure"]').exists()).toBe(true);
+    remounted.unmount();
+  });
+
+  it("opens offline recommendations and the module entry without a runtime", async () => {
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n], stubs: { Teleport: true } } });
+    await flushPromises();
+    useExtensionsStore().setContext("", "");
+    await nextTick();
+    const opener = wrapper.get('[data-testid="open-extension-market"]');
+    expect(opener.attributes("disabled")).toBeUndefined();
+    await opener.trigger("click");
+    expect(wrapper.get('[data-testid="market-modules"]').text()).toBe("基础模块");
+    wrapper.unmount();
+  });
+
+  it("opens GitHub authentication from the installed MCP row", async () => {
+    vi.mocked(ipc.extensionsCall).mockImplementation(async p => p.op === 'github-auth-status'
+      ? { revision: 'r', engines: { claude: { enabled: true, configured: false, connection: 'not_verified' }, codex: { enabled: true, configured: false, connection: 'not_verified' } } }
+      : { items: [{ kind: 'mcp', id: 'github', name: 'GitHub', auth_required: true, enabled_claude: true, enabled_codex: true }] });
+    const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } }); await flushPromises();
+    await wrapper.get('[data-testid="ext-tab-mcp"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="github-auth-open"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="github-auth"]').text()).toContain('GitHub MCP 认证配置'); wrapper.unmount();
+  });
+
   it("keeps rendering after switching skills -> mcp -> plugins", async () => {
     const wrapper = mount(ExtensionsView, { global: { plugins: [i18n] } });
     await flushPromises();

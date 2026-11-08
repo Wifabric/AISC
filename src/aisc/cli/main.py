@@ -343,6 +343,13 @@ def _build_parser() -> _AiscArgumentParser:
     _extensions_common(extl)
     extl.add_argument("--kind", required=True, choices=["skills", "mcp", "plugins"])
 
+    for module_op in ("module-plan", "module-step", "module-status"):
+        module_parser = extsub.add_parser(module_op, help="Durable module operation (request JSON on stdin)", allow_abbrev=False)
+        _extensions_common(module_parser)
+
+    for auth_op in ('github-auth-status', 'github-auth-save', 'github-auth-check'):
+        _extensions_common(extsub.add_parser(auth_op, help='GitHub MCP authentication (JSON on stdin)', allow_abbrev=False))
+
     extt = extsub.add_parser("toggle", help="Enable/disable a skill or MCP server",
                              allow_abbrev=False)
     _extensions_common(extt)
@@ -679,8 +686,21 @@ def _build_parser() -> _AiscArgumentParser:
     mtr.add_argument("--root", required=True, help="Bundle root (contains Dockerfile)")
     mtr.add_argument("--tag", default="super-claude:latest")
     mtr.add_argument("--old-image-id", default="")
-    mtr.add_argument("--no-cache", action="store_true", default=True)
+    cache_mode = mtr.add_mutually_exclusive_group()
+    cache_mode.add_argument("--no-cache", dest="no_cache", action="store_true", default=True)
+    cache_mode.add_argument("--use-cache", dest="no_cache", action="store_false")
     mtr.add_argument("--pull", action="store_true", default=False)
+    mtr.add_argument("--guarded", action="store_true", help="Rebuild a verified image without replacing it until success")
+    mtr.add_argument("--expected-image-id", default=None, help="Confirmed image ID, or empty for a missing image")
+
+    mtrc = mtsub.add_parser("docker-rebuild-check", help="Read-only selected image rebuild precheck", allow_abbrev=False)
+    _add_global_args(mtrc, is_subparser=True)
+    mtrc.add_argument("--tag", required=True)
+    mtrc.add_argument("--expected-image-id", default=None)
+
+    mtrclean = mtsub.add_parser("docker-rebuild-cleanup", help="Recover one interrupted rebuild temporary tag", allow_abbrev=False)
+    _add_global_args(mtrclean, is_subparser=True)
+    mtrclean.add_argument("--tag", required=True)
 
     mtu = mtsub.add_parser("cache-usage", help="Read-only docker system df summary",
                            allow_abbrev=False)
@@ -709,6 +729,7 @@ def _build_parser() -> _AiscArgumentParser:
     mtmt.add_argument("--id", required=True, help="Image ID")
     mtmt.add_argument("--repository", required=True, help="New repository name")
     mtmt.add_argument("--tag", required=True, help="New tag")
+    mtmt.add_argument("--old-ref", help="Remove only this old tag after verifying the new tag")
 
     mtcc = mtsub.add_parser("cache-cleanup",
                             help="Prune builder cache + dangling images (until-filtered)",
@@ -756,6 +777,29 @@ def _build_parser() -> _AiscArgumentParser:
                               allow_abbrev=False)
     _add_global_args(wl_rec, is_subparser=True)
     wl_rec.add_argument("--workspace", type=str, default=None)
+    # --- topic (v2.1.16 b7: persistent topic-workshop) ---
+    topicp = sub.add_parser("topic", help="Create and continue topic practice", allow_abbrev=False)
+    _add_global_args(topicp, is_subparser=True)
+    topicsub = topicp.add_subparsers(dest="topic_command", required=True,
+                                     parser_class=_AiscArgumentParser)
+    for operation in ("list", "create", "show", "prepare", "check", "activate", "deactivate", "sync", "personal-list", "personal-save", "bind-session", "session-action"):
+        tp = topicsub.add_parser(operation, allow_abbrev=False)
+        _add_global_args(tp, is_subparser=True)
+        tp.add_argument("--workspace", required=True)
+        if operation in {"personal-save", "bind-session", "session-action"}:
+            tp.add_argument("--input-json", choices=("-",), required=True, help="Read form JSON from stdin")
+        if operation in {"show", "prepare", "check", "activate", "bind-session", "session-action"}:
+            tp.add_argument("--id", required=True)
+        if operation == "create":
+            tp.add_argument("--title", default="")
+            tp.add_argument("--text", default="")
+            tp.add_argument("--sources-json", default="[]")
+            tp.add_argument("--input-json", choices=("-",), help="Read form JSON from stdin")
+        if operation == "prepare":
+            tp.add_argument("--action", choices=("continue", "feedback", "guide", "improve"), default="continue")
+            tp.add_argument("--text", default="")
+            tp.add_argument("--input-json", choices=("-",), help="Read form JSON from stdin")
+
     # --- work-record (v2.1.15 b6: Work Record / Collection) ---
     wrp = sub.add_parser("work-record",
                          help="Provider conversation Work Record collections",
@@ -1311,7 +1355,7 @@ def _detect_command(argv: List[str]) -> Optional[str]:
     known = {"version", "doctor", "build", "run", "config", "profile",
              "status", "stop", "restart", "shell", "switch", "provider",
              "extensions", "cc-switch", "network", "usage", "logs", "ps", "runtime", "session",
-             "artifact", "data-root", "maintenance"}
+             "artifact", "data-root", "maintenance", "topic"}
     for arg in argv:
         if arg in known:
             return arg
@@ -2051,7 +2095,11 @@ def _cmd_extensions(
     from aisc.cli.commands import extensions as ext_cmd
 
     sub = getattr(args, "extensions_command", None)
-    if sub == "list":
+    if sub in ('github-auth-status', 'github-auth-save', 'github-auth-check'):
+        data = ext_cmd.cmd_extensions_github_auth(args)
+    elif sub in ("module-plan", "module-step", "module-status"):
+        data = ext_cmd.cmd_extensions_module(args)
+    elif sub == "list":
         data = ext_cmd.cmd_extensions_list(args)
     elif sub == "toggle":
         data = ext_cmd.cmd_extensions_toggle(args)
@@ -2314,6 +2362,7 @@ def _cmd_ps(
 def _cmd_maintenance(
     args: argparse.Namespace,
     effective_format: str,
+    emitter: Optional[JsonlEmitter] = None,
 ) -> Tuple[Any, int, List[Dict[str, Any]]]:
     """Execute ``aisc maintenance`` subcommands (docker-resource-lifecycle B).
 
@@ -2345,6 +2394,20 @@ def _cmd_maintenance(
             raise
         failed = bool(data["containers"]["failed"] or data["images"]["failed"])
         return data, (1 if failed else 0), []
+    if sub == "docker-rebuild-check":
+        from aisc.application.image_rebuild import rebuild_check
+        return rebuild_check(executor, tag=args.tag, expected_image_id=args.expected_image_id), 0, []
+    if sub == "docker-rebuild-cleanup":
+        from aisc.application.image_rebuild import cleanup_rebuild_tag
+        return cleanup_rebuild_tag(executor, tag=args.tag), 0, []
+    if sub == "docker-rebuild" and args.guarded:
+        from aisc.application.image_rebuild import guarded_rebuild
+        if args.expected_image_id is None:
+            raise CliError(message="--guarded requires --expected-image-id from the precheck", exit_code=2, error_code="AISC_ERR_USAGE")
+        data = guarded_rebuild(executor, root=args.root, tag=args.tag,
+            expected_image_id=args.expected_image_id, no_cache=args.no_cache,
+            pull=args.pull, emitter=emitter)
+        return data, 0, []
     if sub == "docker-rebuild":
         data = docker_rebuild(executor, root=args.root, tag=args.tag,
                               old_image_id=args.old_image_id,
@@ -2368,7 +2431,8 @@ def _cmd_maintenance(
         from aisc.application.docker_lifecycle import image_management_tag
         return image_management_tag(
             executor, image_id=args.id,
-            repository=args.repository, tag=args.tag), 0, []
+            repository=args.repository, tag=args.tag,
+            old_ref=getattr(args, "old_ref", None)), 0, []
     if sub == "cache-cleanup":
         from aisc.application.docker_lifecycle import docker_cache_cleanup
         data = docker_cache_cleanup(executor, min_age_hours=args.min_age_hours)
@@ -3141,6 +3205,17 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         except (AttributeError, IndexError, KeyError):
             pass
 
+    # Topic is also used via in-process serve, whose sys.argv is not the request.
+    if cmd_hint == "topic":
+        topic_parser = next(a for a in parser._subparsers._group_actions
+                            if a.dest == "command").choices["topic"]
+        topic_parser._aisc_format = "json" if json_requested else None
+        topic_parser._aisc_command = "topic"
+        for action in topic_parser._subparsers._group_actions:
+            for child in action.choices.values():
+                child._aisc_format = "json" if json_requested else None
+                child._aisc_command = "topic"
+
     # Propagate JSON format to data-root subparser for parse-time errors.
     if "data-root" in args_list:
         try:
@@ -3242,12 +3317,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     # Set up JSONL emitter
     emitter: Optional[JsonlEmitter] = None
-    if args_events and args.command in ("build", "run"):
-        emitter = JsonlEmitter(command=args.command)
+    rebuild_events = (args.command == "maintenance"
+        and getattr(args, "maintenance_command", "") == "docker-rebuild"
+        and getattr(args, "guarded", False))
+    event_command = "build" if rebuild_events else args.command
+    if args_events and (args.command in ("build", "run") or rebuild_events):
+        emitter = JsonlEmitter(command=event_command)
     elif args_events and args.command in ("version", "doctor", "config", "profile",
                                            "status", "stop", "restart", "shell", "switch",
                                            "provider", "ps", "session", "artifact",
-                                           "data-root"):
+                                           "data-root", "maintenance"):
         if effective_format == "json":
             emit_json_usage_error(
                 command=args.command, version=__version__,
@@ -3321,7 +3400,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         elif args.command == "ps":
             data, exit_code, errors = _cmd_ps(args, effective_format)
         elif args.command == "maintenance":
-            data, exit_code, errors = _cmd_maintenance(args, effective_format)
+            data, exit_code, errors = _cmd_maintenance(args, effective_format, emitter)
         elif args.command == "bundle":
             data, exit_code, errors = _cmd_bundle(args, effective_format)
         elif args.command == "update":
@@ -3334,6 +3413,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
             data, exit_code, errors = _cmd_conversation(args, effective_format)
         elif args.command == "worklog":
             data, exit_code, errors = _cmd_worklog(args, effective_format)
+        elif args.command == "topic":
+            from aisc.cli.commands.topic import run as run_topic
+            data = run_topic(args)
+            exit_code, errors = 0, []
+            if effective_format != "json":
+                print(json.dumps(data, ensure_ascii=False, indent=2))
         elif args.command == "work-record":
             data, exit_code, errors = _cmd_work_record(args, effective_format)
         elif args.command == "artifact":
@@ -3356,7 +3441,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                       error_code=exc.error_code)
         # --- unified terminal: main owns the single terminal event ---
         if emitter is not None and not emitter.terminated:
-            cmd = args.command or "aisc"
+            cmd = event_command or "aisc"
             term_type = f"{cmd}.failed"
             term_data = dict(exc.data or {})
             term_data["exit_code"] = exc.exit_code
@@ -3384,7 +3469,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     except KeyboardInterrupt:
         _log_cli_exit(args.command, 130, started, _run_id)
         if emitter is not None and not emitter.terminated:
-            cmd = args.command or "aisc"
+            cmd = event_command or "aisc"
             emitter.emit(f"{cmd}.cancelled", {"exit_code": 130}, terminal=True)
             sys.exit(130)
         print("\nCancelled.", file=sys.stderr)
@@ -3393,7 +3478,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     # --- success: terminal event if events mode ---
     _log_cli_exit(args.command, exit_code, started, _run_id)
     if emitter is not None and not emitter.terminated:
-        cmd = args.command or "aisc"
+        cmd = event_command or "aisc"
         term_data = dict(data or {})
         term_data["exit_code"] = exit_code
         emitter.emit(f"{cmd}.complete", term_data, terminal=True)

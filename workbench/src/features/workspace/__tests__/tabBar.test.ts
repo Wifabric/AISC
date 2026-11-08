@@ -188,7 +188,7 @@ describe("IDEA-1 + split button (S3)", () => {
     const menu = document.querySelector(".tab-new-menu");
     expect(menu).toBeTruthy();
     const items = menu!.querySelectorAll("[role=menuitem]");
-    expect(items.length).toBe(3); // b6: Provider 管理入口迁 rail 后菜单只剩三引擎
+    expect(items.length).toBe(4); // Three engines plus the session-less topic page.
     expect(menu!.querySelector("[role=separator]")).toBeNull();
 
     (items[1] as HTMLElement).click(); // codex

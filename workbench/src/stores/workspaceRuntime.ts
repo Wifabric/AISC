@@ -98,6 +98,8 @@ export const SETTINGS_TAB_ID = "settings-tab";
 /** Stage 8e (CS-05): the virtual cc-switch Provider UI tab — same contract
  * as the settings tab (no session, never persisted, closes with the tab ×).
  * Coexists with the `cc-switch` TUI tab (advanced diagnostics). */
+export const TOPICS_TAB_ID = "topics-tab";
+
 export const CC_SWITCH_UI_TAB_ID = "cc-switch-ui-tab";
 
 /** IDEA-2 (2d): sentinel id of the workspace-layer「网络与用量」panel —
@@ -310,6 +312,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   const activeTabId = ref<string | null>(null);
   /** Stage 8e: the virtual cc-switch Provider UI tab is open. (The Settings
    * tab moved to the WORKSPACE layer in IDEA-3 3d — see stores/workspaces.) */
+  const topicsTabOpen = ref(false);
   const ccSwitchUiTabOpen = ref(false);
 
   let startTimer: number | null = null;
@@ -322,6 +325,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   function resetWorkspace() {
     tabs.value = [];
     activeTabId.value = null;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false;
     preflight.value = null;
     runtimeId.value = "";
@@ -524,6 +528,18 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     preflight.value = null;
     status.value = "preflight";
     void runPreflight();
+  }
+
+  /** Rebuild refresh is read-only: do not reconcile/recycle any container. */
+  async function refreshImagePreflight() {
+    const currentWorkspace = workspace.value.trim();
+    const currentImage = launch.value.image;
+    if (!currentWorkspace) return;
+    const report = await ipc.runtimePreflight(currentWorkspace, runtimeId.value,
+      currentImage, launch.value.network, launch.value.scope);
+    if (workspace.value.trim() === currentWorkspace && launch.value.image === currentImage) {
+      preflight.value = report;
+    }
   }
 
   async function runPreflight() {
@@ -1127,6 +1143,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     };
     const { tabs: created, bySavedId } = tabsFromRecords(records);
     tabs.value = created;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false; // fresh tab set; the virtual tab never restores
     // G-17: open EVERY pane leaf (a restored split tab has several), each
     // through the same provider gate as + menu tabs - unconfigured claude/
@@ -1250,6 +1267,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
     if (!agent || !runtimeId.value) return;
     const sid = uuid();
+    const startingWorkspace = workspace.value.trim();
+    const startingRuntime = runtimeId.value;
     p.sessionId = sid;
     p.sessionState = "starting";
     p.exit = null;
@@ -1293,11 +1312,17 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       }
     };
     try {
+      if (p.topicId && (agent === "claude" || agent === "codex")) {
+        await ipc.topicCall({ workspace: startingWorkspace, operation: "bind-session",
+          id: p.topicId, sessionId: sid, agent });
+        if (p.sessionId !== sid || !tab.panes[paneId] || workspace.value.trim() !== startingWorkspace
+          || runtimeId.value !== startingRuntime || !tabs.value.includes(tab)) return;
+      }
       await ipc.openSession(
-        runtimeId.value,
+        startingRuntime,
         sid,
         agent,
-        workspace.value.trim(),
+        startingWorkspace,
         ch,
         resumeConversationId ?? null,
         forkSession,
@@ -1473,6 +1498,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
 
   /** Activate a tab; idle tabs are opened on first activation. */
   function activateTab(tabId: string) {
+    if (tabId === TOPICS_TAB_ID) { openTopicsTab(); return; }
     const tab = findTab(tabId);
     if (!tab) return;
     activeTabId.value = tabId;
@@ -1494,12 +1520,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     resumeConversationId?: string | null,
     forkSession = false,
     collectionId?: string | null,
+    topic?: { id: string; title: string; prompt: string },
   ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
     const createdPane = activePane(tabs.value[tabs.value.length - 1]);
+    if (topic) Object.assign(createdPane, { topicId: topic.id, topicTitle: topic.title, openingPrompt: topic.prompt });
     if (resumeConversationId) {
       createdPane.resumeConversationId = resumeConversationId;
       createdPane.resumeForkSession = forkSession;
@@ -1767,13 +1795,25 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     const idx = tabs.value.indexOf(tab);
     tabs.value.splice(idx, 1);
     if (activeTabId.value === tabId) {
-      activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+      activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? (topicsTabOpen.value ? TOPICS_TAB_ID : null);
     }
     scheduleSave();
   }
 
   // --- Stage 8e: the virtual cc-switch Provider UI tab (no session, never
   // persisted). The IDEA-1 Settings tab moved to the WORKSPACE layer (3d). ---
+
+  function openTopicsTab() {
+    topicsTabOpen.value = true;
+    activeTabId.value = TOPICS_TAB_ID;
+  }
+
+  function closeTopicsTab() {
+    topicsTabOpen.value = false;
+    if (activeTabId.value === TOPICS_TAB_ID) {
+      activeTabId.value = tabs.value[tabs.value.length - 1]?.tabId ?? null;
+    }
+  }
 
   function openCcSwitchUiTab() {
     ccSwitchUiTabOpen.value = true;
@@ -1863,7 +1903,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       const idx = tabs.value.indexOf(tab);
       tabs.value.splice(idx, 1);
       if (activeTabId.value === tab.tabId) {
-        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? null;
+        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.tabId ?? (topicsTabOpen.value ? TOPICS_TAB_ID : null);
       }
     } else {
       const removed = removeLeaf(tab.tree, paneId);
@@ -2107,6 +2147,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     ]);
     tabs.value = [];
     activeTabId.value = null;
+    topicsTabOpen.value = false;
     ccSwitchUiTabOpen.value = false;
     try {
       // runtime-lifecycle-ux Stage 3: stop-only became the ephemeral teardown
@@ -2185,6 +2226,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     buildDurationMs,
     tabs,
     activeTabId,
+    topicsTabOpen,
+    openTopicsTab,
+    closeTopicsTab,
     ccSwitchUiTabOpen,
     openCcSwitchUiTab,
     closeCcSwitchUiTab,
@@ -2211,6 +2255,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     backToSummaryFromBuild,
     runPreflight,
     recomputePreflightNeeded,
+    refreshImagePreflight,
     startDockerAndRepreflight,
     dockerStarting,
     dockerStartedAt,

@@ -488,6 +488,19 @@ export const cancelRuntimeStart = (runtimeId: string) =>
 export const buildImage = (tag: string, onEvent: Channel<BuildEvent>) =>
   invoke<void>("build_image", { tag, onEvent });
 
+export interface ImageRebuildCheck {
+  tag: string;
+  image_id: string;
+  exists: boolean;
+  containers: string[];
+  running_containers: string[];
+}
+export const checkImageRebuild = (tag: string, expectedImageId?: string) =>
+  invoke<ImageRebuildCheck>("check_image_rebuild", { tag, expectedImageId });
+export const rebuildImage = (tag: string, expectedImageId: string, noCache: boolean,
+  taskId: string, onEvent: Channel<BuildEvent>) =>
+  invoke<void>("rebuild_image", { tag, expectedImageId, noCache, taskId, onEvent });
+
 /** IDEA-3 (3b): keyed by the build tag. Returns whether an active op was
  *  found and cancelled (false = cancel missed — logged by the caller). */
 export const cancelBuild = (tag: string) => invoke<boolean>("cancel_build", { tag });
@@ -688,6 +701,8 @@ export interface ExtensionsItem {
   id: string;
   name: string;
   description?: string;
+    description_url?: string;
+    description_status?: "available" | "empty";
   repo?: string;
   transport?: string;
   url?: string;
@@ -716,6 +731,27 @@ export interface ExtensionsItem {
   enabled_claude?: boolean;
   enabled_codex?: boolean;
 }
+
+export interface ExtensionModuleMember {
+  kind: "skills" | "mcp" | "plugins";
+  identity: string;
+  name: string;
+  source_url: string;
+}
+export interface ExtensionModuleDefinition {
+  id: string;
+  name: string;
+  members: ExtensionModuleMember[];
+}
+export interface ExtensionModuleDocument {
+  schema_version: number;
+  revision: number;
+  definitions: ExtensionModuleDefinition[];
+  hidden_builtin_ids: string[];
+}
+export const loadExtensionModules = () => invoke<ExtensionModuleDocument>("load_extension_modules");
+export const saveExtensionModules = (expectedRevision: number, document: ExtensionModuleDocument) =>
+  invoke<ExtensionModuleDocument>("save_extension_modules", { expectedRevision, document });
 
 export interface ExtensionsCallParams {
   workspace: string;
@@ -802,8 +838,8 @@ export const containerAction = (name: string, action: string) =>
 export const imageRm = (id: string) =>
   invoke<ManagementResult>("image_rm", { id });
 
-export const imageTag = (id: string, repository: string, tag: string) =>
-  invoke<ManagementResult>("image_tag", { id, repository, tag });
+export const imageTag = (id: string, repository: string, tag: string, oldRef?: string) =>
+  invoke<ManagementResult>("image_tag", { id, repository, tag, ...(oldRef ? { oldRef } : {}) });
 
 // --- B3 (2.1.12): docker resource admin (maintenance scan/cleanup/rebuild) ---
 
@@ -1067,6 +1103,70 @@ export const appDownloadUpdate = (setupUrl: string, sha256Url: string, targetVer
 export const appInstallUpdate = (setupPath: string) =>
   invoke<void>("app_install_update", { setupPath });
 
+// Topic workshop: target-aware CLI data plane, no model calls in the UI.
+export type TopicAction = "continue" | "feedback" | "guide" | "improve";
+export interface TopicSummary {
+  id: string;
+  title: string;
+  relative_path: string;
+  skill_version: string;
+  created_at: string;
+}
+export interface TopicRequest {
+  id: string;
+  action: TopicAction;
+  relative_path: string;
+  prompt: string;
+  created_at: string;
+}
+export interface TopicEvent {
+  id: string;
+  type: string;
+  summary: string;
+  recorded_at?: string;
+  data: Record<string, unknown>;
+}
+export interface TopicDetail extends TopicSummary {
+  iteration_log?: string;
+  internal_files?: string[];
+  guide: string;
+  state: string;
+  events: TopicEvent[];
+  files: string[];
+  requests: TopicRequest[];
+  warnings: string[];
+}
+export interface TopicCheck {
+  status: string;
+  checked_events: number;
+  errors: string[];
+  warnings: string[];
+  scope: string;
+}
+export interface TopicCallParams {
+  workspace: string;
+  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync" | "personal-list" | "personal-save" | "bind-session" | "session-action";
+  id?: string;
+  title?: string;
+  text?: string;
+  sources?: string[];
+  action?: TopicAction | "stop" | "retry";
+  personal?: PersonalCapabilityDraft;
+  sessionId?: string;
+  agent?: "claude" | "codex";
+}
+export interface PersonalTemplate { id: string; name: string; description: string; rules: string; skill: string }
+export interface PersonalRevision {
+  revision: number; name: string; rules: string; skill: string; reason: string;
+  verification: string; enabled: boolean; created_at: string;
+}
+export interface PersonalProfile { id: string; template_id: string; history: PersonalRevision[] }
+export interface PersonalCapabilityDraft {
+  id: string; template_id: string; expected_revision: number; name: string;
+  rules: string; skill: string; reason: string; verification: string; enabled: boolean;
+}
+export const topicCall = <T = Record<string, unknown>>(params: TopicCallParams) =>
+  invoke<T>("topic_call", params as unknown as Record<string, unknown>);
 export interface UpdateHealthObservation {
   scope: string;
   endpoint: string;

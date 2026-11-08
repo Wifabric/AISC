@@ -369,10 +369,16 @@ async fn run_management(
     window: &tauri::WebviewWindow,
 ) -> Result<ManagementResult, WorkbenchError> {
     let target = crate::target::resolve_target_for(app, window).await?;
+    // A rename includes locked rechecks, tag creation and selected-tag removal.
+    let timeout = if argv.get(1).is_some_and(|op| op == "image-tag") {
+        Duration::from_secs(240)
+    } else {
+        INSPECT_TIMEOUT
+    };
     let env = run_control_target(
         &target,
         argv,
-        INSPECT_TIMEOUT,
+        timeout,
         CancellationToken::new(),
     )
     .await?;
@@ -421,8 +427,13 @@ pub async fn image_tag(
     id: String,
     repository: String,
     tag: String,
+    old_ref: Option<String>,
 ) -> Result<ManagementResult, WorkbenchError> {
-    run_management(image_tag_argv(&id, &repository, &tag), &app, &window).await
+    let mut argv = image_tag_argv(&id, &repository, &tag);
+    if let Some(reference) = old_ref {
+        argv.extend(["--old-ref".into(), reference]);
+    }
+    run_management(argv, &app, &window).await
 }
 
 #[cfg(test)]

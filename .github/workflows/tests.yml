@@ -26,6 +26,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # Entrypoint tests execute Linux container shell fragments on the host.
+      # They require GNU cp's update semantics, which BSD cp does not provide.
+      - name: Use GNU coreutils for Linux entrypoint tests on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew list coreutils >/dev/null 2>&1 || brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
       # 2026-10-18 方案 B（用户裁定）：与 workbench-ci 的 Python tests
       # step 同构——pytest 统一收集 unittest 风格与 pytest 原生测试。
       - name: Run all tests
