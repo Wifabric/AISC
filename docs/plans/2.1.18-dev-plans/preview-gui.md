@@ -313,3 +313,5 @@ Preview.10 真实新工作区显示 16 项离线技能、两项默认模块；�
 最终 Preview.11 产品提交 7edb677d，完整镜像 sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14。Preview.10 正常退出后，GUI 选择已有 ui-personal10、改为新镜像并启动。容器 d9342ac154ff，个人能力与主题入口、三模板和 V3 显示正常；个人登记文件重启前后 SHA256 均为 99e0ec3e1f886a285aeee210999358cba5dda31d0b8628a67790f97e61ec0561。扩展列表保留 caveman 13 / mattpocock 2 / Karpathy 1 / 科研在线技能 2。证据 gui-personal11-restarted.txt、gui-personal11-extensions.txt、personal11-before-restart.json；产物哈希见 DELIVERY。用户原平台容器 2e801ec161c0 保持运行。
 
 上述为开发者真实界面和数据链验证，不是最终用户验收；安装器 GUI、真实提供者/GitHub 认证、模型任务及前文未测边界仍未完成。
+
+Preview.11 帮助 → 关于的真实截图确认 Workbench 2.1.18-preview.11、AISC CLI/Bundle 0.1.10、Claude Code 2.1.314；Workbench Image 字段仍为“未知”，镜像身份另以实际容器/image inspect 记录核对，没有把该字段记为成功。
