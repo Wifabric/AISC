@@ -200,3 +200,13 @@ check_workrecords_preview6.py 与 Preview.5 保存后的记录对比：24 个集
 市场还返回 batch-grill-me，但该固定提交的 tree 中只有 grill-me、grill-with-docs、grilling 三个匹配路径，没有 batch-grill-me。展开该陈旧条目明确显示 No unique matching skill path 并保留重试/来源入口。此项是市场元数据与上游目录差异，不编造成功内容。曾尝试在其读取期间切换查询，但错误在提交新查询前已返回，因此本轮只证明普通查询切换隔离，不记迟到响应竞态 PASS。
 
 1,545 个三侧已安装技能文件的路径/哈希前后一致，未执行安装/卸载。网络已恢复；证据 gui-preview6-h9-{offline-detail,first-reconnect-failure,recovered-detail,query-caveman,reopened-source}.txt、h9-preview6-network-{offline,online}.json、h9-preview6-online-probe.jsonl、h9-preview6-upstream-paths.json、h9-preview6-assets-{before,after}.json。H9 离线失败、明确重试恢复、缓存/固定来源子集 PASS；跨工作区切换和真实迟到响应仍由自动化覆盖，GUI 未补齐。用户最终验收继续待完成。
+
+## Preview.6 / H4/S9 完整无缓存与取消清理缺陷
+
+真实启动摘要入口默认无缓存，CLI 实际带 --no-cache。完整 bundle 经准备、73 步、导出到 100%，123.8 秒完成；所选 QA tag 从 73426400… 更新到 82352869…，另一个 keep tag 62d358f2… 不变，停止容器 f69201ad… 仍引用原镜像，界面明确提示旧镜像因引用而保留。此路径 PASS。证据 gui-preview6-h4-nocache-{confirm,progress,phase,success}.txt、h4-preview6-{before,after,start-command,build-command}.json 及 nocache-build.log。
+
+随后取消勾选无缓存，首次缓存重建 12.5 秒先完成（实际 --use-cache），所选 tag 更新为 cd42b288…，无其他引用的上一镜像按规则移除。该次没有成功取消，不计取消 PASS。第二次缓存构建在导出阶段点击取消，界面 9.8 秒显示“已取消”；所选 cd42b288…、keep 与停止容器保持不变，但留下该次临时 tag aisc-rebuild:8b913b4cd5214457ab57b4ccd8f41e23（1779cc6f…）。因此取消终态/原资源保护通过，临时资源清理 FAIL，登记 S9，不将整个取消路径记通过。
+
+根因：Windows 强制终止 CLI/Docker 进程树，Python finally 可能未执行。修复由 build.start 传递本次唯一临时 tag，Workbench 等待子进程退出、事件排空后用独立 CLI 回收；严格限制保留命名空间和 32 位小写十六进制，只删除该 tag，不按镜像 ID、不强制、不扫描其他临时资源。清理仍持维护锁，失败保留原取消/失败状态并显示残留 tag 提示；操作锁直到清理完成才释放。
+
+保存原始残留证据后，新源码清理命令实际回收上述 QA tag，再次 inspect 证明所选/keep/停止容器不变。此项是源码 CLI 恢复验证，不能代替修后冻结候选 GUI。隔离工作区镜像恢复 keep，候选窗口正常关闭，原用户平台 PID 40320 保留。证据 gui-preview6-h4-cache-{completed-first,cancelled}.txt、h4-preview6-cache-command.json、h4-preview6-cache-cancel-build.log、h4-preview6-cancel-audit.json。修后 GUI/远程入口/最终用户验收仍待完成。

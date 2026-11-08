@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from aisc.application.image_rebuild import rebuild_check, guarded_rebuild
+from aisc.application.image_rebuild import rebuild_check, guarded_rebuild, cleanup_rebuild_tag
 from aisc.domain.models import CliError, ImageInspectStatus, ProcessResult
 
 OLD = 'sha256:' + 'a' * 64
@@ -90,6 +90,8 @@ def test_success_publishes_selected_ref_and_preserves_other_tags(setup_rebuild, 
     assert build[build.index('-t') + 1] != REF
     assert any(kind == 'build.output' for kind, _ in events.rows)
     assert any(kind == 'build.progress' for kind, _ in events.rows)
+    start = next(data for kind, data in events.rows if kind == 'build.start')
+    assert start['temporary_tag'] == build[build.index('-t') + 1]
 
 @pytest.mark.parametrize('cancel', [False, True])
 def test_build_failure_or_cancel_keeps_original(setup_rebuild, cancel):
@@ -217,3 +219,55 @@ def test_guarded_cli_emits_build_terminal_protocol(tmp_path, monkeypatch, capsys
     assert events[-1]['type'] == ('build.failed' if failure else 'build.complete')
     assert events[-1]['command'] == 'build'
     assert len(events) == 1
+
+
+TEMP = 'aisc-rebuild:' + 'c' * 32
+
+
+def test_hard_cancel_cleanup_removes_only_operation_tag_and_is_idempotent(tmp_path):
+    docker = Docker()
+    docker.refs.update({TEMP: NEW, 'other:retained': NEW, 'aisc-rebuild:' + 'd' * 32: NEW})
+    docker.containers = [('untouched', OLD, False)]
+    before = dict(docker.refs)
+    result = cleanup_rebuild_tag(docker, tag=TEMP, data_root=tmp_path)
+    assert result['action'] == 'removed'
+    del before[TEMP]
+    assert docker.refs == before
+    assert docker.containers == [('untouched', OLD, False)]
+    assert cleanup_rebuild_tag(docker, tag=TEMP, data_root=tmp_path)['action'] == 'absent'
+    assert [c for c in docker.calls if c[0] not in ('image',)] == [['rmi', TEMP]]
+
+
+@pytest.mark.parametrize('tag', [REF, OLD, 'aisc-rebuild:short', 'aisc-rebuild:' + 'C' * 32, 'other/' + TEMP])
+def test_cleanup_rejects_non_operation_references_without_docker_calls(tmp_path, tag):
+    docker = Docker()
+    with pytest.raises(CliError) as error:
+        cleanup_rebuild_tag(docker, tag=tag, data_root=tmp_path)
+    assert error.value.error_code == 'AISC_ERR_USAGE'
+    assert docker.calls == []
+
+
+@pytest.mark.parametrize('failure', ['rmi', 'inspect', 'still_present'])
+def test_cleanup_failure_is_visible_and_never_force_removes(tmp_path, failure):
+    class FailingDocker(Docker):
+        def run_captured(self, argv, timeout=None):
+            if (argv[0] == 'rmi' and failure in ('rmi', 'still_present')) or (argv[0] == 'image' and failure == 'inspect'):
+                self.calls.append(argv)
+                return ProcessResult(exit_code=0 if failure == 'still_present' else 1, stderr='daemon unavailable')
+            return super().run_captured(argv, timeout)
+    docker = FailingDocker(); docker.refs[TEMP] = NEW
+    before = dict(docker.refs)
+    with pytest.raises(CliError): cleanup_rebuild_tag(docker, tag=TEMP, data_root=tmp_path)
+    assert docker.refs == before
+    assert not any('-f' in c or '--force' in c or c[0] in ('tag', 'rm', 'stop', 'prune') for c in docker.calls)
+
+
+def test_cleanup_cli_routes_only_exact_tag(tmp_path, monkeypatch, capsys):
+    from aisc.cli.main import main
+    monkeypatch.setenv('AISC_DATA_ROOT', str(tmp_path))
+    with patch('aisc.application.image_rebuild.cleanup_rebuild_tag', return_value={'tag': TEMP, 'action': 'absent'}) as cleanup:
+        with pytest.raises(SystemExit) as result:
+            main(['maintenance', 'docker-rebuild-cleanup', '--tag', TEMP, '--format', 'json'])
+        assert result.value.code == 0
+        assert cleanup.call_args.kwargs == {'tag': TEMP}
+    assert json.loads(capsys.readouterr().out)['data']['action'] == 'absent'

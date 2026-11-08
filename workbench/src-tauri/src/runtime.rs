@@ -1769,9 +1769,17 @@ pub fn image_rebuild_argv(root: &str, tag: &str, expected: &str, no_cache: bool)
         if no_cache { "--no-cache".into() } else { "--use-cache".into() }, "--events".into()]
 }
 
+fn rebuild_temporary_tag(event: &BuildEvent) -> Option<String> {
+    if event.event_type != "build.start" { return None; }
+    let tag = event.data.get("temporary_tag")?.as_str()?;
+    let suffix = tag.strip_prefix("aisc-rebuild:")?;
+    (suffix.len() == 32 && suffix.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+        .then(|| tag.to_string())
+}
+
 #[cfg(test)]
 mod rebuild_protocol_tests {
-    use super::image_rebuild_argv;
+    use super::{image_rebuild_argv, rebuild_temporary_tag};
 
     #[test]
     fn cache_choice_and_absent_identity_survive_the_streaming_protocol() {
@@ -1783,6 +1791,23 @@ mod rebuild_protocol_tests {
             assert_eq!(argv[9], if no_cache { "--no-cache" } else { "--use-cache" });
             assert_eq!(argv[10], "--events");
             assert!(!argv.contains(&"--format".to_string()));
+        }
+    }
+
+    #[test]
+    fn cleanup_accepts_only_this_builds_reserved_start_tag() {
+        for (kind, tag, valid) in [
+            ("build.start", "aisc-rebuild:0123456789abcdef0123456789abcdef", true),
+            ("build.output", "aisc-rebuild:0123456789abcdef0123456789abcdef", false),
+            ("build.start", "super-claude:latest", false),
+            ("build.start", "sha256:0123456789abcdef0123456789abcdef", false),
+            ("build.start", "aisc-rebuild:short", false),
+            ("build.start", "aisc-rebuild:0123456789abcdef0123456789abcdeG", false),
+        ] {
+            let event = serde_json::from_value(serde_json::json!({
+                "type": kind, "data": {"temporary_tag": tag}
+            })).unwrap();
+            assert_eq!(rebuild_temporary_tag(&event).is_some(), valid);
         }
     }
 }
@@ -1828,14 +1853,38 @@ pub async fn rebuild_image(app: AppHandle, window: tauri::WebviewWindow, tag: St
     }
     let (tx, mut rx) = mpsc::channel::<BuildEvent>(256);
     let bridge = tokio::spawn(async move {
+        let mut temporary_tag = None;
         while let Some(event) = rx.recv().await {
-            if on_event.send(event).is_err() { break; }
+            if temporary_tag.is_none() { temporary_tag = rebuild_temporary_tag(&event); }
+            // Keep draining even if the window closes: cleanup still needs
+            // this operation's start event and the child must be reaped.
+            let _ = on_event.send(event);
         }
+        temporary_tag
     });
-    let result = run_build_stream_target(&target,
+    let mut result = run_build_stream_target(&target,
         image_rebuild_argv(&root.display().to_string(), &tag, &expected_image_id, no_cache),
         Duration::from_secs(2400), cancel, tx).await;
-    let _ = bridge.await;
+    let temporary_tag = bridge.await.ok().flatten();
+    // Windows cancellation kills the CLI process tree, bypassing Python's
+    // finally block. Recover only this build's unique tag after the runner
+    // has reaped the child; keep BuildOps occupied until cleanup completes.
+    if result.is_err() {
+        if let Some(temporary_tag) = temporary_tag {
+            let cleanup = crate::cli::run_control_direct_target(&target,
+                vec!["maintenance".into(), "docker-rebuild-cleanup".into(),
+                     "--tag".into(), temporary_tag.clone(), "--format".into(), "json".into()],
+                Duration::from_secs(75), CancellationToken::new()).await
+                .and_then(|env| envelope_error(&env).map_or(Ok(()), Err));
+            if let (Err(error), Err(cleanup_error)) = (&mut result, cleanup) {
+                // Preserve cancellation/failure, but do not hide a cleanup
+                // failure behind the normal cancelled message.
+                error.message.push_str(&format!("; 临时构建标签可能仍存在：{temporary_tag}"));
+                let prior = error.technical_detail.take().unwrap_or_default();
+                error.technical_detail = Some(format!("{prior}; cleanup: {}", cleanup_error.technical_detail.unwrap_or(cleanup_error.message)));
+            }
+        }
+    }
     remove_op(&build_ops.0, &key);
     result
 }
