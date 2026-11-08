@@ -2371,6 +2371,11 @@ pub async fn workspace_rename(
     relative_path: String,
     new_name: String,
 ) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    if relative_path.is_empty() {
+        return Err(WorkbenchError::workspace_invalid()
+            .with_detail("cannot rename the workspace root"));
+    }
+    let new_name = validate_basename(&new_name)?;
     let (parent, _old) = match relative_path.rsplit_once('/') {
         Some((p, n)) => (p.to_string(), n.to_string()),
         None => (String::new(), relative_path.clone()),

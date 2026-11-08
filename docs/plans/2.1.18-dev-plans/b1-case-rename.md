@@ -4,6 +4,12 @@
 
 ## 判断与方案
 
+### S15 / Preview.11 远程实测发现（2026-11-08）
+
+隔离 SSH 目标真实 GUI 将 `AREA.txt` 改为已有 `Occupied.txt`，后端 `serve_fs.op_fs_rename` 使用 `os.replace` 覆盖目标且前端报成功。仅 QA 数据受影响。这违反既定 H1/R-1 的冲突不覆盖要求，按本批缺陷修复处理，不新增产品范围。
+
+修正远端 rename 为不替换已有目标，文件、目录、悬空链接及不同硬链接名字均保留；相同路径和真实大小写别名另行处理，不能把两个大小写不同的独立条目当作同一条目。常规 POSIX rename 使用系统排他改名，平台不支持时拒绝而不降级覆盖。远程冲突映射到现有“目标已存在”提示；Workbench 同步校验 basename/根目录规则。先保留失败证据与本地回归，再部署同版 CLI、重建统一候选复测，最后精确 head CI / PR / develop 集成。新增测试继续仅保留本地。
+
 `workspace.rs::rename_entry` 构造目标后调用 canonicalize_lenient；在 Windows 已有条目上，规范化返回磁盘旧大小写，导致请求名称丢失。真实 NTFS 回归已复现：返回 README.md，但枚举仍是 readme.md；修复后精确名称断言通过。
 
 保留规范化路径用于 containment，最终 rename 目标保留用户输入 basename。先校验名称、来源、实际规范路径相等且 basename 仅大小写不同、目标冲突，再直接执行 fs::rename。Windows 实测直接改名可行，因此不引入中间暂名、两阶段操作或恢复分支；失败沿用现有可读错误映射。

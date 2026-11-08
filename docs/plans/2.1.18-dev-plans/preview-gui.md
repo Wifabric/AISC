@@ -348,4 +348,20 @@ H7：fresh8 注册一个只含插件元数据的本地 QA 市场，从真实 GUI
 
 随后恢复原适配器，通过实际适配器卸载唯一测试插件、原生客户端移除 QA 市场，原插件清单与另一目标清单恢复/保持基线，两侧锁释放。首轮清理比较把每次变化的 operation_id 也纳入相等判断，导致夹具断言失败；改为比较完整 items 后通过，没有重复执行卸载。`final-h7-cleanup.json` 记录稳定状态核验。候选正常退出结束两活动会话，两个 QA 容器实际移除，原平台 PID 40320 / 容器 2e801ec161c0 保持运行；三项候选文件与安装包哈希不变，见 `final-boundaries-result.json`。
 
-上述 GUI 续测没有产品修改或重建。随后仓库文档门禁发现离线技能检查过期，检查脚本与本轮记录集中走一个修正 PR，详见 PROGRESS。安装/升级 GUI 缺隔离 Windows、SSH/远程缺隔离目标，仍是开发者环境阻塞；真实本人认证、模型任务、用户验收、阶段收尾与发布尚未完成。
+上述 Preview.11 GUI 续测没有产品修改或重建。随后仓库文档门禁修正经 #96 合入；下面记录新一轮远程验证及 S15 修复，取代“缺隔离 SSH 目标”的旧阻塞。
+
+### Preview.12 / S15：真实 SSH 改名与远程镜像维护
+
+2026-11-08，在仅监听 127.0.0.1:22228 的专用 SSH 容器中运行独立 Docker 引擎；外层容器无宿主目录或 Docker socket 挂载。导入完整 Preview.11 镜像，78 层 RootFS 与宿主候选相同。远端使用同一候选源码 CLI / bundle 0.1.10，Workbench 使用独立数据根。只有 QA 文件、镜像标签受操作；用户原平台保持运行。
+
+- **修前 FAIL**：Preview.11 GUI 把 `AREA.txt` 改为已有 `Occupied.txt`，后端 `os.replace` 覆盖 `keep-me` 为 `qa-file` 且报成功。保留 `s15-before-gui-data.json`，恢复 QA 夹具后修复 S15。此前 Docker 下层目录大小写改名 EXDEV 在直接系统调用中也复现，改用可写层夹具后验证，不把夹具限制记为产品修复。
+- **修后 PASS**：Preview.12 GUI 同样冲突显示“同名文件已存在，未覆盖”；两个文件内容均保持。文件 `Area.txt → AREA.txt`、目录 `Folder → FOLDER` 成功，目录内 `child.txt` 保持 `qa-child`。Windows 定向 39 passed / 3 skipped；Linux 新增本地回归 11 passed，覆盖独立大小写条目、硬链接、悬空链接、空目录、竞争中新建目标与平台不支持时拒绝覆盖。新增回归没有上传。
+- **H3 远程 PASS**：真实设置 → 磁盘与缓存扫描只列出远端 1 个运行容器和 1 个镜像。默认名称为 `super-claude:<8位字母数字>`；选中 `super-claude:qa-remote-old` 改为 `:qa-remote-new` 后显示“操作完成，列表已刷新。”。实际 RepoTags 仅旧标签被替换，`aisc-personal:preview11`、`:latest`、`:qa-remote-keep` 保留，镜像 ID `d63cf511274c…` 不变。
+- **H4 远程 PASS**：扫描前后两个重建入口均 disabled，说明“目标：本机。暂不支持远程重建。”；没有执行远程构建或停止引用容器。
+- **版本 PASS**：帮助 → 关于显示 Workbench `2.1.18-preview.12`、CLI/Bundle `0.1.10`。Workbench Image 字段仍“未知”，以实际 inspect 取证，不把该字段记为成功。
+
+日志位于 `output/verification/` 的 `s15-*`、`remote-qa/gui-preview12-*`。本轮同时修正两个既有 shell 测试硬编码的 Git Bash 路径，Node 从已激活工具链发现；Windows staging 测试的子进程预算由 30 秒改为 120 秒，断言和 POSIX 预算不变。早期前端一次 Python 启动失败来自沙箱，原生环境复验 893 passed；Rust 422 passed / 2 ignored。最终完整 Python `tests`（不含 integration）1833 passed / 58 skipped / 218 subtests，前轮失败日志保留。精确 head CI 结果在集成账本补录。
+
+正常退出并重新启动 Preview.12 后，通过最近工作区重新进入远端，刷新文件列表并展开 `FOLDER`，`AREA.txt`、`Occupied.txt` 与 `FOLDER/child.txt` 均保持精确名称；启动摘要中的远程重建入口也 disabled。证据 `gui-preview12-reopened.txt`、`gui-preview12-summary.txt`。
+
+独立 Windows runner 的 NSIS 安装、重装、卸载保留检查在 develop `1fad34f7` 的 [run 42456585925](https://github.com/Wifabric/AISC/actions/runs/42456585925) 全部成功，release job 跳过。这是 CI 重建安装包的自动安装验证，不是本机 Preview.12 交互式安装 GUI，也不能替代 S15 新 head 的 CI。真实本人认证、模型任务、最终用户验收及发布批准仍未执行。

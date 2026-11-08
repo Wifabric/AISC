@@ -216,11 +216,19 @@ def op_fs_mkdir(_ns, payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list]
 
 
 def op_fs_rename(_ns, payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list]:
+    from aisc.application.fs_rename import rename_no_replace
+
     root = str(payload.get("root") or "/")
     src = _resolve(root, str(payload.get("from") or ""))
     dst = _resolve(root, str(payload.get("to") or ""))
+    if src == posixpath.normpath(root) or dst == posixpath.normpath(root):
+        raise CliError(message="refusing to rename the workspace root",
+                       exit_code=2, error_code="AISC_ERR_FS_CONTAINMENT")
     try:
-        os.replace(src, dst)
+        rename_no_replace(src, dst)
+    except FileExistsError as exc:
+        raise CliError(message="destination already exists", exit_code=2,
+                       error_code="AISC_ERR_FS_CONFLICT") from exc
     except OSError as exc:
         raise CliError(message=f"rename failed: {exc}", exit_code=1,
                        error_code="AISC_ERR_FS_IO") from exc

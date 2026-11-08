@@ -18,8 +18,10 @@ import zipfile
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-BASH = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else shutil.which("bash")
-NODE = ROOT / ".tools/node22/node.exe" if os.name == "nt" else shutil.which("node")
+GIT = shutil.which("git")
+BASH = (Path(GIT).resolve().parents[1] / "bin/bash.exe"
+        if os.name == "nt" and GIT else shutil.which("bash"))
+NODE = shutil.which("node") or ROOT / ".tools/node22/node.exe"
 COMMIT = "02ae05ac06e8c9287916fbabfe61ef5c8591407f"
 GEO = ("geoip.metadb", "geosite.dat", "country.mmdb")
 PINS = {
@@ -45,7 +47,10 @@ export -f python3 python node
 '''
     return subprocess.run([str(BASH), "--noprofile", "--norc", "-s"], input=prelude + script,
                           cwd=root, env=process_env, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=30)
+                          encoding="utf-8", errors="replace",
+                          # Git Bash starts native Python for each digest; CI
+                          # and concurrent packaging can exceed 30s on Windows.
+                          timeout=120 if os.name == "nt" else 30)
 
 
 def run_block(marker: str) -> str:
