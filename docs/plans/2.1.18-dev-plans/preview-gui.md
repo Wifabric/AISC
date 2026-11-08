@@ -304,3 +304,12 @@ CLI 测试使用显式容器名 stop 后，实际 QA 工作区仍留有一条属
 再展开 mattpocock/skills 的 caveman 条目，真实界面显示详情加载中，wrapper PID 717 存活。该市场条目在固定上游目录中未找到唯一路径，实际响应为 AISC_ERR_EXTENSIONS_NOT_FOUND；响应尚未交付时正常关闭工作区，旧容器随运行环境结束而移除。随后同窗打开 fresh8，容器 b662dfd2513c / runtime a976fff7-66e2-476f-bae2-c4445d6717dd，适配器哈希与未修改产品一致。新目标技能市场查询框为空、暂无搜索结果，旧加载/错误未带入。重新搜索 grill，真实原生链正常显示 grill-me、grill-with-docs、grilling 简介，展开 grill-me 来源为上述固定提交。没有把陈旧 caveman 条目记为详情成功，也不把关闭旧 runtime 的场景写成两目标同时存活时的成功迟到回调。
 
 正常退出后两个 QA runtime 均结束；1,942 项资产和候选四项哈希不变，用户原平台 PID 40320 / 容器仍运行。本轮只读详情，未执行任何安装或卸载。证据 h9-preview9-{deployment,query-pending,query-submitted,new-query-visible,query-delivered,workspace-pending,switched,final}.json、gui-h9-preview9-{query-loading,new-query,query-after-delivery,workspace-loading,switched-empty,switched-loaded}.txt。H9 受控迟到查询响应、详情读取中关闭切换、新目标独立读取通过；最终用户验收待完成。候选二进制未重建，验证记录仍集中收尾分支。
+
+
+### D-17 / Preview.10–11 三层能力
+
+Preview.10 真实新工作区显示 16 项离线技能、两项默认模块；科研模块 arXiv/OpenAlex 从缺失经在线安装变为已安装。个人通用协作模板建立副本，GUI 保存 V1，再按反馈保存 V2，恢复 V1 后保存为 V3，三版历史保留。GUI Claude 被未认证门拦下，没有操作登录；另用实际冻结 CLI 创建隔离原生 Claude/Codex 会话，生产参数与 GUI V3 快照完全匹配（SHA256 d213f1c6f180ee9348139393a3543ac059f9740a7562259e7f38c8bbc7b07b2a），随后正常结束。没有发送模型任务，不能视为认证后的效果验证。
+
+最终 Preview.11 产品提交 7edb677d，完整镜像 sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14。Preview.10 正常退出后，GUI 选择已有 ui-personal10、改为新镜像并启动。容器 d9342ac154ff，个人能力与主题入口、三模板和 V3 显示正常；个人登记文件重启前后 SHA256 均为 99e0ec3e1f886a285aeee210999358cba5dda31d0b8628a67790f97e61ec0561。扩展列表保留 caveman 13 / mattpocock 2 / Karpathy 1 / 科研在线技能 2。证据 gui-personal11-restarted.txt、gui-personal11-extensions.txt、personal11-before-restart.json；产物哈希见 DELIVERY。用户原平台容器 2e801ec161c0 保持运行。
+
+上述为开发者真实界面和数据链验证，不是最终用户验收；安装器 GUI、真实提供者/GitHub 认证、模型任务及前文未测边界仍未完成。

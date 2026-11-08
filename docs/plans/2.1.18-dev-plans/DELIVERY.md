@@ -1,6 +1,6 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 集中在同一收尾分支，准备一个英文整合 PR。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；源码又修正了入口名称和无锁补装提示，最终候选重建及精确 head CI 待完成。本人认证、用户验收和正式发布仍独立保留。
+2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 集中在同一收尾分支，准备一个英文整合 PR。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；源码又修正了入口名称和无锁补装提示，最终 Preview.11 已构建并完成重启回读，产品提交 `7edb677d` 的远端三项 CI 已成功；同一 PR 的最终文档提交与合入状态见 PR_INTAKE。本人认证、用户验收和正式发布仍独立保留。
 
 ### 截图要求对应结果
 
@@ -10,6 +10,20 @@
 - 自动化：完整 Python 1834 passed / 57 skipped / 218 subtests；Rust 422 passed / 2 ignored；最终前端全套 893 passed（107 files）；Linux 补充 22 passed / 47 subtests。
 
 旧 Preview.9 的产物和验证记录保留在下方，不能用于声称新增三层能力已经交付。新候选源码、构建和剩余 Preview 项见 PROGRESS。
+
+## 当前候选：Preview.11
+
+[唯一收尾 PR #95](https://github.com/Wifabric/AISC/pull/95)，产品源码 `7edb677dba431b4fccb809b2034d073bd95ae664`，base develop `9cc7020c`。[该产品提交的 CI](https://github.com/Wifabric/AISC/actions/runs/42443819350) frontend/rust/cli 全部 success；纯验收文档后续提交不改变下面二进制。
+
+- 启动：`D:\AISC\p18\start-candidate11.ps1`；完整目录 `D:\AISC\p18\candidate11`。
+- 安装包：`D:\AISC\p18\AISC Workbench_2.1.18-preview.11_x64-setup.exe`。
+- 清单：`D:\AISC\p18\candidate11-manifest.json`；独立配置 `D:\AISC\p18\qa-data`。
+- 镜像：`aisc-personal:preview11`，ID `sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14`。
+- Workbench SHA256：`66910757da6ffd1b8067e5d1f5c0b9117374d20908d896976b710d249be8e600`。
+- CLI SHA256：`47b7536a330c005914e2ee7b2670e3ccd1fe6423f847f0b59aa5cc21dc8c7965`。
+- 安装包 SHA256：`8d1784ab8f59719f02007b7a5a20f9ff627707b4cd15c597055c85469245fd42`。
+
+本机版本覆盖为 Workbench `2.1.18-preview.11`；CLI/bundle `0.1.10`，未创建公开 tag/Release。真实 GUI 用该完整镜像重新打开 `ui-personal10`：新入口“个人能力与主题”、三模板、个人第 3 版和 16 项预装技能及 2 项科研在线技能均正常显示。个人登记文件 SHA256 在重启前后相同。用户原平台和工作区未替换。Windows 安装器构建通过不等于安装/升级 GUI 已验收；认证后的模型任务、SSH/其余 HANDTEST 边界和最终用户验收继续保留。
 
 ## 变更说明
 

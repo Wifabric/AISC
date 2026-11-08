@@ -2,7 +2,7 @@
 
 ## 2026-11-08 当前执行状态（优先于下方历史记录）
 
-### D-17 截图要求补齐中
+### D-17 实现与本机候选完成，继续统一验收
 
 S12/S13/S14 已进入同一整合分支：补充固定来源的 grilling 和 Karpathy，启用科研/开发四项默认模块；新增个人模板、副本编辑、反馈/验证记录、历史恢复与工作区会话注入。工厂技能同步改为仅补缺失文件，删除未被 Dockerfile 使用的旧 Superpowers 离线载荷，避免在线模块随安装包带入。此处是新增实现，旧 Preview.9 不含它们。
 
@@ -10,9 +10,9 @@ S12/S13/S14 已进入同一整合分支：补充固定来源的 grilling 和 Kar
 
 Preview.10（本机，未公开发布）已构建完整镜像、桌面及安装包。新 QA 工作区 `ui-personal10` 的真实 GUI 显示 16 项预装技能、两个默认模块；科研模块两项从缺失到在线 installed 通过。个人模板副本保存第 1/2 版、从历史恢复为第 3 版通过，旧记录保留。GUI 新建 Claude 被提供者认证门拦下，未操作登录；实际冻结 CLI 另启两个测试会话，Claude PID 1047、Codex PID 1315 的生产注入参数包含 GUI 第 3 版快照，SHA-256 `d213f1c6f180ee9348139393a3543ac059f9740a7562259e7f38c8bbc7b07b2a`，两会话正常结束。模型任务 NOT RUN。
 
-实测后修正入口名称（个人能力与主题）和无锁补装提示。最终候选重建、整合 PR/精确 head CI、其余原 Preview 项继续推进。证据位于 `output/verification/personal-linux.log`、`personal10-injection-native.json`、`personal10-codex-injection-native.json`、`gui-personal10-*.txt`。
+实测后修正入口名称（个人能力与主题）和无锁补装提示。最终 Preview.11 已完成桌面/NSIS/完整镜像构建和真实 GUI 重启回读；产品提交 `7edb677d` 的 PR #95 CI 三项成功。同一 PR 的最终验收文档与合入核查继续推进，产品源码不再变化。证据位于 `output/verification/personal-linux.log`、`personal10-injection-native.json`、`personal10-codex-injection-native.json`、`gui-personal10-*.txt`。
 
-b1–b10、协作流程/Skill #75 和整合修正 #76/#78/#79/#83/#85/#87/#91/#93 均已合入 develop。最新已合入产品修正为 [PR #93](https://github.com/Wifabric/AISC/pull/93)，文档 #94 后 develop 为 `9cc7020c`。当前本机候选为 **2.1.18-preview.9**，包含整合分支 `11b5b18f` 的 S11 修复，尚未提收尾 PR / 合入，不能沿用 #93 的 CI 作为新源码门禁。纯验证文档不改变二进制。产物/哈希见 [DELIVERY](DELIVERY.md)，各批精确提交与 CI 见 [PR_INTAKE](PR_INTAKE.md)。
+b1–b10、协作流程/Skill #75 和整合修正 #76/#78/#79/#83/#85/#87/#91/#93 均已合入 develop。最新已合入产品修正为 [PR #93](https://github.com/Wifabric/AISC/pull/93)，文档 #94 后 develop 为 `9cc7020c`。当前本机候选为 **2.1.18-preview.11**，包含 S11–S14，唯一整合 PR 为 #95；产品提交精确 CI 已通过，不沿用 #93 证据。纯验证文档不改变二进制。产物/哈希见 [DELIVERY](DELIVERY.md)，各批精确提交与 CI 见 [PR_INTAKE](PR_INTAKE.md)。
 
 U-1–U-4 均已确认；D-17 授权四项默认成员入版及个人能力初版。本轮单代理兼任开发与自查，没有独立评审。D-15/D-16 允许统一 Preview 和夜间继续独立工作，不替代用户验收或发布批准。
 
@@ -41,7 +41,7 @@ S11 修复在整合分支：Preview.8 跨镜像启动已有 QA 工作区时，�
 
 - 继续处理上表可在隔离环境独立完成的实测。发现产品缺陷时修复、定向验证、精确 head CI、合入 develop，再更新统一候选。
 - 默认清单已按 D-17 落地；本人真实认证、整版用户验收与收尾/发布批准集中留给用户。不合入 main 或发布公开 Preview/final。
-- 安装/升级手测、最终回归和版本归档尚未完成。本地 Preview.9 是候选，不等于已公开发布版本。
+- 安装/升级手测、最终回归和版本归档尚未完成。本地 Preview.11 是候选，不等于已公开发布版本。
 - 反馈站写权限不足，回复草稿未发送、F1–F8 未置 resolved；获得权限后先刷新反馈原文及新回复。
 
 ## 历史执行记录
