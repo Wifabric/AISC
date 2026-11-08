@@ -29,8 +29,9 @@ export const useTopicsStore = defineStore("topics", () => {
   const inserting = ref(false);
   const inserted = ref(false);
   const activeTopic = ref<TopicSummary | null>(null);
-  const conversationStatus = ref<Array<{ topic_id: string; session_id: string; agent: string; captured: number; state: string; guide_pending: boolean }>>([]);
+  const conversationStatus = ref<Array<{ topic_id: string; session_id: string; agent: string; captured: number; state: string; guide_pending: boolean; topic_title?: string; diagnostic?: string }>>([]);
   const syncError = ref<string | null>(null);
+  const syncWarnings = ref<string[]>([]);
   const syncing = ref(false);
   let syncingEpoch = -1;
   let modeGeneration = 0;
@@ -62,6 +63,7 @@ export const useTopicsStore = defineStore("topics", () => {
     checkResult.value = null; warnings.value = []; error.value = null;
     loading.value = false; busy.value = false; inserting.value = false; inserted.value = false;
     activeTopic.value = null; conversationStatus.value = []; syncError.value = null; syncing.value = false;
+    syncWarnings.value = [];
   }
 
   async function load(): Promise<void> {
@@ -127,11 +129,6 @@ export const useTopicsStore = defineStore("topics", () => {
       request.value = result.topic.requests?.[0] ?? null;
       checkResult.value = null; inserted.value = false;
       topics.value = [result.topic, ...topics.value.filter(item => item.id !== result.topic.id)];
-      try {
-        ++modeGeneration;
-        const mode = await ipc.topicCall<{ active: TopicSummary }>({ workspace: workspace.value, operation: "activate", id: result.topic.id });
-        if (current(token)) activeTopic.value = mode.active ?? null;
-      } catch (e) { if (current(token)) error.value = describeError(e); }
       return true;
     } catch (e) {
       if (current(token)) error.value = describeError(e);
@@ -174,35 +171,30 @@ export const useTopicsStore = defineStore("topics", () => {
     if (!runtime.createTab(agent)) error.value = i18n.global.t("topics.sessionLimit");
   }
 
-  async function enableConversation(): Promise<boolean> {
-    if (!activeContext() || !detail.value || busy.value) return false;
-    const token = epoch, id = detail.value.id;
-    busy.value = true; error.value = null;
-    ++modeGeneration;
-    try {
-      const result = await ipc.topicCall<{ active: TopicSummary }>({ workspace: workspace.value, operation: "activate", id });
-      if (!current(token)) return false;
-      activeTopic.value = result.active;
-      return true;
-    } catch (e) { if (current(token)) error.value = describeError(e); return false; }
-    finally { if (current(token)) busy.value = false; }
-  }
-
   async function startConversation(agent: "claude" | "codex"): Promise<void> {
-    const token = epoch;
-    if (await enableConversation() && current(token)) openAgent(agent);
+    if (!activeContext() || !detail.value || busy.value) return;
+    error.value = null;
+    const topic = detail.value;
+    if (!runtime.createTab(agent, null, false, null, {
+      id: topic.id, title: topic.title,
+      prompt: `我们开始“${topic.title}”。请根据已保存的目标和条件，建议第一个可以实际完成的小步骤；缺少必要信息时先向我询问。`,
+    })) error.value = i18n.global.t("topics.sessionLimit");
   }
 
-  async function disableConversation(): Promise<void> {
+  async function sessionAction(topicId: string, sessionId: string, action: "stop" | "retry"): Promise<void> {
     if (!activeContext() || busy.value) return;
     const token = epoch;
-    busy.value = true;
-    ++modeGeneration;
+    busy.value = true; error.value = null;
     try {
-      await ipc.topicCall({ workspace: workspace.value, operation: "deactivate" });
-      if (current(token)) activeTopic.value = null;
-    } catch (e) { if (current(token)) syncError.value = describeError(e); }
+      await ipc.topicCall({ workspace: workspace.value, operation: "session-action", id: topicId, sessionId, action });
+    } catch (e) { if (current(token)) error.value = describeError(e); }
     finally { if (current(token)) busy.value = false; }
+    if (current(token)) await syncConversations();
+  }
+
+  function resumeSession(sessionId: string): void {
+    const live = sessions.value.find(s => s.sessionId === sessionId);
+    if (live) { runtime.activateTab(live.tabId); runtime.setActivePane(live.tabId, live.paneId); }
   }
 
   async function syncConversations(): Promise<void> {
@@ -216,7 +208,8 @@ export const useTopicsStore = defineStore("topics", () => {
       if (!current(token)) return;
       if (mode === modeGeneration) activeTopic.value = result.active;
       conversationStatus.value = result.sessions ?? [];
-      syncError.value = result.warnings?.length ? result.warnings.join("\n") : null;
+      syncWarnings.value = [...new Set(result.warnings ?? [])];
+      syncError.value = null;
       const id = detail.value?.id;
       if (id && !busy.value && chosen === selection) {
         const latest = await ipc.topicCall<{ topic: TopicDetail }>({ workspace: workspace.value, operation: "show", id });
@@ -297,7 +290,7 @@ export const useTopicsStore = defineStore("topics", () => {
   }
 
   return { workspace, topics, detail, request, checkResult, warnings, error,
-    loading, busy, inserting, inserted, sessions, activeTopic, conversationStatus, syncError, syncing,
-    enableConversation, startConversation, disableConversation, syncConversations,
+    loading, busy, inserting, inserted, sessions, activeTopic, conversationStatus, syncError, syncWarnings, syncing,
+    startConversation, sessionAction, resumeSession, syncConversations,
     setContext, load, refresh, select, create, prepare, chooseRequest, openAgent, insert, check, openFile, openReference, accessIterationLog };
 });

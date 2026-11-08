@@ -54,12 +54,12 @@ watch([() => runtime.workspace, () => runtime.id], () => {
 function edit(profile: PersonalProfile) {
   const value = latest(profile);
   draft.value = { id: profile.id, template_id: profile.template_id, expected_revision: value.revision,
-    name: value.name, rules: value.rules, skill: value.skill, reason: "", verification: "待验证", enabled: value.enabled };
+    name: value.name, rules: value.rules, skill: value.skill, reason: "调整回答偏好", verification: "待验证", enabled: value.enabled };
   original = JSON.stringify(draft.value); historical.value = 0; notice.value = "";
 }
 function create(template?: PersonalTemplate) {
   draft.value = { id: "", template_id: template?.id ?? "custom", expected_revision: 0,
-    name: template ? `${template.name} · 我的副本` : "", rules: template?.rules ?? "", skill: template?.skill ?? "",
+    name: template ? `${template.name} · 我的副本` : "", rules: template?.rules ?? "", skill: template?.skill ?? "遵循已启用的个人规则协助用户；未验证的结果如实说明。",
     reason: "建立个人能力", verification: "待验证", enabled: false };
   original = ""; historical.value = 0; notice.value = "";
 }

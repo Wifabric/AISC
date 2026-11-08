@@ -1,4 +1,4 @@
-"""Bind ordinary Agent conversations to topics; preserve outward messages independently.
+"""Bind explicitly selected Agent conversations; preserve outward messages independently.
 
 No PTY scraping, model calls, or execution of workspace-owned code. The original
 provider logs remain authoritative. Sync only follows exact bootstrap markers.
@@ -37,17 +37,16 @@ def active(root: Path) -> dict | None:
     if not path.exists():
         return None
     value = json.loads(topics._read(path, root))
-    identifier = value.get("id")
-    return topics._summary(root, topics._topic(root, identifier)) if identifier else None
+    # Retire the legacy workspace-wide default without deleting its history.
+    if value.get("id"):
+        with records.lock(path.parent):
+            _save(path, {"id": None, "previous_id": value["id"],
+                         "migration": "explicit-session-v1", "updated_at": records.now()})
+    return None
 
 
 def activate(root: Path, identifier: str) -> dict:
-    topic = topics._topic(root, identifier)
-    topics._install_copy(topic)
-    folder = topics._inside(root, "topics")
-    with records.lock(folder):
-        _save(topics._inside(root, MODE_FILE), {"id": identifier, "updated_at": records.now()})
-    return {"active": active(root)}
+    raise ValueError("Workspace-wide topic activation is retired; start an explicit topic conversation")
 
 
 def deactivate(root: Path) -> dict:
@@ -68,13 +67,23 @@ def _bindings(topic: Path) -> dict:
     return value
 
 
-def prepare_session(workspace: str, session_id: str, agent: str) -> dict | None:
+def prepare_session(workspace: str, session_id: str, agent: str, topic_id: str | None = None) -> dict | None:
     if agent not in {"claude", "codex"}:
         return None
     root = topics._workspace(workspace)
-    selected = active(root)
-    if selected is None:
-        return None
+    active(root)  # migrate legacy defaults; they never choose a session topic
+    matches = [item["id"] for item in topics.list_topics(root)["topics"]
+                   if any(row["session_id"] == session_id and row["agent"] == agent
+                          for row in _bindings(topics._topic(root, item["id"]))["sessions"])]
+    if topic_id is not None and any(identifier != topic_id for identifier in matches):
+        raise ValueError("Session is already bound to another topic")
+    if topic_id is None:
+        if not matches:
+            return None
+        if len(matches) != 1:
+            raise ValueError("Session is bound to multiple topics")
+        topic_id = matches[0]
+    selected = topics._summary(root, topics._topic(root, topic_id))
     if str(uuid.UUID(session_id)) != session_id:
         raise ValueError("invalid terminal session id")
     topic = topics._topic(root, selected["id"])
@@ -176,6 +185,9 @@ def bridge_argv(executor, container: str, argv: list[str], workspace: str,
     if agent not in {"claude", "codex"}:
         return argv
     from aisc.application import personal_capabilities
+    resume = argv[argv.index("--resume-id") + 1] if "--resume-id" in argv else None
+    if resume and "--fork-session" not in argv:
+        _end_resumed_capture(workspace, session_id, agent, resume)
     personal = personal_capabilities.snapshot(topics._workspace(workspace), session_id)
     binding = prepare_session(workspace, session_id, agent)
     if binding is None and not personal:
@@ -183,7 +195,6 @@ def bridge_argv(executor, container: str, argv: list[str], workspace: str,
     topic_id = binding["topic_id"] if binding else None
     binding = binding or {"session_id": session_id, "background": ""}
     binding["background"] += personal
-    resume = argv[argv.index("--resume-id") + 1] if "--resume-id" in argv else None
     native = resume if resume and "--fork-session" not in argv else session_id if agent == "claude" else None
     if native and topic_id:
         _bind_native(workspace, topic_id, session_id, agent, native, bool(resume and "--fork-session" not in argv))
@@ -193,6 +204,31 @@ def bridge_argv(executor, container: str, argv: list[str], workspace: str,
     if result.exit_code != 0 or (result.stdout or "").strip() != path:
         raise ValueError("could not prepare topic conversation in container: " + (result.stderr or "")[:300])
     return ["python3", path, *argv[1:]]
+
+
+def _end_resumed_capture(workspace: str, session_id: str, agent: str, native: str) -> None:
+    """Finish the previous capture segment before any resumed session writes.
+
+    Ordinary resumes must not silently append to a former topic. Provider
+    context is retained by the provider; this only bounds our capture ledger.
+    """
+    uuid.UUID(native)
+    root = topics._workspace(workspace)
+    for summary in topics.list_topics(root)["topics"]:
+        topic = topics._topic(root, summary["id"])
+        with records.lock(topic):
+            doc = _bindings(topic)
+            changed = False
+            for row in doc["sessions"]:
+                if row["session_id"] == session_id or row["agent"] != agent or row.get("closed"):
+                    continue
+                source = _locate(workspace, row)
+                if row.get("native_id") == native or (source and
+                    (source.stem == native or source.stem.endswith("-" + native))):
+                    _stop_capture(root, topic, row)
+                    changed = True
+            if changed:
+                _save(records.local(topic, BINDINGS_FILE), doc)
 
 
 def _messages(raw: bytes, agent: str) -> list[dict]:
@@ -333,13 +369,14 @@ def _locate(workspace: str, binding: dict) -> Path | None:
 
 
 def _sync_binding(root: Path, topic: Path, binding: dict, markers: set[str] | None = None) -> None:
-    if binding.get("closed"):
+    if binding.get("closed") or binding.get("paused"):
         return
     path = _locate(str(root), binding)
     if path is None:
         return
     if not path.is_file() or path.stat().st_size < binding["offset"]:
-        raise ValueError("bound conversation was removed or truncated; preserved existing records")
+        binding.update(paused=True, error="bound conversation was removed or truncated; preserved existing records")
+        return
     with path.open("rb") as stream:
         stream.seek(binding["offset"])
         budget = 4 * MAX_LINE
@@ -349,8 +386,10 @@ def _sync_binding(root: Path, topic: Path, binding: dict, markers: set[str] | No
                 binding["closed"] = True
                 break
             other_markers = (markers or set()) - {binding["marker"]}
-            raw, complete, boundary = _read_record(stream, other_markers)
+            raw, complete, boundary = _read_record(stream, other_markers, binding.get("stop_offset"))
             if not complete:
+                if stream.tell() >= binding.get("stop_offset", float("inf")):
+                    binding["closed"] = True
                 break
             budget -= stream.tell() - start
             if boundary:
@@ -406,6 +445,18 @@ def _sync_binding(root: Path, topic: Path, binding: dict, markers: set[str] | No
                 binding["last_message_at"] = records.now()
                 binding["last_capture_epoch"] = time.time()
             binding["offset"] = stream.tell()
+        if binding["offset"] >= binding.get("stop_offset", float("inf")):
+            binding["closed"] = True
+
+
+def _stop_capture(root: Path, topic: Path, binding: dict) -> None:
+    """Freeze the capture boundary; let subsequent polls drain any backlog."""
+    path = _locate(str(root), binding)
+    if path is None or not path.is_file() or binding.get("paused"):
+        binding["closed"] = True
+    else:
+        binding["stop_offset"] = min(path.stat().st_size, binding.get("stop_offset", float("inf")))
+        _sync_binding(root, topic, binding)
 
 
 def sync(root: Path) -> dict:
@@ -432,7 +483,7 @@ def sync(root: Path) -> dict:
                 for binding in doc["sessions"]:
                     try:
                         _sync_binding(root, topic, binding, markers)
-                        if not binding.get("closed"):
+                        if not binding.get("closed") and not binding.get("paused"):
                             binding.pop("error", None)
                     except (ValueError, OSError, TypeError, KeyError) as exc:
                         binding["error"] = str(exc)
@@ -441,10 +492,11 @@ def sync(root: Path) -> dict:
                         last = binding["last_skipped_record"]
                         warnings.append(f"{summary['title']}: {binding['skipped_records']} conversation record(s) skipped; "
                                         f"last at byte {last['offset']}: {last['reason']}")
-                    if binding.get("closed") and binding.get("error"):
+                    if (binding.get("closed") or binding.get("paused")) and binding.get("error"):
                         warnings.append(f"{summary['title']}: {binding['error']}")
                     sessions.append({"topic_id": topic.name, "session_id": binding["session_id"],
                         "agent": binding["agent"], "captured": binding["captured"],
+                        "topic_title": summary["title"], "diagnostic": binding.get("error", ""),
                         "state": "error" if binding.get("error") else "completed" if binding.get("closed") else "recording" if binding.get("source") else "waiting",
                         "last_message_at": binding.get("last_message_at"),
                         "guide_pending": bool(binding.get("captured")) and
@@ -452,4 +504,24 @@ def sync(root: Path) -> dict:
                 _save(records.local(topic, BINDINGS_FILE), doc)
         except (ValueError, OSError, TypeError, KeyError) as exc:
             warnings.append(f"{summary['title']}: {exc}")
-    return {"active": selected, "sessions": sessions, "warnings": warnings}
+    return {"active": selected, "sessions": sessions, "warnings": list(dict.fromkeys(warnings))}
+
+
+def session_action(root: Path, topic_id: str, session_id: str, action: str) -> dict:
+    uuid.UUID(session_id)
+    topic = topics._topic(root, topic_id)
+    with records.lock(topic):
+        doc = _bindings(topic)
+        row = next((s for s in doc["sessions"] if s["session_id"] == session_id), None)
+        if row is None:
+            raise ValueError("Topic conversation not found")
+        if action == "stop":
+            _stop_capture(root, topic, row)
+            row["paused"] = False
+            row.pop("error", None)
+        elif action == "retry":
+            row.pop("paused", None)
+        else:
+            raise ValueError("Invalid conversation action")
+        _save(records.local(topic, BINDINGS_FILE), doc)
+    return {"session_id": session_id, "action": action}
