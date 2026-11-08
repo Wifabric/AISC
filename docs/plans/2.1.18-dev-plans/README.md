@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1–b10、流程/Skill PR #75、整合修正 PR #76/#78/#79/#83/#85/#87 均已合入 develop；本机 Preview.6 和 Windows 安装包构建完成，分项真实 GUI 覆盖见 PROGRESS/preview-gui。U-4 默认成员、完整 Preview 用户验收和发布未完成。** 入口见 [夜间交付与待批准清单](DELIVERY.md)。
+状态：**b1–b10、流程/Skill PR #75、整合修正 PR #76/#78/#79/#83/#85/#87/#91 均已合入 develop；本机 Preview.7 和 Windows 安装包构建完成，分项真实 GUI 覆盖见 PROGRESS/preview-gui。U-4 默认成员、完整 Preview 用户验收和发布未完成。** 入口见 [夜间交付与待批准清单](DELIVERY.md)。
 
 本阶段原收录 F1–F4，D-11 后新增 F5–F8，共八条反馈、十个批次。D-12–D-16 授权连续实施、统一 Preview 验收；U-1–U-3 已确认，U-4 具体成员提案已备、待批准。未实施或未验收部分不预记完成。
 
@@ -30,7 +30,7 @@
 | [b1](b1-case-rename.md) | 文件/目录仅改变大小写的重命名 | F1 | D-5/D-6 | PR #63 已合入；Preview.3 本机 H1 列明步骤通过，SSH/用户验收未完成 |
 | [b2](b2-work-record-menu.md) | 工作记录右键菜单避让窗口边界 | F2 | D-7/D-8/D-9/D-10 已授权 | PR #64 已合入；Preview.5/.6 追加键盘、窄短窗口、改名/移动及滚动/缩放验证，具体边界见 PROGRESS |
 | [b3](b3-image-name.md) | 镜像自定义名称、默认名称与校验 | F3.1 | U-1 已确认 | PR #67 已合入；Preview.3 本机命名子集通过，未测边界/用户验收见 PROGRESS |
-| [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 已确认 | PR #68、整合 #83 已合入；Preview.4 两入口缓存重建与无缓存取消通过，完整无缓存 GUI 待补 |
+| [b4](b4-image-rebuild.md) | 镜像行/启动摘要重建、预检查和流式进度 | F3.2–4 | b3、U-2 已确认 | PR #68、整合 #83/#91 已合入；完整无缓存 GUI、Preview.7 缓存取消及受控残留回收通过，具体边界见 PROGRESS |
 | [b5](b5-extension-modules.md) | 推荐模块定义、成员编辑与持久化 | F4 | U-3 已确认；U-4 默认清单待批准 | PR #69、整合 #87 已合入；Preview.5/.6 定义/冲突/错误恢复子集通过，U-4 待批准 |
 | [b6](b6-module-operations.md) | 模块应用/卸载、共享成员保护、失败恢复 | F4 | b5、U-3 | PR #70 已合入；Preview.5 技能执行/恢复/共享/预装/修改保护通过，其他类型及跨目标 GUI 待补 |
 | [b7](b7-plugin-install.md) | 插件安装超时与结果核对 | F5 | D-11/D-12 | PR #71 已合入；Preview.4 正常安装实测通过，超时/未知结果等 GUI 待补 |

@@ -55,3 +55,5 @@ D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代�
 - [PR #85](https://github.com/Wifabric/AISC/pull/85)：head d06b3269cc30bff8d5f2dfd7bf422fdd5c7bb704，合入 5467c9cf4a6cb58d0f1382da1982f8e45f6765f2；[CI 42420724178](https://github.com/Wifabric/AISC/actions/runs/42420724178) 三项 PASS。S7 四个科研推荐使用实际安装目录；28 项前端、构建、真实四项 installed→removed 通过。单代理自查，无独立评审；含修正的 Preview.5 已构建，GUI 及未测边界见 preview-gui。
 
 - [PR #87](https://github.com/Wifabric/AISC/pull/87)：head `195ff2b6d42e628d36be97180c7e2ff0079ef9b7`，合入 `5677a6e67fd12283577d1efe73d5365092112dfd`；[CI 42425026074](https://github.com/Wifabric/AISC/actions/runs/42425026074) frontend/rust/cli 三项 PASS。S8 模块保存错误与重复空名称校验滚动定位，13 项相关回归及类型/构建通过。单代理自查，无独立评审；Preview.6 已构建，真实界面与边界见 preview-gui。
+
+- [PR #91](https://github.com/Wifabric/AISC/pull/91)：head `5414a099192da1372380426fa2006b0f58c28016`，合入 `3b26609e7f0aef9f5eec449a91638c11eadb048e`；[CI 42429010839](https://github.com/Wifabric/AISC/actions/runs/42429010839) frontend/rust/cli 三项 PASS。S9 Windows 强杀后精确回收重建临时 tag，失败保留原终态并提示残留；103 项关联 Python / 19 subtests、2 项 Rust 协议测试、实际源码回收通过。Preview.7 冻结 CLI 幂等回收、真实缓存取消与受控残留 GUI 恢复通过，边界见 preview-gui。单代理自查，无独立评审。
