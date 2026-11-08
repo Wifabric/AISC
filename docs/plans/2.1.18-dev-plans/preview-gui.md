@@ -248,3 +248,23 @@ Preview.8 首次构建 0b87b3de… 在全新 ui-workspace-fresh8 启动此镜像
 最终标准候选重新启动相同工作区，镜像设置仍指向专用新镜像。实际 GUI 显示已安装插件及相同版本，没有失败提示；磁盘登记及两个其他工作区哈希不变，最终容器 0895fe4b9e12 / runtime 839170dd-498d-40ea-a213-673055dc7a71。帮助 → 关于显示 Workbench 2.1.18-preview.8、CLI/Bundle 0.1.10，四项产物哈希核验通过。两次构建采用相同产品源码/适配器；此处最终二进制验证的是重启、状态回读与 About，不替代全量手测。
 
 证据 s10-image-build.jsonl、s10-image-verification.json、h7-preview8-{baseline,installed}.json、gui-preview8-first-build-installed.txt、gui-preview8-final-{installed,about}.txt、preview8-final-verification.json。旧空登记迁移证据仍归属前文 Preview.7 测试部署，新工厂路径归属本节。S10 已修；其他 H 项未测边界、U-4、本人认证、最终验收与发布保持原状态。
+
+## S11 / 已有工作区切换新镜像时登记被覆盖
+
+Preview.8 标准 GUI 在主 QA 工作区切换到 S10 镜像后，模块预检正确显示 research/arXiv 保留、OpenAlex 缺失，尚未确认执行。文件基线比对却失败：启动前插件登记 SHA256 为 e558f007…，启动后变成工厂 v2 空登记。发生于容器初始化、早于模块预检；本次跨目标用例中断，不能记录为通过。原用户平台未改动。
+
+根因是 entrypoint 在工厂版本变化时对整个 plugins 目录执行 cp -ru，较新的工厂登记覆盖用户运行态。同源检查还确认，skills/plugins 目录缺失时的完整补全也会覆盖既有登记和 settings。修复把两项登记（installed_plugins.json、known_marketplaces.json）改为只补缺失，其他工厂资产保持原增量规则；非强制补全使用不覆盖复制，显式 FORCE_COPY_CLAUDE 保持原重置语义。
+
+测试直接执行产品 entrypoint 的作用域初始化段。无网络、只读挂载的临时 Linux 容器：旧代码 6 failed / 5 passed；修后 11 passed，涵盖非空/空/损坏登记保留、符号链接及悬空链接、缺目录补全、缺登记补种、正常新工作区和显式强制复制。Windows 关联 92 passed / 3 skipped / 41 subtests，符号链接的两项 Windows 跳过由上述 Linux 实跑覆盖。测试只证明初始化段；完整启动、真实 GUI 与新候选仍待验证，不提前记为完成。
+
+证据 target-isolation-baseline.json、gui-preview8-isolation-primary-plan.txt、s11-preview8-registry-reset.json、s11-linux-{before,after}.log、s11-linux-results.json、s11-related.log。历史 h7-preview4-installed.json 可重建与故障前哈希完全相同的 QA 登记备份 s11-primary-registry-before.json；后续恢复/升级回归另记。按本轮执行调整，剩余代码和验证文档集中同一整合分支，完成后统一提交收尾 PR。
+
+### S11 完整镜像启动与重启的数据面验证
+
+完整 stage9 bundle 校验通过：1534 项清单仅 entrypoint.sh 一项变化，启动脚本 SHA256 `70b826e84f18fd920b726d9ebf9cab7f3b20b6a81eed9740c26a7fa80edfb00e`。冻结 CLI 使用既有固定依赖 receipt 构建独立 `aisc-s11-entrypoint:preview9` 镜像 `7f60b3472290ea5f8fc1d58b5f1034d2d94d703abd20bc57e6ab575e995481f6`，镜像内脚本与修复源码逐字节相同；未覆盖用户镜像或标准 Preview.8 bundle。
+
+在 QA 容器关闭后，恢复与故障前哈希完全一致的插件登记，确认旧插件缓存 manifest 仍为 1.3.1；明确将 QA 工厂标记设回旧 QA 镜像的实际值，以受控重现旧→新同步。随后冻结 CLI 正常启动完整修复镜像，容器 `dc6a5660ef97` 日志确认执行出厂增量同步，工厂标记推进至 `007ebc9e7b6c7b9d708d06f9d5ac689fad3844c7`。两项登记、两项设置、插件 manifest 和三引擎指定技能共 14 个存在性/哈希状态与基线一致；两份其他 QA 工作区插件登记及模块定义不变。
+
+初次直接 docker exec 适配器未继承 PID 1 作用域，读到了默认路径的空列表；改用产品同一 `_SCOPE_WRAPPER` 后回读原 `mattpocock-skills@claude-plugins-official` 正确。这是验证入口修正，不另记产品缺陷。产品 CLI 对指定测试容器执行 restart 后再次比对通过，最后 stop 正常结束并移除该临时容器，持久数据保留；原用户平台容器 `2e801ec161c0` 仍运行。
+
+本轮 GUI 重新连接新 QA 窗口时返回 `foreground window did not report a process id`，遵循工具恢复边界停止 UI 输入。上述为完整镜像真实 CLI 数据面证据，不写成 GUI PASS；标准 Preview.8 仍不包含 S11，未新建 PR。证据 s11-image-build.jsonl、s11-runtime-{start,restart,stop}.json、s11-upgrade-baseline.json、s11-{upgrade,restart}-result.json 及初始化日志。下一步继续同分支整合、GUI/候选验证和统一 PR/CI。

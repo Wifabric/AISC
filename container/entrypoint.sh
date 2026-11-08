@@ -119,7 +119,11 @@ else
 
     if [ "$NEED_COPY" = 1 ]; then
         mkdir -p "$PROJECT_CLAUDE_DIR"
-        if ! cp -rL "$FACTORY_CLAUDE_DIR/." "$PROJECT_CLAUDE_DIR/" 2>&1; then
+        # 补全不等于重置：缺少 skills/plugins 时仍可能有用户插件登记和设置。
+        # 只有显式 FORCE_COPY_CLAUDE 才允许覆盖既有文件。
+        _copy_flags=-rnL
+        [ "${FORCE_COPY_CLAUDE:-0}" = "1" ] && _copy_flags=-rL
+        if ! cp "$_copy_flags" "$FACTORY_CLAUDE_DIR/." "$PROJECT_CLAUDE_DIR/" 2>&1; then
             echo "❌ 复制 .claude 失败，请检查权限和磁盘空间" >&2
             exit 1
         fi
@@ -151,12 +155,29 @@ else
         #   的路径）永不触碰；任何现有文件都不删除。
         # - .claude/.codex 顶层的用户态文件（settings.json/CLAUDE.md 等）
         #   绝不在同步范围（跳过门哲学保持）。
-        for _sub in skills plugins commands; do
+        for _sub in skills commands; do
             if [ -d "$FACTORY_CLAUDE_DIR/$_sub" ]; then
                 mkdir -p "$PROJECT_CLAUDE_DIR/$_sub"
                 cp -ru "$FACTORY_CLAUDE_DIR/$_sub/." "$PROJECT_CLAUDE_DIR/$_sub/" 2>/dev/null || true
             fi
         done
+        # 插件登记和来源表是工作区运行态，不能被镜像里的空登记/默认来源覆盖。
+        # 插件缓存等出厂资产仍按原有增量规则更新；登记只在缺失时补入。
+        if [ -d "$FACTORY_CLAUDE_DIR/plugins" ]; then
+            mkdir -p "$PROJECT_CLAUDE_DIR/plugins"
+            for _plugin_asset in "$FACTORY_CLAUDE_DIR/plugins/"* "$FACTORY_CLAUDE_DIR/plugins/".[!.]* "$FACTORY_CLAUDE_DIR/plugins/"..?*; do
+                [ -e "$_plugin_asset" ] || [ -L "$_plugin_asset" ] || continue
+                case "${_plugin_asset##*/}" in
+                    installed_plugins.json|known_marketplaces.json)
+                        _registry_target="$PROJECT_CLAUDE_DIR/plugins/${_plugin_asset##*/}"
+                        if [ ! -e "$_registry_target" ] && [ ! -L "$_registry_target" ]; then
+                            cp -n "$_plugin_asset" "$PROJECT_CLAUDE_DIR/plugins/" 2>/dev/null || true
+                        fi
+                        ;;
+                    *) cp -ru "$_plugin_asset" "$PROJECT_CLAUDE_DIR/plugins/" 2>/dev/null || true ;;
+                esac
+            done
+        fi
         if [ -d "$FACTORY_CODEX_DIR/skills" ]; then
             mkdir -p "$PROJECT_CODEX_DIR/skills"
             cp -ru "$FACTORY_CODEX_DIR/skills/." "$PROJECT_CODEX_DIR/skills/" 2>/dev/null || true
