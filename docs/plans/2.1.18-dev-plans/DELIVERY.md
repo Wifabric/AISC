@@ -1,6 +1,6 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 集中在同一收尾分支，准备一个英文整合 PR。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；源码又修正了入口名称和无锁补装提示，最终 Preview.11 已构建并完成重启回读，产品提交 `7edb677d` 的远端三项 CI 已成功；同一 PR 的最终文档提交与合入状态见 PR_INTAKE。本人认证、用户验收和正式发布仍独立保留。
+2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 已集中经英文整合 PR #95 合入 develop `c9b21cf2`。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；最终 Preview.11 已构建并完成重启回读，PR 最终 head 的三项 CI 已成功。开发者剩余验证、本人认证、用户验收和正式发布分别记账，不能概括为“只剩用户手测”。
 
 ### 截图要求对应结果
 
@@ -13,7 +13,7 @@
 
 ## 当前候选：Preview.11
 
-[唯一收尾 PR #95](https://github.com/Wifabric/AISC/pull/95)，产品源码 `7edb677dba431b4fccb809b2034d073bd95ae664`，base develop `9cc7020c`。[该产品提交的 CI](https://github.com/Wifabric/AISC/actions/runs/42443819350) frontend/rust/cli 全部 success；纯验收文档后续提交不改变下面二进制。
+[唯一整合 PR #95](https://github.com/Wifabric/AISC/pull/95) 已合入 develop `c9b21cf2`，产品源码 `7edb677dba431b4fccb809b2034d073bd95ae664`，base develop `9cc7020c`。最终 head `55561c22` 的 [CI](https://github.com/Wifabric/AISC/actions/runs/42444336109) frontend/rust/cli 全部 success，合并树与已验证 head 相同；纯验收文档后续提交不改变下面二进制。
 
 - 启动：`D:\AISC\p18\start-candidate11.ps1`；完整目录 `D:\AISC\p18\candidate11`。
 - 安装包：`D:\AISC\p18\AISC Workbench_2.1.18-preview.11_x64-setup.exe`。
@@ -84,7 +84,13 @@ Preview.7 补充：#91 [CI](https://github.com/Wifabric/AISC/actions/runs/424290
 
 Preview.8 补充：#93 [CI](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success 后合入，修复旧空插件登记并将新工厂格式设为 v2。新完整资源包/镜像通过校验，真实新工作区首次安装与其他工作区隔离通过；最终标准候选重启回读与 About 通过。最终 NSIS 384409353 字节，完整 bundle 对比只有预期三文件变化，旧版备份保留。首次 GUI 构建与最终重打包二进制的精确哈希分别记录，不混写；详见 [统一候选复测](preview-gui.md)。
 
-## 次日集中处理
+## 后续职责与实际阻塞
+
+开发者仍负责补足可独立完成的边界验证、测试环境恢复、结果记录及必要修复；不以等待真实认证作为停止全部工作的理由。本轮追加 Preview.11 默认模块复制/隐藏/恢复、窄窗口右边缘菜单、MCP/插件卸载保护和旧适配器保守保留的真实 GUI 证据，详见 preview-gui。
+
+安装器 GUI 升级仍为 NOT RUN：安装入口会检查所有 workbench.exe，升级流程还会处理 AISC 容器和默认镜像，在本机直接运行会影响用户仍在使用的旧平台。Windows Sandbox 不可用，Hyper-V 查询返回操作系统权限不足，尚无可用隔离 Windows 环境。此项是开发者验证的环境阻塞，不能算用户手测已接手或安装验证通过。SSH/远程场景同样缺少配置好的隔离目标；其余边界逐项见 PROGRESS，不与最终用户验收合并。
+
+以下 Preview.9 内容为历史补充，PR 状态以本文开头及 PR_INTAKE 为准。
 
 Preview.9 当前补充：S11 的完整镜像升级/重启、标准 GUI 原插件保留，以及同窗跨工作区模块预检隔离均通过。追加 H7 受控原生超时、锁释放/明确重试、重试安装中关闭并切工作区、重启后原生安装恢复；H10 旧失败卡片不带入新目标通过。三次 QA runtime 正常结束，其他工作区登记与候选四项哈希不变。安装向导、模块执行中切目标及其余未测项没有被覆盖；受控延迟不冒充自然慢网复现。收尾分支仍未新建 PR，后续统一用英文标题和正文提交。
 

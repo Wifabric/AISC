@@ -315,3 +315,16 @@ Preview.10 真实新工作区显示 16 项离线技能、两项默认模块；�
 上述为开发者真实界面和数据链验证，不是最终用户验收；安装器 GUI、真实提供者/GitHub 认证、模型任务及前文未测边界仍未完成。
 
 Preview.11 帮助 → 关于的真实截图确认 Workbench 2.1.18-preview.11、AISC CLI/Bundle 0.1.10、Claude Code 2.1.314；Workbench Image 字段仍为“未知”，镜像身份另以实际容器/image inspect 记录核对，没有把该字段记为成功。
+
+### Preview.11 开发者续测：H2 / H5 / H6
+
+候选二进制与完整镜像不变，PR #95 已合入 develop c9b21cf2；精确最终 head 55561c22 的三项 CI 成功，合并树相同。以下均为隔离 QA 环境中的开发者验证，不是最终用户验收。
+
+- H5：真实 GUI 将默认科研模块另存为“QA Final 科研副本”，隐藏默认模块再恢复；副本保留两个成员，默认模块重新显示。配置 revision 13→14→15→16，原有两份定义及 272 项技能/插件资产文件哈希不变。证据 `final-h5-{baseline,hidden,result}.json`、`gui-final-h5-{hidden,restored}.txt`。
+- H2：694 像素宽窗口右侧 x540 触发菜单，主菜单翻到 x380，六项动作均可见；779 像素宽窗口的移入子菜单左展，两项目的地可见。Escape 返回原记录可见焦点，磁盘记录逐项相同。首轮核对因 D:/ 与 D:\\ 参数表示不同失败，统一入口后通过，属于测试比较修正。证据 `final-h2-{baseline,result}.json`、`gui-final-h2-{right-edge,main-left-flip}.txt`。
+- H6：在 ui-personal10 专用容器以真实适配器准备四个无凭据 QA 插件与 Context7 MCP；模块 A 安装、B 引用共享插件后，受控修改一个插件文件和 MCP URL。真实 GUI 卸载 A，预装、共享、用户修改插件、用户修改 MCP、既有 GitHub 均保留，仅独占测试插件移除；六行终态与真实安装清单一致。GitHub 仍待本人认证，未声称可调用。证据 `final-h6-result.json`、`gui-final-h6-{plan,complete}.txt`。
+- H6 旧适配器：透明入口仅拒绝 --ownership，其余操作转交原始适配器；真实 GUI 卸载预检在缺少指纹证据时保留共享测试插件，没有执行破坏性卸载。原适配器恢复后 SHA256 仍为 32942114b713e91e8d5b6d8f38f8c211aa6cba27188f5225c356ccd59f3fc607。证据 `gui-final-h6-legacy-plan.txt` 及 `final-h6-result.json`。
+
+H6 执行中跨目标：第一轮 125 秒延迟已在新工作区启动前返回，不算交叠通过。第二轮保留两个运行环境 d9342ac154ff / 71553d5c60d5（相同 Preview.11 完整镜像）。GUI 原目标显示 3/6 执行中，真实插件安装响应已成功产生、由透明 QA 入口缓冲；通过命令面板“选择工作区…”切到已运行的 fresh8。独立记录确认新界面出现时两容器均运行、旧响应尚未交付，再主动释放。旧计划 7763c55c 的第 4 项完成为 installed，第 5/6 项仍 planned；新目标 module-status.latest 为 null，插件页仅有该目标原先的 skills-for-real-engineers，旧测试插件和加载状态没有带入。此项实际覆盖两个目标同时存活时的成功迟到响应与后续步骤停止。没有改变产品超时或伪造成功结果。
+
+证据 `final-h6-cross-{pending,delivered}.json`、`gui-final-h6-cross-{running,new-before-delivery,new-after-delivery,new-plugins}.txt`。原适配器已恢复；四个测试插件、模拟 Context7 配置、本地测试市场及三份本轮测试模块定义通过明确身份清理，原有两份模块定义和 GitHub 配置保留。候选正常退出后两套 QA runtime 均已移除，原用户平台 PID 40320 / 容器 2e801ec161c0 仍运行，候选三文件及安装包 SHA256 与 manifest 一致。`final-qa-cleanup.json` 记录最终核对结果。
