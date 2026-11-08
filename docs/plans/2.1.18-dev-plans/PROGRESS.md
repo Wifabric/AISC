@@ -22,7 +22,7 @@ S11 已随 #95 合入：Preview.8 跨镜像启动已有 QA 工作区时，出厂
 
 ### 统一候选验收覆盖
 
-本轮文档门禁发现 `tools/check-docs.sh` 仍要求已按 S12/S13 移出的 Superpowers 离线载荷，且遗漏新增出厂技能（38 PASS / 1 FAIL）。作为既定离线 16 项范围的一致性修正，在独立分支改为检查 Dockerfile 实际复制的三项 cc-switch 技能及 bundled caveman 的 13 项。修后只读、无网络容器执行门禁 51 PASS / 0 warnings / 0 failures，三份更新计划文件的 19 处相对链接及 diff whitespace 检查通过。此修正只涉及仓库检查和验收记录，不改变候选产品；远端路径过滤不自动触发产品 CI，将显式 dispatch 后核对精确 head 再集成。
+本轮文档门禁发现 `tools/check-docs.sh` 仍要求已按 S12/S13 移出的 Superpowers 离线载荷，且遗漏新增出厂技能（38 PASS / 1 FAIL）。作为既定离线 16 项范围的一致性修正，在独立分支改为检查 Dockerfile 实际复制的三项 cc-switch 技能及 bundled caveman 的 13 项。修后只读、无网络容器执行门禁 51 PASS / 0 warnings / 0 failures，三份更新计划文件的 19 处相对链接及 diff whitespace 检查通过。此修正只涉及仓库检查和验收记录，不改变候选产品；[PR #96](https://github.com/Wifabric/AISC/pull/96) 精确 head `70f6c84e` 显式触发的 [CI](https://github.com/Wifabric/AISC/actions/runs/42455070124) frontend/rust/cli 三项成功，已合入 develop `63f15f29`，合并树与已验证 head 相同。单代理自查，无独立评审；本机 Preview.11 无需重建，剩余验证和发布条件不变。
 
 下表只汇总已经执行的真实 GUI 子集；自动化/CLI 证据与未测项详见 [PRETEST](PRETEST.md)、[preview-gui](preview-gui.md)。不同候选的测试保留版本归属，不能把历史子集相加为当前候选全量 PASS。
 

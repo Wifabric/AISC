@@ -54,6 +54,9 @@ D-12–D-16 为连续实现/测试/PR/集成、统一 Preview。以下均单代�
 
 ## 流程与整合修正
 
+- [PR #95](https://github.com/Wifabric/AISC/pull/95)：head `55561c22f2cbc49d6c154f05d30d4effcb02fc7f`，base `9cc7020cd2d6f73e844da5a781e07af23aee6607`，合入 `c9b21cf2c56a968eb05903f56caabd2900737735`；[CI 42444336109](https://github.com/Wifabric/AISC/actions/runs/42444336109) frontend/rust/cli 三项成功，head 与合并树均为 `8890960e10b6c14070db7da06308e7ae0b0e9c45`。S11–S14 与统一候选整合；本地自动化、Preview.11 产物和 GUI 覆盖边界见 PROGRESS / DELIVERY / preview-gui。单代理自查，无独立评审，未代替用户验收。
+- [PR #96](https://github.com/Wifabric/AISC/pull/96)：head `70f6c84e344cdf1955353c6caa3543503e4184bf`，base `83dfa3f9683e95f46cd0bcc3b36ae27036410d7d`，合入 `63f15f299480ba1603b3341c0d8611538b35b780`。修正文档门禁的离线技能清单并集中记录 H3/H4/H7/H9 开发者续测；本地门禁 51 PASS、相对链接 19 处通过。路径未自动触发产品 CI，显式 [run 42455070124](https://github.com/Wifabric/AISC/actions/runs/42455070124) 精确 head 的 frontend/rust/cli 全部成功；合并树同为 `f5ef5a3fc2e11131bc4d89850030a46987757343`。单代理自查，无独立评审。产品与候选哈希不变，环境阻塞、真实认证、用户验收和发布仍未完成。
+
 - [PR #75](https://github.com/Wifabric/AISC/pull/75)：head 2816083e，合入 8502f7dd。纯文档/仓库 Skill；格式、105 个本地文件链接及差异检查 PASS，产品 CI 按路径未触发，不记远端 CI PASS。
 - [PR #76](https://github.com/Wifabric/AISC/pull/76)：head be39b2a9，base 8502f7dd，合入 41d046d9。本地 Python 1791/适配器 87、真实资源链与 bundle 验证 PASS；路径未自动触发 CI，显式 dispatch [run 42411011239](https://github.com/Wifabric/AISC/actions/runs/42411011239)，frontend/rust/cli 三项成功后集成。
 - 两项均单代理自查，无独立评审；用户验收、main/final 发布仍待完成。
