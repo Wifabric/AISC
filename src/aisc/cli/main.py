@@ -782,13 +782,13 @@ def _build_parser() -> _AiscArgumentParser:
     _add_global_args(topicp, is_subparser=True)
     topicsub = topicp.add_subparsers(dest="topic_command", required=True,
                                      parser_class=_AiscArgumentParser)
-    for operation in ("list", "create", "show", "prepare", "check", "activate", "deactivate", "sync", "personal-list", "personal-save"):
+    for operation in ("list", "create", "show", "prepare", "check", "activate", "deactivate", "sync", "personal-list", "personal-save", "bind-session", "session-action"):
         tp = topicsub.add_parser(operation, allow_abbrev=False)
         _add_global_args(tp, is_subparser=True)
         tp.add_argument("--workspace", required=True)
-        if operation == "personal-save":
-            tp.add_argument("--input-json", choices=("-",), required=True, help="Read personal capability JSON from stdin")
-        if operation in {"show", "prepare", "check", "activate"}:
+        if operation in {"personal-save", "bind-session", "session-action"}:
+            tp.add_argument("--input-json", choices=("-",), required=True, help="Read form JSON from stdin")
+        if operation in {"show", "prepare", "check", "activate", "bind-session", "session-action"}:
             tp.add_argument("--id", required=True)
         if operation == "create":
             tp.add_argument("--title", default="")

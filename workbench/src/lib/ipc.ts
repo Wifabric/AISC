@@ -1145,13 +1145,15 @@ export interface TopicCheck {
 }
 export interface TopicCallParams {
   workspace: string;
-  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync" | "personal-list" | "personal-save";
+  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync" | "personal-list" | "personal-save" | "bind-session" | "session-action";
   id?: string;
   title?: string;
   text?: string;
   sources?: string[];
-  action?: TopicAction;
+  action?: TopicAction | "stop" | "retry";
   personal?: PersonalCapabilityDraft;
+  sessionId?: string;
+  agent?: "claude" | "codex";
 }
 export interface PersonalTemplate { id: string; name: string; description: string; rules: string; skill: string }
 export interface PersonalRevision {

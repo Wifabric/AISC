@@ -194,7 +194,7 @@ def create_topic(root: Path, title: str, text: str, sources: list[str]) -> dict:
                  "状态：起步草稿；尚未进行实际任务或效果验证。\n\n"
                  f"## 目标与当前条件（用户填写）\n\n{goal_quote}\n\n"
                  "## 第一次实践\n\n"
-                 "将本主题设为新对话主题，打开 Claude 或 Codex，直接在正常对话中交流。"
+                 "从本主题入口打开 Claude 或 Codex，直接在主题对话中交流。"
                  "先完成一个符合当前条件的具体成果，再根据实际使用情况完善本手册。\n\n"
                  "## 当前有效做法\n\n尚无经过本主题实践验证的方法。\n\n"
                  "## 卡点与修正\n\n尚未收到实践反馈。\n\n"
@@ -204,7 +204,7 @@ def create_topic(root: Path, title: str, text: str, sources: list[str]) -> dict:
         records.local(topic, "TOPIC_GUIDE.md").write_text(guide, encoding="utf-8", newline="\n")
         state = (f"# {title} · 续作状态\n\n"
                  "- 当前状态：主题已创建，AI 尚未开始实践。\n"
-                 "- 下一步：启用本主题后新开 AI 对话，直接说任务、疑问和反馈。\n"
+                 "- 下一步：从本主题入口新开 AI 对话，直接说任务、疑问和反馈。\n"
                  "- 未验证：尚无实际产物、使用或效果验证。\n"
                  "- 沟通记录覆盖：平台创建表单；关联会话的对外文本由平台自动同步，实践与修订由 Agent 记录。\n"
                  f"- 目标与来源：{', '.join(known)}。\n"
@@ -378,6 +378,16 @@ def execute(operation: str, workspace: str, **params) -> dict:
             if operation == "personal-list":
                 return personal_capabilities.catalog(root)
             return personal_capabilities.save(root, params.get("personal", {}))
+        if operation in {"bind-session", "session-action"}:
+            from aisc.application import topic_conversation
+            if operation == "session-action":
+                return topic_conversation.session_action(root, params.get("id", ""),
+                    params.get("session_id", ""), params.get("action", ""))
+            result = topic_conversation.prepare_session(workspace, params.get("session_id", ""),
+                params.get("agent", ""), params.get("id", ""))
+            if not result:
+                raise ValueError("A topic conversation requires Claude or Codex")
+            return {"topic_id": result["topic_id"], "session_id": result["session_id"]}
         if operation in {"activate", "deactivate", "sync"}:
             from aisc.application import topic_conversation
             if operation == "activate":

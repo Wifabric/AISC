@@ -1267,6 +1267,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     const agent = findLeaf(tab.tree, paneId)?.sessionType;
     if (!agent || !runtimeId.value) return;
     const sid = uuid();
+    const startingWorkspace = workspace.value.trim();
+    const startingRuntime = runtimeId.value;
     p.sessionId = sid;
     p.sessionState = "starting";
     p.exit = null;
@@ -1310,11 +1312,17 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       }
     };
     try {
+      if (p.topicId && (agent === "claude" || agent === "codex")) {
+        await ipc.topicCall({ workspace: startingWorkspace, operation: "bind-session",
+          id: p.topicId, sessionId: sid, agent });
+        if (p.sessionId !== sid || !tab.panes[paneId] || workspace.value.trim() !== startingWorkspace
+          || runtimeId.value !== startingRuntime || !tabs.value.includes(tab)) return;
+      }
       await ipc.openSession(
-        runtimeId.value,
+        startingRuntime,
         sid,
         agent,
-        workspace.value.trim(),
+        startingWorkspace,
         ch,
         resumeConversationId ?? null,
         forkSession,
@@ -1512,12 +1520,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     resumeConversationId?: string | null,
     forkSession = false,
     collectionId?: string | null,
+    topic?: { id: string; title: string; prompt: string },
   ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
     const createdPane = activePane(tabs.value[tabs.value.length - 1]);
+    if (topic) Object.assign(createdPane, { topicId: topic.id, topicTitle: topic.title, openingPrompt: topic.prompt });
     if (resumeConversationId) {
       createdPane.resumeConversationId = resumeConversationId;
       createdPane.resumeForkSession = forkSession;

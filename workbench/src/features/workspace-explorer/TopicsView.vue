@@ -11,6 +11,12 @@ const { t } = useI18n();
 const runtime = useRuntimeStore();
 const store = useTopicsStore();
 const showNew = ref(false);
+const entry = ref<"home" | "preferences" | "topics">("home");
+const firstAgent = ref<"claude" | "codex">("claude");
+const moreSections = ref(false);
+const related = computed(() => store.conversationStatus.filter(s => s.topic_id === store.detail?.id));
+const goalText = computed(() => store.detail?.events.find(e => e.data.coverage === "主题创建表单")?.data.text as string | undefined);
+const sectionLabel = (key: string) => ({ guide: "总结与手册", files: "成果文件", records: "对话与过程", iterations: "修订历史", state: "详细进度" }[key] ?? key);
 const title = ref("");
 const goal = ref("");
 const sources = ref("");
@@ -45,6 +51,7 @@ watch(() => store.detail?.id, (id) => {
   selectedSession.value = "";
   section.value = "guide";
   if (id && id !== draftTopicId) {
+    entry.value = "topics";
     feedback.value = "";
     action.value = "continue";
     draftTopicId = id;
@@ -64,6 +71,7 @@ async function createTopic(): Promise<void> {
   if (success) {
     showNew.value = false;
     title.value = ""; goal.value = ""; sources.value = "";
+    await store.startConversation(firstAgent.value);
   }
 }
 async function prepare(): Promise<void> {
@@ -73,11 +81,18 @@ async function prepare(): Promise<void> {
 
 <template>
   <div class="topics-view" data-testid="topics-view">
-    <PersonalCapabilitiesPanel />
-    <h2>主题工作坊</h2>
-    <p class="topic-intro">{{ t("topics.intro") }}</p>
+    <h2>个人能力与主题</h2>
+    <p>你想让 AI 更符合你的习惯，还是围绕一件事持续推进？两者可以独立使用。</p>
+    <nav class="entry-choices" aria-label="选择使用方式">
+      <button class="topic-card" :aria-pressed="entry === 'preferences'" @click="entry = 'preferences'"><strong>设置我的回答偏好</strong><span>例如先给结论、回答简洁。用于新对话，不会自动关联主题。</span></button>
+      <button class="topic-card" :aria-pressed="entry === 'topics'" @click="entry = 'topics'"><strong>围绕一个主题持续做事</strong><span>例如学习 Python、制作短视频。集中保存相关对话和成果。</span></button>
+    </nav>
+    <PersonalCapabilitiesPanel v-show="entry === 'preferences'" />
+    <template v-if="entry === 'topics'">
+    <h2>我的主题</h2>
+    <p class="topic-intro">选一个已有主题继续，或创建新主题。只有从这里开始的对话才会关联主题。</p>
     <p v-if="store.error" class="topic-error" role="alert">{{ store.error }}</p>
-    <p v-for="warning in store.warnings" :key="warning" class="topic-note">{{ warning }}</p>
+    <details v-if="store.warnings.length"><summary>部分主题需要检查</summary><p v-for="warning in store.warnings" :key="warning">{{ warning }}</p></details>
     <p v-if="!runtime.workspace" class="topic-note">{{ t("topics.noWorkspace") }}</p>
     <template v-else>
       <div class="topic-toolbar">
@@ -90,7 +105,7 @@ async function prepare(): Promise<void> {
           class="topic-choice" :class="{ selected: store.detail?.id === topic.id }"
           :aria-pressed="store.detail?.id === topic.id" :disabled="store.busy || store.inserting"
           :data-testid="'topic-select-' + topic.id" @click="store.select(topic.id); showNew = false">
-          <span>{{ topic.title }}</span><small>{{ topic.relative_path }}</small>
+          <span>{{ topic.title }}</span>
         </button>
       </nav>
 
@@ -98,9 +113,10 @@ async function prepare(): Promise<void> {
         <strong>{{ t("topics.new") }}</strong>
         <label>{{ t("topics.name") }}<input v-model="title" required maxlength="120" data-testid="topic-title" :placeholder="t('topics.nameExample')" /></label>
         <label>{{ t("topics.goal") }}<textarea v-model="goal" required rows="4" maxlength="12000" data-testid="topic-goal" :placeholder="t('topics.goalExample')" /></label>
-        <label>{{ t("topics.sources") }}<textarea v-model="sources" rows="2" data-testid="topic-sources" :placeholder="t('topics.sourcesExample')" /></label>
-        <p class="topic-note">{{ t("topics.recordingNotice") }}</p>
-        <button type="submit" class="ui-button" data-testid="topic-create" :disabled="store.busy || store.inserting || !title.trim() || !goal.trim()">{{ t("topics.create") }}</button>
+        <details><summary>添加参考资料（可选）</summary><label>{{ t("topics.sources") }}<textarea v-model="sources" rows="2" data-testid="topic-sources" :placeholder="t('topics.sourcesExample')" /></label></details>
+        <label>用哪个 AI 开始<select v-model="firstAgent"><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
+        <p class="topic-note">创建后打开一段主题对话，开场问题由你检查后发送。其他新对话不受影响。</p>
+        <button type="submit" class="ui-button" data-testid="topic-create" :disabled="store.busy || store.inserting || !title.trim() || !goal.trim()">创建并开始主题对话</button>
       </form>
 
       <template v-if="store.detail && !creating">
@@ -108,26 +124,28 @@ async function prepare(): Promise<void> {
         <aside class="topic-controls">
         <div class="topic-heading">
           <strong>{{ store.detail.title }}</strong>
-          <small>{{ t("topics.skill") }} · {{ store.detail.skill_version }}</small>
+          <p v-if="goalText" class="goal-text">{{ goalText }}</p>
         </div>
-        <p v-for="warning in store.detail.warnings" :key="warning" class="topic-note">{{ warning }}</p>
+
         <div class="topic-card topic-form" data-testid="topic-conversation-mode">
-          <strong>{{ t('topics.chatNormally') }}</strong>
-          <p class="topic-note">{{ t('topics.conversationHelp') }}</p>
-          <p v-if="store.activeTopic?.id === store.detail.id" class="topic-success">{{ t('topics.modeEnabled') }}</p>
-          <button v-else type="button" class="ui-button" :disabled="store.busy" data-testid="topic-enable" @click="store.enableConversation()">{{ t('topics.enableConversation') }}</button>
+          <strong>继续做这件事</strong>
+          <p>从这里新开的对话只属于“{{ store.detail.title }}”。也可以在下方返回已有对话。</p>
           <div class="topic-toolbar">
-            <button type="button" class="ui-button sm" :disabled="store.busy" data-testid="topic-chat-claude" @click="store.startConversation('claude')">{{ t('topics.chatAgent', { agent: 'Claude' }) }}</button>
-            <button type="button" class="ui-button sm" :disabled="store.busy" data-testid="topic-chat-codex" @click="store.startConversation('codex')">{{ t('topics.chatAgent', { agent: 'Codex' }) }}</button>
+            <button type="button" class="ui-button" :disabled="store.busy" data-testid="topic-chat-claude" @click="store.startConversation('claude')">用 Claude 新开主题对话</button>
+            <button type="button" class="ui-button" :disabled="store.busy" data-testid="topic-chat-codex" @click="store.startConversation('codex')">用 Codex 新开主题对话</button>
           </div>
-          <p v-for="item in store.conversationStatus.filter(s => s.topic_id === store.detail?.id)" :key="item.session_id" class="topic-note">
-            {{ item.agent }} · {{ t('topics.captureState.' + item.state) }} · {{ t('topics.captured', { count: item.captured }) }}
-            <span v-if="item.guide_pending"> · {{ t('topics.guidePending') }}</span>
-          </p>
-          <p v-if="store.syncError" class="topic-error" role="alert">{{ store.syncError }}</p>
+          <strong>相关对话</strong>
+          <p v-if="!related.length">还没有主题对话。点击上方按钮开始。</p>
+          <div v-for="(item, index) in related" :key="item.session_id" class="related-session">
+            <span>{{ item.agent === 'claude' ? 'Claude' : 'Codex' }} 对话 {{ index + 1 }} · {{ item.state === 'error' ? '同步需处理，历史保留' : item.state === 'completed' ? '记录已停止' : item.captured ? '记录已保存' : '等待对话记录' }}</span>
+            <button v-if="store.sessions.some(s => s.sessionId === item.session_id)" class="ui-button sm" @click="store.resumeSession(item.session_id)">返回对话</button>
+            <small v-else>当前未打开；可从工作记录查看或继续原会话。</small>
+          </div>
         </div>
         <details class="topic-card" data-testid="topic-advanced">
-          <summary>{{ t('topics.optionalActions') }}</summary>
+          <summary>更多：整理、历史与诊断</summary>
+          <p>记录保存不代表总结已经整理。需要更新总结时，在下方选择“整理主题手册”，准备后交给 AI。</p>
+          <details v-if="store.syncError || store.syncWarnings.length || store.detail.warnings.length"><summary>同步诊断</summary><pre>{{ store.syncError }}</pre><p v-for="warning in [...store.detail.warnings, ...store.syncWarnings]" :key="warning">{{ warning }}</p></details>
         <form class="topic-card topic-form" data-testid="topic-action-form" @submit.prevent="prepare">
           <label>{{ t("topics.action") }}
             <select v-model="action" data-testid="topic-action"><option v-for="item in actions" :key="item" :value="item">{{ t('topics.action.' + item) }}</option></select>
@@ -160,14 +178,15 @@ async function prepare(): Promise<void> {
           <button type="button" class="ui-button" data-testid="topic-insert" :disabled="!selectedSession || store.busy || store.inserting || store.inserted" @click="store.insert(selectedSession)">{{ t("topics.insert") }}</button>
           <p v-if="store.inserted" class="topic-success" role="status">{{ t("topics.inserted") }}</p>
         </div>
-          <button v-if="store.activeTopic?.id === store.detail.id" type="button" class="ui-button sm" :disabled="store.busy" @click="store.disableConversation()">{{ t('topics.disableConversation') }}</button>
-          <p class="topic-note">{{ t('topics.switchScope') }}</p>
+
+          <p class="topic-note">新开普通对话请使用标签栏 ＋。停止记录入口在对应主题对话顶部的“更多”中。</p>
         </details>
 
         </aside>
         <div class="topic-reading">
         <div class="topic-sections" role="tablist" :aria-label="t('topics.contents')">
-          <button v-for="item in sections" :key="item" type="button" role="tab" :aria-selected="section === item" :class="{ active: section === item }" :data-testid="'topic-section-' + item" @click="section = item">{{ t('topics.section.' + item) }}</button>
+          <button v-for="item in (moreSections ? sections : sections.filter(s => ['guide', 'files'].includes(s)))" :key="item" type="button" role="tab" :aria-selected="section === item" :class="{ active: section === item }" :data-testid="'topic-section-' + item" @click="section = item">{{ sectionLabel(item) }}</button>
+          <button @click="moreSections = !moreSections">{{ moreSections ? "收起更多" : "更多记录" }}</button>
         </div>
         <div class="topic-content" role="tabpanel">
           <div v-if="section === 'iterations'" class="topic-toolbar topic-log-actions">
@@ -195,7 +214,7 @@ async function prepare(): Promise<void> {
             </article>
           </div>
         </div>
-        <div class="topic-card">
+        <details class="topic-card"><summary>检查记录完整性（进阶）</summary>
           <button type="button" class="ui-button sm" data-testid="topic-check" :disabled="store.busy" @click="store.check()">{{ t("topics.check") }}</button>
           <p class="topic-note">{{ t("topics.checkScope") }}</p>
           <div v-if="store.checkResult" role="status">
@@ -203,15 +222,23 @@ async function prepare(): Promise<void> {
             <p v-for="message in store.checkResult.errors" :key="message" class="topic-error">{{ message }}</p>
             <p v-for="message in store.checkResult.warnings" :key="message" class="topic-note">{{ message }}</p>
           </div>
-        </div>
+        </details>
         </div>
         </div>
       </template>
+    </template>
     </template>
   </div>
 </template>
 
 <style scoped>
+.entry-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+.entry-choices button { display:grid; gap:8px; text-align:left; color:var(--text); cursor:pointer; padding:20px; }
+.entry-choices button[aria-pressed=true] { border-color:var(--accent); }
+.entry-choices span { color:var(--text-muted); font-size:var(--font-xs); }
+.goal-text { white-space:pre-wrap; }
+.related-session { display:grid; gap:6px; border-top:1px solid var(--border); padding-top:8px; }
+
 .topics-view { container-type: inline-size; display: flex; flex-direction: column; gap: var(--space-3); padding: 24px clamp(16px, 3vw, 48px); overflow: auto; min-height: 0; }
 .topic-intro, .topic-note, .topic-error, .topic-success { margin: 0; font-size: var(--font-xs); line-height: 1.5; overflow-wrap: anywhere; }
 .topic-note, small { color: var(--text-muted); }
