@@ -218,3 +218,7 @@ S2 修后：适配器 87 passed / 11 subtests；完整 Python 1791 passed / 54 s
 ## 2026-11-08 H4/S9 取消后的临时 tag 回收
 
 Preview.6 完整无缓存 GUI 123.8 秒成功，其他 tag 与引用原镜像的停止容器保留。缓存第二次取消 9.8 秒终止，但发现临时 tag 残留；原候选取消清理不记 PASS。新增精确临时 tag 回收协议及 Windows 强制结束后的恢复处理。Python 关联 103 passed / 19 subtests（其中重建 27 项）、Rust 重建协议 2 passed；源码 CLI 实际回收该 QA 残留并核对其他资源未变。冻结 CLI 构建通过；修后候选 GUI、精确 head CI 待后续补记。单代理自查，无独立评审。详情见 [preview-gui](preview-gui.md)。
+
+## 2026-11-08 Preview.7 修后候选
+
+#91 精确 head 5414a099192da1372380426fa2006b0f58c28016 的 [CI 42429010839](https://github.com/Wifabric/AISC/actions/runs/42429010839) frontend/rust/cli 三项 success，合入 3b26609e7f0aef9f5eec449a91638c11eadb048e。重新冻结 CLI、NSIS 构建与四项产物哈希通过，About 版本实机核对通过。真实 GUI 缓存取消 9.5 秒、无缓存构建加受控临时 tag 后取消 27.5 秒均通过，原资源保留且临时 tag 清空；后者实际验证 Workbench 强杀后的回收，非手动事后清理。冻结 CLI 精确回收及幂等也通过。自然导出竞态未在修后重复撞中，不将受控测试写成自然复现；逐项边界见 [preview-gui](preview-gui.md)。

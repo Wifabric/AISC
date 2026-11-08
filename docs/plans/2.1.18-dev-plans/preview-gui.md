@@ -210,3 +210,15 @@ check_workrecords_preview6.py 与 Preview.5 保存后的记录对比：24 个集
 根因：Windows 强制终止 CLI/Docker 进程树，Python finally 可能未执行。修复由 build.start 传递本次唯一临时 tag，Workbench 等待子进程退出、事件排空后用独立 CLI 回收；严格限制保留命名空间和 32 位小写十六进制，只删除该 tag，不按镜像 ID、不强制、不扫描其他临时资源。清理仍持维护锁，失败保留原取消/失败状态并显示残留 tag 提示；操作锁直到清理完成才释放。
 
 保存原始残留证据后，新源码清理命令实际回收上述 QA tag，再次 inspect 证明所选/keep/停止容器不变。此项是源码 CLI 恢复验证，不能代替修后冻结候选 GUI。隔离工作区镜像恢复 keep，候选窗口正常关闭，原用户平台 PID 40320 保留。证据 gui-preview6-h4-cache-{completed-first,cancelled}.txt、h4-preview6-cache-command.json、h4-preview6-cache-cancel-build.log、h4-preview6-cancel-audit.json。修后 GUI/远程入口/最终用户验收仍待完成。
+
+## Preview.7 / H4/S9 修后取消与受控残留恢复
+
+PR #91 head 5414a099192da1372380426fa2006b0f58c28016 的 CI 42429010839 三项 success，合入 develop 3b26609e7f0aef9f5eec449a91638c11eadb048e。重新冻结 CLI、Workbench/NSIS 打包成功，完整 bundle 未变化。真实 About 显示 2.1.18-preview.7 / CLI/Bundle 0.1.10，四项产物大小/哈希核对 PASS；旧 Preview.6 保留历史备份。
+
+启动摘要选择同一专用 selected tag cd42b288…，取消默认无缓存勾选后启动，真实界面点击取消，9.5 秒显示“已取消”；日志证明此次在导出前取消，未生成临时 tag。selected/keep 62d358f2… 与原停止容器 f69201ad… 不变，无构建进程残留。此项覆盖缓存构建的正常取消与原资源保护，未重现自然导出阶段的精确竞态时间窗。
+
+为实际覆盖“临时 tag 已存在”的恢复分支，另一次真实无缓存构建启动后，从候选 CLI 的 Docker 子进程命令行读取本次唯一临时 tag e936ef3b…，确认尚不存在，再将已知 QA keep 镜像临时加此 tag，模拟中断时残留。未改产品代码、CLI 或 Docker 执行器，也没有替换 selected。通过真实界面的取消按钮终止，27.5 秒显示“已取消”；Workbench 的恢复处理移除了此精确 tag，keep 共享镜像、selected 和停止容器均保留，三项构建进程全部结束。没有在取消后手动清理该 tag。该项为受控残留 GUI 测试，不冒充自然导出竞态复现。
+
+额外冻结 CLI 的真实 Docker 精确 tag 回收和重复调用（removed→absent）通过，共享镜像不受影响。check_h4_preview7.py 核对两次资源结果和四项候选哈希 PASS。证据 gui-preview7-h4-{cache,seeded}-cancelled.txt、gui-preview7-about.txt、h4-preview7-{seeded-residual,result}.json、h4-preview7-{cache,seeded}-cancel-build.log、frozen-cancel-cleanup.json。QA 镜像设置恢复 keep，候选正常退出，原用户平台保留。
+
+S9 已修复并完成上述实际回归；远程入口 GUI、自然导出竞态时间窗再次复现、清理失败的真实 GUI 仍未执行（拒绝/失败可见已有自动化测试）。不将本条扩大为完整 H4、整版用户验收或发布批准。

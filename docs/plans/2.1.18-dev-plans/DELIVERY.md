@@ -1,6 +1,6 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83/#85/#87 已合入。当前产品集成提交 `5677a6e67fd12283577d1efe73d5365092112dfd`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
+2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83/#85/#87/#91 已合入。当前产品集成提交 `3b26609e7f0aef9f5eec449a91638c11eadb048e`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
 
 ## 变更说明
 
@@ -21,25 +21,25 @@
 | --- | --- |
 | 隔离候选启动脚本 | `D:\AISC\p18\start-candidate.ps1` |
 | 完整可运行目录 | `D:\AISC\p18\candidate` |
-| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.6_x64-setup.exe` |
+| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.7_x64-setup.exe` |
 | 源码、哈希与状态清单 | `D:\AISC\p18\candidate-manifest.json` |
 | 详细测试日志 | `D:\AISC\output\preview-2.1.18-20261108\output\verification` |
 
 PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选。数据根为 `D:\AISC\p18\qa-data`，WebView 数据也独立；原平台安装和原工作区未替换。每轮检查后正常退出独立候选，原平台进程保留。QA 工作区与证据保留；QA-A 科研模块、QA-C 混合定义及历史保留供继续复测，QA-B 已验证删除定义不删资产。选择隔离工作区完成 HANDTEST，避免把原工作区当测试数据。
 
-本地 Workbench 版本覆盖为 `2.1.18-preview.6`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
+本地 Workbench 版本覆盖为 `2.1.18-preview.7`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
 
-候选产品源码为 PR #87 head `195ff2b6d42e628d36be97180c7e2ff0079ef9b7`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
+候选产品源码为 PR #91 head `5414a099192da1372380426fa2006b0f58c28016`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
 
 | 文件 | SHA256 |
 | --- | --- |
-| workbench.exe | `68bc43c81a3e70069588eaef2f346149504fcbdbd44ef1c31c6fad38e4eee5f1` |
-| aisc.exe | `ded9ed26f029afb00350e8fa67354cf93cd08e89fa7028e248ea06d5eedc2eaf` |
-| setup.exe | `de38de6ccdf92e160a51555ae311c3b6534d50dd39cb21e2cfb1583c1430c6e7` |
+| workbench.exe | `d70df77794d583a66e35b7b89007bc5d6ac57362ccd2439f1eb033c30d67a1d5` |
+| aisc.exe | `e000a775ae16a446330b45cf22373f24b63c00088e228021701435920a84daf1` |
+| setup.exe | `31a6615e153803083d9dde6d7fc95d3afe5039c41b1a17df1d201ca67b86dda5` |
 
 ## 验证结果
 
-- 最终 Python：1796 passed、54 skipped、207 subtests；基础镜像/重建定向 52 passed，既有适配器定向 87 passed。前端最后一次完整本地门禁 882 passed，最终受影响定向 48 passed，类型/生产构建通过；Rust 最近产品批次 420 passed、2 ignored。
+- 最近完整本地 Python（S6 时）：1796 passed、54 skipped、207 subtests；基础镜像/重建定向 52 passed，既有适配器定向 87 passed。前端最后一次完整本地门禁 882 passed，最终受影响定向 48 passed，类型/生产构建通过；Rust 最近产品批次 420 passed、2 ignored。
 - 整合 PR #76 精确 head 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42411011239) frontend/rust/cli 全部 success。b3–b10 的 PR/CI/merge 逐项见 [PR_INTAKE](PR_INTAKE.md)。纯文档 PR #75 未触发产品 CI，Skill 格式和 105 个本地链接校验通过。
 - 完整 bundle 初次校验发现过期/遗漏 checksum，修正后 1534 项覆盖及完整校验通过。NSIS 初次因长路径失败，使用本地短路径引用同一资源后，含最终修正的 Windows 安装包构建通过。
 - 候选冻结 CLI + 实际打包资源：模块应用/卸载、合成双引擎认证配置及真实客户端读取、grill-me 详情通过。补充科研详情实际读取和四项提案成员 installed→removed 通过。该轮自建 QA 容器均已清理；后续 H4 的专用停止容器和镜像保留供继续复测。
@@ -54,6 +54,8 @@ Preview.5 补充：#85 [CI](https://github.com/Wifabric/AISC/actions/runs/424207
 Preview.6 补充：#87 [CI](https://github.com/Wifabric/AISC/actions/runs/42425026074) 三项 success 后合入。修正短窗口编辑器底部保存时看不到上方错误的问题，模块相关 13 项、类型/生产构建通过；384429548 字节 NSIS 与独立 Workbench 已生成。CLI/bundle 未变，Preview.5 留作历史。双窗口冲突保护、明确重新读取后保存和目标容器离线保存已在 Preview.5 通过；Preview.6 实机重复空名称提示、冲突自动可见、草稿保留与显式恢复保存通过，磁盘核对外部修改没有被覆盖。H2 追加侧栏滚动和实际缩窄后菜单关闭、数据不变通过；About 显示 Preview.6 / CLI/Bundle 0.1.10。完整覆盖与未测边界见 [统一候选复测](preview-gui.md)。
 
 H9 后续实机补测：隔离目标断网时返回带说明的搜索缓存，技能详情明确失败并提供来源/重试。恢复网络后首次重试仍失败，确认实际连通后再次重试成功；固定提交来源、普通查询切换和摘要缓存通过，1,545 个技能文件哈希保持不变。网络恢复完毕。跨工作区和真实迟到响应 GUI 仍未完成；精确结果见 [统一候选复测](preview-gui.md)。本轮只有验证文档变化，Preview.6 二进制与哈希不变。
+
+Preview.7 补充：#91 [CI](https://github.com/Wifabric/AISC/actions/runs/42429010839) 三项 success 后合入，修复 Windows 取消重建遗留临时 tag。关联 Python 103 / 19 subtests、Rust 协议 2 通过；CLI 与 Workbench 重新构建，384428294 字节 NSIS 完成，bundle 不变。真实 GUI 缓存取消 9.5 秒、无缓存构建受控残留取消 27.5 秒通过：临时 tag 回收，selected/其他 tag/停止容器保持不变。冻结 CLI 精确回收/幂等、About 版本与四项哈希核验通过；原候选已备份。Preview.6 的完整无缓存 GUI 123.8 秒成功仍按其版本记录，原取消泄漏不改写为 PASS；自然导出竞态未在修后重复撞中，完整边界见 [统一候选复测](preview-gui.md)。
 
 ## 次日集中处理
 
