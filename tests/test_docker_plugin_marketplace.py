@@ -15,7 +15,7 @@ class FactoryPluginMarketTests(unittest.TestCase):
         self.assertIn('"claude-plugins-official"', dockerfile)
         self.assertIn("anthropics/claude-plugins-official", dockerfile)
         self.assertIn(
-            "echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json",
+            "echo '{\"version\":2,\"plugins\":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json",
             dockerfile,
         )
         self.assertNotIn(
