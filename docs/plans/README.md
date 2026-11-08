@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 八条反馈 b1–b10、协作流程、D-17 三层能力及 S15 远程保护均已合入 develop（最新 PR #97）；当前本机候选 Preview.12。适用 CI、九组跨平台矩阵和 NSIS 自动安装验证通过；交互安装环境阻塞、本人认证、最终用户验收及发布条件分别见 PROGRESS / DELIVERY。
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — b1–b10、三层能力、协作流程及 S16 已由用户确认验收通过；正在准备 Workbench 2.1.18 / CLI 0.2.0 正式发布 PR。Windows Sandbox 已启用待重启，随后补交互安装；main 合并/发布尚未批准，见 release-readiness。
 
 ## Previous stages and intake
 
