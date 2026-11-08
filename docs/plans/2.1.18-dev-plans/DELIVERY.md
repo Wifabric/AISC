@@ -1,6 +1,16 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 已集中经英文整合 PR #95 合入 develop `c9b21cf2`。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；最终 Preview.11 已构建并完成重启回读，PR 最终 head 的三项 CI 已成功。开发者剩余验证、本人认证、用户验收和正式发布分别记账，不能概括为“只剩用户手测”。
+2026-11-08 当前交付为本机 **2.1.18-preview.12**，包含 b1–b10、协作流程/Skill、截图要求的三层能力及 S15 远程不覆盖修复。实现和可独立执行的验证已经完成；仍有开发者环境阻塞及本人认证/验收/发布条件，不能概括为“只剩用户手测”。
+
+### S15 已集成：当前候选 Preview.12
+
+真实 SSH 续测发现远程同名改名会覆盖目标，已修复并重建统一候选。[PR #97](https://github.com/Wifabric/AISC/pull/97) 已合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`；最终 head `9f988fd7806d5dde850bab827f609330cd72779b` 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42460238475) 三项、[跨平台矩阵](https://github.com/Wifabric/AISC/actions/runs/42460237430) 九项均成功。Windows/Linux/macOS × Python 3.11/3.12/3.13 全部执行，修正测试环境后没有跳过失败项。单代理自查，不称独立评审。
+
+当前二进制对应 `813225cffc50dcddbf21220910ffbd88ab840b75`；后续提交只改既有测试、CI 和计划，产品树不变。[NSIS CI](https://github.com/Wifabric/AISC/actions/runs/42459492494) 在该产品提交完成真实静默安装、重装、PATH 与卸载数据保留验证。完整本地 Python 1833 passed / 58 skipped / 218 subtests，Rust 422 passed / 2 ignored，前端 893 passed；新增 Linux 11 项回归仅留本地，文档门禁 51 PASS。
+
+Preview.12 真实 GUI / SSH 已通过：同名冲突提示且两文件不变；文件/目录大小写改名；关闭、重入、刷新后精确名称和子文件保持；镜像仅替换选中旧 tag；远程重建入口明确禁用。专用 SSH/Docker 目标、导入镜像 tar 和临时私钥已清理，known_hosts 恢复原始哈希，原用户平台与容器保持运行。证据见 `output/verification/s15-merge.json`、`remote-qa/s15-final-data.json` 和 [preview-gui](preview-gui.md)。
+
+剩余条件分别记录：隔离 Windows 交互安装 GUI 仍缺可用桌面环境，属于开发者阻塞，不能移交为用户代测；真实 GitHub/提供者本人认证及模型效果、最终用户验收、收尾与公开发布未执行。反馈仓库权限再次核实为只读，草稿已更新但未发送、未关闭 F1–F8。自然慢网/导出竞态没有自然复现，已有受控故障覆盖，不能称自然场景 PASS。当前没有未合并的本版产品 PR，也没有把 TODO 标为整版完成。
 
 ### 截图要求对应结果
 
@@ -11,23 +21,27 @@
 
 旧 Preview.9 的产物和验证记录保留在下方，不能用于声称新增三层能力已经交付。新候选源码、构建和剩余 Preview 项见 PROGRESS。
 
-## 当前候选：Preview.11
+## 当前候选：Preview.12
 
-[唯一整合 PR #95](https://github.com/Wifabric/AISC/pull/95) 已合入 develop `c9b21cf2`，产品源码 `7edb677dba431b4fccb809b2034d073bd95ae664`，base develop `9cc7020c`。最终 head `55561c22` 的 [CI](https://github.com/Wifabric/AISC/actions/runs/42444336109) frontend/rust/cli 全部 success，合并树与已验证 head 相同；纯验收文档后续提交不改变下面二进制。
+- 源码：产品 `813225cffc50dcddbf21220910ffbd88ab840b75`；已验证 PR head `9f988fd7806d5dde850bab827f609330cd72779b`；合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`。后续测试/文档不改变二进制。
+- 启动：`D:\AISC\p18\start-candidate12.ps1`；完整目录 `D:\AISC\p18\candidate12`，沿用独立 QA 数据与 WebView 目录，原平台未替换。
+- 安装包：`D:\AISC\p18\AISC Workbench_2.1.18-preview.12_x64-setup.exe`。
+- 清单：`D:\AISC\p18\candidate12-manifest.json`；CLI/bundle `0.1.10`；镜像 `aisc-personal:preview11`（容器内容未变）。
+- Workbench SHA256：`e8b5982e172f452be8416fa55cb2338c25522c79ab7aa234c93ff426eebece68`。
+- CLI SHA256：`e66c2703a8882f7f581cd61a4da8f4a9d3df48e27f83ea0f4f18711871eaf057`。
+- 安装包 SHA256：`04c3d55892396f0822196a11712949fe040a9003faeeb8d51139b5c73dc1576c`。
 
-- 启动：`D:\AISC\p18\start-candidate11.ps1`；完整目录 `D:\AISC\p18\candidate11`。
-- 安装包：`D:\AISC\p18\AISC Workbench_2.1.18-preview.11_x64-setup.exe`。
-- 清单：`D:\AISC\p18\candidate11-manifest.json`；独立配置 `D:\AISC\p18\qa-data`。
-- 镜像：`aisc-personal:preview11`，ID `sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14`。
-- Workbench SHA256：`66910757da6ffd1b8067e5d1f5c0b9117374d20908d896976b710d249be8e600`。
-- CLI SHA256：`47b7536a330c005914e2ee7b2670e3ccd1fe6423f847f0b59aa5cc21dc8c7965`。
-- 安装包 SHA256：`8d1784ab8f59719f02007b7a5a20f9ff627707b4cd15c597055c85469245fd42`。
+Preview.11 的三层能力和 GUI 故障覆盖证据保留在 preview-gui；Preview.12 只改变远程 Explorer 改名保护及入口校验。真实冻结 CLI 协议验证冲突、内容保留和大小写成功；远程 GUI 重入验证通过。构建不是公开 Release，未创建 tag，未覆盖用户安装。
 
-本机版本覆盖为 Workbench `2.1.18-preview.11`；CLI/bundle `0.1.10`，未创建公开 tag/Release。真实 GUI 用该完整镜像重新打开 `ui-personal10`：新入口“个人能力与主题”、三模板、个人第 3 版和 16 项预装技能及 2 项科研在线技能均正常显示。个人登记文件 SHA256 在重启前后相同。用户原平台和工作区未替换。Windows 安装器构建通过不等于安装/升级 GUI 已验收；认证后的模型任务、SSH/其余 HANDTEST 边界和最终用户验收继续保留。
+## 待满足的交付条件
 
-本轮 Preview.11 追加开发者实测：镜像改名部分成功提示与重试、取消重建后的临时 tag 清理失败提示与恢复，以及两目标同时运行时插件安装/技能详情成功响应晚到的隔离均通过。测试故障仅施加于独立 QA 启动或临时容器，未修改产品二进制；临时插件、市场、镜像标签已清理，适配器已恢复，正常退出移除两套 QA runtime，用户原平台继续运行。四项候选哈希仍与清单一致。详细方法、失败尝试和覆盖边界见 [preview-gui](preview-gui.md)。
-
-当前剩余：隔离 Windows 中的安装/升级 GUI、SSH/远程路径及尚未自然复现的慢网/导出竞态属于开发者验证缺口；真实 GitHub/提供者本人认证、认证后的模型任务、整版用户验收及收尾发布批准另列。安装/远程环境不足不会被记作通过，也不移交为用户代测。最终版本号、发布回归、归档和反馈站回写仍未完成。
+| 条件 | 当前状态与责任 |
+| --- | --- |
+| Windows 交互安装/升级 GUI | NOT RUN；本机无 Windows Sandbox，Hyper-V 查询权限不足，不能运行会停止日常平台的安装器。开发者保留补测责任；CI 静默安装/重装/卸载保留已通过。 |
+| GitHub 与模型提供者本人认证、模型效果 | NOT RUN；不使用用户凭据代登录，不把合成配置/进程参数当真实认证或模型效果。本人认证后开发者继续支持排错。 |
+| 最终用户验收及收尾决定 | 尚未完成；未替用户批准，待条件满足后按 HANDTEST 统一验收。 |
+| 公开 Preview / main / final / 归档 | 尚未执行；按既有批准边界推进。发布说明、修复对应和实测证据已备于本文，不提前打勾或归档。 |
+| 反馈站回写 | 仓库权限仍只读；[回复草稿](feedback-replies-draft.md) 已更新，未发送，F1–F8 未置 resolved。取得权限后刷新原文与新回复再提交，final 后才写最终解决版本。 |
 
 ## 变更说明
 

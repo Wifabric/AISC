@@ -1,6 +1,18 @@
 # 2.1.18 PR intake
 
-## 当前整合：PR #95（2026-11-08）
+## 当前整合：PR #97（2026-11-08）
+
+### S15 已集成：当前候选 Preview.12
+
+真实 SSH 续测发现远程同名改名会覆盖目标，已修复并重建统一候选。[PR #97](https://github.com/Wifabric/AISC/pull/97) 已合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`；最终 head `9f988fd7806d5dde850bab827f609330cd72779b` 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42460238475) 三项、[跨平台矩阵](https://github.com/Wifabric/AISC/actions/runs/42460237430) 九项均成功。Windows/Linux/macOS × Python 3.11/3.12/3.13 全部执行，修正测试环境后没有跳过失败项。单代理自查，不称独立评审。
+
+当前二进制对应 `813225cffc50dcddbf21220910ffbd88ab840b75`；后续提交只改既有测试、CI 和计划，产品树不变。[NSIS CI](https://github.com/Wifabric/AISC/actions/runs/42459492494) 在该产品提交完成真实静默安装、重装、PATH 与卸载数据保留验证。完整本地 Python 1833 passed / 58 skipped / 218 subtests，Rust 422 passed / 2 ignored，前端 893 passed；新增 Linux 11 项回归仅留本地，文档门禁 51 PASS。
+
+Preview.12 真实 GUI / SSH 已通过：同名冲突提示且两文件不变；文件/目录大小写改名；关闭、重入、刷新后精确名称和子文件保持；镜像仅替换选中旧 tag；远程重建入口明确禁用。专用 SSH/Docker 目标、导入镜像 tar 和临时私钥已清理，known_hosts 恢复原始哈希，原用户平台与容器保持运行。证据见 `output/verification/s15-merge.json`、`remote-qa/s15-final-data.json` 和 [preview-gui](preview-gui.md)。
+
+剩余条件分别记录：隔离 Windows 交互安装 GUI 仍缺可用桌面环境，属于开发者阻塞，不能移交为用户代测；真实 GitHub/提供者本人认证及模型效果、最终用户验收、收尾与公开发布未执行。反馈仓库权限再次核实为只读，草稿已更新但未发送、未关闭 F1–F8。自然慢网/导出竞态没有自然复现，已有受控故障覆盖，不能称自然场景 PASS。当前没有未合并的本版产品 PR，也没有把 TODO 标为整版完成。
+
+## 前轮整合：PR #95（2026-11-08）
 
 - [PR #95](https://github.com/Wifabric/AISC/pull/95)，英文标题/说明；集中 S11 插件登记保护、S12 离线 16 项/保留用户编辑、S13 两个默认在线模块、S14 个人模板/迭代/会话注入，以及此前 Preview 记录。仅此一个收尾 PR。
 - base `9cc7020cd2d6f73e844da5a781e07af23aee6607`；产品 head `7edb677dba431b4fccb809b2034d073bd95ae664`。[Workbench CI 42443819350](https://github.com/Wifabric/AISC/actions/runs/42443819350) frontend/rust/cli 均 success。

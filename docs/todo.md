@@ -330,7 +330,7 @@
 - 发布
   - [x] `v2.1.17` / CLI `0.1.10` final 收口：PR #60/#61 合入，main `bf95ce0`；Workbench NSIS、CLI Artifact、正式 PyPI 与 NSIS 下载 SHA256 验证通过；preview Release 已清理
 
-# v2.1.18-target（2026-11-02，b1/b2 已实现，保留未测项）
+# v2.1.18-target（2026-11-08，b1–b10 与 D-17 已实现，保留未验收项）
 
 - [ ] S12 / D-17（已实现并开发者验证；待整版验收）：按最新截图补齐离线预装通用基础（caveman、grilling、Karpathy），来源固定、全新环境可用且保护已有用户内容。
 - [ ] S13 / D-17（已实现并开发者验证；待整版验收）：落地科研/开发首发模块四项，定义随平台提供、成员在线安装；取代此前 U-4 等待状态。
@@ -369,4 +369,4 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；后续 D-17 新增
 
 - [ ] 2.1.18 协作流程与开发 Skill：主开发者统一 Preview、小修正直接处理、贡献者自测后 PR 的文档及 Skill 已经 #75 合入，并用于本轮集成/统一候选；最终用户验收待完成，单代理自查不称独立评审；见 [team-workflow](plans/2.1.18-dev-plans/team-workflow.md)。
 
-2026-11-08 当前交付：本版实现、流程及 S11–S14 整合修正已进入 develop（#95 最终 head CI 三项通过）；本机 Preview.11 继续开发者验证，U-4 已落实。未验收 TODO 保持未勾选，开发者未测项/环境阻塞、本人认证、用户验收和发布边界分别见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。
+2026-11-08 当前交付：本版实现、流程及 S11–S15 已进入 develop（最新 #97，Workbench 三项、跨平台九项 CI 和 NSIS 自动安装验证通过）；本机统一候选 Preview.12，U-4 已落实，真实 SSH 改名与远程镜像维护已补测。未验收 TODO 保持未勾选，开发者交互安装环境阻塞、本人认证、用户验收和发布条件分别见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。

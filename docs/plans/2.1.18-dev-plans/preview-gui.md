@@ -365,3 +365,12 @@ H7：fresh8 注册一个只含插件元数据的本地 QA 市场，从真实 GUI
 正常退出并重新启动 Preview.12 后，通过最近工作区重新进入远端，刷新文件列表并展开 `FOLDER`，`AREA.txt`、`Occupied.txt` 与 `FOLDER/child.txt` 均保持精确名称；启动摘要中的远程重建入口也 disabled。证据 `gui-preview12-reopened.txt`、`gui-preview12-summary.txt`。
 
 独立 Windows runner 的 NSIS 安装、重装、卸载保留检查在 develop `1fad34f7` 的 [run 42456585925](https://github.com/Wifabric/AISC/actions/runs/42456585925) 全部成功，release job 跳过。这是 CI 重建安装包的自动安装验证，不是本机 Preview.12 交互式安装 GUI，也不能替代 S15 新 head 的 CI。真实本人认证、模型任务、最终用户验收及发布批准仍未执行。
+
+
+### S15 集成与验证环境复验
+
+PR #97 最终 head `9f988fd7806d5dde850bab827f609330cd72779b` 的 Workbench 三项和 Windows/Linux/macOS × Python 3.11/3.12/3.13 九项 CI 全部通过，合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`，合并树与已验证 head 相同。NSIS 产品提交 `813225cf` 的 run 42459492494 成功，真实静默安装/重装/卸载保留通过，release job 跳过。后续只有测试/CI/计划变化，Preview.12 二进制无需重建。
+
+首轮跨平台 CI 失败记录未抹去：Windows 测试以系统 cp1252 读取 UTF-8 Dockerfile，现改显式编码；watchdog 7.1 在 Windows 等待原生事件批量，固定 0.5 秒过短，现有测试改成五秒上限等待两个必要事件，旧版 6.0 和新版 7.1 的行为分别核查，新版相关 16 项通过。macOS 的 BSD cp 不支持 Linux entrypoint 使用的更新参数，CI 显式安装 GNU coreutils 后重跑，业务断言未删、失败项未跳过。证据 `s15-ci.json`、首轮 `s15-ci-*.log`、`s15-merge.json`。
+
+远程 QA 最终正常退出，内层 runtime 全部移除，独立外层目标及 QA 镜像清理，临时镜像 tar/私钥移除。OpenSSH 更新产生的该临时端点记录清理后 known_hosts 原始 SHA 完全恢复；用户平台 PID 40320 与容器 2e801ec161c0 保持运行。清理取证 `remote-qa/s15-final-data.json`。没有把安装 GUI、本人认证、模型效果或用户验收记为 PASS。

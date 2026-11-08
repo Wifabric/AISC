@@ -2,7 +2,17 @@
 
 ## 2026-11-08 当前执行状态（优先于下方历史记录）
 
-### D-17 实现与本机候选完成，继续统一验收
+### S15 已集成：当前候选 Preview.12
+
+真实 SSH 续测发现远程同名改名会覆盖目标，已修复并重建统一候选。[PR #97](https://github.com/Wifabric/AISC/pull/97) 已合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`；最终 head `9f988fd7806d5dde850bab827f609330cd72779b` 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42460238475) 三项、[跨平台矩阵](https://github.com/Wifabric/AISC/actions/runs/42460237430) 九项均成功。Windows/Linux/macOS × Python 3.11/3.12/3.13 全部执行，修正测试环境后没有跳过失败项。单代理自查，不称独立评审。
+
+当前二进制对应 `813225cffc50dcddbf21220910ffbd88ab840b75`；后续提交只改既有测试、CI 和计划，产品树不变。[NSIS CI](https://github.com/Wifabric/AISC/actions/runs/42459492494) 在该产品提交完成真实静默安装、重装、PATH 与卸载数据保留验证。完整本地 Python 1833 passed / 58 skipped / 218 subtests，Rust 422 passed / 2 ignored，前端 893 passed；新增 Linux 11 项回归仅留本地，文档门禁 51 PASS。
+
+Preview.12 真实 GUI / SSH 已通过：同名冲突提示且两文件不变；文件/目录大小写改名；关闭、重入、刷新后精确名称和子文件保持；镜像仅替换选中旧 tag；远程重建入口明确禁用。专用 SSH/Docker 目标、导入镜像 tar 和临时私钥已清理，known_hosts 恢复原始哈希，原用户平台与容器保持运行。证据见 `output/verification/s15-merge.json`、`remote-qa/s15-final-data.json` 和 [preview-gui](preview-gui.md)。
+
+剩余条件分别记录：隔离 Windows 交互安装 GUI 仍缺可用桌面环境，属于开发者阻塞，不能移交为用户代测；真实 GitHub/提供者本人认证及模型效果、最终用户验收、收尾与公开发布未执行。反馈仓库权限再次核实为只读，草稿已更新但未发送、未关闭 F1–F8。自然慢网/导出竞态没有自然复现，已有受控故障覆盖，不能称自然场景 PASS。当前没有未合并的本版产品 PR，也没有把 TODO 标为整版完成。
+
+### D-17 实现与候选沿革
 
 S12/S13/S14 已进入同一整合分支：补充固定来源的 grilling 和 Karpathy，启用科研/开发四项默认模块；新增个人模板、副本编辑、反馈/验证记录、历史恢复与工作区会话注入。工厂技能同步改为仅补缺失文件，删除未被 Dockerfile 使用的旧 Superpowers 离线载荷，避免在线模块随安装包带入。此处是新增实现，旧 Preview.9 不含它们。
 
@@ -10,9 +20,9 @@ S12/S13/S14 已进入同一整合分支：补充固定来源的 grilling 和 Kar
 
 Preview.10（本机，未公开发布）已构建完整镜像、桌面及安装包。新 QA 工作区 `ui-personal10` 的真实 GUI 显示 16 项预装技能、两个默认模块；科研模块两项从缺失到在线 installed 通过。个人模板副本保存第 1/2 版、从历史恢复为第 3 版通过，旧记录保留。GUI 新建 Claude 被提供者认证门拦下，未操作登录；实际冻结 CLI 另启两个测试会话，Claude PID 1047、Codex PID 1315 的生产注入参数包含 GUI 第 3 版快照，SHA-256 `d213f1c6f180ee9348139393a3543ac059f9740a7562259e7f38c8bbc7b07b2a`，两会话正常结束。模型任务 NOT RUN。
 
-实测后修正入口名称（个人能力与主题）和无锁补装提示。最终 Preview.11 已完成桌面/NSIS/完整镜像构建和真实 GUI 重启回读；PR #95 最终 head `55561c22` 的 CI 三项成功，已合入 develop `c9b21cf2`，合并树与已验证 head 相同。产品源码不再变化。证据位于 `output/verification/pr95-final-ci.json`、`pr95-merge.json`、`personal-linux.log`、`personal10-injection-native.json`、`personal10-codex-injection-native.json`、`gui-personal10-*.txt`。
+实测后修正入口名称（个人能力与主题）和无锁补装提示。最终 Preview.11 已完成桌面/NSIS/完整镜像构建和真实 GUI 重启回读；PR #95 最终 head `55561c22` 的 CI 三项成功，已合入 develop `c9b21cf2`，合并树与已验证 head 相同。该轮产品源码已固定；后续 S15 改动见上方当前状态。证据位于 `output/verification/pr95-final-ci.json`、`pr95-merge.json`、`personal-linux.log`、`personal10-injection-native.json`、`personal10-codex-injection-native.json`、`gui-personal10-*.txt`。
 
-b1–b10、协作流程/Skill #75 和整合修正 #76/#78/#79/#83/#85/#87/#91/#93/#95 均已合入 develop。本轮续测前核对远端 develop 为纯文档提交 `83dfa3f9`，产品整合提交仍为 `c9b21cf2`。当前本机候选为 **2.1.18-preview.11**，包含 S11–S14；唯一整合 PR #95 的最终提交精确 CI 已通过，不沿用 #93 证据。纯验证文档不改变二进制。产物/哈希见 [DELIVERY](DELIVERY.md)，各批精确提交与 CI 见 [PR_INTAKE](PR_INTAKE.md)。
+b1–b10、协作流程/Skill #75 和整合修正 #76/#78/#79/#83/#85/#87/#91/#93/#95 均已合入 develop。本轮续测前核对远端 develop 为纯文档提交 `83dfa3f9`，产品整合提交仍为 `c9b21cf2`。该轮本机候选为 **2.1.18-preview.11**（现已由上方 Preview.12 取代），包含 S11–S14；唯一整合 PR #95 的最终提交精确 CI 已通过，不沿用 #93 证据。纯验证文档不改变二进制。产物/哈希见 [DELIVERY](DELIVERY.md)，各批精确提交与 CI 见 [PR_INTAKE](PR_INTAKE.md)。
 
 U-1–U-4 均已确认；D-17 授权四项默认成员入版及个人能力初版。本轮单代理兼任开发与自查，没有独立评审。D-15/D-16 允许统一 Preview 和夜间继续独立工作，不替代用户验收或发布批准。
 
@@ -28,10 +38,10 @@ S11 已随 #95 合入：Preview.8 跨镜像启动已有 QA 工作区时，出厂
 
 | 项目 | 已执行真实界面证据 | 仍待完成或未单独实测 |
 | --- | --- | --- |
-| H1 / F1 | Preview.3 本机文件/目录大小写、刷新重入、冲突不覆盖、底部非法名称提示 | SSH；最终用户验收 |
+| H1 / F1 | Preview.3 本机文件/目录大小写、刷新重入、冲突不覆盖、底部非法名称提示 | Preview.12 SSH 已补齐；最终用户验收 |
 | H2 / F2 | Preview.5 键盘、上下/左右避让、菜单内部滚动及指定改名/移动；Preview.6 侧栏滚动/实际缩窄关闭且数据不变；Preview.11 右边缘主菜单翻转、子菜单左展、Escape 焦点恢复及记录不变 | 最终用户验收 |
-| H3 / F3 名称 | Preview.3 默认名/取消、指定旧 tag 改名、其他 tag 保留、非法/冲突/registry port；Preview.11 受控旧 tag 清理失败时明确报告部分成功，真实新旧 tag 均保留，解除故障后 GUI 重试只移除所选旧 tag | 远程场景；最终用户验收 |
-| H4 / F3 重建 | Preview.4 运行引用阻止、两入口缓存重建；Preview.6 完整无缓存 GUI 123.8 秒成功；Preview.7 缓存取消/受控残留取消回收通过（S9 已修）；Preview.11 受控取消清理失败时显示实际残留 tag，原镜像不变，解除故障后冻结 CLI 清理成功且重复清理安全 | 自然导出竞态时间窗未在修后重现；远程入口、最终验收未完成 |
+| H3 / F3 名称 | Preview.3 默认名/取消、指定旧 tag 改名、其他 tag 保留、非法/冲突/registry port；Preview.11 受控旧 tag 清理失败时明确报告部分成功，真实新旧 tag 均保留，解除故障后 GUI 重试只移除所选旧 tag | Preview.12 远程改名已补齐；最终用户验收 |
+| H4 / F3 重建 | Preview.4 运行引用阻止、两入口缓存重建；Preview.6 完整无缓存 GUI 123.8 秒成功；Preview.7 缓存取消/受控残留取消回收通过（S9 已修）；Preview.11 受控取消清理失败时显示实际残留 tag，原镜像不变，解除故障后冻结 CLI 清理成功且重复清理安全 | 自然导出竞态时间窗未在修后重现；Preview.12 远程入口禁用已补齐，最终验收未完成 |
 | H5 / F4 定义 | Preview.5 混合成员编辑、重启持久化、真实双窗口冲突与目标离线保存；Preview.6 错误可见与显式恢复；Preview.11 默认科研模块复制、隐藏、恢复，原定义及 272 项资产文件不变 | 最终用户验收，目标离线不代表整机断网 |
 | H6 / F4 执行 | Preview.5 只补缺项、当前项完成后停止/继续、视图切换保留终态、共享/预装/独占卸载、用户修改保护、删除定义不删资产；Preview.9 同窗跨目标预检/计划/记录隔离；Preview.11 MCP/插件保护、独占插件卸载、旧 adapter 缺少归属时保留；两运行目标存活时执行中切换，旧当前项完成、后续两项不派发，新目标记录和插件独立 | 最终用户验收 |
 | H7 / F5 | Preview.4 正常官方插件安装；Preview.7 真实操作锁 unknown 保护；Preview.8 新工厂首次安装/重启；Preview.9 受控原生超时、锁释放/明确重试、重试中正常关闭并同窗切换、重新启动后原生安装恢复；Preview.11 两目标同时运行时旧插件安装成功响应延迟交付，新目标无旧状态，切回原目标正确显示已安装 | 自然慢网场景未复现；最终用户验收 |
@@ -41,9 +51,9 @@ S11 已随 #95 合入：Preview.8 跨镜像启动已有 QA 工作区时，出厂
 
 ### 下一步与集中待批准事项
 
-- 继续处理上表可在隔离环境独立完成的实测。发现产品缺陷时修复、定向验证、精确 head CI、合入 develop，再更新统一候选。
+- 当前可独立执行的产品修复、自动化、容器/远程实测、PR 和 CI 已完成。等待隔离 Windows 桌面条件补交互安装验证；本人认证、最终用户验收和发布决定另列。出现新缺陷仍由开发者修复并复验，不要求用户代替开发者排错。
 - 默认清单已按 D-17 落地；本人真实认证、整版用户验收与收尾/发布批准集中留给用户。不合入 main 或发布公开 Preview/final。
-- 安装/升级 GUI 仍属开发者环境阻塞：直接运行安装器会处理日常 Workbench/容器；本机无 Windows Sandbox，Hyper-V 查询权限不足，暂无隔离 Windows 环境。SSH/远程实测缺少隔离目标。H3 部分失败、H4 清理失败及 H7/H9 两存活目标迟到响应已补齐受控 GUI 证据；自然慢网/导出竞态仍如实保留未复现。不能把开发者环境阻塞转写成用户验收任务。整版最终验证与版本归档尚未完成，本地 Preview.11 不等于公开版本。
+- 安装/升级 GUI 仍属开发者环境阻塞：直接运行安装器会处理日常 Workbench/容器；本机无 Windows Sandbox，Hyper-V 查询权限不足，暂无隔离 Windows 环境。SSH/远程已通过临时隔离目标完成，目标已清理。H3 部分失败、H4 清理失败及 H7/H9 两存活目标迟到响应已补齐受控 GUI 证据；自然慢网/导出竞态仍如实保留未复现。不能把开发者环境阻塞转写成用户验收任务。整版最终验证与版本归档尚未完成，本地 Preview.12 不等于公开版本。
 - 反馈站写权限不足，回复草稿未发送、F1–F8 未置 resolved；获得权限后先刷新反馈原文及新回复。
 
 ## 历史执行记录

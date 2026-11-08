@@ -184,7 +184,7 @@ Get-Content -LiteralPath (Join-Path $qaRoot 'Occupied.txt')
 
 ## 2026-11-08 统一候选入口
 
-当前本机构建、启动命令和哈希见 [DELIVERY](DELIVERY.md)。使用独立数据根与隔离工作区执行上述 H1–H10。开发者已执行范围及未测边界见 PROGRESS/preview-gui，不能把未测项一并交给用户；真实 GitHub 授权由用户本人完成。D-17 已确认并落地默认成员，Preview.11 可用于三层能力验收。
+当前本机构建、启动命令和哈希见 [DELIVERY](DELIVERY.md)。使用独立数据根与隔离工作区执行上述 H1–H10。开发者已执行范围及未测边界见 PROGRESS/preview-gui，不能把未测项一并交给用户；真实 GitHub 授权由用户本人完成。D-17 已确认并落地默认成员，Preview.12 包含三层能力及远程不覆盖修复，可用于统一验收。
 
 ## H11 / S12–S14：截图三层能力
 

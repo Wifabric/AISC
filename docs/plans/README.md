@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 原八条反馈 b1–b10、协作流程与 D-17 三层能力均已合入 develop（整合 PR #95）；本地统一候选 Preview.11。继续开发者验证与整版验收，环境阻塞、本人认证及发布边界分别见 PROGRESS。
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 八条反馈 b1–b10、协作流程、D-17 三层能力及 S15 远程保护均已合入 develop（最新 PR #97）；当前本机候选 Preview.12。适用 CI、九组跨平台矩阵和 NSIS 自动安装验证通过；交互安装环境阻塞、本人认证、最终用户验收及发布条件分别见 PROGRESS / DELIVERY。
 
 ## Previous stages and intake
 
