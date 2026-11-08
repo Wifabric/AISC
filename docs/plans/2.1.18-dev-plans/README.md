@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-最新增补为用户已确认的 [S16 个人能力与主题体验修正](s16-topic-experience.md)。前轮手测由用户报告通过；S16 开发和本地回归完成，正在完成统一 Preview.13 与开发者实机验证。以下 Preview.12 的实施状态保留作历史，最终交付以 DELIVERY 最新记录为准。
+当前候选为 **Preview.13**：[S16 个人能力与主题体验修正](s16-topic-experience.md) 已实现、验证并通过 #98 合入 develop。用户前轮手测报告通过，新改动按 [定向验收步骤](preview13-acceptance.md) 补验。以下 Preview.12 为历史，最新证据见 DELIVERY。
 
 ## 当前增补范围（D-17，2026-11-08）
 

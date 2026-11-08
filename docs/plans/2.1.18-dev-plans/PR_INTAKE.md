@@ -1,6 +1,26 @@
 # 2.1.18 PR intake
 
-## 当前整合：PR #97（2026-11-08）
+## 当前增补交付：Preview.13 / S16
+
+用户报告前一轮要求手测的项目全部通过；此处作为用户反馈记录，不改写历史开发者 NOT RUN。用户随后确认个人能力与主题体验方案。本批产品已完成并经 [PR #98](https://github.com/Wifabric/AISC/pull/98) 合入 develop `61db0b6fb5be291ea01945b10f306f7d5ca72495`；候选产品提交 `53bbe0e54a855664365cd579b2cb64b4d8e48022`，合并树与该提交完全相同。只有自查，不称独立评审。新版用户验收仍待进行。
+
+普通新 Claude/Codex 不再继承最后主题；只有主题入口显式绑定新对话。回答偏好独立启停。顶栏只显示当前主题会话的简短状态，重复异常去重并暂停无效同步；可关闭、重试、停止采集。新手双入口、精简偏好表单、名称/目标/引擎创建主题、可编辑且不自动发送的开场草稿，以及目标/继续/成果入口已实现。旧主题、能力版本和记录保留，旧全局默认停用。
+
+本地 Python 1843 passed / 74 skipped / 218 subtests；Rust 422 passed / 2 ignored；前端 901 passed；类型与生产构建 PASS。新增 18 项回归按既有约定留本地。[精确 head Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42491875792) 三项、[跨平台 Python CI](https://github.com/Wifabric/AISC/actions/runs/42491877982) 九项、[Windows NSIS 与静默安装/重装/PATH/卸载保留](https://github.com/Wifabric/AISC/actions/runs/42491880924) 全部成功，公开发布 job 跳过。
+
+冻结 CLI 与真实 Claude/Codex 原生进程参数验证 A/B/普通会话隔离及偏好独立注入。候选真实 GUI 验证双入口、无需进阶字段保存第 1 版、主题创建和开场草稿、普通对话无主题条、目标/成果页、窄窗口及正常关闭重开后的偏好与主题保留；关于页为 Preview.13。未操作登录或发送模型任务，不把进程参数称为模型回答效果通过。详见 [S16](s16-topic-experience.md) 和 [本轮验收步骤](preview13-acceptance.md)。
+
+旧隔离 Windows 交互安装 GUI 环境缺口和反馈站只读权限仍单列保留，不能移交为用户代测。此批不包含 main/final 公开发布。
+
+### S16 合并后最终核对
+
+develop `61db0b6fb5be291ea01945b10f306f7d5ca72495` 的 [Workbench 三项](https://github.com/Wifabric/AISC/actions/runs/42493462413)、[三平台 CLI sidecar](https://github.com/Wifabric/AISC/actions/runs/42493462405)、[Linux deb / macOS dmg](https://github.com/Wifabric/AISC/actions/runs/42493462599)、[Windows NSIS 和静默安装/重装/PATH/卸载保留](https://github.com/Wifabric/AISC/actions/runs/42493462417) 全部成功，公开发布 job 跳过。合并树等于 Preview.13 的产品源码，后续仅交付账本文档，不改变二进制。仓库 open PR 为 0。本批只有产品 PR #98，纯文档收尾依 WIKI §1.2.2 直接落 develop。
+
+文档一致性门禁 51 PASS / 0 warnings / 0 failures，10 份变更文档的 99 个相对链接无缺失，差异空白检查与启动脚本语法通过。测试客户端和测试容器已正常退出/清理；原 Preview.12 PID 1860 与原容器 `aisc-wb-8426e721` 保留。用户补验入口见 [Preview.13 验收](preview13-acceptance.md)，此前环境/权限依赖仍按上文保留。
+
+合并前按全部 open PR 查询完成 1 页，只有 #98、非草稿，base develop `dbfff203`，head `53bbe0e5`。本批无父子 PR 依赖；实现、自查和修正责任均为当前开发助手。合并前核实适用 CI、实际 base/head 与 mergeable；merge 方式集成，合并树等于测试树。证据 `s16-open-prs.json`、`s16-merge.json`。流程状态为已集成、候选验证完成，用户新验收待进行。
+
+## 历史整合：PR #97（2026-11-08）
 
 ### S15 已集成：当前候选 Preview.12
 
