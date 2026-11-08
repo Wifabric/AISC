@@ -236,3 +236,7 @@ S10 本地完整门禁：Python 1812 passed / 54 skipped / 212 subtests；Rust 4
 ## 2026-11-08 Preview.8 完整资源候选
 
 #93 精确 head 43f59340 的 [CI 42432013590](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success，合入 e5c17c3eb7eb13bebf2a42db0556caea92b77633。新镜像 factory v2 和最终 adapter 哈希通过；首轮 Preview.8 GUI 在全新工作区无手工修补安装成功，其他两工作区登记不变。剔除 QA 临时文件后重新完整校验与打包，最终标准候选重启显示安装版本、About 版本正确，四项产物哈希通过。首次 GUI 与最终标准二进制哈希分别记录，完整边界见 [preview-gui](preview-gui.md)。
+
+## 2026-11-08 Preview.9 H7/H10 超时与恢复
+
+标准 Preview.9 / S11 完整镜像，在专用空工作区仅延迟选定原生安装调用 195 秒，产品原有 180 秒超时未改。真实界面安装按钮禁用、单次调用持锁；超时后进程消失、锁释放、列表为空，明确提示未安装并提供重试。重试延迟改为 35 秒，在进程仍运行时由真实界面正常关闭工作区并切到 fresh8，旧状态未带入，三个已有工作区登记不变。重新打开原工作区的新容器无夹具、原生安装器哈希恢复一致，真实安装成功并回读版本 1.2.3-c55ee46073ed。三次 QA runtime 正常移除，候选四项哈希与原用户平台核对通过。证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json 和对应 gui 文本；详见 [preview-gui](preview-gui.md)。此为受控超时与关闭切换，不代表自然慢网或模块执行中切换；本轮没有产品代码变化，不新增 PR。

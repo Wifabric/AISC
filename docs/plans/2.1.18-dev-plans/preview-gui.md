@@ -282,3 +282,15 @@ CLI 测试使用显式容器名 stop 后，实际 QA 工作区仍留有一条属
 主 QA 工作区对 QA-A 生成计划 a91f29c7：research/arXiv 保留，OpenAlex 缺失；未点击确认执行。正常关闭工作区后，在同一窗口切到 ui-workspace-fresh8，并通过启动设置选同一完整 S11 镜像；新容器 36f66d47579a / runtime a13da003-477c-4c36-ab13-22ef6294e809。相同用户的两份模块定义可见，旧待确认计划未带入；操作记录显示历史结果区但无前一目标的步骤。新预检生成计划 3989cf79，三项均按该目标的实际快照列为缺失。不能因插件内可能包含同名能力，就把它记作已安装的同来源独立技能。
 
 两计划 ID、容器和 runtime 各自独立，所有行仍为 planned；主目标动作为 retain/retain/install，第二目标为 install/install/install。两侧指定的 18 个技能路径存在性/哈希、插件登记及模块定义前后匹配，未隐式安装或卸载。About 显示 2.1.18-preview.9 / CLI 与 Bundle 0.1.10，最终四项产物哈希匹配；正常退出后两个 QA 容器均结束，原平台仍运行。证据 gui-preview9-isolation-{primary-plan,fresh-before-plan,fresh-history,fresh-plan}.txt、target-isolation-{primary-plan,fresh-plan,final}.json、preview9-isolation-result.json、gui-preview9-about.txt。本项只覆盖跨目标预检/计划/记录隔离，不包含安装执行中切换。
+
+### H7/H10 受控原生超时、安装中关闭切换与恢复
+
+标准 Preview.9 / 同一完整 S11 镜像启动全新 ui-workspace-timeout9，容器 9762d4e99b9b / runtime 9e566d02-2f89-48f8-b248-58091bcf771d，实际插件列表为空。在此可丢弃容器中把 claude-real 入口改为仅对 skills-for-real-engineers@anthropic-plugin-directory 的 plugin install 调用延迟 195 秒后转交原生程序；所有其他命令直接转交，产品 adapter、180 秒原生超时、冻结 CLI 和 GUI 均未改变。其他三个 QA 工作区登记先取哈希基线。此夹具模拟慢安装，不是自然慢网复现。
+
+真实市场界面点击安装后，按钮禁用；记录只有一次调用，PID 899 存活、mutation_running=true、插件列表为空。原有超时机制结束进程后，界面明确显示“安装进程已结束，核对后插件尚未安装，可以重试。”，卡片提供重试，详情安装按钮恢复。检查时距调用开始 202.59 秒，这是观察时间而非精确终止耗时；PID 已消失、锁释放、列表仍为空，没有误报成功或执行镜像重试。
+
+同一夹具延迟改成 35 秒，从失败卡片点击重试：第二次调用 PID 1249 存活且持锁，界面显示安装中，卡片重试按钮消失。趁其仍运行时正常关闭工作区并确认结束临时环境，旧容器实际移除，持久登记仍为 v2 空列表。工作区选择页曾短暂出现旧调用结束的失败 toast；不声称整个退出期间没有通知。在同一窗口启动 fresh8 后，实际容器 a5cd881feae4 / runtime 6740f800-b78d-4bad-a419-a75f6b420350，插件页显示该目标既有的 1.2.3-c55ee46073ed，旧失败卡片、安装中状态和 toast 均未带入；三个其他工作区登记哈希匹配。
+
+再次正常关闭 fresh8，重新打开 timeout9，容器 de1aee8a1d6c / runtime 475cfb7a-a074-476f-872d-dd4bf9f24e8e。此容器不存在延迟夹具，原生 claude-real SHA256 4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594 与部署前相同，adapter 仍为 32942114…。界面列表为空，再从真实市场安装同一插件；实际原生进程完成下载，GUI 和作用域适配器一致显示 1.2.3-c55ee46073ed，锁释放。正常退出候选后，三次 QA runtime 均已移除；其他工作区登记、候选四项哈希保持一致，原用户平台 PID 40320 和容器仍运行。
+
+证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json、gui-h7-timeout9-{running,failed,retrying,switched,recovered}.txt。通过范围为受控原生超时、明确重试、安装进行中正常关闭再切目标、失败卡片隔离和重启后正常安装恢复；不覆盖模块安装进行中切换、两个目标同时存活时的迟到响应、自然慢网或用户本人验收。没有新增产品代码、构建或 PR，文档保留在同一收尾分支。
