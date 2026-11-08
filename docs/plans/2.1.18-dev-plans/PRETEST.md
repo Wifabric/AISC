@@ -1,5 +1,9 @@
 # 实测与证据账本
 
+## 2026-11-08 S11 整合分支验证
+
+镜像升级覆盖插件登记已复现并修正：Linux 实跑旧代码 6 failed / 5 passed，修后 11 passed；Windows 运行初始化/作用域/预装技能/cc-switch 关联 92 passed / 3 skipped / 41 subtests。完整资源包 1534 项校验通过，仅 entrypoint 一项 checksum 更新。冻结 CLI 构建完整修复镜像并启动受控旧版本 QA 目标，升级、重启及正常停止成功；14 个文件状态、两份其他工作区登记和模块定义均不变。GUI/新候选/精确 head 远端 CI 仍待，详情和验证入口修正见 [preview-gui](preview-gui.md#s11--已有工作区切换新镜像时登记被覆盖)。本轮不重复运行无关前端/Rust 测试，不把历史数字写为新源码全量门禁通过。
+
 截至 2026-11-08，b1–b7 已合入 develop，b8 已实现并完成本地验证，b9–b10 待实施。下方按日期保留历史现场记录，当前状态以本表及最新批次记录为准。D-15 将后续 GUI / 手动验收统一留到 Preview；自动化和真实 Docker 不等于 GUI PASS。
 
 | 批次 | 定向/自动化 | 真实数据面 | 候选构建 | Windows CU | 用户验收 | 原因 |
@@ -232,3 +236,11 @@ S10 本地完整门禁：Python 1812 passed / 54 skipped / 212 subtests；Rust 4
 ## 2026-11-08 Preview.8 完整资源候选
 
 #93 精确 head 43f59340 的 [CI 42432013590](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success，合入 e5c17c3eb7eb13bebf2a42db0556caea92b77633。新镜像 factory v2 和最终 adapter 哈希通过；首轮 Preview.8 GUI 在全新工作区无手工修补安装成功，其他两工作区登记不变。剔除 QA 临时文件后重新完整校验与打包，最终标准候选重启显示安装版本、About 版本正确，四项产物哈希通过。首次 GUI 与最终标准二进制哈希分别记录，完整边界见 [preview-gui](preview-gui.md)。
+
+## 2026-11-08 Preview.9 H7/H10 超时与恢复
+
+标准 Preview.9 / S11 完整镜像，在专用空工作区仅延迟选定原生安装调用 195 秒，产品原有 180 秒超时未改。真实界面安装按钮禁用、单次调用持锁；超时后进程消失、锁释放、列表为空，明确提示未安装并提供重试。重试延迟改为 35 秒，在进程仍运行时由真实界面正常关闭工作区并切到 fresh8，旧状态未带入，三个已有工作区登记不变。重新打开原工作区的新容器无夹具、原生安装器哈希恢复一致，真实安装成功并回读版本 1.2.3-c55ee46073ed。三次 QA runtime 正常移除，候选四项哈希与原用户平台核对通过。证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json 和对应 gui 文本；详见 [preview-gui](preview-gui.md)。此为受控超时与关闭切换，不代表自然慢网或模块执行中切换；本轮没有产品代码变化，不新增 PR。
+
+## 2026-11-08 Preview.9 H9 迟到响应与切目标
+
+在隔离容器中延迟真实详情响应，GUI 的新 caveman 查询已显示时，旧 grill-with-docs 成功响应仍等待交付；随后原样交付，界面未串结果。grill-me 首次响应早于该交叠，分别记账。另一详情加载期间正常关闭旧工作区再同窗切目标，新目标查询/加载/错误状态独立，重新读取 grill 三项简介和固定来源正常。四个 QA 工作区 1,942 项技能文件/插件登记、候选四项哈希不变，临时运行环境正常结束。证据 h9-preview9-* 与 gui-h9-preview9-*；受控透明响应入口、上游陈旧 caveman 条目返回 NOT_FOUND、关闭旧 runtime 的覆盖边界详见 [preview-gui](preview-gui.md)。不声称自然网络竞态或用户验收通过。

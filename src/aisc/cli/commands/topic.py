@@ -23,4 +23,5 @@ def run(args):
     return execute(args.topic_command, args.workspace,
                    id=getattr(args, "id", ""), title=form.get("title", getattr(args, "title", "")),
                    text=form.get("text", getattr(args, "text", "")), sources=form.get("sources", sources),
-                   action=form.get("action", getattr(args, "action", "continue")))
+                   action=form.get("action", getattr(args, "action", "continue")),
+                   personal=form.get("personal", {}))

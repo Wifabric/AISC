@@ -32,6 +32,8 @@ BUNDLED_SKILLS: tuple[tuple[str, str, str, str], ...] = (
     ("caveman-setup", "Wire repositories through Caveman Cloud", "JuliusBrussee", "caveman"),
     ("caveman-stats", "Report session token usage and attribution", "JuliusBrussee", "caveman"),
     ("grill-me", "Relentless plan and design interview", "mattpocock", "skills"),
+    ("grilling", "Stress-test decisions in dependency-aware rounds", "mattpocock", "skills"),
+    ("karpathy-guidelines", "Focused, verifiable coding guidelines", "multica-ai", "andrej-karpathy-skills"),
 )
 REVISION_FILE = ".aisc-bundle.sha256"
 MARKER_FILE = ".aisc-bundled-skills.sha256"
@@ -39,7 +41,7 @@ LOCK_FILE = ".aisc-bundled-skills.lock"
 UNLOCKED_PROMPT = (
     "⚠️  cc-switch skills 文件锁不可用，检测到宿主 Skills 目录已存在：\n"
     "{paths}\n"
-    "    是否复制/更新内置 skills？同名文件会被覆盖，其他文件会保留。[y/N]: "
+    "    是否补装内置 skills？只补缺失文件，已有内容和启停选择会保留。[y/N]: "
 )
 
 
@@ -257,27 +259,50 @@ def _approve_unlocked_sync(
     return approved
 
 
+def _seed_missing(source: Path, destination: Path) -> None:
+    """Factory provisioning never replaces user edits, even on bundle upgrades."""
+    if any(p.is_symlink() for p in (destination, *destination.parents)):
+        raise ValueError(f"refusing factory sync through symlink: {destination}")
+    destination.mkdir(parents=True, exist_ok=True)
+    for child in source.iterdir():
+        target = destination / child.name
+        if child.is_symlink():
+            raise ValueError(f"unexpected bundled symlink: {child}")
+        if child.is_dir():
+            _seed_missing(child, target)
+        elif not os.path.lexists(target):
+            with child.open("rb") as reader, target.open("xb") as writer:
+                shutil.copyfileobj(reader, writer)
+            shutil.copymode(child, target)
+
+
 def synchronize(
     *,
     config_dir: Path,
     bundle_dir: Path,
     revision: str,
     log: TextIO,
+    skills_home: Path,
 ) -> None:
     for name, *_ in BUNDLED_SKILLS:
         source = bundle_dir / name
         if not source.is_dir():
             raise FileNotFoundError(f"bundled skill missing: {source}")
         destination = config_dir / "skills" / name
-        destination.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(source, destination, dirs_exist_ok=True)
+        _seed_missing(source, destination)
 
     # This command creates or migrates cc-switch.db. A non-zero result is
     # tolerated only when the database is already usable by the registration step.
     _run_cc_switch(["skills", "list"], log, check=False)
     _register_skills(config_dir)
     _run_cc_switch(["skills", "sync-method", "copy"], log, check=True)
-    _run_cc_switch(["skills", "sync"], log, check=True)
+    # A global `skills sync` overwrites engine-local edits, including unrelated
+    # user skills. Provision only missing factory files in enabled engines.
+    states = _load_skill_states(config_dir / "cc-switch.db")
+    for name, *_ in BUNDLED_SKILLS:
+        for engine, enabled in zip((".claude", ".codex"), states[name]):
+            if enabled:
+                _seed_missing(config_dir / "skills" / name, skills_home / engine / "skills" / name)
 
     marker = config_dir / MARKER_FILE
     temporary_marker = config_dir / f"{MARKER_FILE}.tmp"
@@ -350,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
                     bundle_dir=args.bundle_dir,
                     revision=revision,
                     log=log,
+                    skills_home=args.skills_home,
                 )
             finally:
                 if lock is not None:

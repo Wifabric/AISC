@@ -373,6 +373,11 @@ def show_topic(root: Path, identifier: str) -> dict:
 def execute(operation: str, workspace: str, **params) -> dict:
     try:
         root = _workspace(workspace)
+        if operation in {"personal-list", "personal-save"}:
+            from aisc.application import personal_capabilities
+            if operation == "personal-list":
+                return personal_capabilities.catalog(root)
+            return personal_capabilities.save(root, params.get("personal", {}))
         if operation in {"activate", "deactivate", "sync"}:
             from aisc.application import topic_conversation
             if operation == "activate":

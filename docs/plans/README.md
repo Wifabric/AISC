@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 范围为八条反馈、十个批次；b1–b10 均已合入 develop，证据及未测边界见 PRETEST。按 D-12–D-16 整合协作流程并统一 Preview；U-1–U-3 已确认，U-4 成员及用户验收仍待处理。
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 原八条反馈 b1–b10 已合入；D-17 新增离线基础、在线模块初版及个人模板/迭代/技能注入，U-4 已授权落实。先补齐新范围，再统一 Preview、整合 PR/CI 与用户验收；未测边界见 PROGRESS。
 
 ## Previous stages and intake
 

@@ -5,6 +5,7 @@ import { useRuntimeStore } from "../../stores/runtime";
 import { useTopicsStore } from "../../stores/topics";
 import type { TopicAction } from "../../lib/ipc";
 import TopicDocument from './TopicDocument.vue';
+import PersonalCapabilitiesPanel from './PersonalCapabilitiesPanel.vue';
 
 const { t } = useI18n();
 const runtime = useRuntimeStore();
@@ -72,6 +73,8 @@ async function prepare(): Promise<void> {
 
 <template>
   <div class="topics-view" data-testid="topics-view">
+    <PersonalCapabilitiesPanel />
+    <h2>主题工作坊</h2>
     <p class="topic-intro">{{ t("topics.intro") }}</p>
     <p v-if="store.error" class="topic-error" role="alert">{{ store.error }}</p>
     <p v-for="warning in store.warnings" :key="warning" class="topic-note">{{ warning }}</p>

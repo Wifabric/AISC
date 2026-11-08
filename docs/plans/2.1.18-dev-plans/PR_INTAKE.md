@@ -1,5 +1,15 @@
 # 2.1.18 PR intake
 
+## 当前整合：PR #95（2026-11-08）
+
+- [PR #95](https://github.com/Wifabric/AISC/pull/95)，英文标题/说明；集中 S11 插件登记保护、S12 离线 16 项/保留用户编辑、S13 两个默认在线模块、S14 个人模板/迭代/会话注入，以及此前 Preview 记录。仅此一个收尾 PR。
+- base `9cc7020cd2d6f73e844da5a781e07af23aee6607`；产品 head `7edb677dba431b4fccb809b2034d073bd95ae664`。[Workbench CI 42443819350](https://github.com/Wifabric/AISC/actions/runs/42443819350) frontend/rust/cli 均 success。
+- 单代理自查：核对默认来源/许可、离线与在线边界、升级保留、原子保存/乐观版本冲突、历史恢复、目标切换、上下文快照和双引擎生产桥接。没有独立评审。大量删除来自未使用的旧 Superpowers vendored cache，不是删除用户安装或数据。
+- 本地 Python 1834 passed / 57 skipped / 218 subtests，Rust 422 passed / 2 ignored，前端 893 passed，补充 Linux 22 passed / 47 subtests；类型/生产构建、NSIS 和完整镜像通过。真实 GUI 与原生进程验证见 DELIVERY / preview-gui。
+- 最终候选产品源码不变；本条所在文档增量推送后，仍核对实际 head 的 checks 和 mergeability 再合入 develop。用户认证/验收、main/public release 保留。
+
+下文为逐批历史快照，不覆盖上述当前状态。
+
 - 核查日期：2026-11-08；仓库 Wifabric/AISC；open PR 全仓查询 `state=open&per_page=100` 返回唯一 #64，未达分页上限。
 - 当前阶段：开发阶段逐批验收；范围依据 F2、D-7/D-8/D-9/D-10。
 

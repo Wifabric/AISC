@@ -248,3 +248,70 @@ Preview.8 首次构建 0b87b3de… 在全新 ui-workspace-fresh8 启动此镜像
 最终标准候选重新启动相同工作区，镜像设置仍指向专用新镜像。实际 GUI 显示已安装插件及相同版本，没有失败提示；磁盘登记及两个其他工作区哈希不变，最终容器 0895fe4b9e12 / runtime 839170dd-498d-40ea-a213-673055dc7a71。帮助 → 关于显示 Workbench 2.1.18-preview.8、CLI/Bundle 0.1.10，四项产物哈希核验通过。两次构建采用相同产品源码/适配器；此处最终二进制验证的是重启、状态回读与 About，不替代全量手测。
 
 证据 s10-image-build.jsonl、s10-image-verification.json、h7-preview8-{baseline,installed}.json、gui-preview8-first-build-installed.txt、gui-preview8-final-{installed,about}.txt、preview8-final-verification.json。旧空登记迁移证据仍归属前文 Preview.7 测试部署，新工厂路径归属本节。S10 已修；其他 H 项未测边界、U-4、本人认证、最终验收与发布保持原状态。
+
+## S11 / 已有工作区切换新镜像时登记被覆盖
+
+Preview.8 标准 GUI 在主 QA 工作区切换到 S10 镜像后，模块预检正确显示 research/arXiv 保留、OpenAlex 缺失，尚未确认执行。文件基线比对却失败：启动前插件登记 SHA256 为 e558f007…，启动后变成工厂 v2 空登记。发生于容器初始化、早于模块预检；本次跨目标用例中断，不能记录为通过。原用户平台未改动。
+
+根因是 entrypoint 在工厂版本变化时对整个 plugins 目录执行 cp -ru，较新的工厂登记覆盖用户运行态。同源检查还确认，skills/plugins 目录缺失时的完整补全也会覆盖既有登记和 settings。修复把两项登记（installed_plugins.json、known_marketplaces.json）改为只补缺失，其他工厂资产保持原增量规则；非强制补全使用不覆盖复制，显式 FORCE_COPY_CLAUDE 保持原重置语义。
+
+测试直接执行产品 entrypoint 的作用域初始化段。无网络、只读挂载的临时 Linux 容器：旧代码 6 failed / 5 passed；修后 11 passed，涵盖非空/空/损坏登记保留、符号链接及悬空链接、缺目录补全、缺登记补种、正常新工作区和显式强制复制。Windows 关联 92 passed / 3 skipped / 41 subtests，符号链接的两项 Windows 跳过由上述 Linux 实跑覆盖。测试只证明初始化段；完整启动、真实 GUI 与新候选仍待验证，不提前记为完成。
+
+证据 target-isolation-baseline.json、gui-preview8-isolation-primary-plan.txt、s11-preview8-registry-reset.json、s11-linux-{before,after}.log、s11-linux-results.json、s11-related.log。历史 h7-preview4-installed.json 可重建与故障前哈希完全相同的 QA 登记备份 s11-primary-registry-before.json；后续恢复/升级回归另记。按本轮执行调整，剩余代码和验证文档集中同一整合分支，完成后统一提交收尾 PR。
+
+### S11 完整镜像启动与重启的数据面验证
+
+完整 stage9 bundle 校验通过：1534 项清单仅 entrypoint.sh 一项变化，启动脚本 SHA256 `70b826e84f18fd920b726d9ebf9cab7f3b20b6a81eed9740c26a7fa80edfb00e`。冻结 CLI 使用既有固定依赖 receipt 构建独立 `aisc-s11-entrypoint:preview9` 镜像 `7f60b3472290ea5f8fc1d58b5f1034d2d94d703abd20bc57e6ab575e995481f6`，镜像内脚本与修复源码逐字节相同；未覆盖用户镜像或标准 Preview.8 bundle。
+
+在 QA 容器关闭后，恢复与故障前哈希完全一致的插件登记，确认旧插件缓存 manifest 仍为 1.3.1；明确将 QA 工厂标记设回旧 QA 镜像的实际值，以受控重现旧→新同步。随后冻结 CLI 正常启动完整修复镜像，容器 `dc6a5660ef97` 日志确认执行出厂增量同步，工厂标记推进至 `007ebc9e7b6c7b9d708d06f9d5ac689fad3844c7`。两项登记、两项设置、插件 manifest 和三引擎指定技能共 14 个存在性/哈希状态与基线一致；两份其他 QA 工作区插件登记及模块定义不变。
+
+初次直接 docker exec 适配器未继承 PID 1 作用域，读到了默认路径的空列表；改用产品同一 `_SCOPE_WRAPPER` 后回读原 `mattpocock-skills@claude-plugins-official` 正确。这是验证入口修正，不另记产品缺陷。产品 CLI 对指定测试容器执行 restart 后再次比对通过，最后 stop 正常结束并移除该临时容器，持久数据保留；原用户平台容器 `2e801ec161c0` 仍运行。
+
+本轮 GUI 重新连接新 QA 窗口时返回 `foreground window did not report a process id`，遵循工具恢复边界停止 UI 输入。上述为完整镜像真实 CLI 数据面证据，不写成 GUI PASS；标准 Preview.8 仍不包含 S11，未新建 PR。证据 s11-image-build.jsonl、s11-runtime-{start,restart,stop}.json、s11-upgrade-baseline.json、s11-{upgrade,restart}-result.json 及初始化日志。下一步继续同分支整合、GUI/候选验证和统一 PR/CI。
+
+## Preview.9 / S11 标准候选续测
+
+重新初始化 CU 后恢复窗口读取与输入。为本地提交 `11b5b18ff19732c803cf89387f2c5ea73e9bf7ff` 构建 Preview.9；逐文件部署校验发现 CLI 数据面测试在 stage9 bundle 内产生了两个空状态文件 containers.json / .containers.lock，部署在复制前被拒绝。确认内容并备份移除后重新校验、重建安装包；第一包未交付。最终 bundle 与 Preview.8 相比仅 entrypoint.sh 和 vendor/checksums.txt 两项变化，四项产物哈希见 DELIVERY/本机 manifest，旧 Preview.8 备份保留。NSIS 为 384421234 字节；尚未执行安装/升级向导，不把构建完成当作安装验收。
+
+CLI 测试使用显式容器名 stop 后，实际 QA 工作区仍留有一条属于该已删除容器的旧登记；GUI 预检正确以 unknown_owner 阻止自动删除。核对专属名称、镜像、工作区与 Docker 不存在结果并备份后，仅用产品 unregister API 清理此测试登记；重试预检通过。未删除其他登记、实际容器或持久资产。
+
+通过真实启动设置把主 QA 工作区指向完整 S11 镜像。标准 Preview.9 启动容器 cc6e6f94f28d / runtime bcc5055e-4775-49c5-abd3-3902b778da51，插件页显示原 mattpocock-skills@claude-plugins-official 1.3.1。同一时刻验证镜像、四项产物哈希、14 个受保护文件状态、另外两个工作区登记及模块定义全部一致；证据 preview9-primary-verification.json、gui-preview9-plugin-preserved.txt。这是 S11 数据面升级后的标准 GUI 启动/状态回读，未声明已完成全部 H6/H7。
+
+### H6 同窗跨工作区预检隔离
+
+主 QA 工作区对 QA-A 生成计划 a91f29c7：research/arXiv 保留，OpenAlex 缺失；未点击确认执行。正常关闭工作区后，在同一窗口切到 ui-workspace-fresh8，并通过启动设置选同一完整 S11 镜像；新容器 36f66d47579a / runtime a13da003-477c-4c36-ab13-22ef6294e809。相同用户的两份模块定义可见，旧待确认计划未带入；操作记录显示历史结果区但无前一目标的步骤。新预检生成计划 3989cf79，三项均按该目标的实际快照列为缺失。不能因插件内可能包含同名能力，就把它记作已安装的同来源独立技能。
+
+两计划 ID、容器和 runtime 各自独立，所有行仍为 planned；主目标动作为 retain/retain/install，第二目标为 install/install/install。两侧指定的 18 个技能路径存在性/哈希、插件登记及模块定义前后匹配，未隐式安装或卸载。About 显示 2.1.18-preview.9 / CLI 与 Bundle 0.1.10，最终四项产物哈希匹配；正常退出后两个 QA 容器均结束，原平台仍运行。证据 gui-preview9-isolation-{primary-plan,fresh-before-plan,fresh-history,fresh-plan}.txt、target-isolation-{primary-plan,fresh-plan,final}.json、preview9-isolation-result.json、gui-preview9-about.txt。本项只覆盖跨目标预检/计划/记录隔离，不包含安装执行中切换。
+
+### H7/H10 受控原生超时、安装中关闭切换与恢复
+
+标准 Preview.9 / 同一完整 S11 镜像启动全新 ui-workspace-timeout9，容器 9762d4e99b9b / runtime 9e566d02-2f89-48f8-b248-58091bcf771d，实际插件列表为空。在此可丢弃容器中把 claude-real 入口改为仅对 skills-for-real-engineers@anthropic-plugin-directory 的 plugin install 调用延迟 195 秒后转交原生程序；所有其他命令直接转交，产品 adapter、180 秒原生超时、冻结 CLI 和 GUI 均未改变。其他三个 QA 工作区登记先取哈希基线。此夹具模拟慢安装，不是自然慢网复现。
+
+真实市场界面点击安装后，按钮禁用；记录只有一次调用，PID 899 存活、mutation_running=true、插件列表为空。原有超时机制结束进程后，界面明确显示“安装进程已结束，核对后插件尚未安装，可以重试。”，卡片提供重试，详情安装按钮恢复。检查时距调用开始 202.59 秒，这是观察时间而非精确终止耗时；PID 已消失、锁释放、列表仍为空，没有误报成功或执行镜像重试。
+
+同一夹具延迟改成 35 秒，从失败卡片点击重试：第二次调用 PID 1249 存活且持锁，界面显示安装中，卡片重试按钮消失。趁其仍运行时正常关闭工作区并确认结束临时环境，旧容器实际移除，持久登记仍为 v2 空列表。工作区选择页曾短暂出现旧调用结束的失败 toast；不声称整个退出期间没有通知。在同一窗口启动 fresh8 后，实际容器 a5cd881feae4 / runtime 6740f800-b78d-4bad-a419-a75f6b420350，插件页显示该目标既有的 1.2.3-c55ee46073ed，旧失败卡片、安装中状态和 toast 均未带入；三个其他工作区登记哈希匹配。
+
+再次正常关闭 fresh8，重新打开 timeout9，容器 de1aee8a1d6c / runtime 475cfb7a-a074-476f-872d-dd4bf9f24e8e。此容器不存在延迟夹具，原生 claude-real SHA256 4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594 与部署前相同，adapter 仍为 32942114…。界面列表为空，再从真实市场安装同一插件；实际原生进程完成下载，GUI 和作用域适配器一致显示 1.2.3-c55ee46073ed，锁释放。正常退出候选后，三次 QA runtime 均已移除；其他工作区登记、候选四项哈希保持一致，原用户平台 PID 40320 和容器仍运行。
+
+证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json、gui-h7-timeout9-{running,failed,retrying,switched,recovered}.txt。通过范围为受控原生超时、明确重试、安装进行中正常关闭再切目标、失败卡片隔离和重启后正常安装恢复；不覆盖模块安装进行中切换、两个目标同时存活时的迟到响应、自然慢网或用户本人验收。没有新增产品代码、构建或 PR，文档保留在同一收尾分支。
+
+### H9 详情迟到响应与跨工作区隔离
+
+标准 Preview.9 在主 QA 工作区启动完整 S11 镜像，容器 b3ad035cd769。实际适配器读取 grill-me 成功，来源仍为固定提交 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d 的 skills/productivity/grill-me/SKILL.md。部署前记录四个 QA 工作区三引擎 skills 文件和顶层插件 JSON 登记共 1,942 项路径/哈希。在此临时容器中保留原适配器逐字节副本，用透明入口仅对 mattpocock/skills 的 skill-describe 调用缓冲真实 stdout/stderr，至少到调用开始后 35 秒再原样交付；没有编造内容、修改 GUI、正式 bundle 或超时参数。
+
+真实 GUI 搜索 grill，展开 grill-me 显示“正在读取上游功能介绍…”。输入新查询 caveman 后，首个 grill-me 响应先完成，因此不将它写作成功撞中迟到窗口。旧查询的串行后台第二项 grill-with-docs（PID 508）仍在延迟交付时，新 caveman 查询已显示完整结果；当时实际上游成功响应已保存，但 wrapper 尚存活、没有 response-delivered 事件。随后该响应按原样成功交付，wrapper 退出，新界面仍只有 caveman 结果，没有旧 grill 条目/详情。这一交叠顺序有独立进程事件和前后 GUI 文本佐证，区别于 Preview.6 的普通查询切换。
+
+再展开 mattpocock/skills 的 caveman 条目，真实界面显示详情加载中，wrapper PID 717 存活。该市场条目在固定上游目录中未找到唯一路径，实际响应为 AISC_ERR_EXTENSIONS_NOT_FOUND；响应尚未交付时正常关闭工作区，旧容器随运行环境结束而移除。随后同窗打开 fresh8，容器 b662dfd2513c / runtime a976fff7-66e2-476f-bae2-c4445d6717dd，适配器哈希与未修改产品一致。新目标技能市场查询框为空、暂无搜索结果，旧加载/错误未带入。重新搜索 grill，真实原生链正常显示 grill-me、grill-with-docs、grilling 简介，展开 grill-me 来源为上述固定提交。没有把陈旧 caveman 条目记为详情成功，也不把关闭旧 runtime 的场景写成两目标同时存活时的成功迟到回调。
+
+正常退出后两个 QA runtime 均结束；1,942 项资产和候选四项哈希不变，用户原平台 PID 40320 / 容器仍运行。本轮只读详情，未执行任何安装或卸载。证据 h9-preview9-{deployment,query-pending,query-submitted,new-query-visible,query-delivered,workspace-pending,switched,final}.json、gui-h9-preview9-{query-loading,new-query,query-after-delivery,workspace-loading,switched-empty,switched-loaded}.txt。H9 受控迟到查询响应、详情读取中关闭切换、新目标独立读取通过；最终用户验收待完成。候选二进制未重建，验证记录仍集中收尾分支。
+
+
+### D-17 / Preview.10–11 三层能力
+
+Preview.10 真实新工作区显示 16 项离线技能、两项默认模块；科研模块 arXiv/OpenAlex 从缺失经在线安装变为已安装。个人通用协作模板建立副本，GUI 保存 V1，再按反馈保存 V2，恢复 V1 后保存为 V3，三版历史保留。GUI Claude 被未认证门拦下，没有操作登录；另用实际冻结 CLI 创建隔离原生 Claude/Codex 会话，生产参数与 GUI V3 快照完全匹配（SHA256 d213f1c6f180ee9348139393a3543ac059f9740a7562259e7f38c8bbc7b07b2a），随后正常结束。没有发送模型任务，不能视为认证后的效果验证。
+
+最终 Preview.11 产品提交 7edb677d，完整镜像 sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14。Preview.10 正常退出后，GUI 选择已有 ui-personal10、改为新镜像并启动。容器 d9342ac154ff，个人能力与主题入口、三模板和 V3 显示正常；个人登记文件重启前后 SHA256 均为 99e0ec3e1f886a285aeee210999358cba5dda31d0b8628a67790f97e61ec0561。扩展列表保留 caveman 13 / mattpocock 2 / Karpathy 1 / 科研在线技能 2。证据 gui-personal11-restarted.txt、gui-personal11-extensions.txt、personal11-before-restart.json；产物哈希见 DELIVERY。用户原平台容器 2e801ec161c0 保持运行。
+
+上述为开发者真实界面和数据链验证，不是最终用户验收；安装器 GUI、真实提供者/GitHub 认证、模型任务及前文未测边界仍未完成。
+
+Preview.11 帮助 → 关于的真实截图确认 Workbench 2.1.18-preview.11、AISC CLI/Bundle 0.1.10、Claude Code 2.1.314；Workbench Image 字段仍为“未知”，镜像身份另以实际容器/image inspect 记录核对，没有把该字段记为成功。

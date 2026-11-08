@@ -1,19 +1,44 @@
 # 2.1.18 夜间交付与次日验收
 
-2026-11-08：b1–b10 的产品实现均已合入 develop；协作流程/Skill PR #75、整合修正 #76、真实 GUI 复测修正 #78/#79/#83/#85/#87/#91/#93 已合入。当前产品集成提交 `e5c17c3eb7eb13bebf2a42db0556caea92b77633`。F4 默认成员仍待 U-4 批准，完整 GUI/用户验收、真实 GitHub 授权和正式发布未完成，不能把本版或反馈记为全部关闭。
+2026-11-08 最新范围：D-17 已授权补齐截图三层能力；U-4 默认成员不再待批准。S11 与 S12–S14 集中在同一收尾分支，准备一个英文整合 PR。新增离线通用技能、科研/开发模块及个人能力流程已实现，Preview.10 完成下列实测；源码又修正了入口名称和无锁补装提示，最终 Preview.11 已构建并完成重启回读，产品提交 `7edb677d` 的远端三项 CI 已成功；同一 PR 的最终文档提交与合入状态见 PR_INTAKE。本人认证、用户验收和正式发布仍独立保留。
+
+### 截图要求对应结果
+
+- 离线通用基础：13 个 caveman 技能、grill-me、grilling、Karpathy，共 16 项。新增两项固定上游提交、原始许可材料与 SHA-256。全新 GUI 工作区实际显示 13 + 2 + 1 项；真实 cc-switch 双引擎登记、升级保留个人修改通过。
+- 在线模块初版：科研基础（arXiv/OpenAlex）、开发基础（系统化调试/TDD）已启用。旧 Superpowers 未使用的离线缓存移出安装资源。Preview.10 GUI 从空目标预检科研两项为缺失，经确认在线安装，两项均显示已安装；四项来源及安装/卸载的既有真实数据面验证见默认模块提案。
+- 个人迭代与注入：三项初始模板、个人副本、规则/技能编辑、修改原因及验证记录、启停、版本历史和恢复已实现。真实 GUI 保存第一版、按反馈保存第二版、恢复第一版形成第三版通过，落盘保留所有历史。新工作区无提供者认证，GUI 新建 Claude 正确进入登录引导；另用实际冻结 CLI 创建隔离 Claude/Codex 会话，两个真实原生进程的上下文均与 GUI 第三版快照匹配，正常结束。没有登录、发送模型任务或将参数匹配称为模型效果验收。
+- 自动化：完整 Python 1834 passed / 57 skipped / 218 subtests；Rust 422 passed / 2 ignored；最终前端全套 893 passed（107 files）；Linux 补充 22 passed / 47 subtests。
+
+旧 Preview.9 的产物和验证记录保留在下方，不能用于声称新增三层能力已经交付。新候选源码、构建和剩余 Preview 项见 PROGRESS。
+
+## 当前候选：Preview.11
+
+[唯一收尾 PR #95](https://github.com/Wifabric/AISC/pull/95)，产品源码 `7edb677dba431b4fccb809b2034d073bd95ae664`，base develop `9cc7020c`。[该产品提交的 CI](https://github.com/Wifabric/AISC/actions/runs/42443819350) frontend/rust/cli 全部 success；纯验收文档后续提交不改变下面二进制。
+
+- 启动：`D:\AISC\p18\start-candidate11.ps1`；完整目录 `D:\AISC\p18\candidate11`。
+- 安装包：`D:\AISC\p18\AISC Workbench_2.1.18-preview.11_x64-setup.exe`。
+- 清单：`D:\AISC\p18\candidate11-manifest.json`；独立配置 `D:\AISC\p18\qa-data`。
+- 镜像：`aisc-personal:preview11`，ID `sha256:22891f8aa447f6d3c09f3b9a53bb40a7edc00a20192d36f9acfe8548dd44db14`。
+- Workbench SHA256：`66910757da6ffd1b8067e5d1f5c0b9117374d20908d896976b710d249be8e600`。
+- CLI SHA256：`47b7536a330c005914e2ee7b2670e3ccd1fe6423f847f0b59aa5cc21dc8c7965`。
+- 安装包 SHA256：`8d1784ab8f59719f02007b7a5a20f9ff627707b4cd15c597055c85469245fd42`。
+
+本机版本覆盖为 Workbench `2.1.18-preview.11`；CLI/bundle `0.1.10`，未创建公开 tag/Release。真实 GUI 用该完整镜像重新打开 `ui-personal10`：新入口“个人能力与主题”、三模板、个人第 3 版和 16 项预装技能及 2 项科研在线技能均正常显示。个人登记文件 SHA256 在重启前后相同。用户原平台和工作区未替换。Windows 安装器构建通过不等于安装/升级 GUI 已验收；认证后的模型任务、SSH/其余 HANDTEST 边界和最终用户验收继续保留。
 
 ## 变更说明
 
 - F1/F2：仅大小写改名保留目标名称；工作记录菜单/子菜单按边界避让并避免误移。
 - F3：完整镜像名称编辑与随机默认名；本机镜像重建预检和进度，运行容器阻止重建，不自动停删，远程重建入口明确禁用。
-- F4：用户模块定义、编辑、持久化、缺项安装、逐项恢复，以及共享/预装/用户修改保护；默认模块提案已验证但未启用。
+- F4：用户模块定义、编辑、持久化、缺项安装、逐项恢复，以及共享/预装/用户修改保护；D-17 已启用科研/开发默认模块。
 - F5：插件安装独立等待预算、容器进程锁和超时后实际状态核对；未知结果不盲目重试。
 - F6：GitHub MCP 按引擎配置认证、取消/失败保护与显式连接检查；凭据不进入诊断或重试历史。
 - F7：多层技能目录、固定来源、简介缓存/空简介/重试，合法连字符名称与下划线目录匹配，歧义继续拒绝。
 - F8：关闭失败卡片与同次重复错误文案，保留日志/诊断，新失败仍提示，焦点恢复和目标隔离。
 - 协作：贡献者必要测试后提 PR，主开发者处理小修正、集成和统一 Preview；WIKI、职责、贡献者、PR intake 与 [开发 Skill](../../../skills/aisc-development/SKILL.md) 一致。单代理兼任只记自查。
 
-## 本机可运行候选
+## 历史本机候选（Preview.9）
+
+**当前为整合分支候选：** Preview.9 已包含 S11 升级时保留插件登记的修复，真实完整镜像升级/重启及标准候选 GUI 启动回读通过；跨目标等剩余检查、收尾 PR 和精确 head CI 尚未完成，不代表整版可发布。具体证据见 [preview-gui](preview-gui.md)。
 
 本机输出，不作为仓库文件上传，也尚未创建公开 Release/tag：
 
@@ -21,21 +46,21 @@
 | --- | --- |
 | 隔离候选启动脚本 | `D:\AISC\p18\start-candidate.ps1` |
 | 完整可运行目录 | `D:\AISC\p18\candidate` |
-| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.8_x64-setup.exe` |
+| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.9_x64-setup.exe` |
 | 源码、哈希与状态清单 | `D:\AISC\p18\candidate-manifest.json` |
 | 详细测试日志 | `D:\AISC\output\preview-2.1.18-20261108\output\verification` |
 
 PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选。数据根为 `D:\AISC\p18\qa-data`，WebView 数据也独立；原平台安装和原工作区未替换。每轮检查后正常退出独立候选，原平台进程保留。QA 工作区与证据保留；QA-A 科研模块、QA-C 混合定义及历史保留供继续复测，QA-B 已验证删除定义不删资产。选择隔离工作区完成 HANDTEST，避免把原工作区当测试数据。
 
-本地 Workbench 版本覆盖为 `2.1.18-preview.8`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
+本地 Workbench 版本覆盖为 `2.1.18-preview.9`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，CLI 沿用已验证冻结产物，资源包包含 S11。此处是可审查的本地候选，不是已发布 Preview。阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
 
-候选产品源码为 PR #93 head `43f5934029a9b2594ea5bce6467e880a2848b40c`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
+候选产品源码为整合分支提交 `11b5b18ff19732c803cf89387f2c5ea73e9bf7ff`，base develop 为 `9cc7020c`；S11 尚未合入、精确 head CI 待统一收尾 PR，不能沿用 #93 CI 宣称新源码已通过。后续纯文档不改变二进制。SHA256：
 
 | 文件 | SHA256 |
 | --- | --- |
-| workbench.exe | `9ed704cf0dd575a5f17be6f80f5258c091acc0c410e8aeda85f37eb42582104e` |
+| workbench.exe | `1c01963d8d95f51e96cb25a342a8a83b46fd25db93599cb7d7cc20456005a220` |
 | aisc.exe | `e000a775ae16a446330b45cf22373f24b63c00088e228021701435920a84daf1` |
-| setup.exe | `c789b043bc16965722308a05d8537a8d2dd6ff2c90a93f70bedef87774ce7243` |
+| setup.exe | `c593069d8f1d3c1128011395e3388ed76cd6cb8b7b4fd7a676ce2ac8b95a5825` |
 
 ## 验证结果
 
@@ -61,7 +86,11 @@ Preview.8 补充：#93 [CI](https://github.com/Wifabric/AISC/actions/runs/424320
 
 ## 次日集中处理
 
-1. **U-4 默认成员**：批准或调整 [四项具体提案](default-modules-proposal.md)。科研基础为 arXiv/OpenAlex，开发基础为 systematic-debugging/test-driven-development；四项安装/卸载已验证。批准后落默认清单并重建候选，未批准前保持空清单。
+Preview.9 当前补充：S11 的完整镜像升级/重启、标准 GUI 原插件保留，以及同窗跨工作区模块预检隔离均通过。追加 H7 受控原生超时、锁释放/明确重试、重试安装中关闭并切工作区、重启后原生安装恢复；H10 旧失败卡片不带入新目标通过。三次 QA runtime 正常结束，其他工作区登记与候选四项哈希不变。安装向导、模块执行中切目标及其余未测项没有被覆盖；受控延迟不冒充自然慢网复现。收尾分支仍未新建 PR，后续统一用英文标题和正文提交。
+
+H9 追加：受控延迟真实详情响应后，新查询先显示、旧响应后交付，界面未串结果；详情读取中正常关闭旧目标再同窗切换，新目标状态独立并可正常读取固定来源简介。1,942 项技能文件/插件登记、候选哈希不变。精确时序和受控夹具边界见 [统一候选复测](preview-gui.md)，不将其扩写为用户验收通过。
+
+1. **U-4 默认成员已由 D-17 解除等待**：四项已落默认清单；后续集中验收使用效果，不重复请求排期批准。
 2. **统一 Preview 验收**：按 [HANDTEST](HANDTEST.md) 执行；用户本人完成真实 GitHub 认证。记录实际 PASS/FAIL/NOT RUN，再决定修复或收尾，不预记验收通过。
 3. **反馈站写权限**：当前凭据对反馈数据仓库只有读取权限。回复草稿见 [反馈进度文案](feedback-replies-draft.md)，尚未发布；有权限后先刷新原文/新回复，再按实际阶段更新，验收发布前不置 resolved。
 4. **发布与归档**：当前未合入 main、未发布公开 Preview/final、未归档本版或关闭反馈。待用户宣布收尾并满足验收/版本条件后执行；已有授权沿用，正式发布批准不由本地构建代替。

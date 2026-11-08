@@ -173,13 +173,20 @@ print(str(root/sid/"bridge.py"))
 
 def bridge_argv(executor, container: str, argv: list[str], workspace: str,
                 session_id: str, agent: str) -> list[str]:
-    binding = prepare_session(workspace, session_id, agent)
-    if binding is None:
+    if agent not in {"claude", "codex"}:
         return argv
+    from aisc.application import personal_capabilities
+    personal = personal_capabilities.snapshot(topics._workspace(workspace), session_id)
+    binding = prepare_session(workspace, session_id, agent)
+    if binding is None and not personal:
+        return argv
+    topic_id = binding["topic_id"] if binding else None
+    binding = binding or {"session_id": session_id, "background": ""}
+    binding["background"] += personal
     resume = argv[argv.index("--resume-id") + 1] if "--resume-id" in argv else None
     native = resume if resume and "--fork-session" not in argv else session_id if agent == "claude" else None
-    if native:
-        _bind_native(workspace, binding["topic_id"], session_id, agent, native, bool(resume and "--fork-session" not in argv))
+    if native and topic_id:
+        _bind_native(workspace, topic_id, session_id, agent, native, bool(resume and "--fork-session" not in argv))
     result = executor.run_captured(["exec", "-i", container, "python3", "-c", INSTALL_SOURCE],
         timeout=20.0, input_text=json.dumps({**binding, "source": BRIDGE_SOURCE}))
     path = f"/run/aisc/topic-bridge/{session_id}/bridge.py"

@@ -93,7 +93,7 @@ export const zhCN = {
   "imageRebuild.old.kept_tagged": "旧镜像仍有其他标签，已保留。",
   "imageRebuild.old.kept_referenced": "旧镜像仍被引用或无法确认可清理，已保留。",
   "imageRebuild.old.removed": "未被引用的旧镜像已移除。",
-  "explorer.tab.topics": "主题",
+  "explorer.tab.topics": "个人能力与主题",
   "topics.intro": "确定主题后正常与 AI 对话，过程自动留存，手册随实践逐步完善。",
   "topics.chatNormally": "在正常对话中继续",
   "topics.conversationHelp": "新开下方 AI 对话即可直接交流。目标、疑问和反馈都在对话里说，不需要另填表单。平台保存关联对话的文本，AI负责整理手册。",
