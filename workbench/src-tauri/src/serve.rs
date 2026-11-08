@@ -727,6 +727,9 @@ pub async fn fs_op(
         .request(op, args, Duration::from_secs(30), &cancel)
         .await?;
     if env.meta.exit_code != 0 {
+        if env.errors.first().is_some_and(|e| e.code == "AISC_ERR_FS_CONFLICT") {
+            return Err(WorkbenchError::workspace_conflict());
+        }
         let detail = env
             .errors
             .first()

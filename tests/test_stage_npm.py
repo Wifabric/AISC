@@ -159,8 +159,8 @@ else:
     # Git Bash converts Windows PATH entries to POSIX before resolving curl.
     env["PATH"] = str(network) + os.pathsep + str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
     bash = shutil.which("bash")
-    if os.name == "nt":
-        bash = str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git" / "bin" / "bash.exe")
+    if os.name == "nt" and (git := shutil.which("git")):
+        bash = str(Path(git).resolve().parents[1] / "bin" / "bash.exe")
     result = subprocess.run([bash, str(scripts / SCRIPT.name), "--registry", MIRROR, "--no-companions"], env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "integrity" in (result.stdout + result.stderr).lower()
