@@ -1,6 +1,6 @@
 # v2.1.18 开发计划
 
-状态：**b1–b10、流程/Skill PR #75、整合修正 PR #76/#78/#79/#83/#85/#87/#91 均已合入 develop；本机 Preview.7 和 Windows 安装包构建完成，分项真实 GUI 覆盖见 PROGRESS/preview-gui。U-4 默认成员、完整 Preview 用户验收和发布未完成。** 入口见 [夜间交付与待批准清单](DELIVERY.md)。
+状态：**b1–b10、流程/Skill PR #75、整合修正 PR #76/#78/#79/#83/#85/#87/#91/#93 均已合入 develop；本机 Preview.8 和 Windows 安装包构建完成，分项真实 GUI 覆盖见 PROGRESS/preview-gui。U-4 默认成员、完整 Preview 用户验收和发布未完成。** 入口见 [夜间交付与待批准清单](DELIVERY.md)。
 
 本阶段原收录 F1–F4，D-11 后新增 F5–F8，共八条反馈、十个批次。D-12–D-16 授权连续实施、统一 Preview 验收；U-1–U-3 已确认，U-4 具体成员提案已备、待批准。未实施或未验收部分不预记完成。
 

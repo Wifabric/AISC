@@ -234,3 +234,17 @@ S9 已修复并完成上述实际回归；远程入口 GUI、自然导出竞态�
 把修复适配器部署到该 QA 容器后，在真实市场界面再次点击安装，成功显示 1.2.3-c55ee46073ed。冻结 CLI 回读、v2 磁盘登记及真实插件 manifest 一致，mutation_running=false；另一个 QA 工作区插件登记 SHA256 e558f007a32be4b4ad14851e2d6e12ab2f44ae35dcbb2d8e5a2ff348c0ca493f 不变。历史失败卡片仍保留，不写成自动清除成功。本轮是 Preview.7 GUI + 源码适配器测试部署，标准候选 bundle 尚未更新，不代表旧包自带此修复。
 
 适配器/工厂相关测试 94 passed、16 subtests，覆盖首次安装、重复安装幂等、缺失/非空/损坏保护、替换失败、外部内容变化以及临时名称碰撞不删他人文件。单代理自查，无独立评审。完整门禁、精确 head CI、新候选与镜像工厂验证另记。证据 h7-preview7-{peer-baseline,current-market,registry-deployment,registry-recovered}.json、gui-preview7-h7-{busy-card,registry-failure,registry-recovered}.txt、gui-preview7-h10-unknown-dismissed.txt。未改用户平台或 Windows 网络。
+
+## Preview.8 / S10 新镜像与标准候选
+
+PR #93 head 43f5934029a9b2594ea5bce6467e880a2848b40c 的 CI 42432013590 frontend/rust/cli 全部 success，合入 develop e5c17c3eb7eb13bebf2a42db0556caea92b77633。本地完整 Python 1812 passed / 54 skipped / 212 subtests、Rust 422 passed / 2 ignored、前端 888 passed，类型/生产构建通过。资源清单 1534 项，仅 Dockerfile 与适配器两项变化。
+
+新完整 bundle 校验通过，冻结 CLI 使用该 bundle 构建专用镜像 aisc-s10-43f59340:preview8（6df61d6a8181de5df038ff4f2f6ca421397176f2852e140824ab747fdc4479e9）。无挂载容器检查 factory installed_plugins.json 已为 v2 空对象，adapter SHA256 32942114b713e91e8d5b6d8f38f8c211aa6cba27188f5225c356ccd59f3fc607 与产品源码一致。
+
+Preview.8 首次构建 0b87b3de… 在全新 ui-workspace-fresh8 启动此镜像，runtime a70605ce、容器 755328f2835f。没有部署覆盖适配器或手工修改登记，真实初始化后 v2/plugins={}、列表为空；从市场正常安装 skills-for-real-engineers@anthropic-plugin-directory 成功，版本 1.2.3-c55ee46073ed，真实磁盘/冻结 CLI 一致，操作锁已释放，其他两个 QA 工作区登记哈希不变。
+
+打包前逐文件对比发现本轮 checksum 脚本的临时文件被带入初次 stage；精确移除并完整校验后重新构建 NSIS，旧初次安装包不交付。误收集测试产生的 QA 字节码也由 bundle verify 明确拒绝并清理。最终标准目录相对 Preview.7 恰好只改变 Dockerfile、适配器和 checksum 三个 bundle 文件；其他资源逐文件哈希一致，旧可执行程序/manifest/三项资源已备份。最终 Workbench SHA256 为 9ed704cf0dd575a5f17be6f80f5258c091acc0c410e8aeda85f37eb42582104e，与首次 GUI 构建的二进制哈希不同，分别记账，不声称首次安装发生在最终二进制上。
+
+最终标准候选重新启动相同工作区，镜像设置仍指向专用新镜像。实际 GUI 显示已安装插件及相同版本，没有失败提示；磁盘登记及两个其他工作区哈希不变，最终容器 0895fe4b9e12 / runtime 839170dd-498d-40ea-a213-673055dc7a71。帮助 → 关于显示 Workbench 2.1.18-preview.8、CLI/Bundle 0.1.10，四项产物哈希核验通过。两次构建采用相同产品源码/适配器；此处最终二进制验证的是重启、状态回读与 About，不替代全量手测。
+
+证据 s10-image-build.jsonl、s10-image-verification.json、h7-preview8-{baseline,installed}.json、gui-preview8-first-build-installed.txt、gui-preview8-final-{installed,about}.txt、preview8-final-verification.json。旧空登记迁移证据仍归属前文 Preview.7 测试部署，新工厂路径归属本节。S10 已修；其他 H 项未测边界、U-4、本人认证、最终验收与发布保持原状态。

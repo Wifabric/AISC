@@ -228,3 +228,7 @@ Preview.6 完整无缓存 GUI 123.8 秒成功，其他 tag 与引用原镜像的
 Preview.7 真实操作锁下 unknown/no-retry、关闭失败提示不改变安装/运行状态通过。释放锁后的首次安装暴露工厂空对象登记与当前目录安装器不兼容；只升级精确空对象并修正新镜像初始格式。部署修复到隔离容器后，真实 GUI 安装当前目录插件成功，磁盘版本/manifest 和冻结 CLI 一致，另一工作区登记不变。相关 94 passed / 16 subtests；完整门禁、精确 head CI 和标准候选重打包另记。测试部署与标准 Preview.7 严格区分，详见 [preview-gui](preview-gui.md)。
 
 S10 本地完整门禁：Python 1812 passed / 54 skipped / 212 subtests；Rust 422 passed / 2 ignored；前端 888 passed，类型与生产构建通过。首次 pytest 未指定 tests 范围而误收集第三方重复插件测试，按仓库 tests 范围修正后通过，不归为产品失败。资源清单 1534 项，仅 Dockerfile/适配器两项变化；批量 Git 读取采用 vendor-refresh 的未改文件索引字节策略，与原脚本已完成 572 行一致。QA 窗口正常退出、专用容器已清理，原平台进程保留。远端 CI、标准候选和新镜像仍另记。
+
+## 2026-11-08 Preview.8 完整资源候选
+
+#93 精确 head 43f59340 的 [CI 42432013590](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success，合入 e5c17c3eb7eb13bebf2a42db0556caea92b77633。新镜像 factory v2 和最终 adapter 哈希通过；首轮 Preview.8 GUI 在全新工作区无手工修补安装成功，其他两工作区登记不变。剔除 QA 临时文件后重新完整校验与打包，最终标准候选重启显示安装版本、About 版本正确，四项产物哈希通过。首次 GUI 与最终标准二进制哈希分别记录，完整边界见 [preview-gui](preview-gui.md)。
