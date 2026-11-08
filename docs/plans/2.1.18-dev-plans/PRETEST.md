@@ -222,3 +222,9 @@ Preview.6 完整无缓存 GUI 123.8 秒成功，其他 tag 与引用原镜像的
 ## 2026-11-08 Preview.7 修后候选
 
 #91 精确 head 5414a099192da1372380426fa2006b0f58c28016 的 [CI 42429010839](https://github.com/Wifabric/AISC/actions/runs/42429010839) frontend/rust/cli 三项 success，合入 3b26609e7f0aef9f5eec449a91638c11eadb048e。重新冻结 CLI、NSIS 构建与四项产物哈希通过，About 版本实机核对通过。真实 GUI 缓存取消 9.5 秒、无缓存构建加受控临时 tag 后取消 27.5 秒均通过，原资源保留且临时 tag 清空；后者实际验证 Workbench 强杀后的回收，非手动事后清理。冻结 CLI 精确回收及幂等也通过。自然导出竞态未在修后重复撞中，不将受控测试写成自然复现；逐项边界见 [preview-gui](preview-gui.md)。
+
+## 2026-11-08 H7/H10 与 S10
+
+Preview.7 真实操作锁下 unknown/no-retry、关闭失败提示不改变安装/运行状态通过。释放锁后的首次安装暴露工厂空对象登记与当前目录安装器不兼容；只升级精确空对象并修正新镜像初始格式。部署修复到隔离容器后，真实 GUI 安装当前目录插件成功，磁盘版本/manifest 和冻结 CLI 一致，另一工作区登记不变。相关 94 passed / 16 subtests；完整门禁、精确 head CI 和标准候选重打包另记。测试部署与标准 Preview.7 严格区分，详见 [preview-gui](preview-gui.md)。
+
+S10 本地完整门禁：Python 1812 passed / 54 skipped / 212 subtests；Rust 422 passed / 2 ignored；前端 888 passed，类型与生产构建通过。首次 pytest 未指定 tests 范围而误收集第三方重复插件测试，按仓库 tests 范围修正后通过，不归为产品失败。资源清单 1534 项，仅 Dockerfile/适配器两项变化；批量 Git 读取采用 vendor-refresh 的未改文件索引字节策略，与原脚本已完成 572 行一致。QA 窗口正常退出、专用容器已清理，原平台进程保留。远端 CI、标准候选和新镜像仍另记。

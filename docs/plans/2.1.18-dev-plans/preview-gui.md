@@ -222,3 +222,15 @@ PR #91 head 5414a099192da1372380426fa2006b0f58c28016 的 CI 42429010839 三项 s
 额外冻结 CLI 的真实 Docker 精确 tag 回收和重复调用（removed→absent）通过，共享镜像不受影响。check_h4_preview7.py 核对两次资源结果和四项候选哈希 PASS。证据 gui-preview7-h4-{cache,seeded}-cancelled.txt、gui-preview7-about.txt、h4-preview7-{seeded-residual,result}.json、h4-preview7-{cache,seeded}-cancel-build.log、frozen-cancel-cleanup.json。QA 镜像设置恢复 keep，候选正常退出，原用户平台保留。
 
 S9 已修复并完成上述实际回归；远程入口 GUI、自然导出竞态时间窗再次复现、清理失败的真实 GUI 仍未执行（拒绝/失败可见已有自动化测试）。不将本条扩大为完整 H4、整版用户验收或发布批准。
+
+## Preview.7 / H7、H10 与 S10 首次安装登记格式
+
+在独立 ui-workspace-peer（runtime e2415038、容器 9928be8f111c、keep 62d358f2 镜像）测试，初始插件列表为空。当前真实目录未返回历史 mattpocock-skills@claude-plugins-official，改用同仓库但不同市场身份 skills-for-real-engineers@anthropic-plugin-directory；不把两者当作同一插件版本。上游当前版本为 1.2.3 / c55ee46073ed923f86ce59a5eb3b6d895095d1b7。
+
+通过独立进程持有真实插件操作锁，界面安装返回 unknown，提示操作仍在运行、刷新后重试，失败卡片没有重试按钮；真实列表仍为空、mutation_running=true。详情安装按钮仍可点击，但后端锁拒绝操作，不宣称所有入口均禁用。点击关闭失败提示后，卡片和重复行内提示消失，锁和安装状态不变。释放受控锁后 mutation_running=false，未启动重复安装。H7 未知结果保护、H10 未知结果关闭子集通过；不等同于网络超时后的最终恢复。
+
+锁释放后正常安装明确失败：当前目录安装器拒绝读取平台工厂预置的 installed_plugins.json 空对象 `{}`。最初检查了非实际配置路径；实际 CLAUDE_CONFIG_DIR=/root/.claude，文件存在且为三字节空对象，不能归因为文件缺失。S10 修正工厂初始格式为 version=2、plugins={}；旧工作区仅在明确安装操作、已有插件锁内将准确的空对象原子升级。不补造缺失文件，不覆盖已有记录、损坏内容或符号链接；替换前复核原字节，异常明确失败，清理仅限本次创建的临时文件。
+
+把修复适配器部署到该 QA 容器后，在真实市场界面再次点击安装，成功显示 1.2.3-c55ee46073ed。冻结 CLI 回读、v2 磁盘登记及真实插件 manifest 一致，mutation_running=false；另一个 QA 工作区插件登记 SHA256 e558f007a32be4b4ad14851e2d6e12ab2f44ae35dcbb2d8e5a2ff348c0ca493f 不变。历史失败卡片仍保留，不写成自动清除成功。本轮是 Preview.7 GUI + 源码适配器测试部署，标准候选 bundle 尚未更新，不代表旧包自带此修复。
+
+适配器/工厂相关测试 94 passed、16 subtests，覆盖首次安装、重复安装幂等、缺失/非空/损坏保护、替换失败、外部内容变化以及临时名称碰撞不删他人文件。单代理自查，无独立评审。完整门禁、精确 head CI、新候选与镜像工厂验证另记。证据 h7-preview7-{peer-baseline,current-market,registry-deployment,registry-recovered}.json、gui-preview7-h7-{busy-card,registry-failure,registry-recovered}.txt、gui-preview7-h10-unknown-dismissed.txt。未改用户平台或 Windows 网络。

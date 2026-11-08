@@ -636,7 +636,7 @@ RUN set -eux; \
         sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
     mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256; \
     mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins; \
-    echo '{}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
+    echo '{"version":2,"plugins":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

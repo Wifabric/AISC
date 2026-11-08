@@ -1127,9 +1127,41 @@ def mcp_add(config_json: str, apps: list[str]) -> str:
     return url
 
 
+def _upgrade_empty_plugin_registry() -> None:
+    """Upgrade only AISC's legacy empty factory record, under _plugin_lock.
+
+    The directory installer requires the v2 envelope even for zero installs.
+    Missing, nonempty, malformed and linked registries are not repairable here.
+    """
+    installed = Path(os.environ.get('CLAUDE_CONFIG_DIR', '/root/app/.claude')) / 'plugins' / 'installed_plugins.json'
+    if installed.is_symlink() or not installed.is_file():
+        return
+    temporary = installed.with_name(installed.name + '.' + uuid.uuid4().hex + '.tmp')
+    created = False
+    try:
+        original = installed.read_bytes()
+        if original.strip() != b'{}':
+            return
+        with temporary.open('xb') as stream:
+            created = True
+            stream.write(b'{"version": 2, "plugins": {}}\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, installed.stat().st_mode & 0o777)
+        if installed.is_symlink() or installed.read_bytes() != original:
+            raise AdapterError(ERR_SNAPSHOT, 'Plugin registry changed; refresh installed state before retry')
+        os.replace(temporary, installed)
+    except OSError as exc:
+        raise AdapterError(ERR_SNAPSHOT, f'Cannot upgrade empty plugin registry: {exc}')
+    finally:
+        if created:
+            temporary.unlink(missing_ok=True)
+
+
 def plugin_install(plugin_id: str) -> None:
     if "@" not in plugin_id:
         raise AdapterError(ERR_BAD_REQUEST, "plugin id must be name@marketplace")
+    _upgrade_empty_plugin_registry()
     if any(item['id'] == plugin_id for item in _plugin_items()):
         return
     try:

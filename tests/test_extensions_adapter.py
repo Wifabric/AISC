@@ -73,6 +73,75 @@ class TempEnv(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
 
 
+class EmptyPluginRegistryTests(TempEnv):
+    def registry(self, content=None):
+        path = self.root / 'claude' / 'plugins' / 'installed_plugins.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if content is not None:
+            path.write_bytes(content)
+        return path
+
+    def test_first_install_upgrades_only_empty_factory_record_before_installer(self):
+        path = self.registry(b'{}\n')
+        record = {'version': 2, 'plugins': {'demo@market': [{'scope': 'user', 'version': '1.0'}]}}
+        def install(argv, **kwargs):
+            self.assertEqual(json.loads(path.read_bytes()), {'version': 2, 'plugins': {}})
+            self.assertEqual(argv, ['claude-real', 'plugin', 'install', 'demo@market'])
+            path.write_text(json.dumps(record), encoding='utf-8')
+        with mock.patch.object(A, '_run_cli_git_fallback', side_effect=install) as run:
+            A.plugin_install('demo@market')
+            after = path.read_bytes()
+            A.plugin_install('demo@market')
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(path.read_bytes(), after)
+        self.assertEqual(list(path.parent.glob('*.tmp')), [])
+
+    def test_missing_and_nonempty_registries_are_never_replaced(self):
+        path = self.registry()
+        A._upgrade_empty_plugin_registry()
+        self.assertFalse(path.exists())
+        for raw in [b'{"version":2,"plugins":{}}', b'{"plugins":{"existing@market":[]},"custom":true}',
+                    b'not json', b'[]', b'{"unknown":1}']:
+            with self.subTest(raw=raw):
+                path.write_bytes(raw)
+                A._upgrade_empty_plugin_registry()
+                self.assertEqual(path.read_bytes(), raw)
+
+    def test_unreadable_or_corrupt_record_never_launches_installer(self):
+        path = self.registry(b'broken-json')
+        with mock.patch.object(A, '_run_cli_git_fallback') as run:
+            with self.assertRaises(A.AdapterError): A.plugin_install('demo@market')
+            run.assert_not_called()
+        self.assertEqual(path.read_bytes(), b'broken-json')
+
+    def test_replace_failure_preserves_original_and_removes_only_temporary(self):
+        path = self.registry(b'{}\n')
+        other = path.parent / 'unrelated.tmp'; other.write_bytes(b'keep')
+        with mock.patch.object(A.os, 'replace', side_effect=PermissionError('denied')):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(path.read_bytes(), b'{}\n')
+        self.assertEqual(list(path.parent.glob('*.tmp')), [other])
+        self.assertEqual(other.read_bytes(), b'keep')
+
+    def test_changed_record_is_not_overwritten(self):
+        path = self.registry(b'{}\n')
+        external = b'{"version":2,"plugins":{"external@market":[]}}'
+        with mock.patch.object(A.os, 'fsync', side_effect=lambda _: path.write_bytes(external)):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(path.read_bytes(), external)
+        self.assertEqual(list(path.parent.glob('*.tmp')), [])
+
+    def test_existing_temporary_file_is_never_removed(self):
+        path = self.registry(b'{}\n')
+        identifier = '1' * 32
+        other = path.with_name(path.name + '.' + identifier + '.tmp')
+        other.write_bytes(b'keep')
+        with mock.patch.object(A.uuid, 'uuid4', return_value=mock.Mock(hex=identifier)):
+            with self.assertRaises(A.AdapterError): A._upgrade_empty_plugin_registry()
+        self.assertEqual(other.read_bytes(), b'keep')
+        self.assertEqual(path.read_bytes(), b'{}\n')
+
+
 class ModuleOwnershipTests(TempEnv):
     def test_mcp_fingerprint_detects_secret_edits_without_revealing_values(self):
         items = A.list_items('mcp')
