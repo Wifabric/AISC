@@ -15,7 +15,7 @@
 
 ## 本机可运行候选
 
-**当前升级验收未通过：** 后续 Preview.8 实测发现 S11：切换镜像启动已有工作区时，工厂同步可能覆盖插件登记。修复在整合分支验证中，当前安装包尚未包含修复；不要把下方历史通过子集解读为当前整版可以发布。具体证据见 [preview-gui](preview-gui.md)。
+**当前为整合分支候选：** Preview.9 已包含 S11 升级时保留插件登记的修复，真实完整镜像升级/重启及标准候选 GUI 启动回读通过；跨目标等剩余检查、收尾 PR 和精确 head CI 尚未完成，不代表整版可发布。具体证据见 [preview-gui](preview-gui.md)。
 
 本机输出，不作为仓库文件上传，也尚未创建公开 Release/tag：
 
@@ -23,21 +23,21 @@
 | --- | --- |
 | 隔离候选启动脚本 | `D:\AISC\p18\start-candidate.ps1` |
 | 完整可运行目录 | `D:\AISC\p18\candidate` |
-| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.8_x64-setup.exe` |
+| Windows 安装包 | `D:\AISC\p18\AISC Workbench_2.1.18-preview.9_x64-setup.exe` |
 | 源码、哈希与状态清单 | `D:\AISC\p18\candidate-manifest.json` |
 | 详细测试日志 | `D:\AISC\output\preview-2.1.18-20261108\output\verification` |
 
 PowerShell 执行 `& 'D:\AISC\p18\start-candidate.ps1'` 启动独立配置候选。数据根为 `D:\AISC\p18\qa-data`，WebView 数据也独立；原平台安装和原工作区未替换。每轮检查后正常退出独立候选，原平台进程保留。QA 工作区与证据保留；QA-A 科研模块、QA-C 混合定义及历史保留供继续复测，QA-B 已验证删除定义不删资产。选择隔离工作区完成 HANDTEST，避免把原工作区当测试数据。
 
-本地 Workbench 版本覆盖为 `2.1.18-preview.8`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，用本版源码重新冻结/打包。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
+本地 Workbench 版本覆盖为 `2.1.18-preview.9`，源码仍保留现有正式版本标识；CLI/Bundle 为 `0.1.10`，CLI 沿用已验证冻结产物，资源包包含 S11。此处是可审查的本地候选，不是已发布 Preview。U-4 批准和阶段收尾决定后，再统一更新正式候选的双轨版本及 Release Notes、重建并执行发布流程。
 
-候选产品源码为 PR #93 head `43f5934029a9b2594ea5bce6467e880a2848b40c`，与其合并提交产品内容一致；后续交付文档不改变二进制。SHA256：
+候选产品源码为整合分支提交 `11b5b18ff19732c803cf89387f2c5ea73e9bf7ff`，base develop 为 `9cc7020c`；S11 尚未合入、精确 head CI 待统一收尾 PR，不能沿用 #93 CI 宣称新源码已通过。后续纯文档不改变二进制。SHA256：
 
 | 文件 | SHA256 |
 | --- | --- |
-| workbench.exe | `9ed704cf0dd575a5f17be6f80f5258c091acc0c410e8aeda85f37eb42582104e` |
+| workbench.exe | `1c01963d8d95f51e96cb25a342a8a83b46fd25db93599cb7d7cc20456005a220` |
 | aisc.exe | `e000a775ae16a446330b45cf22373f24b63c00088e228021701435920a84daf1` |
-| setup.exe | `c789b043bc16965722308a05d8537a8d2dd6ff2c90a93f70bedef87774ce7243` |
+| setup.exe | `c593069d8f1d3c1128011395e3388ed76cd6cb8b7b4fd7a676ce2ac8b95a5825` |
 
 ## 验证结果
 
@@ -62,6 +62,8 @@ Preview.7 补充：#91 [CI](https://github.com/Wifabric/AISC/actions/runs/424290
 Preview.8 补充：#93 [CI](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success 后合入，修复旧空插件登记并将新工厂格式设为 v2。新完整资源包/镜像通过校验，真实新工作区首次安装与其他工作区隔离通过；最终标准候选重启回读与 About 通过。最终 NSIS 384409353 字节，完整 bundle 对比只有预期三文件变化，旧版备份保留。首次 GUI 构建与最终重打包二进制的精确哈希分别记录，不混写；详见 [统一候选复测](preview-gui.md)。
 
 ## 次日集中处理
+
+Preview.9 当前补充：S11 的完整镜像升级/重启、标准 GUI 原插件保留，以及同窗跨工作区模块预检隔离均通过。安装包已重建并逐文件核验，两个测试目标正常退出；安装向导、执行中切目标和其余未测项没有被覆盖。收尾分支仍未新建 PR，后续统一用英文标题和正文提交。
 
 1. **U-4 默认成员**：批准或调整 [四项具体提案](default-modules-proposal.md)。科研基础为 arXiv/OpenAlex，开发基础为 systematic-debugging/test-driven-development；四项安装/卸载已验证。批准后落默认清单并重建候选，未批准前保持空清单。
 2. **统一 Preview 验收**：按 [HANDTEST](HANDTEST.md) 执行；用户本人完成真实 GitHub 认证。记录实际 PASS/FAIL/NOT RUN，再决定修复或收尾，不预记验收通过。

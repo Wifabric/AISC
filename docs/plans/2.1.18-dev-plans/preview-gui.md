@@ -268,3 +268,17 @@ Preview.8 标准 GUI 在主 QA 工作区切换到 S10 镜像后，模块预检�
 初次直接 docker exec 适配器未继承 PID 1 作用域，读到了默认路径的空列表；改用产品同一 `_SCOPE_WRAPPER` 后回读原 `mattpocock-skills@claude-plugins-official` 正确。这是验证入口修正，不另记产品缺陷。产品 CLI 对指定测试容器执行 restart 后再次比对通过，最后 stop 正常结束并移除该临时容器，持久数据保留；原用户平台容器 `2e801ec161c0` 仍运行。
 
 本轮 GUI 重新连接新 QA 窗口时返回 `foreground window did not report a process id`，遵循工具恢复边界停止 UI 输入。上述为完整镜像真实 CLI 数据面证据，不写成 GUI PASS；标准 Preview.8 仍不包含 S11，未新建 PR。证据 s11-image-build.jsonl、s11-runtime-{start,restart,stop}.json、s11-upgrade-baseline.json、s11-{upgrade,restart}-result.json 及初始化日志。下一步继续同分支整合、GUI/候选验证和统一 PR/CI。
+
+## Preview.9 / S11 标准候选续测
+
+重新初始化 CU 后恢复窗口读取与输入。为本地提交 `11b5b18ff19732c803cf89387f2c5ea73e9bf7ff` 构建 Preview.9；逐文件部署校验发现 CLI 数据面测试在 stage9 bundle 内产生了两个空状态文件 containers.json / .containers.lock，部署在复制前被拒绝。确认内容并备份移除后重新校验、重建安装包；第一包未交付。最终 bundle 与 Preview.8 相比仅 entrypoint.sh 和 vendor/checksums.txt 两项变化，四项产物哈希见 DELIVERY/本机 manifest，旧 Preview.8 备份保留。NSIS 为 384421234 字节；尚未执行安装/升级向导，不把构建完成当作安装验收。
+
+CLI 测试使用显式容器名 stop 后，实际 QA 工作区仍留有一条属于该已删除容器的旧登记；GUI 预检正确以 unknown_owner 阻止自动删除。核对专属名称、镜像、工作区与 Docker 不存在结果并备份后，仅用产品 unregister API 清理此测试登记；重试预检通过。未删除其他登记、实际容器或持久资产。
+
+通过真实启动设置把主 QA 工作区指向完整 S11 镜像。标准 Preview.9 启动容器 cc6e6f94f28d / runtime bcc5055e-4775-49c5-abd3-3902b778da51，插件页显示原 mattpocock-skills@claude-plugins-official 1.3.1。同一时刻验证镜像、四项产物哈希、14 个受保护文件状态、另外两个工作区登记及模块定义全部一致；证据 preview9-primary-verification.json、gui-preview9-plugin-preserved.txt。这是 S11 数据面升级后的标准 GUI 启动/状态回读，未声明已完成全部 H6/H7。
+
+### H6 同窗跨工作区预检隔离
+
+主 QA 工作区对 QA-A 生成计划 a91f29c7：research/arXiv 保留，OpenAlex 缺失；未点击确认执行。正常关闭工作区后，在同一窗口切到 ui-workspace-fresh8，并通过启动设置选同一完整 S11 镜像；新容器 36f66d47579a / runtime a13da003-477c-4c36-ab13-22ef6294e809。相同用户的两份模块定义可见，旧待确认计划未带入；操作记录显示历史结果区但无前一目标的步骤。新预检生成计划 3989cf79，三项均按该目标的实际快照列为缺失。不能因插件内可能包含同名能力，就把它记作已安装的同来源独立技能。
+
+两计划 ID、容器和 runtime 各自独立，所有行仍为 planned；主目标动作为 retain/retain/install，第二目标为 install/install/install。两侧指定的 18 个技能路径存在性/哈希、插件登记及模块定义前后匹配，未隐式安装或卸载。About 显示 2.1.18-preview.9 / CLI 与 Bundle 0.1.10，最终四项产物哈希匹配；正常退出后两个 QA 容器均结束，原平台仍运行。证据 gui-preview9-isolation-{primary-plan,fresh-before-plan,fresh-history,fresh-plan}.txt、target-isolation-{primary-plan,fresh-plan,final}.json、preview9-isolation-result.json、gui-preview9-about.txt。本项只覆盖跨目标预检/计划/记录隔离，不包含安装执行中切换。
