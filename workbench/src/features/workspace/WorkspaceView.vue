@@ -531,7 +531,7 @@ function setPaneTreeRef(tabId: string) {
             <PaneTree :ref="setPaneTreeRef(tb.tabId)" :tab-id="tb.tabId" :tree="tb.tree" />
           </div>
 
-          <section v-if="store.topicsTabOpen" v-show="store.activeTabId === TOPICS_TAB_ID" class="topics-pane" role="tabpanel" :aria-label="t('topics.skill')">
+          <section v-if="store.topicsTabOpen" v-show="store.activeTabId === TOPICS_TAB_ID" class="topics-pane" role="tabpanel" :aria-label="t('explorer.tab.topics')">
             <TopicsView />
           </section>
         </main>

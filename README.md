@@ -300,7 +300,11 @@ cc-switch proxy show
 
 启动时 AISC 会 detach 启动 cc-switch daemon。Claude 路由 best-effort 自动启用；Codex 默认官方直连，需要托管 Provider 时执行 `cc-switch proxy -a codex enable`。
 
-Skills 同步：镜像内置 `caveman`、`document-skills`、`grill-me`、`superpowers`，由 cc-switch 登记（`cc-switch skills list/sync`）；容器入口按 `AISC_SKILLS_SYNC=auto|always|off` 控制同步策略。
+Skills 同步：镜像离线预装 13 个 `caveman-*` 技能及 `grill-me`、`grilling`、`karpathy-guidelines`，由 cc-switch 登记到 Claude/Codex。容器入口按 `AISC_SKILLS_SYNC=auto|always|off` 控制补装策略，只补缺少文件，保留已有内容及启停选择。用户主动运行 cc-switch 的全量 `skills sync` 属于单独操作。
+
+扩展市场的「基础模块」提供科研基础（arXiv / OpenAlex）与开发基础（系统化调试 / 测试驱动开发）。模块定义可复制编辑，成员在线安装，不随离线包预装；「应用」只补缺项，「卸载」保留预装、共享、已修改或归属不明的内容。安装成功不代表外部服务认证或具体模型任务已验证。
+
+「个人能力与主题」中的模板市场提供通用协作、科研阅读、开发复盘初始模板。创建个人副本后，可编辑规则、粘贴自己的技能内容、记录修改原因与验证结果并保存新版本；历史版本可以恢复到草稿再次保存。勾选启用后，当前工作区新建的 Claude/Codex 会话会加载该版本，已有会话和其他工作区不变。个人能力可单独使用，也可与下方主题工作坊的对话记录、手册和实践过程一起使用。
 
 代理网络（CLI）：
 

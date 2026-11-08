@@ -130,7 +130,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         self.assertIn("宿主 Skills 已存在", entrypoint)
         self.assertIn('f"aisc:{name}"', helper)
         self.assertIn('["skills", "sync-method", "copy"]', helper)
-        self.assertIn('["skills", "sync"]', helper)
+        self.assertNotIn('["skills", "sync"]', helper)
         self.assertNotIn(
             "enabled_claude = 1, enabled_codex = 1",
             helper,
@@ -146,8 +146,8 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         )
         self.assertIn("/opt/aisc/skills/.aisc-bundle.sha256", dockerfile)
         for skill_name, *_ in SKILLS_HELPER.BUNDLED_SKILLS:
-            source = ROOT / "container" / "cc-switch-skills" / "grill-me"
-            if skill_name != "grill-me":
+            source = ROOT / "container" / "cc-switch-skills" / skill_name
+            if skill_name.startswith("caveman"):
                 source = ROOT / "container" / "_bundle" / "plugins" / "marketplaces" / "caveman" / "skills" / skill_name
             self.assertTrue((source / "SKILL.md").is_file())
 
@@ -777,7 +777,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
             (bundle_dir / SKILLS_HELPER.REVISION_FILE).write_text("bundle-v2\n", encoding="utf-8")
 
             def fail(args, log, *, check):
-                if args == ["skills", "sync"]:
+                if args == ["skills", "sync-method", "copy"]:
                     raise subprocess.CalledProcessError(1, ["cc-switch", *args])
 
             result, output = self._run_sync_main(config_dir, skills_home, bundle_dir, fail)
@@ -947,6 +947,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
                     bundle_dir=bundle_dir,
                     revision="bundle-v2",
                     log=log,
+                    skills_home=skills_home,
                 )
 
             calls = [call.args[0] for call in run_cc_switch.call_args_list]
@@ -957,7 +958,6 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
             [
                 ["skills", "list"],
                 ["skills", "sync-method", "copy"],
-                ["skills", "sync"],
             ],
         )
         self.assertEqual(marker_content, "bundle-v2\n")
@@ -975,8 +975,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
                 "_run_cc_switch",
                 side_effect=[
                     None,
-                    None,
-                    subprocess.CalledProcessError(1, ["cc-switch", "skills", "sync"]),
+                    subprocess.CalledProcessError(1, ["cc-switch", "skills", "sync-method", "copy"]),
                 ],
             ):
                 with self.assertRaises(subprocess.CalledProcessError):
@@ -985,6 +984,7 @@ class CcSwitchSkillSyncTests(unittest.TestCase):
                         bundle_dir=bundle_dir,
                         revision="bundle-v2",
                         log=log,
+                        skills_home=skills_home,
                     )
 
             marker_exists = marker.exists()

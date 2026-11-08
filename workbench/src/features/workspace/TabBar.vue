@@ -152,7 +152,7 @@ const roving = ref(-1); // -1 = no manual roving; follow the active tab
  * `store.tabs.length + n`. */
 const virtualTabs = computed(() => {
   // The topic page is a workspace-local virtual tab; it never opens a PTY.
-  return store.topicsTabOpen ? [{ id: TOPICS_TAB_ID, label: topics.detail?.title ? `${t("explorer.tab.topics")}：${topics.detail.title}` : t("topics.skill"), icon: "▤" }] : [];
+  return store.topicsTabOpen ? [{ id: TOPICS_TAB_ID, label: topics.detail?.title ? `${t("explorer.tab.topics")}：${topics.detail.title}` : t("explorer.tab.topics"), icon: "▤" }] : [];
 });
 const virtualBtnRefs = new Map<string, HTMLButtonElement>();
 function setVirtualRef(id: string) {
@@ -464,7 +464,7 @@ function canReopen(s: TabSessionState): boolean {
             :data-agent="a"
             @click="choose(a)"
           >{{ t(`tabbar.menu.${a}`) }}</li>
-          <li role="menuitem" tabindex="0" data-agent="topics" @click="choose('topics')">{{ t("topics.skill") }}</li>
+          <li role="menuitem" tabindex="0" data-agent="topics" @click="choose('topics')">{{ t("explorer.tab.topics") }}</li>
 
 
         </ul>

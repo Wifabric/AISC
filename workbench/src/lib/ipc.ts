@@ -1145,12 +1145,23 @@ export interface TopicCheck {
 }
 export interface TopicCallParams {
   workspace: string;
-  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync";
+  operation: "list" | "create" | "show" | "prepare" | "check" | "activate" | "deactivate" | "sync" | "personal-list" | "personal-save";
   id?: string;
   title?: string;
   text?: string;
   sources?: string[];
   action?: TopicAction;
+  personal?: PersonalCapabilityDraft;
+}
+export interface PersonalTemplate { id: string; name: string; description: string; rules: string; skill: string }
+export interface PersonalRevision {
+  revision: number; name: string; rules: string; skill: string; reason: string;
+  verification: string; enabled: boolean; created_at: string;
+}
+export interface PersonalProfile { id: string; template_id: string; history: PersonalRevision[] }
+export interface PersonalCapabilityDraft {
+  id: string; template_id: string; expected_revision: number; name: string;
+  rules: string; skill: string; reason: string; verification: string; enabled: boolean;
 }
 export const topicCall = <T = Record<string, unknown>>(params: TopicCallParams) =>
   invoke<T>("topic_call", params as unknown as Record<string, unknown>);

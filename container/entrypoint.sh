@@ -486,7 +486,7 @@ if command -v cc-switch >/dev/null 2>&1; then
         )"; then
             case "$CC_SWITCH_SKILLS_RESULT" in
                 synced)
-                    echo "✅ cc-switch 已安装 13 个 caveman 技能与 grill-me（Claude + Codex）"
+                    echo "✅ cc-switch 已配置 16 个通用技能（caveman、grill-me、grilling、Karpathy）（Claude + Codex）"
                     ;;
                 current)
                     echo "ℹ️  cc-switch 内置 skills 已是最新，跳过同步。"

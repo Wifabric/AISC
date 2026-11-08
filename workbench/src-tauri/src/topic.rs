@@ -7,7 +7,7 @@ use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 fn topic_argv(workspace: &str, operation: &str, id: Option<&str>) -> Result<Vec<String>, WorkbenchError> {
-    if !["list", "create", "show", "prepare", "check", "activate", "deactivate", "sync"].contains(&operation) {
+    if !["list", "create", "show", "prepare", "check", "activate", "deactivate", "sync", "personal-list", "personal-save"].contains(&operation) {
         return Err(WorkbenchError::usage("unknown topic operation"));
     }
     let mut argv = vec!["topic".into(), operation.into(), "--workspace".into(),
@@ -17,7 +17,7 @@ fn topic_argv(workspace: &str, operation: &str, id: Option<&str>) -> Result<Vec<
             .ok_or_else(|| WorkbenchError::usage("topic id is required"))?;
         argv.push(format!("--id={value}"));
     }
-    if ["create", "prepare"].contains(&operation) {
+    if ["create", "prepare", "personal-save"].contains(&operation) {
         argv.extend(["--input-json".into(), "-".into()]);
     }
     Ok(argv)
@@ -34,15 +34,17 @@ pub async fn topic_call(
     text: Option<String>,
     sources: Option<Vec<String>>,
     action: Option<String>,
+    personal: Option<Value>,
 ) -> Result<Value, WorkbenchError> {
     let argv = topic_argv(&workspace, &operation, id.as_deref())?;
     let target = crate::target::resolve_target_for(&app, &window).await?;
     let timeout = Duration::from_secs(30);
     let cancel = CancellationToken::new();
-    let env = if ["create", "prepare"].contains(&operation.as_str()) {
+    let env = if ["create", "prepare", "personal-save"].contains(&operation.as_str()) {
         // User input travels over stdin, not a shell or process command line.
         let form = json!({"title": title.unwrap_or_default(), "text": text.unwrap_or_default(),
-                          "sources": sources.unwrap_or_default(), "action": action.unwrap_or_else(|| "continue".into())});
+                          "sources": sources.unwrap_or_default(), "action": action.unwrap_or_else(|| "continue".into()),
+                          "personal": personal.unwrap_or(Value::Null)});
         run_control_input_target(&target, argv, form.to_string(), timeout, cancel).await?
     } else {
         run_control_target(&target, argv, timeout, cancel).await?

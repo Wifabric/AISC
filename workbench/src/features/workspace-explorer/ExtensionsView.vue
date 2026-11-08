@@ -82,7 +82,7 @@ async function closeMarket(): Promise<void> {
 <template>
   <div class="explorer-body extensions-view" data-testid="extensions-view">
     <div v-if="store.kind === 'skills'" class="extensions-card" data-testid="topic-skill-entry">
-      <strong>{{ t("topics.skill") }}</strong>
+      <strong>{{ t("explorer.tab.topics") }}</strong>
       <p class="ext-desc">{{ t("topics.skillDescription") }}</p>
       <button type="button" class="ui-button sm" @click="runtime.openTopicsTab()">{{ t("topics.useSkill") }}</button>
     </div>

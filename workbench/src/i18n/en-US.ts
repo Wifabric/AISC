@@ -93,7 +93,7 @@ export const enUS: Record<string, string> = {
   "imageRebuild.old.kept_tagged": "The old image has other tags and was retained.",
   "imageRebuild.old.kept_referenced": "The old image is referenced or could not be verified for cleanup, so it was retained.",
   "imageRebuild.old.removed": "The unreferenced old image was removed.",
-  "explorer.tab.topics": "Topics",
+  "explorer.tab.topics": "Personal capabilities & topics",
   "topics.intro": "Choose a topic and chat normally. Conversations are recorded as the guide evolves through practice.",
   "topics.chatNormally": "Continue in your normal chat",
   "topics.conversationHelp": "Open an AI conversation below and discuss your goals, questions and feedback there. No separate forms needed. The platform saves linked conversation text; the AI maintains the guide.",
