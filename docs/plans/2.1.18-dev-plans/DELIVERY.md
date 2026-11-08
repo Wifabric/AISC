@@ -41,7 +41,15 @@ Preview.11 的三层能力和 GUI 故障覆盖证据保留在 preview-gui；Prev
 | GitHub 与模型提供者本人认证、模型效果 | NOT RUN；不使用用户凭据代登录，不把合成配置/进程参数当真实认证或模型效果。本人认证后开发者继续支持排错。 |
 | 最终用户验收及收尾决定 | 尚未完成；未替用户批准，待条件满足后按 HANDTEST 统一验收。 |
 | 公开 Preview / main / final / 归档 | 尚未执行；按既有批准边界推进。发布说明、修复对应和实测证据已备于本文，不提前打勾或归档。 |
-| 反馈站回写 | 仓库权限仍只读；[回复草稿](feedback-replies-draft.md) 已更新，未发送，F1–F8 未置 resolved。取得权限后刷新原文与新回复再提交，final 后才写最终解决版本。 |
+| 反馈站回写 | 仓库权限仍只读，且为私有仓库、禁止 fork，无法以 fork PR 替代直接写入；[回复草稿](feedback-replies-draft.md) 已更新，未发送，F1–F8 未置 resolved。取得权限后刷新原文与新回复再提交，final 后才写最终解决版本。 |
+
+
+
+### 合并后最终构建复核（2026-11-08）
+
+develop 集成提交 `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05` 的自动流水线全部成功：[Workbench 三项](https://github.com/Wifabric/AISC/actions/runs/42460797396)、[三平台 CLI sidecar](https://github.com/Wifabric/AISC/actions/runs/42460797323)、[Linux deb / macOS dmg](https://github.com/Wifabric/AISC/actions/runs/42460797456)、[Windows NSIS 与真实静默安装/重装/卸载保留](https://github.com/Wifabric/AISC/actions/runs/42460797464)。公开发布 job 跳过，仓库 open PR 为 0；后续只有交付账本文档，产品树不变。最终文档门禁 51 PASS / 0 warnings / 0 failures，13 份变更文档的 116 处相对链接检查通过。
+
+Windows 环境复核：WindowsSandbox.exe 不存在；CIM 仅返回宿主机，管理层 Get-VM 被授权策略拒绝，不能据此断言机器上绝无其他虚拟机，也没有可用隔离桌面完成交互安装。反馈仓库仍 pull=true / push=false，private=true / allow_forking=false；回复草稿未发送。上述环境/权限依赖、本人认证、用户验收与发布条件没有被自动构建成功替代。证据 `s15-post-merge-ci.json`、`s15-isolated-windows.json`、`s15-doc-links.json`。
 
 ## 变更说明
 

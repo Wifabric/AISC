@@ -12,6 +12,14 @@ Preview.12 真实 GUI / SSH 已通过：同名冲突提示且两文件不变；�
 
 剩余条件分别记录：隔离 Windows 交互安装 GUI 仍缺可用桌面环境，属于开发者阻塞，不能移交为用户代测；真实 GitHub/提供者本人认证及模型效果、最终用户验收、收尾与公开发布未执行。反馈仓库权限再次核实为只读，草稿已更新但未发送、未关闭 F1–F8。自然慢网/导出竞态没有自然复现，已有受控故障覆盖，不能称自然场景 PASS。当前没有未合并的本版产品 PR，也没有把 TODO 标为整版完成。
 
+
+
+### 合并后最终构建复核（2026-11-08）
+
+develop 集成提交 `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05` 的自动流水线全部成功：[Workbench 三项](https://github.com/Wifabric/AISC/actions/runs/42460797396)、[三平台 CLI sidecar](https://github.com/Wifabric/AISC/actions/runs/42460797323)、[Linux deb / macOS dmg](https://github.com/Wifabric/AISC/actions/runs/42460797456)、[Windows NSIS 与真实静默安装/重装/卸载保留](https://github.com/Wifabric/AISC/actions/runs/42460797464)。公开发布 job 跳过，仓库 open PR 为 0；后续只有交付账本文档，产品树不变。最终文档门禁 51 PASS / 0 warnings / 0 failures，13 份变更文档的 116 处相对链接检查通过。
+
+Windows 环境复核：WindowsSandbox.exe 不存在；CIM 仅返回宿主机，管理层 Get-VM 被授权策略拒绝，不能据此断言机器上绝无其他虚拟机，也没有可用隔离桌面完成交互安装。反馈仓库仍 pull=true / push=false，private=true / allow_forking=false；回复草稿未发送。上述环境/权限依赖、本人认证、用户验收与发布条件没有被自动构建成功替代。证据 `s15-post-merge-ci.json`、`s15-isolated-windows.json`、`s15-doc-links.json`。
+
 ## 前轮整合：PR #95（2026-11-08）
 
 - [PR #95](https://github.com/Wifabric/AISC/pull/95)，英文标题/说明；集中 S11 插件登记保护、S12 离线 16 项/保留用户编辑、S13 两个默认在线模块、S14 个人模板/迭代/会话注入，以及此前 Preview 记录。仅此一个收尾 PR。
