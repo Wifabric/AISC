@@ -698,6 +698,10 @@ def _build_parser() -> _AiscArgumentParser:
     mtrc.add_argument("--tag", required=True)
     mtrc.add_argument("--expected-image-id", default=None)
 
+    mtrclean = mtsub.add_parser("docker-rebuild-cleanup", help="Recover one interrupted rebuild temporary tag", allow_abbrev=False)
+    _add_global_args(mtrclean, is_subparser=True)
+    mtrclean.add_argument("--tag", required=True)
+
     mtu = mtsub.add_parser("cache-usage", help="Read-only docker system df summary",
                            allow_abbrev=False)
     _add_global_args(mtu, is_subparser=True)
@@ -2391,6 +2395,9 @@ def _cmd_maintenance(
     if sub == "docker-rebuild-check":
         from aisc.application.image_rebuild import rebuild_check
         return rebuild_check(executor, tag=args.tag, expected_image_id=args.expected_image_id), 0, []
+    if sub == "docker-rebuild-cleanup":
+        from aisc.application.image_rebuild import cleanup_rebuild_tag
+        return cleanup_rebuild_tag(executor, tag=args.tag), 0, []
     if sub == "docker-rebuild" and args.guarded:
         from aisc.application.image_rebuild import guarded_rebuild
         if args.expected_image_id is None:

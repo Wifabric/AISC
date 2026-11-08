@@ -41,3 +41,7 @@ settings、runtimeBuild、launchSummary 定向测试；Python docker_lifecycle/d
 - 远端 CI、真实 GUI 两入口/交互与用户 H4 尚 NOT RUN；按 D-15 留到对应阶段，不能将 DOM、CLI 或数据面结果冒充 GUI PASS。
 
 最终提交 `80e90919016a9e4874a81735d2600161c55f5a12` 的 frontend/rust/cli 全部 PASS：[CI](https://github.com/Wifabric/AISC/actions/runs/42400554462)。[PR #68](https://github.com/Wifabric/AISC/pull/68) 已合入 develop `1efe0904b3770bf1bdc530b8c8b474f48fb00cd6`。上述 CI NOT RUN 为提交前记录；GUI 与 H4 仍 NOT RUN。
+
+## 2026-11-08 H4/S9 Preview 补测与修正
+
+完整无缓存真实 GUI 成功；缓存取消终态与原资源保护通过，但 Windows 强杀绕过 Python finally 导致本次临时 tag 残留。沿用 b4 失败/取消清理要求修正：开始事件提供唯一临时 tag，原生端退出后以新 CLI 精确回收，持锁且不强删、不按 image ID、不清扫其他构建；失败显式提示残留。103 项关联 Python / 19 subtests、2 项 Rust 协议测试和实际源码清理恢复通过，修后候选 GUI 与 CI 待补。既往“GUI NOT RUN”为历史记录，当前逐项结果以 [preview-gui](preview-gui.md) 为准。

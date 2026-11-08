@@ -79,6 +79,24 @@ def _require_stopped(state):
               'AISC_ERR_IMAGE_IN_USE')
 
 
+def cleanup_rebuild_tag(executor, *, tag: str, data_root: Optional[Path] = None) -> dict[str, Any]:
+    """Recover one temporary tag after a Workbench hard cancellation.
+
+    The caller retains the exact tag from this build's start event. Never
+    enumerate/prune the namespace or remove by image ID (which may be shared).
+    """
+    if not re.fullmatch(r'aisc-rebuild:[0-9a-f]{32}', tag):
+        _fail('Invalid temporary rebuild tag', 'AISC_ERR_USAGE')
+    lock_root = Path(data_root) if data_root else shared_root()
+    with docker_maintenance_lock_at_root(lock_root, timeout=5.0):
+        if not _inspect(executor, tag):
+            return {'tag': tag, 'action': 'absent'}
+        result = executor.run_captured(['rmi', tag], timeout=30.0)
+        if result.exit_code != 0 or _inspect(executor, tag):
+            _fail(f'Temporary build tag may remain: {tag}; refresh Docker resources and retry cleanup')
+        return {'tag': tag, 'action': 'removed'}
+
+
 def guarded_rebuild(executor, *, root: str, tag: str, expected_image_id: str,
                     no_cache: bool = True, pull: bool = False, emitter=None,
                     data_root: Optional[Path] = None) -> dict[str, Any]:
@@ -96,7 +114,8 @@ def guarded_rebuild(executor, *, root: str, tag: str, expected_image_id: str,
         log_path = _open_build_log()
         parser = BuildProgressParser()
         if emitter:
-            emitter.emit('build.start', {'image_tag': tag, 'log_path': str(log_path) if log_path else None})
+            emitter.emit('build.start', {'image_tag': tag, 'temporary_tag': temporary,
+                                        'log_path': str(log_path) if log_path else None})
             for warning in warnings:
                 emitter.emit('build.warning', {'message': warning})
         def chunk(stream, text):
