@@ -294,3 +294,13 @@ CLI 测试使用显式容器名 stop 后，实际 QA 工作区仍留有一条属
 再次正常关闭 fresh8，重新打开 timeout9，容器 de1aee8a1d6c / runtime 475cfb7a-a074-476f-872d-dd4bf9f24e8e。此容器不存在延迟夹具，原生 claude-real SHA256 4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594 与部署前相同，adapter 仍为 32942114…。界面列表为空，再从真实市场安装同一插件；实际原生进程完成下载，GUI 和作用域适配器一致显示 1.2.3-c55ee46073ed，锁释放。正常退出候选后，三次 QA runtime 均已移除；其他工作区登记、候选四项哈希保持一致，原用户平台 PID 40320 和容器仍运行。
 
 证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json、gui-h7-timeout9-{running,failed,retrying,switched,recovered}.txt。通过范围为受控原生超时、明确重试、安装进行中正常关闭再切目标、失败卡片隔离和重启后正常安装恢复；不覆盖模块安装进行中切换、两个目标同时存活时的迟到响应、自然慢网或用户本人验收。没有新增产品代码、构建或 PR，文档保留在同一收尾分支。
+
+### H9 详情迟到响应与跨工作区隔离
+
+标准 Preview.9 在主 QA 工作区启动完整 S11 镜像，容器 b3ad035cd769。实际适配器读取 grill-me 成功，来源仍为固定提交 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d 的 skills/productivity/grill-me/SKILL.md。部署前记录四个 QA 工作区三引擎 skills 文件和顶层插件 JSON 登记共 1,942 项路径/哈希。在此临时容器中保留原适配器逐字节副本，用透明入口仅对 mattpocock/skills 的 skill-describe 调用缓冲真实 stdout/stderr，至少到调用开始后 35 秒再原样交付；没有编造内容、修改 GUI、正式 bundle 或超时参数。
+
+真实 GUI 搜索 grill，展开 grill-me 显示“正在读取上游功能介绍…”。输入新查询 caveman 后，首个 grill-me 响应先完成，因此不将它写作成功撞中迟到窗口。旧查询的串行后台第二项 grill-with-docs（PID 508）仍在延迟交付时，新 caveman 查询已显示完整结果；当时实际上游成功响应已保存，但 wrapper 尚存活、没有 response-delivered 事件。随后该响应按原样成功交付，wrapper 退出，新界面仍只有 caveman 结果，没有旧 grill 条目/详情。这一交叠顺序有独立进程事件和前后 GUI 文本佐证，区别于 Preview.6 的普通查询切换。
+
+再展开 mattpocock/skills 的 caveman 条目，真实界面显示详情加载中，wrapper PID 717 存活。该市场条目在固定上游目录中未找到唯一路径，实际响应为 AISC_ERR_EXTENSIONS_NOT_FOUND；响应尚未交付时正常关闭工作区，旧容器随运行环境结束而移除。随后同窗打开 fresh8，容器 b662dfd2513c / runtime a976fff7-66e2-476f-bae2-c4445d6717dd，适配器哈希与未修改产品一致。新目标技能市场查询框为空、暂无搜索结果，旧加载/错误未带入。重新搜索 grill，真实原生链正常显示 grill-me、grill-with-docs、grilling 简介，展开 grill-me 来源为上述固定提交。没有把陈旧 caveman 条目记为详情成功，也不把关闭旧 runtime 的场景写成两目标同时存活时的成功迟到回调。
+
+正常退出后两个 QA runtime 均结束；1,942 项资产和候选四项哈希不变，用户原平台 PID 40320 / 容器仍运行。本轮只读详情，未执行任何安装或卸载。证据 h9-preview9-{deployment,query-pending,query-submitted,new-query-visible,query-delivered,workspace-pending,switched,final}.json、gui-h9-preview9-{query-loading,new-query,query-after-delivery,workspace-loading,switched-empty,switched-loaded}.txt。H9 受控迟到查询响应、详情读取中关闭切换、新目标独立读取通过；最终用户验收待完成。候选二进制未重建，验证记录仍集中收尾分支。

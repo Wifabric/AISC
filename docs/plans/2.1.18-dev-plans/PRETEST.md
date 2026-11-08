@@ -240,3 +240,7 @@ S10 本地完整门禁：Python 1812 passed / 54 skipped / 212 subtests；Rust 4
 ## 2026-11-08 Preview.9 H7/H10 超时与恢复
 
 标准 Preview.9 / S11 完整镜像，在专用空工作区仅延迟选定原生安装调用 195 秒，产品原有 180 秒超时未改。真实界面安装按钮禁用、单次调用持锁；超时后进程消失、锁释放、列表为空，明确提示未安装并提供重试。重试延迟改为 35 秒，在进程仍运行时由真实界面正常关闭工作区并切到 fresh8，旧状态未带入，三个已有工作区登记不变。重新打开原工作区的新容器无夹具、原生安装器哈希恢复一致，真实安装成功并回读版本 1.2.3-c55ee46073ed。三次 QA runtime 正常移除，候选四项哈希与原用户平台核对通过。证据 h7-timeout9-{deployment,running,timed-out,retry-running,switched,final,result}.json 和对应 gui 文本；详见 [preview-gui](preview-gui.md)。此为受控超时与关闭切换，不代表自然慢网或模块执行中切换；本轮没有产品代码变化，不新增 PR。
+
+## 2026-11-08 Preview.9 H9 迟到响应与切目标
+
+在隔离容器中延迟真实详情响应，GUI 的新 caveman 查询已显示时，旧 grill-with-docs 成功响应仍等待交付；随后原样交付，界面未串结果。grill-me 首次响应早于该交叠，分别记账。另一详情加载期间正常关闭旧工作区再同窗切目标，新目标查询/加载/错误状态独立，重新读取 grill 三项简介和固定来源正常。四个 QA 工作区 1,942 项技能文件/插件登记、候选四项哈希不变，临时运行环境正常结束。证据 h9-preview9-* 与 gui-h9-preview9-*；受控透明响应入口、上游陈旧 caveman 条目返回 NOT_FOUND、关闭旧 runtime 的覆盖边界详见 [preview-gui](preview-gui.md)。不声称自然网络竞态或用户验收通过。
