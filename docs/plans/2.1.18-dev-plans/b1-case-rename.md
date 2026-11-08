@@ -6,6 +6,8 @@
 
 ### S15 / Preview.11 远程实测发现（2026-11-08）
 
+S15 跨平台 CI 补验发现验证环境问题：Windows watchdog 7.1 的底层事件批量等待超过旧测试的固定 0.5 秒，改为有上限地等到文件和目录事件齐备；Dockerfile 文本显式按 UTF-8 读取；macOS 执行 Linux 容器 entrypoint 测试前配置 GNU coreutils，保证 `cp -ru` 与容器实际工具一致。保持业务断言，不跳过失败项；只修现有测试和 CI 准备，不改变候选产品代码。重跑 Windows/Linux/macOS × Python 3.11/3.12/3.13 后再合并。
+
 隔离 SSH 目标真实 GUI 将 `AREA.txt` 改为已有 `Occupied.txt`，后端 `serve_fs.op_fs_rename` 使用 `os.replace` 覆盖目标且前端报成功。仅 QA 数据受影响。这违反既定 H1/R-1 的冲突不覆盖要求，按本批缺陷修复处理，不新增产品范围。
 
 修正远端 rename 为不替换已有目标，文件、目录、悬空链接及不同硬链接名字均保留；相同路径和真实大小写别名另行处理，不能把两个大小写不同的独立条目当作同一条目。常规 POSIX rename 使用系统排他改名，平台不支持时拒绝而不降级覆盖。远程冲突映射到现有“目标已存在”提示；Workbench 同步校验 basename/根目录规则。先保留失败证据与本地回归，再部署同版 CLI、重建统一候选复测，最后精确 head CI / PR / develop 集成。新增测试继续仅保留本地。

@@ -177,7 +177,18 @@ class WatchRegistryTests(unittest.TestCase):
         with open(os.path.join(self.root, "w1.txt"), "w", encoding="utf-8") as f:
             f.write("x")
         os.makedirs(os.path.join(self.root, "wdir"), exist_ok=True)
-        time.sleep(0.5)
+        # Windows watchdog batches native events before our own debounce.
+        # Wait for observable results, not a particular dependency's latency.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            observed = {
+                os.path.basename(p["path"])
+                for frame in list(self.events) if frame["event"] == "fs.change"
+                for p in frame["data"]["paths"]
+            }
+            if {"w1.txt", "wdir"} <= observed:
+                break
+            time.sleep(0.05)
         self.reg.shutdown()
         frames = [e for e in self.events if e["event"] == "fs.change"]
         self.assertTrue(frames, "no fs.change frame")

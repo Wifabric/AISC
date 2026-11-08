@@ -286,7 +286,7 @@ def test_stage_failed_group_keeps_previous_payloads_unchanged(sandbox: Path, fai
 
 
 def test_docker_defaults_are_release_pins_and_preserve_resolver_receipt():
-    text = (ROOT / "container/Dockerfile").read_text()
+    text = (ROOT / "container/Dockerfile").read_text(encoding="utf-8")
     expected = {**PINS, "NODE_IMAGE": "node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9",
                 "CODEX_VERSION": "0.166.0", "CLAUDE_CODE_VERSION": "2.1.314",
                 "GEODATA_VERSION": "20261030", "GEODATA_COMMIT": "10f120b9f0cd1bcae8b8ff88b3f999237b919702"}
