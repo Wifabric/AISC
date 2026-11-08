@@ -328,3 +328,24 @@ Preview.11 帮助 → 关于的真实截图确认 Workbench 2.1.18-preview.11、
 H6 执行中跨目标：第一轮 125 秒延迟已在新工作区启动前返回，不算交叠通过。第二轮保留两个运行环境 d9342ac154ff / 71553d5c60d5（相同 Preview.11 完整镜像）。GUI 原目标显示 3/6 执行中，真实插件安装响应已成功产生、由透明 QA 入口缓冲；通过命令面板“选择工作区…”切到已运行的 fresh8。独立记录确认新界面出现时两容器均运行、旧响应尚未交付，再主动释放。旧计划 7763c55c 的第 4 项完成为 installed，第 5/6 项仍 planned；新目标 module-status.latest 为 null，插件页仅有该目标原先的 skills-for-real-engineers，旧测试插件和加载状态没有带入。此项实际覆盖两个目标同时存活时的成功迟到响应与后续步骤停止。没有改变产品超时或伪造成功结果。
 
 证据 `final-h6-cross-{pending,delivered}.json`、`gui-final-h6-cross-{running,new-before-delivery,new-after-delivery,new-plugins}.txt`。原适配器已恢复；四个测试插件、模拟 Context7 配置、本地测试市场及三份本轮测试模块定义通过明确身份清理，原有两份模块定义和 GitHub 配置保留。候选正常退出后两套 QA runtime 均已移除，原用户平台 PID 40320 / 容器 2e801ec161c0 仍运行，候选三文件及安装包 SHA256 与 manifest 一致。`final-qa-cleanup.json` 记录最终核对结果。
+
+### Preview.11 开发者续测：H3 / H4 异常清理
+
+仍使用冻结的 Preview.11 Workbench、CLI 和完整 bundle。独立 QA 启动使用透明 CLI/Docker 转发入口，仅对明确测试标签注入 rmi 失败；真实 Docker 状态同时取证，没有改动正式产物或全局 PATH。初版夹具因 stdin 未及时 flush 导致协议超时，修正转发后重跑；这些尝试不作为产品失败或验证通过。
+
+- H3：真实 GUI 将 `aisc-final-fault-2b7702c3:keep` 改为 `:gui-partial`，仅旧 tag 删除被注入失败。界面表单与历史显示 `new tag created; old tag retained`，没有报全成功。Docker 核对新旧标签与其他三项标签均指向原镜像 `0582b629adcf…`。解除注入后在相同 GUI 表单重试，只有选中的 `:keep` 被移除，其余四个 tag 和镜像 ID 不变；表单关闭，新增“操作完成，列表已刷新。”，旧错误历史保留。
+- H4：对专用 QA 镜像执行 GUI 重建。夹具在生产代码生成的临时 tag `aisc-rebuild:2d3504c2bba3426096ac24b6b75e473a` 上创建真实 Docker 别名并暂缓 build，点击“取消构建”；只使该临时 tag 的 rmi 失败。界面终态“已取消”，明确显示“临时构建标签可能仍存在”及准确标签，技术详情保留清理错误。Docker 中实际残留与提示一致，原标签/镜像不变。解除注入后，冻结 CLI `maintenance docker-rebuild-cleanup` 返回 removed，再执行返回 absent。此测试覆盖取消清理失败路径，不是自然构建导出竞态复现，也不声称本次完成了一次真实全量构建。
+
+证据目录 `output/verification/final-docker-fault/`：`gui-h3-partial.txt`、`gui-h3-retry.txt`、`h3-{partial,retry}-inspect.json`、`gui-h4-cleanup-failure.txt`、`h4-{before,after}-cancel.json`、`h4-cleanup-{retry,absent}.json`、`events.log`。核对镜像 ID、专属 tag 前缀且无容器引用后，已移除本轮所有 QA 镜像标签；故障进程全部退出，测试开关移除，四项产物哈希与原平台存活记录见 `final-result.json`。SSH/远程 GUI 与自然导出竞态仍未覆盖。
+
+### Preview.11 开发者续测：H7 / H9 两个存活目标的迟到响应
+
+标准启动脚本开启 Preview.11，两个 QA 工作区 `ui-personal10` / `ui-workspace-fresh8` 分别运行容器 `359760eaf200` / `f18765722d0b`，实际镜像均为 `22891f8aa447…`。通过命令面板“选择工作区…”保留旧 runtime，并在同一窗口切到另一已运行目标。只在临时容器中用透明适配器入口缓冲真实响应，不改变产品超时或编造成功状态。
+
+H9：真实市场搜索 grill、展开 grill-me，GUI 显示“正在读取上游功能介绍…”。第一次尝试缓冲超过 60 秒接口预算，只保留为超时边界记录，不能证明成功回调晚到。两目标预先连接后重新执行：PID 627 于 `1794118586.087` 开始，上游于 `1794118591.627` 成功；新工作区已显示就绪后释放旧响应，于 `1794118626.304` 原样交付，总耗时 40.22 秒，早于 `runtime.rs` 的 60 秒期限。新目标技能市场查询为空、暂无搜索结果，没有旧 grill 条目或详情；原固定来源仍为提交 `4ae2317d…` 的 `skills/productivity/grill-me/SKILL.md`。2,203 项技能文件/插件登记哈希与本轮基线一致，wrapper 无存活进程，原适配器 SHA256 恢复为 `32942114b713e91e8d5b6d8f38f8c211aa6cba27188f5225c356ccd59f3fc607`。证据 `final-h9-{deployment,fast-delivered,final-check}.json`、`gui-final-h9-fast-{loading,new-before,new-after}.txt`；首次未达成功条件的记录也保留。
+
+H7：fresh8 注册一个只含插件元数据的本地 QA 市场，从真实 GUI 搜索并安装 `late-response@aisc-final-h7`。原生安装于 `1794118820.656` 成功，界面仍显示安装中、安装按钮禁用，透明入口暂不交付结果。切到 personal10 后，两容器均运行、旧响应仍未交付；主动释放后于 `1794118868.157` 成功返回，距调用开始 49.01 秒，未到生产超时。新目标插件页仍为“暂无内容”，没有旧安装状态；切回 fresh8，真实 GUI 显示测试插件 1.0.0 和原有 skills-for-real-engineers。数据面同时确认新目标清单为空，旧目标只有预期新增插件。证据 `final-h7-{baseline,pending,new-before,delivered}.json`、`gui-final-h7-{running,new-before,new-after,returned}.txt`。这是本地插件的受控成功延迟交付，不是自然慢网复现。
+
+随后恢复原适配器，通过实际适配器卸载唯一测试插件、原生客户端移除 QA 市场，原插件清单与另一目标清单恢复/保持基线，两侧锁释放。首轮清理比较把每次变化的 operation_id 也纳入相等判断，导致夹具断言失败；改为比较完整 items 后通过，没有重复执行卸载。`final-h7-cleanup.json` 记录稳定状态核验。候选正常退出结束两活动会话，两个 QA 容器实际移除，原平台 PID 40320 / 容器 2e801ec161c0 保持运行；三项候选文件与安装包哈希不变，见 `final-boundaries-result.json`。
+
+上述 GUI 续测没有产品修改或重建。随后仓库文档门禁发现离线技能检查过期，检查脚本与本轮记录集中走一个修正 PR，详见 PROGRESS。安装/升级 GUI 缺隔离 Windows、SSH/远程缺隔离目标，仍是开发者环境阻塞；真实本人认证、模型任务、用户验收、阶段收尾与发布尚未完成。
