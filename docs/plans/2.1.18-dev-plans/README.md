@@ -4,7 +4,7 @@
 
 用户已明确确认 Preview.13 验收无问题，并要求完成剩余工作直到可确认 main 合并；此前整版手测同样报告通过。b1–b10、S12–S16 的用户验收据此记为 PASS，不改写历史开发者未执行项。正式版本为 Workbench 2.1.18 / CLI 0.2.0，发布分支源于已验收 develop，功能行为不变。
 
-用户随后明确授权安装必要隔离环境并给予所需权限。Windows Sandbox 已经通过正常 UAC 提升启用（原 Disabled → Enabled），系统返回 RestartNeeded=true，尚未自动重启；重启后继续交互安装测试，不能提前记为 PASS。main 合并、tag 和公开发布仍未执行。最终进度及确认边界见 [发布准备](release-readiness.md)。
+2026-11-09 重启后已完成两个独立 Windows Sandbox 的全新安装、2.1.17 → 2.1.18 升级、卸载取消、默认数据保留及 PATH 验证，全部 PASS；已安装 CLI/bundle 均为 0.2.0，Workbench 为 2.1.18。详见 [安装验证](installer-verification.md)。用户验收已完成，无需重复。main 合并、tag 和公开发布仍未执行；最终进度与合并确认边界见 [发布准备](release-readiness.md)。
 
 以下保留 Preview.13 及更早验证证据；“待用户验收”等旧状态以本段为准。
 
