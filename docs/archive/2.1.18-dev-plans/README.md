@@ -1,11 +1,10 @@
 # v2.1.18 开发计划
 
-## 当前状态：已验收并合入 main，发布等待最后确认
+## 当前状态：Workbench 已正式发布，两项外部事项按用户要求暂缓
 
-2026-11-09：用户已确认整版与 Preview.13 验收通过；两个隔离 Windows Sandbox 的新装、升级、启动、取消卸载、默认数据保留及 PATH 验证 PASS，见 [安装验证](installer-verification.md)。原发布 PR [#99](https://github.com/Wifabric/AISC/pull/99) 已合并，main `07d6835c2a0018690ae769c39b7d386f58bbc728`；适用 main 构建通过。Workbench 2.1.18 / CLI 0.2.0 尚未正式发布。
+2026-11-09：用户明确批准发布，Workbench [2.1.18 正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18) 已上线并设为 Latest，源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`，随包 CLI 0.2.0。正式下载、SHA-256、发布说明和安装构建验证通过，真实公开更新数据经旧版与本版生产解析逻辑验证通过。产品与 Preview.13 用户验收已完成；本轮为单代理开发/自查，不称独立评审。
 
-用户最新要求：完成交付补全和开发者验证，正式发布前汇总重要内容，得到明确同意后再发布。当前补全文档与准备反馈补丁，不推发布 tag、不上传 PyPI、不置反馈 resolved、不提前归档。剩余步骤和证据见 [发布准备](release-readiness.md)。以下按日期保留历史过程，历史待办由该文件的当前清单接续，不代表要求用户重复验收。
-
+CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的仓库环境审批和八条反馈站回写，按用户“先不管这两项，先完成其他部分”的要求暂缓，由用户与 leader 协调有权限维护者。二者未标为完成。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
 
 已验收候选为 **Preview.13**；S16 经 #98 集成，随后用户确认通过。正式版本配对与发布准备见 [release-readiness](release-readiness.md)。
 
@@ -23,7 +22,7 @@ S14 采用工作区持久化的个人能力库，与既有主题工作坊并存�
 
 相关自动化、真实容器验证和同版 CLI、Workbench、容器及安装包已完成；S15 后续候选只更新宿主 CLI/Workbench，容器内容保持一致。剩余条件见 PROGRESS。本人认证与用户验收已由用户报告通过；正式发布批准单独保留。
 
-状态：**本版功能、流程与 Skill 已整合并获用户验收；当前进行交付补全，正式发布等待最后确认。** 见 [交付说明](DELIVERY.md)。
+状态：**本版功能、流程与 Skill 已整合并获用户验收；Workbench 已发布，外部两项待办暂缓，完整清单见 DELIVERY。** 见 [交付说明](DELIVERY.md)。
 
 本阶段范围为 F1–F8、十个批次，以及 D-17 确认的 S12–S14。D-12–D-16 授权连续实施、统一 Preview 验收，不把开发者验证记成用户验收。
 

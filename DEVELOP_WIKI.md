@@ -891,6 +891,8 @@ tag 名包含 `-dev` 或 `.dev` 时该 CLI GitHub Release 标为 Pre-release；�
 5. 正式 CLI 用同一审核源码的 `cli-v<CLI版本>` tag，按下节 dispatch PyPI。不要把 Workbench `v2.*` tag 传给 CLI 版本校验，不为 CLI final 额外创建 Workbench Release。
 6. 两条渠道各自验证成功后回填账本；最终发布后按 §1.1 回写本版反馈、归档计划、修正链接、同步 develop，并逐项清理符合条件的 prerelease 及临时分支。未完成外部事项仍明确列出，不用归档隐去。
 
+**每次交付的统一标准（2026-11-09 用户要求）：** 按[完整版本交付清单](docs/workflows/development-roles.md#complete-version-delivery)在阶段 DELIVERY 汇总本版全部成果，供用户转交 leader 确认。包括所有需求/修复、版本与源码、正式渠道及资产、分项验证与用户验收、README/Release Notes、WIKI/交接/Skill/devlog/TODO/阶段文档、反馈回写及归档清理；不能只列最后补丁或补全文档。每项附事实证据和真实状态，权限或外部审批未完成时明确保留。leader 的发布后确认不自动替代现有发布授权，也不得提前记作已确认。
+
 创建 tag 前至少运行：
 
 ```bash
