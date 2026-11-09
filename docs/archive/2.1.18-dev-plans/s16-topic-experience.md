@@ -1,10 +1,10 @@
 # S16：个人能力与主题体验修正
 
-## 当前状态：Workbench 已正式发布，两项外部事项按用户要求暂缓
+## 当前状态：Workbench 已发布，反馈回写完成
 
 2026-11-09：用户明确批准发布，Workbench [2.1.18 正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18) 已上线并设为 Latest，源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`，随包 CLI 0.2.0。正式下载、SHA-256、发布说明和安装构建验证通过，真实公开更新数据经旧版与本版生产解析逻辑验证通过。产品与 Preview.13 用户验收已完成；本轮为单代理开发/自查，不称独立评审。
 
-CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的仓库环境审批和八条反馈站回写，按用户“先不管这两项，先完成其他部分”的要求暂缓，由用户与 leader 协调有权限维护者。二者未标为完成。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
+CLI 0.2.0 的正式 PyPI 渠道继续单独跟踪，本轮未操作该渠道。2026-11-09 用户确认权限已授予并要求完成回写；复核账号具有写权限后，以[反馈提交](https://github.com/Wifabric/aisc-issues-feedback/commit/d7a4592f39204d9ccb746ae59d046acab6ba4ed8)更新本版八条状态及最终回复。站点列表和八条详情均已回读：七条“已解决”、一条“已上线”，修复说明和 2.1.18 正式链接完整。只改 status/updated_at 并追加回复，原文、附件、投票和历史内容保留，自动索引未手改。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
 
 2026-11-08 用户确认完整方案，要求完成开发与开发者测试后交付新 Preview。用户反馈先前手动清单已通过；该反馈不抹去历史 NOT RUN、登录回调/浏览器打开等独立问题，不等于批准 main/final 发布。
 
