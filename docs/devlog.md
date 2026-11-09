@@ -1,12 +1,20 @@
 # AISC — 开发日志
 
-## Unreleased: 2.1.18 交付补全（2026-11-09）
+## v2.1.18 / 随包 CLI 0.2.0（2026-11-09）
+
+- Workbench 2.1.18 正式发布为 Latest，覆盖 F1–F8/b1–b10、离线 16 项技能、在线科研/开发模块、个人能力版本与主题体验、协作流程/Skill；用户整版及 Preview.13 验收通过。
+- 正式源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`，tag `v2.1.18`；正式安装器及 SHA-256 公开下载验证通过，实际值见 [整版交付清单](archive/2.1.18-dev-plans/DELIVERY.md)。最终 CI、交互安装证据、正式安装冒烟及真实更新数据验证分别留证。
+- README、WIKI、交接、devlog/TODO、阶段设计/测试/PR 记录和 Release Notes 已同步；完整交付标准纳入职责和仓库 Skill，以后每版列全部成果，不只列最后补丁。
+- CLI `cli-v0.2.0` 与 TestPyPI 发布/索引安装通过，正式 PyPI 审批及反馈站八条回写按用户要求暂缓。开发材料归档，外部待办保留，不称整版外部闭环完成；下一 CLI 开发号等待正式渠道验证后开启。
+- 合规临时分支已清理，有工作树占用或未证明合并的分支保留；无 prerelease Release，未删除稳定 tag。leader 对交付清单尚待确认。
+
+## 发布前历史：2.1.18 交付补全（2026-11-09）
 
 - 用户已验收整版和 Preview.13；重启后的两个隔离 Windows Sandbox 已完成新装、2.1.17 升级、启动、取消卸载、默认数据保留和 PATH 检查，见本版 installer-verification。
 - PR #99 已按用户确认合入 main `07d6835c`，Workbench/NSIS/sidecar/Linux-macOS bundle 的 main 构建成功；分支构建没有创建正式 Release。
 - 补正 README 的版本、安装文件/路径和 S16 主题使用教程；统一 WIKI 当前发布渠道、职责/交接入口、本版计划和反馈草案。同步纠正随包主题 Skill 的接入说明；功能代码和依赖 pin 不变，README/Skill 文本属于打包输入，重新构建候选并单列验证。
 - 交付补全 PR #100 已合入 develop `c7c8790a`；精确 head `5362d08b` 的 Workbench、跨平台九组合、sidecar、NSIS/安装冒烟通过。新候选已下载校验，wheel/sdist/pipx 与仓库外运行验证通过；本轮补全证据、外部审批及反馈权限边界见发布准备。
-- 按用户最新要求，正式发布前汇总版本、范围、资产渠道、验证及遗留项等待明确同意。当前未创建 v2.1.18/cli-v0.2.0、未上传 PyPI、未关闭反馈；下方日志保留当时事实，当前状态见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
+- 当时按用户要求，在正式发布前汇总版本、范围、资产渠道、验证及遗留项等待明确同意；尚未创建 v2.1.18/cli-v0.2.0、上传 PyPI 或关闭反馈。该段保留发布前事实，最新状态以上方正式发布记录及[发布记录](archive/2.1.18-dev-plans/release-readiness.md)为准。
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。
 
@@ -14,20 +22,20 @@
 
 - 用户确认 Preview.13 验收无问题，已回写 b1–b10、三层能力和 S16 的用户验收；正式版本准备为 Workbench 2.1.18 / CLI 0.2.0，产品行为沿用已验收源码。
 - 用户授权安装所需隔离环境与权限后，通过正常管理员提升启用 Windows Sandbox；系统要求重启，交互安装实测在重启后继续，不把启用成功计为验证通过。
-- 正式版本、发布说明、构建与英文 main 发布 PR 准备中；未合入 main、未打 tag、未公开发布，最终状态见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
+- 正式版本、发布说明、构建与英文 main 发布 PR 准备中；未合入 main、未打 tag、未公开发布，最终状态见 [发布准备](archive/2.1.18-dev-plans/release-readiness.md)。
 
 ## Unreleased: 2.1.18 个人能力与主题体验（2026-11-08）
 
 - PR #98 合入 develop `61db0b6f`：普通会话默认独立，主题入口绑定单个新会话，回答偏好独立；旧全局主题选择迁移停用，保留历史、手册和成果。
 - 新手双入口、精简偏好保存、目标/引擎创建主题、可编辑且不自动发送的开场草稿；顶栏只显示当前主题状态，诊断收起，异常暂停/去重/关闭/重试与停止采集保护已保存记录。
-- Python 1843 passed / 74 skipped、Rust 422 passed / 2 ignored、前端 901 passed；真实原生进程上下文隔离、候选 GUI 及关闭重开保留通过；精确产品提交的 Workbench、九组跨平台 Python、NSIS/静默安装验证通过。Preview.13 本机候选与 [定向验收步骤](plans/2.1.18-dev-plans/preview13-acceptance.md) 已准备。
+- Python 1843 passed / 74 skipped、Rust 422 passed / 2 ignored、前端 901 passed；真实原生进程上下文隔离、候选 GUI 及关闭重开保留通过；精确产品提交的 Workbench、九组跨平台 Python、NSIS/静默安装验证通过。Preview.13 本机候选与 [定向验收步骤](archive/2.1.18-dev-plans/preview13-acceptance.md) 已准备。
 - 用户报告前轮手测通过；新改动未替用户验收，未提交模型任务，未公开发布。旧隔离交互安装及反馈站权限缺口保持单列。单代理自查。
 
 ## Unreleased: 2.1.18 远程改名保护与统一验证（2026-11-08）
 
 - 真实 SSH 实测发现同名文件改名覆盖目标，已改为原生排他改名并显示现有冲突提示；文件/目录大小写保留，硬链接、悬空链接与独立条目冲突受保护，根目录和非法名称拒绝。PR #97 已合入 develop `20df2af8`。
 - Preview.12 真实远程 GUI 改名、冲突保留、刷新重入、指定旧镜像 tag 替换与远程重建禁用通过；NSIS 自动安装/重装/卸载保留通过，三平台三 Python 版本 CI 全部通过。既有测试修正工具发现、编码、事件等待及 macOS GNU 工具准备，新增回归只留本地。
-- 当前候选、哈希、覆盖边界及环境/本人认证/验收/发布条件见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。未公开发布，未替用户验收。
+- 当前候选、哈希、覆盖边界及环境/本人认证/验收/发布条件见 [DELIVERY](archive/2.1.18-dev-plans/DELIVERY.md)。未公开发布，未替用户验收。
 
 ## Unreleased: 2.1.18 截图三层能力与工厂保护（2026-11-08）
 
@@ -39,37 +47,37 @@
 
 - 已安装 GitHub MCP 行新增配置认证入口，按 Claude/Codex 选择保存到已有 MCP 配置；取消不写入，普通保存错误回滚，损坏/自定义/过期配置拒绝覆盖，凭据仅走 stdin 且不进入历史或返回值。
 - 保存与连接检查分开，显式只读 MCP 握手区分未配置、认证拒绝、网络/协议错误；合成令牌验证不记为真实授权通过。
-- Python 1782 及最终定向 101、前端 874 和生产构建、Rust 420 项通过；真实双引擎 CLI 读取、开关和重新同步及冻结 CLI 全链通过。GUI/用户实际授权待 Preview，详见 [b8](plans/2.1.18-dev-plans/b8-github-mcp-auth.md)。
+- Python 1782 及最终定向 101、前端 874 和生产构建、Rust 420 项通过；真实双引擎 CLI 读取、开关和重新同步及冻结 CLI 全链通过。GUI/用户实际授权待 Preview，详见 [b8](archive/2.1.18-dev-plans/b8-github-mcp-auth.md)。
 
 ## Unreleased: 2.1.18 b7 插件安装超时与状态恢复（2026-11-08）
 
 - 插件长操作采用独立 CLI 与匹配安装链的等待预算。容器锁跨宿主断连保留，超时清理本次进程组，网络重试不重放未知超时。
 - 安装前后及超时后核对精确来源和真实进程状态；运行中保留未知，确实未安装才允许重试，切目标不污染新状态。
-- Python 1774、前端 869 及构建、Rust 420 项通过；真实官方 mattpocock-skills 安装及受控 35 秒慢安装/并发/父进程终止/超时清理通过。GUI 待 Preview，详见 [b7](plans/2.1.18-dev-plans/b7-plugin-install.md)。
+- Python 1774、前端 869 及构建、Rust 420 项通过；真实官方 mattpocock-skills 安装及受控 35 秒慢安装/并发/父进程终止/超时清理通过。GUI 待 Preview，详见 [b7](archive/2.1.18-dev-plans/b7-plugin-install.md)。
 
 ## Unreleased: 2.1.18 b6 模块执行与归属保护（2026-11-08）
 
 - 应用前显示真实差异计划，确认后逐项执行；停止、切目标、失败重试和持久历史均保留真实状态，普通扩展操作共用目标锁。
 - 仅卸载本模块引入且未共享、内容未变化的成员；预装、未知、手工修改和旧 adapter 无证据资产保留。配置只返回摘要，不存凭据。
-- Python 全套 1763 项及最终定向 109 项、前端 865 项及构建、Rust 420 项通过；真实三类扩展、共享卸载及冻结 CLI 闭环通过。GUI/H6 待统一 Preview，详见 [b6](plans/2.1.18-dev-plans/b6-module-operations.md)。
+- Python 全套 1763 项及最终定向 109 项、前端 865 项及构建、Rust 420 项通过；真实三类扩展、共享卸载及冻结 CLI 闭环通过。GUI/H6 待统一 Preview，详见 [b6](archive/2.1.18-dev-plans/b6-module-operations.md)。
 
 ## Unreleased: 2.1.18 b5 用户扩展模块定义（2026-11-08）
 
 - 推荐市场新增基础模块入口，支持混合 Skill/MCP/Plugin 成员的创建、复制、编辑、去重和删除定义；无运行容器也可打开并离线编辑，已有六类单项推荐保持。
 - 用户配置目录保存独立版本化文件；跨进程锁与 revision 防止覆盖其他窗口修改，损坏/未知版本拒绝写入，保存失败保留编辑草稿。保存、删除定义均不安装或卸载扩展。
-- 前端全套 858 项及构建、Rust 420 passed / 2 ignored，通过离线入口修正后定向 29 项。真实 GUI 待统一 Preview；科研/开发默认成员仍待 U-4 批准，不宣称已交付默认清单。详见 [b5](plans/2.1.18-dev-plans/b5-extension-modules.md)。
+- 前端全套 858 项及构建、Rust 420 passed / 2 ignored，通过离线入口修正后定向 29 项。真实 GUI 待统一 Preview；科研/开发默认成员仍待 U-4 批准，不宣称已交付默认清单。详见 [b5](archive/2.1.18-dev-plans/b5-extension-modules.md)。
 
 ## Unreleased: 2.1.18 b4 镜像重建（2026-11-08）
 
 - 磁盘镜像行和启动摘要共用 Local 重建对话框：执行前检查镜像身份和运行容器，默认无缓存，可切换缓存；流式输出进度、日志和任务取消。Remote 明确禁用。
 - 在唯一临时标签构建成功并再次验证后才替换所选引用；运行容器阻止操作，停止容器及其他标签继续保留旧镜像。刷新摘要只读预检，不隐式回收容器。
-- Python 全套 1749 项，前端全套 851 项及修后定向 26 项，Rust 全套 414 项及新增协议单测通过；真实 Docker 覆盖缓存双向、运行引用拒绝、失败/取消和保留规则；冻结 CLI 命令 smoke 通过。GUI 与用户 H4 按 D-15 留到统一 Preview，详细边界见 [批次记录](plans/2.1.18-dev-plans/b4-image-rebuild.md)。
+- Python 全套 1749 项，前端全套 851 项及修后定向 26 项，Rust 全套 414 项及新增协议单测通过；真实 Docker 覆盖缓存双向、运行引用拒绝、失败/取消和保留规则；冻结 CLI 命令 smoke 通过。GUI 与用户 H4 按 D-15 留到统一 Preview，详细边界见 [批次记录](archive/2.1.18-dev-plans/b4-image-rebuild.md)。
 
 ## Unreleased: 2.1.18 b3 镜像重命名（2026-11-08）
 
 - 磁盘页可编辑默认名称并选择要替换的旧 tag；支持 registry port。创建和核验新 tag 后只移除所选旧 tag，保留其他标签；冲突拒绝覆盖，移除失败显示部分结果。
 - CLI 新增可选 `--old-ref`，未提供时保留新增别名兼容行为；修复 Docker 列表短 ID 与完整 inspect ID 的归属匹配。
-- 前端 846 项与构建、Rust 414 项、Python 全套 1734 项及修后镜像定向 24 项通过；独立 Docker 镜像验证同一 ID、其他标签保留及冲突保护。跳过项和 GUI/用户验收边界见 [批次记录](plans/2.1.18-dev-plans/b3-image-name.md)。
+- 前端 846 项与构建、Rust 414 项、Python 全套 1734 项及修后镜像定向 24 项通过；独立 Docker 镜像验证同一 ID、其他标签保留及冲突保护。跳过项和 GUI/用户验收边界见 [批次记录](archive/2.1.18-dev-plans/b3-image-name.md)。
 
 ## Unreleased: topic sync edge-case follow-up (2026-11-06)
 
@@ -90,7 +98,7 @@
 
 - 用户 D-8 重新委托自动操作后，将实际客户端切到 b2 前端，使用隔离 QA 工作区完成底部/右侧避让、窄短窗口、内部/外部滚动、键盘焦点及实际改名/移动检查。
 - 真实 CU 发现长子菜单 clamp 后覆盖 hover 触发按钮，随后的点击误移会话。限制子菜单到所选侧可用宽度、换行并重新测量后，同路径复测没有再次误移；真实账本确认改名/移入只命中指定会话。
-- 最终定向 45 项、前端 98 文件/852 项、vue-tsc/Vite PASS；首次 Python 沙箱环境失败与真实 GUI FAIL 均保留，新增测试/数据/日志留本机。尺寸、产物哈希、覆盖边界与未测项见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- 最终定向 45 项、前端 98 文件/852 项、vue-tsc/Vite PASS；首次 Python 沙箱环境失败与真实 GUI FAIL 均保留，新增测试/数据/日志留本机。尺寸、产物哈希、覆盖边界与未测项见 [PRETEST](archive/2.1.18-dev-plans/PRETEST.md)。
 - b2 待用户本人验收；未创建 b2 PR，PR #62/#63 保留不动，b3 未启动。下方首轮停止 CU 的记录为历史状态，后续授权与实测以本条/D-8 为准。
 
 ## 2026-11-02：2.1.18 b2 工作记录菜单边界（本地已实现，未发布）
@@ -98,7 +106,7 @@
 - 用户要求保留 PR #62/#63 不合并并开发 b2；独立 `codex/2.1.18-b2-work-record-menu` 分支本地依赖 b1 `cb528cad`，没有修改两个 PR 或远端长期线。
 - 主菜单实测尺寸后在视口内翻转/限制；子菜单独立 Teleport、支持左展，菜单过高时内部滚动。补 ContextMenu/Shift+F10、方向键/Home/End/Escape 与焦点回归；外部滚动/resize 关闭，内部滚动保留主菜单。
 - 加入可见后聚焦时序及旧异步 move 不关闭新菜单的保护，未改归属模型、store/IPC 或后端。
-- 本地 7 项布局回归先 RED；最终组件 44 项、前端全套 98 文件/851 项、vue-tsc/Vite 全 PASS。新增 10 项回归留本机，不随产品提交上传；详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- 本地 7 项布局回归先 RED；最终组件 44 项、前端全套 98 文件/851 项、vue-tsc/Vite 全 PASS。新增 10 项回归留本机，不随产品提交上传；详见 [PRETEST](archive/2.1.18-dev-plans/PRETEST.md)。
 - 用户停止 CU 的要求继续有效，未操作桌面或切换客户端；真实 Windows H2 与用户验收 NOT RUN。本批未新建 PR、未发布，b3 未启动。
 
 ## 2026-11-02：2.1.18 b1 大小写改名（已实现，待用户验收）
@@ -108,7 +116,7 @@
 - 用户授权按开发指南和计划更新后，在独立 `codex/2.1.18-b1-case-rename` 分支实施 F1；依赖已验收的个人功能整合 PR #62，不替用户合并远端 PR。
 - 真实 NTFS RED 确认 canonicalize 返回旧 basename 导致改名无效。修复保留请求 basename 用于 fs::rename，并继续检查规范路径范围与目标冲突；文件和目录往返改名及内容断言 GREEN。
 - Rust 415 passed / 2 ignored，Windows debug 构建 PASS。Windows 大小写敏感目录、Linux/macOS/SSH 未实测；不继承历史整合测试为本次结果。新增测试留本机。
-- CU 已进入独立 QA 工作区并打开重命名框，但工具 set_value 报 0x80040201，H1 未完整执行，记 NOT RUN。用户验收与进入 b2 的裁定待定；b2–b6 未实施，未发布或关闭反馈。详见 [PRETEST](plans/2.1.18-dev-plans/PRETEST.md)。
+- CU 已进入独立 QA 工作区并打开重命名框，但工具 set_value 报 0x80040201，H1 未完整执行，记 NOT RUN。用户验收与进入 b2 的裁定待定；b2–b6 未实施，未发布或关闭反馈。详见 [PRETEST](archive/2.1.18-dev-plans/PRETEST.md)。
 
 ## 2026-11-02：2.1.17 个人功能直接整合（本地，未发布）
 
@@ -121,7 +129,7 @@
 ## 2026-11-02：2.1.18 反馈规划准备（未实施/未发布）
 
 - 四条新增反馈拆为 b1–b6：大小写改名、菜单边界、镜像命名/重建、扩展模块定义/执行。
-- 建立 [2.1.18 计划](plans/2.1.18-dev-plans/README.md) 的规格、批次、决策及手测账本，同步 todo 与活动索引。
+- 建立 [2.1.18 计划](archive/2.1.18-dev-plans/README.md) 的规格、批次、决策及手测账本，同步 todo 与活动索引。
 - 按用户纠正撤下误列的个人功能 b7/b8：已有功能直接整合进独立的 2.1.17 副本，不占用本版更新计划。四条反馈的实施仍待方案确认，相关验证全部 NOT RUN。
 
 # v2.1.17 preview 修复 b5（2026-11-01，合入待整体实测）

@@ -1,12 +1,12 @@
-# 2.1.18 正式发布准备
+# 2.1.18 正式发布记录
 
-## 当前授权与状态（2026-11-09）
+## 当前状态：Workbench 已正式发布，两项外部事项按用户要求暂缓
 
-用户已验收整版及 Preview.13，PR [#99](https://github.com/Wifabric/AISC/pull/99) 已按用户确认合入 main `07d6835c2a0018690ae769c39b7d386f58bbc728`。隔离交互安装已通过，旧“待重启/待 main 批准”状态结束。用户随后批准交付补全，并明确要求正式发布前确认重要内容，得到同意后再发布；此要求覆盖此前 final 时机委托。
+2026-11-09：用户明确批准发布，Workbench [2.1.18 正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18) 已上线并设为 Latest，源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`，随包 CLI 0.2.0。正式下载、SHA-256、发布说明和安装构建验证通过，真实公开更新数据经旧版与本版生产解析逻辑验证通过。产品与 Preview.13 用户验收已完成；本轮为单代理开发/自查，不称独立评审。
 
-本轮从 develop `9a83cbc6` 创建 `codex/2.1.18-delivery-closeout`，同步已批准 main 后补全文档。由同一代理执行与自查，不称独立评审。正式 tag、GitHub Release、TestPyPI/PyPI 上传和反馈 resolved 均未执行。
+CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的仓库环境审批和八条反馈站回写，按用户“先不管这两项，先完成其他部分”的要求暂缓，由用户与 leader 协调有权限维护者。二者未标为完成。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
 
-## 待确认的具体发布内容
+## 已批准的发布内容
 
 | 项目 | 准备内容 |
 | --- | --- |
@@ -24,9 +24,9 @@
 - [x] 更新用户教程、现行流程、devlog/TODO 与阶段当前状态，保留历史测试的真实结果。
 - [x] 准备八条反馈的具体最终文案和仅本地可审查补丁；写入前仍须复读最新文件及权限。
 - [x] 本轮文档检查 51 PASS / 0 warnings / 0 failures；52 份变更文档的相对链接/锚点通过（最终统计见本轮校验记录）；CLI 正式 tag 版本守卫和 git diff --check 通过。个人能力/会话现有测试 53 passed / 1 skipped；最初共享 venv 命中其他工作树，指定本工作树 PYTHONPATH 后重跑通过。打包与远端 CI 另列。
-- [x] 交付补全 PR [#100](https://github.com/Wifabric/AISC/pull/100) 已合入 develop `c7c8790a791c89d751b7085e6d0d9043a57522ee`，合并树等于验证提交 `5362d08b`；main 同步 PR 和最终合并事实在 PR_INTAKE/发布确认时补充，不提前视为已发布。
+- [x] 交付补全 PR [#100](https://github.com/Wifabric/AISC/pull/100) 已合入 develop `c7c8790a791c89d751b7085e6d0d9043a57522ee`，合并树等于验证提交 `5362d08b`；后续通过 [#101](https://github.com/Wifabric/AISC/pull/101) 同步 main 至 `52a5de6e`，本页顶部记录其正式发布结果。
 - [x] 已生成包含新 README 和随包主题技能文字的非发布 NSIS 候选；精确构建、安装冒烟和下载哈希见下方。
-- [x] 版本、范围、资产标识、验证及遗留项已备齐；最终提交与 CI 核对后提交用户发布确认。批准状态仍未完成。
+- [x] 版本、范围、资产标识、验证及遗留项已备齐；最终提交与 CI 核对后提交用户发布确认。用户现已批准，实际发布状态见本文顶部。
 
 ## 已完成的产品与安装验证
 
@@ -60,19 +60,70 @@
 
 ## 发布批准与后续执行，不能提前勾选
 
-- [ ] 得到用户对上述具体材料的明确发布同意。
-- [ ] Workbench 正式 tag/Release/Latest、下载哈希、随包版本与更新发现验证。
-- [ ] CLI 正式 tag、TestPyPI/PyPI 流程及实际索引安装验证。
+- [x] 用户于 2026-11-09 明确回复“ok，确认了，可以发布”，随后要求暂缓 PyPI 审批与反馈站回写，先完成其他交付。
+- [x] Workbench 正式 tag/Release/Latest、公开下载/校验、随包版本和生产更新选择逻辑验证通过；实际正式安装器 SHA-256 `b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315`。
+- [ ] CLI 正式 tag 与 TestPyPI 上传/实际索引安装验证已完成；正式 PyPI 等待环境审批，用户要求暂缓，不标全渠道完成。
 - [ ] 获得反馈仓库写权限或由有权限维护者应用补丁；发布成功后更新八条，复核列表/详情缓存结果。
-- [ ] 回填最终发布事实，归档已完成阶段并修正引用；未完事项明确交接，不用归档隐藏。
-- [ ] 同步长期分支；确认本阶段分支无独有成果及占用再清理；当前没有 prerelease Release 可清理，不动稳定 tag。
-- [ ] 发布后按 WIKI 开启下一 CLI 开发号（当前规则为 0.2.1.dev0），不改稳定 tag；交付完整链接清单。
+- [x] 已回填 Workbench 正式发布事实、整版 DELIVERY 与已完成阶段归档；两项外部待办明确转交协调并保留在 TODO，不用归档隐藏。
+- [x] 发布源码长期分支已同步；已清理 26 个安全远端分支和 25 个本地分支；有 worktree 占用或未证明已合并的分支保留。当前无 prerelease Release，稳定 tag 不动。发布后文档通过单独 PR 同步，不覆盖正式 tag。
+- [ ] 下一 CLI 开发号 0.2.1.dev0 依 WIKI 在正式 PyPI 发布结果确认后开启；它是本次暂缓渠道的后续动作，不在正式发布 tag 上改版本。整版交付链接已汇总至 DELIVERY。
 
 ## 已知边界与外部条件
 
 - 反馈仓库 `Wifabric/aisc-issues-feedback` 当前仅 pull 权限，不能本机提权解决；补丁准备不等于已回写。原文、投票、附件及旧回复必须保留。八条仍为 submitted，只有正式发布验证后由获授权写入者更新。
-- 已核对 GitHub `pypi` environment 的 required reviewers 为 `Evergarden-Alan` / `wangyuncepu`；发布获用户同意后仍须其中有权限维护者在 workflow 完成实际审批，不修改或绕过保护。`testpypi` 无 required reviewer，但本轮也尚未上传。
+- 已核对 GitHub `pypi` environment 的 required reviewers 为 `Evergarden-Alan` / `wangyuncepu`；发布获用户同意后仍须其中有权限维护者在 workflow 完成实际审批，不修改或绕过保护。`testpypi` 无 required reviewer，本轮已实际上传并通过索引安装验证。
 - 真实多人协作未实测；本版交付流程规则/Skill和单代理实际执行，团队试用仍是后续事项，不标 PASS。
 - 插件当前仅 Claude；远程镜像重建入口禁用；GitHub MCP 实际访问需要用户本人有效授权。现有用户验收不等于任意凭据均可访问任意仓库。
 - 独立 pip CLI 是薄包，不包含镜像构建资源。本版不补发独立 CLI 归档；构建需对应源码/资源或 Workbench bundle，不能承诺 `bundle fetch` 自动取得不存在的资产。
-- 自动化跳过/自然竞态未复现等沿用原报告边界。正式发布后的实际下载/更新与索引验证只能发布后执行，当前不预写 PASS。
+- 自动化跳过/自然竞态未复现等沿用原报告边界。Workbench 正式下载与生产更新逻辑验证已通过；正式 PyPI 索引尚未验证，不预写 PASS。
+
+## 正式发布证据及分支清理
+
+- 发布后文档自查：文档一致性门禁 51 PASS / 0 warnings / 0 failures；44 份变更/归档文档的 262 个相对链接与锚点通过，`git diff --check` 通过。本轮仅 Markdown 变更，产品流水线按路径过滤未重新运行；不把未触发写成 PASS。正式 tag 保持原发布源码。
+- 正式源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`；[发布流水线](https://github.com/Wifabric/AISC/actions/runs/42590818970)；[Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18)；正式安装器 384,119,029 bytes / SHA-256 `b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315`。
+- 发布说明与源码完全一致，Latest、非 draft/prerelease、公开匿名下载、两项资产及校验通过。正式包与此前候选可因构建时间等因素哈希不同，以上只记录实际正式下载值。
+- main 最终 CI 和具体交付范围见 DELIVERY；旧版/当前版更新生产逻辑均针对真实公开 feed 验证，未冒称此轮旧版 GUI 点击升级。
+
+自动审批最初因授权未明确涵盖批量删除而拒绝；用户先选择保留，随后明确回复“那可以删除”。已据最新授权重新核对并完成下列清理。
+
+已删除远端分支（其提交均为发布源码祖先，未占用工作树）：
+
+- `codex/2.1.18-b2-work-record-menu`
+- `codex/2.1.18-delivery-closeout`
+- `codex/2.1.18-delivery-record`
+- `codex/2.1.18-file-failure-gui`
+- `codex/2.1.18-image-gui`
+- `codex/2.1.18-preview2-validation`
+- `codex/2.1.18-preview3-delivery`
+- `codex/2.1.18-preview4-delivery`
+- `codex/2.1.18-preview4-extensions`
+- `codex/2.1.18-preview5-boundaries`
+- `codex/2.1.18-preview5-verification`
+- `codex/2.1.18-preview6-verification`
+- `codex/2.1.18-preview7-verification`
+- `codex/2.1.18-preview8-verification`
+- `codex/2.1.18-preview-gui-record`
+- `codex/2.1.18-preview-offline-verification`
+- `codex/2.1.18-preview-plugin-recovery`
+- `codex/2.1.18-preview-preparation`
+- `codex/2.1.18-preview-rebuild-verification`
+- `codex/2.1.18-preview-status-reconciliation`
+- `codex/2.1.18-preview-target-isolation`
+- `codex/2.1.18-preview-validation-gate`
+- `codex/2.1.18-rebuild-gui`
+- `codex/2.1.18-release-prep`
+- `codex/2.1.18-remote-rename-protection`
+- `codex/2.1.18-topic-experience`
+
+保留项（不删除工作树/用户数据/独有提交）：
+
+- `codex/2.1.18-b1-case-rename`：retain: not proven ancestor of approved release。
+- `codex/2.1.18-b3-image-name`：retain: checked out worktree。
+- `codex/2.1.18-b4-image-rebuild`：retain: checked out worktree。
+- `codex/2.1.18-b5-extension-modules`：retain: checked out worktree。
+- `codex/2.1.18-b6-module-operations`：retain: checked out worktree。
+- `codex/2.1.18-b7-plugin-install`：retain: checked out worktree。
+- `codex/2.1.18-b8-github-mcp-auth`：retain: checked out worktree。
+- `codex/2.1.18-b9-skill-details`：retain: checked out worktree。
+- `codex/2.1.18-b10-failure-dismiss`：retain: checked out worktree。
+- `codex/2.1.18-team-workflow`：retain: checked out worktree。

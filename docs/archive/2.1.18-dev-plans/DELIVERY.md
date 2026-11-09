@@ -1,11 +1,84 @@
-# 2.1.18 夜间交付与次日验收
+# AISC 2.1.18 整版交付清单（供 leader 确认）
 
-## 当前状态：已验收并合入 main，发布等待最后确认
+## 发布结论
 
-2026-11-09：用户已确认整版与 Preview.13 验收通过；两个隔离 Windows Sandbox 的新装、升级、启动、取消卸载、默认数据保留及 PATH 验证 PASS，见 [安装验证](installer-verification.md)。原发布 PR [#99](https://github.com/Wifabric/AISC/pull/99) 已合并，main `07d6835c2a0018690ae769c39b7d386f58bbc728`；适用 main 构建通过。Workbench 2.1.18 / CLI 0.2.0 尚未正式发布。
+- **Workbench 2.1.18 已正式发布并验证**：[Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18)；Windows x86_64 安装器自带 CLI **0.2.0**，serve protocol 4。普通桌面用户无需另行安装 Python CLI。
+- 已批准的本版八条反馈、十个实现批次、三层能力与 S16 易用性、开发协作流程均已实现并获用户验收。此清单覆盖整版工作，包含最初开发、Preview 修正和最后交付补全。
+- **暂缓两项**：CLI 独立正式 PyPI 审批、反馈站八条状态/最终回复回写。用户明确先向 leader 汇报再处理，不能记成已发布 PyPI 或已关闭反馈。它们不影响安装包已包含 CLI 0.2.0。
+- leader 对本清单的确认：**待确认**。用户功能验收与发布批准已经取得，不代替 leader 的交付清单确认。
 
-用户最新要求：完成交付补全和开发者验证，正式发布前汇总重要内容，得到明确同意后再发布。当前补全文档与准备反馈补丁，不推发布 tag、不上传 PyPI、不置反馈 resolved、不提前归档。剩余步骤和证据见 [发布准备](release-readiness.md)。以下按日期保留历史过程，历史待办由该文件的当前清单接续，不代表要求用户重复验收。
+## 一、全部产品成果
 
+| 项目 | 本版交付效果 | 状态与证据 |
+| --- | --- | --- |
+| b1 / F1 文件与目录改名 | 仅改变大小写后保留准确名称；本地/远程重名冲突不覆盖文件，内容与目录子项保留 | 已完成；#63/#97，[b1](b1-case-rename.md)、真实 SSH/GUI、用户验收 |
+| b2 / F2 工作记录菜单 | 主菜单/子菜单避让窗口边缘；小窗口可滚动、可点击和键盘关闭 | 已完成；#64，[b2](b2-work-record-menu.md)、实际改名/移动及用户验收 |
+| b3 / F3 镜像命名 | 可编辑完整名称，默认 super-claude: 加 8 位字母数字；仅替换选中的旧标签，保留其他标签 | 已完成；#67，[b3](b3-image-name.md)、真实 Docker/远程标签验证 |
+| b4 / F3 镜像重建 | 镜像行和启动摘要共用预检/进度；运行容器阻止重建，不自动停删；缓存选择、取消和旧镜像保护 | 已完成；#68/#83/#91，[b4](b4-image-rebuild.md)；远程入口明确禁用 |
+| b5 / F4 模块定义 | 保留单项推荐，提供科研/开发基础模块；用户可复制、编辑、保存、删除定义，重启保留 | 已完成；#69/#87/#95，[b5](b5-extension-modules.md)、用户验收 |
+| b6 / F4 模块执行 | 应用只补缺项；卸载保护共享、预装、归属不明及已修改项；逐项显示结果，目标间状态隔离 | 已完成；#70/#78/#79/#85，[b6](b6-module-operations.md)、真实技能/MCP/插件保护验证 |
+| b7 / F5 插件安装 | 独立等待预算及目标锁；超时后核对真实终态，避免重复安装或把未知报成功 | 已完成；#71 及整合修正，[b7](b7-plugin-install.md)、正常安装与受控超时验证 |
+| b8 / F6 GitHub MCP | Claude/Codex 分别配置本人认证；取消不改旧值；保存、握手、实际访问分开验证 | 已完成；#72，[b8](b8-github-mcp-auth.md)、用户本人授权和实际调用验收 |
+| b9 / F7 技能详情 | 修复 grill/grill-me 搜索与子技能读取，显示真实来源、空内容/失败/重试，切换查询不串详情 | 已完成；#73/#76，[b9](b9-skill-details.md)、真实读取与迟到响应验证 |
+| b10 / F8 错误提示 | 当前错误可关闭，历史与操作状态保留；新错误继续提醒，工作区间隔离 | 已完成；#74，[b10](b10-failure-dismiss.md)、键盘/焦点/跨目标验证 |
+| S12 离线通用基础 | 13 项 caveman 加 grill-me、grilling、Karpathy，共 16 项；固定来源并保留许可，升级补缺不覆盖个人修改 | 已完成；#95，[默认模块与来源](default-modules-proposal.md)、双引擎实际登记 |
+| S13 在线场景模块 | 科研基础 arXiv/OpenAlex、开发基础调试/TDD，四项按需在线安装，不混入通用离线安装资源 | 已完成；#95、实际安装/卸载及用户验收 |
+| S14 个人能力迭代 | 模板副本、规则保存、启停、修改/验证记录、历史恢复生成新版本；新会话使用相应快照 | 已完成；#95、真实保存/重启/版本恢复、用户验收 |
+| S16 个人能力与主题易用性 | 回答偏好与主题双入口；普通对话独立、主题会话显式关联；新手草稿由用户发送，顶栏简化，异常去重/暂停/关闭 | 已完成；#98，[S16](s16-topic-experience.md)、Preview.13 用户验收 |
+| 升级与整合保护 | 修复旧扩展登记迁移、工厂补装覆盖插件、模块 UTF-8 通道、跨目标迟到状态、重建取消残留回收等整合问题 | 已完成；#76/#78/#79/#83/#85/#87/#91/#93/#95/#97；[进度/证据](PROGRESS.md) |
+
+## 二、协作流程与全部文档
+
+| 交付项 | 内容与入口 | 状态 |
+| --- | --- | --- |
+| 主开发/贡献者职责 | 主开发确定范围和整合，贡献者完成实现/必要自测后提 PR；小问题直接修正；统一 Preview 与最终验证 | 已完成；#75、[职责](../../workflows/development-roles.md)、[贡献者](../../workflows/contributor-workflow.md)、[PR intake](../../workflows/pr-intake.md) |
+| 仓库开发 Skill | 随仓库交付的开发流程入口，与 WIKI/职责一致；不要求每位贡献者各自发布 Preview | 已完成；[SKILL](../../../skills/aisc-development/SKILL.md) |
+| 本次及以后完整交付标准 | 每次列整版成果、实际发布资产、源码与 PR、分项证据、全部文档、反馈、归档及遗留责任；供 leader 确认 | 已完成；[统一标准](../../workflows/development-roles.md#complete-version-delivery)，本清单首次执行 |
+| 用户手册与发布说明 | 安装包名称/路径、版本配对、升级步骤、模块及个人能力/主题教程；历史发布说明保留 | 已完成；[README](../../../README.md)、[Workbench Notes](../../releases/v2.1.18.md)、[CLI Notes](../../releases/v0.2.0.md) |
+| 开发手册与交接 | 当前分支、双轨版本、分发渠道、真实批准门和完整交付要求一致；历史快照明确标注 | 已完成；[WIKI](../../../DEVELOP_WIKI.md)、[交接](../../../AISC-开发流程交接.md) |
+| 日志与计划 | devlog、TODO、PRD、设计/架构、实现批次、测试、决定、PR 账本、来源与经验同步，保留历史真实结果 | 已完成；[devlog](../../devlog.md)、[TODO](../../todo.md)、[阶段索引](README.md)、[PR 账本](PR_INTAKE.md) |
+| 随包说明 | 主题技能说明匹配普通会话独立/显式主题绑定，STATE 与技能版本 0.3.2 一致；新主题复制新版，用户旧副本不覆盖 | 已完成；#100；wheel/sdist 实际内容及副本行为检查 |
+
+真实多人协作效果尚未实测，本版只有单代理开发与自查，不能宣称独立评审或团队效率已验证。
+
+## 三、验证证据
+
+| 验证类别 | 结果与边界 |
+| --- | --- |
+| 产品自动化 | Preview.13 对应候选：Python 1843 passed / 74 skipped、Rust 422 passed / 2 ignored、前端 901 passed；跳过项不冒称通过 |
+| 真实数据面与界面 | 模块安装/卸载、共享保护、扩展恢复、镜像构建/取消、SSH 文件保护、个人规则/主题隔离等已执行；具体路径及 NOT RUN 见 [GUI 记录](preview-gui.md) 与 PROGRESS |
+| Windows 交互安装 | 两个干净 Sandbox：新装、2.1.17 升级、启动、取消卸载、默认数据保留、PATH 通过；guest 无 Docker，未在 guest 验证真实 Docker 删除，见 [安装记录](installer-verification.md) |
+| 最终源码 CI | main `52a5de6e` 的 [Workbench](https://github.com/Wifabric/AISC/actions/runs/42585420443)、[sidecar](https://github.com/Wifabric/AISC/actions/runs/42585420355)、[Linux/macOS](https://github.com/Wifabric/AISC/actions/runs/42585420606)、[NSIS](https://github.com/Wifabric/AISC/actions/runs/42585420619) 均 PASS |
+| 正式 tag 安装器 | [正式发布流水线](https://github.com/Wifabric/AISC/actions/runs/42590818970) PASS；安装、重装、PATH 和默认数据保留冒烟通过；公开产物已实际下载核对 |
+| CLI 包 | 本地 packaging 190 passed / 9 skipped；wheel/sdist/pipx/仓库外安装验证、twine、薄包、凭据扫描及依赖审计通过；[TestPyPI](https://github.com/Wifabric/AISC/actions/runs/42590823276) 上传与索引安装验证 PASS，正式 PyPI 暂缓 |
+| 发布后更新发现 | 对真实公开 Atom 数据和 tag 中 CLI 版本，编译执行 2.1.17 与本版的原生产选择/比较函数，识别 2.1.18/0.2.0；当前版本不误报更新。此项是生产逻辑验证，不冒称再次点击旧版 GUI 安装 |
+| 文档与资源 | 文档门禁、变更文档链接及空白检查通过；发布源码 1367 项容器资源规范 Git 字节 SHA-256 及清单覆盖校验通过 |
+| 用户验收 | 用户已明确报告整版清单及 Preview.13 均通过，并明确批准本次正式发布 |
+
+## 四、实际发布资产
+
+- 源码：`52a5de6ed4fe47fb44b6caedfa14e80624122bc6`；Workbench annotated tag `v2.1.18`；CLI annotated tag `cli-v0.2.0`，均不可变。
+- 发布入口：[AISC Workbench v2.1.18](https://github.com/Wifabric/AISC/releases/tag/v2.1.18)，非 draft、非 prerelease，已设为 Latest；公开正文与审核的 Release Notes 一致。
+- 安装器：[AISC-Workbench-2.1.18-setup.exe](https://github.com/Wifabric/AISC/releases/download/v2.1.18/AISC-Workbench-2.1.18-setup.exe)，384,119,029 bytes。
+- SHA-256：`b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315`；[校验文件](https://github.com/Wifabric/AISC/releases/download/v2.1.18/AISC-Workbench-2.1.18-setup.exe.sha256)，与实际下载和 GitHub asset digest 一致。
+- 安装包沿用未签名状态。正式桌面资产为 Windows x86_64；Linux/macOS 桌面构建通过不代表新增正式桌面发行渠道。
+- 独立 pip CLI 是薄包，不含镜像构建资源；本版不提供独立 CLI 归档，构建需要源码/资源或 Workbench bundle。
+
+## 五、收尾与保留事项
+
+- 本版主体开发、验收与文档归档；所有引用同步。两项外部事项仍由 TODO 与本发布记录接续，未伪装完成。
+- 已按发布源码 ancestry 和 worktree 占用核对，清理 26 个符合条件的远端临时分支、25 个本地分支；没有删除工作树、用户数据或任何 tag。受占用或未证明已合并的分支保留，明细见发布记录。
+- 当前没有 prerelease Release 可清理，稳定历史 Release/tag 保留。
+- 插件当前仅支持 Claude；远程镜像重建禁用；GitHub MCP 使用本人有效授权。这些是已明确的产品边界。
+
+| 暂缓/后续项 | 当前事实 | 接续责任与下一步 |
+| --- | --- | --- |
+| 正式 PyPI | TestPyPI 已通过；正式任务等待 `pypi` 环境审批，未称正式索引已发布 | 用户与 leader 协调 Evergarden-Alan 或 wangyuncepu 批准 [发布任务](https://github.com/Wifabric/AISC/actions/runs/42590823276)；通过后验证正式索引，再按 WIKI 在 develop 开启 0.2.1.dev0 |
+| 反馈站八条回写 | 最终回复与补丁已准备；账号只有 pull，站点仍 submitted | 用户与 leader 协调授予写权限或维护者应用补丁，保留原文/附件/投票/历史，回写后核对页面；见 [草案](feedback-replies-draft.md) |
+| 真实多人协作 | 规则已交付；未组织多人实测 | 后续团队实际使用时由项目主开发安排，人员和时间未指定 |
+| leader 清单确认 | 本清单已交给用户，leader 尚未确认 | 用户转交；收到具体修改意见后按范围处理 |
+
+以下为原阶段候选与验证历史，不能用历史未完成状态覆盖上述最新交付事实。
 
 ## 历史验证：Preview.13 / S16
 
