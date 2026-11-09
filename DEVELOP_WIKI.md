@@ -1,16 +1,17 @@
 # AISC 开发者手册
 
-> **开发基线：** `develop` 分支，项目版本 `0.1.0.dev0`（0.x Alpha，0.1.0 周期起），状态 Alpha。本文以当前源码、脚本、测试和 `.github/workflows/`（tests / cli-sidecar / workbench-ci / nsis-installer / bundle-linux-macos / artifact）为准；用户安装与命令教程见 `README.md`。
+> **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
 ## 1. 分支与发布角色
 
 | 引用 | 角色 | 自动化 |
 | --- | --- | --- |
 | `develop` | 当前日常开发和集成基线；功能、修复、文档先在这里验证 | push 触发 Workbench CI / cli-sidecar / Bundle / NSIS（按各自 paths 过滤）；Artifact 为 dispatch-only |
-| `main` | 面向发布的稳定线；通过 PR 接收已验证变更（0.1.0 起也是 PyPI pending publisher 绑定的默认分支） | 无自动构建 |
-| `v*` tag | 不可变发布标识，标签内容应与 `src/aisc/VERSION` 和 Release Notes 一致 | push tag 构建、聚合并发布 GitHub Release |
+| `main` | 面向发布的稳定线；通过 PR 接收已验证变更（0.1.0 起也是 PyPI pending publisher 绑定的默认分支） | Workbench CI / CLI sidecar / NSIS / Bundle（按各自 paths 过滤）；不会因合并自动创建 Release |
+| Workbench `v*` tag | 与 tauri.conf.json 和 Workbench Release Notes 一致的不可变标识 | NSIS 构建并发布 Workbench Release |
+| CLI `cli-vX.Y.Z` tag | 与 src/aisc/VERSION 一致的正式 CLI 标识 | 手动 dispatch pypi-publish；不创建 Workbench Release |
 
-不要把三者混成同一种工作流：开发基于 `develop`，发布候选通过 PR 进入 `main`，发布 tag 指向已审核的发布提交。普通 push 到 `main` 不在当前 workflow 的分支触发列表中，也不会创建 Release；只有 `v*` tag 会进入 aggregate 和 release jobs。
+不要把三者混成同一种工作流：开发基于 `develop`，发布候选通过 PR 进入 `main`，发布 tag 指向已审核的发布提交。普通 push 到 `main` 会触发适用的构建检查，但不会创建 Release。NSIS 在 Workbench tag 上发布；Artifact 是 dispatch-only，其 branch 构建与 CLI tag 发布必须区分。
 
 当前开发环境无需也不应为了日常贡献切换到 `main`。开始工作前确认：
 
@@ -46,7 +47,7 @@ git status --short
      删除本阶段产生且已并入长期线的本地/远端 feature、fix、preview、release-prep 分支；
      仅保留 `main`、`develop` 及经用户明确裁定的同类长期分支。删除前必须确认分支已合并
      或其历史已由 PR/merge commit/tag 保留；git tag 不随分支删除。
-5. **正式 final 发布不在收尾清单内**（补充，填补空档）：时机由 Claude 判断（通常 preview 验证通过后），流程仍走 §11.2 与 main 合并批准门。
+5. **正式 final 发布不在收尾清单内**（补充，填补空档）：通常在 preview 验证通过后准备，流程仍走 §11.2 与 main 合并批准门；用户明确要求发布前单独确认时，以该最新要求为准，不把旧授权代替本次发布确认。
 6. **preview 迭代目的（2026-09-25 用户补充）**：preview 阶段是本版本的质量验证窗——用来确定本版本的开发是否有问题；有问题就在随后的 preview 版本中解决。期间突发的、target 未规划的**恶性 bug** 也允许在 preview 阶段直接修复（属 §1.2.2 计划外纪律的例外通道，仅限恶性 bug；修复仍走分支先行并记档）。2.1.14 的 b12 下载超时修复、b13 进度条即为此形态。
 
 注（2026-10-31 发布验证补充）：CLI Artifact preview 用 `.devN`；Workbench 用既有
@@ -700,7 +701,7 @@ PROXY_ENABLED=0|1
 
 ### 8.4 版本事实源
 
-项目版本只修改 `src/aisc/VERSION`（0.1.0 A2 起，自根 `VERSION` 迁入包内——data-files 形态会落在 site-packages 之外的 `<sys.prefix>/aisc/`，`--user` 安装直接 miss）：
+CLI 版本事实源是 `src/aisc/VERSION`（0.1.0 A2 起，自根 `VERSION` 迁入包内——data-files 形态会落在 site-packages 之外的 `<sys.prefix>/aisc/`，`--user` 安装直接 miss）：
 
 - `src/aisc/__init__.py` 以 `Path(__file__).with_name("VERSION")` 读取（package-data 后为必然命中项）。
 - setuptools 以 `[tool.setuptools.package-data]` 安装进包内；动态版本 `{file = "src/aisc/VERSION"}`（构建期不 import 包）。
@@ -709,11 +710,11 @@ PROXY_ENABLED=0|1
 - `packaging/artifact.py` 用它命名产物、生成 bundle manifest 并执行一致性保护。
 - `packaging/ci_smoke.py` 比较 executable 的 `cli_version` 与期望版本。
 
-不要在 Python、文档模板或构建脚本再维护第二份版本字面量。发版时版本变更只改 `src/aisc/VERSION`；Release Notes 文件名和 tag 从该值派生。
+不要在 Python、文档模板或构建脚本再维护第二份版本字面量。CLI 发版同步该版本及相关 fixture，Release Notes 为 `docs/releases/v<CLI版本>.md`，正式 tag 为 `cli-v<CLI版本>`；Workbench 版本独立。
 
 **双轨版本约定（2026-09-18 用户裁定，长期有效）**：
 
-- **CLI 轨**：`src/aisc/VERSION`（→ PyPI `aisc-cli`、`v*` tag、`docs/releases/`）自 **0.1.0** 起独立定版；版本迭代按需进行，**版本号由 Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
+- **CLI 轨**：`src/aisc/VERSION`（→ PyPI `aisc-cli`、正式 `cli-v*` tag、`docs/releases/`）自 **0.1.0** 起独立定版；版本迭代按需进行，**版本号由 Claude 掌控**（0.x 语义：minor = 功能，patch = 修复/维护）。
 - **Workbench 轨**：`workbench/src-tauri/tauri.conf.json` 不再随 CLI 版本联动，维持 2.1.12 版本号线独立演进。
 - **大阶段命名**：以 Workbench 版本号命名当前开发阶段（如 v2.1.12 阶段）；一个大阶段内可包含多个 CLI 版本迭代。
 - 过渡机械项（2026-09-18 已随 v0.1.1 发布后机械批落地）：版本四件套已降为 CLI 三件套（`src/aisc/VERSION` + `docs/releases/v<VERSION>.md` + 可选 tag 校验），`tauri.conf.json` 已退出 `scripts/check-version-sync.py`；plans 目录已按阶段命名（`docs/plans/2.1.12-dev-plans/`）。
@@ -722,20 +723,16 @@ PROXY_ENABLED=0|1
 
 `config/versions.env` 是外部依赖和镜像变量的声明位置（0.1.0 A5 起被构建消费：CLAUDE_CODE_VERSION/CODEX_VERSION 作为 build args 转发；用户层覆盖见 `<数据根>/config/versions.env`——`aisc update --pin-tool` 写入，按键覆盖出厂值，CLI 更新/NSIS 升级/bundle fetch 均不触碰，D-27）：
 
-| 变量 | v2.1.4 当前值 | 消费与风险 |
+| 变量 | 2.1.18 配置快照 | 消费与风险 |
 | --- | --- | --- |
-| `NODE_IMAGE` | `node:20-slim` | CLI 在非国内镜像模式传给 Docker build |
-| `NODE_IMAGE_CN` | `docker.1ms.run/library/node:20-slim` | `USE_CN_MIRROR=1` 时由 CLI 选择 |
-| `NODE_IMAGE_DIGEST` | 空 | 已声明但 Dockerfile `FROM` 当前不消费；不能提供 digest 固定 |
-| `CLAUDE_CODE_VERSION` | `latest` | Dockerfile 对应 ARG 默认值；未固定 |
-| `CODEX_VERSION` | `latest` | Dockerfile 对应 ARG 默认值；未固定 |
-| `MIHOMO_VERSION` | `v1.19.27` | Dockerfile ARG / 下载资源 |
-| `GEODATA_VERSION` | `latest` | Dockerfile ARG；未固定 |
-| `CC_SWITCH_VERSION` | `v5.9.0` | Dockerfile 下载 cc-switch binary |
-| `USE_CN_MIRROR` | `1` | CLI build arg，选择 apt/npm/下载镜像路径 |
-| `GH_PROXY` | 空 | Dockerfile 支持 build arg，但当前 `aisc build` 不从 env 文件转发它 |
+| `NODE_IMAGE` / `NODE_IMAGE_CN` | Node 26.13.0 Bookworm slim / 国内镜像同版本 | 基础镜像配置含 digest；构建与镜像回退以实际 CLI 解析结果为准 |
+| `CLAUDE_CODE_VERSION` / `CODEX_VERSION` | `2.1.314` / `0.166.0` | 工厂默认及离线资源；用户层 pin 不被升级覆盖 |
+| `MIHOMO_VERSION` / `GEODATA_VERSION` | `v1.19.33` / `20261030` | 固定版本与数据提交，核对 vendor 校验值 |
+| `CC_SWITCH_VERSION` | `v5.11.3` | 手动 Docker build 回退值；CLI 构建会解析稳定版并记录 manifest，不能把回退值当所有运行目标实装版本 |
+| `YAZI_VERSION` | `26.9.1` | x86_64/arm64 资源的 digest、size 分别校验 |
+| `USE_CN_MIRROR` / `GH_PROXY` | `1` / 空 | 构建镜像/代理配置，以实际消费链为准 |
 
-`latest`、无 digest 的基础镜像以及 Dockerfile/config 默认值重复，意味着同一 Git commit 在不同时间构建不保证字节级一致。维护依赖时同时检查 `config/versions.env`、`container/Dockerfile`、`tools/stage-mihomo.sh`、`vendor/manifest.json` 和 checksums；需要可复现发布时应改为具体版本和 digest，并补齐消费链测试。
+版本值以 `config/versions.env` 为准；同时核对 `container/Dockerfile`、构建 manifest、`vendor/manifest.json` 和 checksums。发布记录应写实际构建来源与校验值，不能只因有 pin 就保证不同时刻的构建字节完全相同。更新本文不等于授权升级第三方工具。
 
 ### 8.6 机器输出兼容
 
@@ -832,19 +829,17 @@ CI 固定 `PyInstaller==6.21.0`，先构建 onedir 进行 executable smoke，再
 
 ### 10.3 官方产物契约
 
-CI 矩阵及唯一官方平台集合：
+Workbench 正式 GitHub Release 提供 Windows x86_64 的 `AISC-Workbench-<Workbench版本>-setup.exe` 和同名 `.sha256`。安装器内的冻结 CLI 与完整 bundle 必须配对；独立 CLI 正式分发为 PyPI `aisc-cli`，Windows/Linux/macOS 使用 pip/pipx。
 
-- `ubuntu-22.04` -> `AISC-<version>-linux-x86_64.tar.gz`
-- `windows-2022` -> `AISC-<version>-windows-x86_64.zip` 和 setup.exe
-- `macos-14` -> `AISC-<version>-macos-arm64.tar.gz` 和 `.pkg`
+依据 [D-8 最终修订](docs/archive/2.1.12-dev-plans/decisions.md)，不向 Workbench 正式 Release 附另一个 CLI 安装器、CLI archive 或 SBOM。CI 的 Linux/macOS 桌面 bundle、sidecar 和 Artifact 打包产物不自动成为正式支持平台或正式下载渠道；CLI preview 专用 Artifact 形态见 §11.1b，不能与正式渠道混用。
 
-每个 archive/installer 带 SHA256 sidecar；tag aggregate 生成 `SHA256SUMS`。bundle 中 executable 与 `aisc-bundle/` 必须相邻，bundle manifest 只允许当前 compatible CLI version。
+bundle 中 executable 与 `aisc-bundle/` 必须相邻，manifest 的 compatible CLI version 必须与实际程序一致。文件存在、CI artifact 上传和正式发布可下载分别检查。
 
 ## 11. CI 与发布
 
 ### 11.1 Workflow 清单
 
-0.1.0 起共 7 个 workflow：`tests.yml`（manual dispatch）、`cli-sidecar.yml`、`workbench-ci.yml`、`nsis-installer.yml`、`bundle-linux-macos.yml`（四者 push + paths 过滤）、`artifact.yml`（**dispatch-only**，tag ref 上跑 build→aggregate→release）、`pypi-publish.yml`（**dispatch-only**，输入已存在 v* tag；见 ADR-002/§11.2 5b）。「唯一 workflow」时代的描述以本清单为准。
+0.1.0 起共 7 个 workflow：`tests.yml`（manual dispatch）、`cli-sidecar.yml`、`workbench-ci.yml`、`nsis-installer.yml`、`bundle-linux-macos.yml`（四者 push + paths 过滤）、`artifact.yml`（**dispatch-only**，tag ref 上跑 build→aggregate→release）、`pypi-publish.yml`（**dispatch-only**，输入已存在 CLI tag（final 为 cli-v*，dev 为 v*.devN）；见 §11.2）。「唯一 workflow」时代的描述以本清单为准。
 
 ### 11.1b Artifact workflow
 
@@ -887,23 +882,14 @@ tag 名包含 `-dev` 或 `.dev` 时该 CLI GitHub Release 标为 Pre-release；�
 > CLI SSOT 是 `src/aisc/VERSION`，Workbench 是 `workbench/src-tauri/tauri.conf.json`，
 > 下文旧的根 VERSION/共版本步骤不能直接套到 Workbench。既有 v* tag 不覆盖、不删除。
 
-> **D-8 发布模型重构（2026-09-19 裁定，实施批进行中）**：release 版本号**以 Workbench 为准**（tag = `v2.1.12` 线），每个 release 附**双安装器**——`AISC-Workbench-<版本>-setup.exe`（Workbench NSIS，自带打包时最新 CLI，装 UI 顺带装 CLI）+ `aisc-cli-<CLI版本>-installer.exe`（CLI 包，让出 `-setup.exe` 后缀）。自更新资产匹配 =「`AISC-Workbench-` 前缀 + `-setup.exe` 后缀」双条件。**PyPI 解耦**：CLI 版本发布走 pip 独立节奏，tag 用 `cli-vX.Y.Z` 前缀（artifact.yml 只匹配 `v*`）。下方步骤为旧形态（CLI 版本号 tag），D-8 实施批落地时同步重写。
+**正式发布以 D-8 第 7 项最终修订为准**：Workbench 单安装器＋校验文件；CLI 通过 PyPI 独立发布。旧的双安装器方案、根 VERSION 和统一版本 tag 步骤已失效。2026-10-31 的 CLI Artifact preview 规则仍用于专用预发布，不要求给正式 Workbench 补发这些资产。
 
-1. 在 `develop` 完成功能和完整验证，通过 PR 将候选变更合入 `main`。
-2. 发布变更只修改根 `VERSION`，并新增 `docs/releases/v<VERSION>.md`；保持 `docs/devlog.md` 新到旧。
-3. 确认发布提交中的 `VERSION`、Release Notes 文件名和计划 tag 完全一致。
-4. 在要发布的已审核提交上创建 annotated `v<VERSION>` tag，并推送该 tag。
-5. 等待 build、aggregate、release 全部通过，核对三平台 archive、Windows setup、macOS PKG、所有 sidecar 和 `SHA256SUMS`。
-6. final Release 验证通过后，删除 GitHub 上全部 pre-release Release 记录与资产，并复核
-   Releases 页仅保留正式 release；git tag 默认按不可变标识保留。
-
-示例中的版本值必须从 `VERSION` 读取，避免手写漂移：
-
-```bash
-VERSION_VALUE="$(python3 -c "from pathlib import Path; print(Path('src/aisc/VERSION').read_text().strip())")"
-git tag -a "v${VERSION_VALUE}" -m "Release v${VERSION_VALUE}"
-git push origin "v${VERSION_VALUE}"
-```
+1. develop 完成范围、验证和统一 Preview 验收；整理 README、devlog、TODO、阶段交付记录和发布说明。说明未测项及来源提交，不把用户验收当作所有开发者测试都 PASS。
+2. 经批准的 PR 将候选合入 main，核对实际 merge tree、适用 CI 与构建输入。main 构建成功只表示构建完成。
+3. 核对两条版本事实源：Workbench `tauri.conf.json` 对应 `docs/releases/v<Workbench版本>.md`；CLI `src/aisc/VERSION` 对应 `docs/releases/v<CLI版本>.md`。准备 tag、渠道、安装包、验证及遗留项供发布确认；存在用户要求的最后确认门时，取得同意前不推 tag、不创建 Release、不上传 PyPI。
+4. 批准后，在审核发布提交上创建并推送 annotated Workbench `v<Workbench版本>` tag，由 NSIS 发布正式 Release。核对非 draft/prerelease、Latest、安装器及 `.sha256`；实际下载校验、版本配对和旧版更新发现。
+5. 正式 CLI 用同一审核源码的 `cli-v<CLI版本>` tag，按下节 dispatch PyPI。不要把 Workbench `v2.*` tag 传给 CLI 版本校验，不为 CLI final 额外创建 Workbench Release。
+6. 两条渠道各自验证成功后回填账本；最终发布后按 §1.1 回写本版反馈、归档计划、修正链接、同步 develop，并逐项清理符合条件的 prerelease 及临时分支。未完成外部事项仍明确列出，不用归档隐去。
 
 创建 tag 前至少运行：
 
@@ -918,16 +904,16 @@ pip install build pipx twine && python scripts/verify-cli-install.py   # clean-r
 git diff --check
 ```
 
-**5b. PyPI 步骤（0.1.0 起，ADR-002）**：GitHub Release 完成后——
+**PyPI 正式发布步骤**：
 
-1. `workflow_dispatch` 运行 `pypi-publish.yml`，输入该 tag；build 段跑全部守卫（tag==VERSION、check-version-sync、twine check、薄形负向、gitleaks、pip-audit）。
-2. TestPyPI 自动发布（environment `testpypi`，skip-existing）→ verify-testpypi（真实 index 安装验证，含传播重试）。
-3. **`pypi` environment 人工审批**（Required reviewers）→ 正式发布（final-only 正则门挡 dev/rc）→ verify-pypi → SBOM 附到同一 Release。
-4. 发布后紧跟一提交 bump 到 `X.Y.(Z+1).dev0`。
+1. `workflow_dispatch` 运行 `pypi-publish.yml`，输入已存在的 `cli-v<CLI版本>`；核对 tag 与 `src/aisc/VERSION`、twine、薄包检查、gitleaks、pip-audit 等实际守卫。
+2. TestPyPI 发布与真实 index 安装验证通过后，按仓库 `pypi` environment 的实际审批规则进入正式发布；final-only 门阻止 dev/rc 上传正式 PyPI。
+3. 正式 PyPI 上传后执行 verify-pypi，核对可安装性与版本。该通路不创建 GitHub Release，也不附 SBOM（见 workflow 中 2026-09-20 裁定）。
+4. 发布结果确认后在 develop 开启下一 CLI 开发版本 `X.Y.(Z+1).dev0`，同步相关版本 fixture/说明；不改已发布 tag，不机械修改独立 Workbench 版本。
 
-dev 迭代（TestPyPI only）：每次上传前三件套 bump `.devN`（2026-09-18 起 tauri.conf.json 退出联动，见 §8.4）→ 提交 → 推 dot tag `v0.1.0.devN` → dispatch；同版本号二次上传会被永久拒绝。clean-room 的 repo 内/repo 外两场景断言方向相反，repo 外冒烟前 unset `AISC_ROOT`。
+dev 迭代仅 TestPyPI：使用新的 `.devN` 和对应 tag，每次上传前同步 CLI 版本、fixture 与说明；Workbench 不跟随 CLI `.devN`。clean-room repo 外冒烟需清除影响定位的 `AISC_ROOT`。
 
-不要覆盖已发布 tag，不要 force-push 发布引用。Release Notes 缺失会使 release job 无法读取 `body_path`；平台 job 任一失败会阻止 aggregate/release。
+不要覆盖已发布 tag 或 force-push 发布引用。正式发布前必须有完整发布说明，不能依赖自动生成 notes 掩盖遗漏；失败渠道单独保留未完成状态。
 
 ## 12. 安全边界
 

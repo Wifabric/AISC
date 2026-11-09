@@ -1,11 +1,11 @@
 # 技术基线与环境
 
-这是 2026-11-02 对仓库锁文件的读取快照，不是“最新版”声明。当前计划不更新依赖。
+依赖行保留 2026-11-02 锁文件调查快照，不声称上游最新版；版本源已更新到正式准备值。本轮交付补全不升级依赖。
 
 | 层 | 使用基线/来源 | 本阶段约束 |
 | --- | --- | --- |
-| Workbench 发布号 | `workbench/src-tauri/tauri.conf.json` = 2.1.17 | 2.1.18 是阶段名；实施时按版本规则统一变更，不以 npm package 旧号作发行号 |
-| CLI | `src/aisc/VERSION` = 0.1.10 | 与 Workbench 双轨；新增 CLI 接口后依指南决定下一 CLI 版本 |
+| Workbench 发布号 | `workbench/src-tauri/tauri.conf.json` = 2.1.18 | Workbench 独立发行号，不以 npm package 旧号作发行号 |
+| CLI | `src/aisc/VERSION` = 0.2.0 | 与 Workbench 双轨，正式发布须最后确认 |
 | Node | `.nvmrc` = 22 | CI/本地开发对齐；初查宿主 PATH 是 24.14.0，实施前使用项目级 Node22 |
 | Python | 手册/CI 3.12；pyproject 要求 >=3.11 | 项目隔离 venv；不依赖原工作目录环境隐式可用 |
 | 前端 | lock：Vue 3.5.41、Pinia 4.0.2、TypeScript 5.6.3、Vite 6.4.3、Vitest 4.1.10 | `npm ci` 按已有 package-lock；此次不改 lock |

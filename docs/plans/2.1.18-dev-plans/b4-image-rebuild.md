@@ -1,6 +1,8 @@
 # b4 镜像重建与进度
 
-状态：已合入 develop，统一 Preview / H4 待验收。来源 F3.2–4；验收 R-4/H4。U-2 已由 D-13 确认；实施基线 `c0f9ab11`。
+状态：本批及后续整合修正已合入 main，开发者证据见下方历史记录与 [PROGRESS](PROGRESS.md)；用户已报告统一验收通过。正式发布和反馈闭环见 [发布准备](release-readiness.md)。
+
+以下保留本批实施时的基线、验证和决策过程，不将当时的未测项目改写为 PASS。
 
 ## 本批协议与执行细化
 
@@ -10,7 +12,7 @@
 - 复用已有 BuildProgress 展示组件，事件驱动进度；终态由 Promise 结果确定。任务和目标快照固定，异步返回不写入其他目标的界面。统一候选 GUI/用户验收保持未测，不能提前记 PASS。
 - 启动摘要的重建后刷新只重新读取 runtime preflight，不调用会回收旧容器的 runtime reconcile；镜像重建不会借刷新隐式停删容器。
 
-## 当前缺口
+## 实施前缺口（已由后续实现接续）
 
 磁盘页全局重建经 `docker_admin.rs` 调本地 sidecar，只等最终 JSON，未携带被选镜像完整上下文。启动构建已有 BuildProgress/Channel 事件。CLI maintenance `--no-cache` 的 store_true/default=True 不能表达“使用缓存”。这些缺口必须连通各层解决。
 

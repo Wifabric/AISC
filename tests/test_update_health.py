@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from aisc import __version__
 from aisc.application.update_health import pairing_check, pairing_health
 from aisc.application.bundle_fetch import bundle_compatible
 from aisc.application.doctor import run_doctor
@@ -112,7 +113,7 @@ def test_source_checkout_without_published_manifest_is_explicitly_unknown(tmp_pa
 
 
 def test_check_adds_allowlisted_json_detail_and_doctor_wires_it(tmp_path, monkeypatch):
-    root = bundle(tmp_path, {"schema_version": 1, "compatible_cli_versions": ["0.1.10"], "token": "never-copy-this"})
+    root = bundle(tmp_path, {"schema_version": 1, "compatible_cli_versions": [__version__], "token": "never-copy-this"}, version=__version__)
     check = pairing_check(root)
     assert check.name == "cli-bundle-pairing" and check.status == "pass"
     assert "never-copy-this" not in check.detail

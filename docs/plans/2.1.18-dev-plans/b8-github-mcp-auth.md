@@ -1,6 +1,8 @@
 # b8 GitHub MCP 首次认证配置入口
 
-状态：实现、自查、本地门禁与真实配置验证通过，准备 PR/CI。D-11；F6 / R-8 / H8。基线为 B7 PR #71 合并 `61c70540`；不依赖模块需求 U-3/U-4。按 D-15/D-16 连续推进，GUI 与用户实际授权留到统一 Preview。
+状态：本批及后续整合修正已合入 main，开发者证据见下方历史记录与 [PROGRESS](PROGRESS.md)；用户已报告统一验收通过。正式发布和反馈闭环见 [发布准备](release-readiness.md)。
+
+以下保留本批实施时的基线、验证和决策过程，不将当时的未测项目改写为 PASS。
 
 ## 方案与范围
 
@@ -23,7 +25,7 @@
 - “检查连接（只读）”由用户显式触发，按选中引擎现有 live 配置向固定官方地址发 MCP initialize，不调用工具、不跟随重定向；分别显示缺配置、认证失败、拒绝访问、网络/协议错误或握手成功。检查期间配置变化则废弃结果。保存始终显示连接未验证；握手成功也不宣称所有工具权限验证通过。
 - 配置字段依据已读取的 [OpenAI MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) 与 [配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)；官方 GitHub 地址与 PAT 方式参照 [GitHub 安装说明](https://github.com/github/github-mcp-server/blob/main/docs/installation-guides/install-codex.md)。当前运行时的真实 Codex/Claude CLI 读取另外验证，不仅依赖文档推断。
 
-## 当前真实验证
+## 本批当时的真实验证
 
 - 隔离容器 `aisc-b8-auth-bb3f7b560b` 使用合成无效令牌；分别保存 Claude/Codex 时未选择文件逐字节保持，真实 `codex-real mcp get github --json` 和 `claude-real mcp get github` 均识别配置并退出 0。两侧关/开与重新执行默认同步后配置仍在。没有使用真实用户令牌，授权连接仍 NOT RUN。
 - 首次 QA 初始化因配置目录未创建而失败，补齐隔离目录后通过；所有 QA 容器核对专属标签后清理。证据 `output/verification/real-auth.json`。

@@ -1,6 +1,13 @@
 # 2.1.18 PR intake
 
-## 当前增补交付：Preview.13 / S16
+## 当前状态：已验收并合入 main，发布等待最后确认
+
+2026-11-09：用户已确认整版与 Preview.13 验收通过；两个隔离 Windows Sandbox 的新装、升级、启动、取消卸载、默认数据保留及 PATH 验证 PASS，见 [安装验证](installer-verification.md)。原发布 PR [#99](https://github.com/Wifabric/AISC/pull/99) 已合并，main `07d6835c2a0018690ae769c39b7d386f58bbc728`；适用 main 构建通过。Workbench 2.1.18 / CLI 0.2.0 尚未正式发布。
+
+用户最新要求：完成交付补全和开发者验证，正式发布前汇总重要内容，得到明确同意后再发布。当前补全文档与准备反馈补丁，不推发布 tag、不上传 PyPI、不置反馈 resolved、不提前归档。剩余步骤和证据见 [发布准备](release-readiness.md)。以下按日期保留历史过程，历史待办由该文件的当前清单接续，不代表要求用户重复验收。
+
+
+## 历史验证：Preview.13 / S16
 
 用户报告前一轮要求手测的项目全部通过；此处作为用户反馈记录，不改写历史开发者 NOT RUN。用户随后确认个人能力与主题体验方案。本批产品已完成并经 [PR #98](https://github.com/Wifabric/AISC/pull/98) 合入 develop `61db0b6fb5be291ea01945b10f306f7d5ca72495`；候选产品提交 `53bbe0e54a855664365cd579b2cb64b4d8e48022`，合并树与该提交完全相同。只有自查，不称独立评审。新版用户验收仍待进行。
 

@@ -1,5 +1,7 @@
 # 实测与证据账本
 
+> 证据性质：本文保留相应候选的测试步骤与当时结果，不重写旧的 FAIL/NOT RUN。用户已确认整版与 Preview.13 通过，隔离安装已另行完成；当前提交/发布边界见 [发布准备](release-readiness.md)。
+
 ### S15 已集成：当前候选 Preview.12
 
 真实 SSH 续测发现远程同名改名会覆盖目标，已修复并重建统一候选。[PR #97](https://github.com/Wifabric/AISC/pull/97) 已合入 develop `20df2af8e5afa1322ddb4dd4129f6144c3ce8b05`；最终 head `9f988fd7806d5dde850bab827f609330cd72779b` 的 [Workbench CI](https://github.com/Wifabric/AISC/actions/runs/42460238475) 三项、[跨平台矩阵](https://github.com/Wifabric/AISC/actions/runs/42460237430) 九项均成功。Windows/Linux/macOS × Python 3.11/3.12/3.13 全部执行，修正测试环境后没有跳过失败项。单代理自查，不称独立评审。
