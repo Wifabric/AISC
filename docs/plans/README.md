@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；用户要求暂缓的正式 PyPI 审批和反馈站回写继续保留在 [TODO](../todo.md)，不把归档当作外部事项完成。下一 CLI 开发号在正式 PyPI 验证后开启。
+- 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；反馈站回写已完成；正式 PyPI 相关事项继续保留在 [TODO](../todo.md)，不把归档当作外部事项完成。下一 CLI 开发号在正式 PyPI 验证后开启。
 
 ## Previous stages and intake
 

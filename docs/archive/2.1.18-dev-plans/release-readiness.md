@@ -1,10 +1,10 @@
 # 2.1.18 正式发布记录
 
-## 当前状态：Workbench 已正式发布，两项外部事项按用户要求暂缓
+## 当前状态：Workbench 已发布，反馈回写完成
 
 2026-11-09：用户明确批准发布，Workbench [2.1.18 正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18) 已上线并设为 Latest，源码 `52a5de6ed4fe47fb44b6caedfa14e80624122bc6`，随包 CLI 0.2.0。正式下载、SHA-256、发布说明和安装构建验证通过，真实公开更新数据经旧版与本版生产解析逻辑验证通过。产品与 Preview.13 用户验收已完成；本轮为单代理开发/自查，不称独立评审。
 
-CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的仓库环境审批和八条反馈站回写，按用户“先不管这两项，先完成其他部分”的要求暂缓，由用户与 leader 协调有权限维护者。二者未标为完成。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
+CLI 0.2.0 的正式 PyPI 渠道继续单独跟踪，本轮未操作该渠道。2026-11-09 用户确认权限已授予并要求完成回写；复核账号具有写权限后，以[反馈提交](https://github.com/Wifabric/aisc-issues-feedback/commit/d7a4592f39204d9ccb746ae59d046acab6ba4ed8)更新本版八条状态及最终回复。站点列表和八条详情均已回读：七条“已解决”、一条“已上线”，修复说明和 2.1.18 正式链接完整。只改 status/updated_at 并追加回复，原文、附件、投票和历史内容保留，自动索引未手改。功能开发及已完成交付材料归档，外部待办继续在 [TODO](../../todo.md) 和本目录 [发布记录](release-readiness.md) 中保留；归档不代表整版外部闭环完成。整版成果及 leader 确认入口见 [DELIVERY](DELIVERY.md)。
 
 ## 已批准的发布内容
 
@@ -16,7 +16,7 @@ CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的
 | 发布说明 | [Workbench](../../releases/v2.1.18.md)、[CLI](../../releases/v0.2.0.md)；README 已按实际入口更新 |
 | Workbench 资产 | `AISC-Workbench-2.1.18-setup.exe` 与 `.sha256`；正式 Release 非 draft/prerelease，核对 Latest、公开下载和更新发现 |
 | CLI 渠道 | wheel/sdist 的守卫、TestPyPI 安装验证、实际 environment 审批、正式 PyPI 及安装验证；不附独立 CLI 安装器/归档/SBOM 到 Workbench Release |
-| 反馈 | 本版 F1–F8 八条；[最终回复草稿](feedback-replies-draft.md) 仅在发布验证后追加，当前未发送 |
+| 反馈 | 本版 F1–F8 八条；[最终回复记录](feedback-replies-draft.md) 已发送，列表和详情核验通过 |
 
 ## 开发者准备清单
 
@@ -63,14 +63,14 @@ CLI 0.2.0 已完成 tag、TestPyPI 上传与实际安装验证；正式 PyPI 的
 - [x] 用户于 2026-11-09 明确回复“ok，确认了，可以发布”，随后要求暂缓 PyPI 审批与反馈站回写，先完成其他交付。
 - [x] Workbench 正式 tag/Release/Latest、公开下载/校验、随包版本和生产更新选择逻辑验证通过；实际正式安装器 SHA-256 `b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315`。
 - [ ] CLI 正式 tag 与 TestPyPI 上传/实际索引安装验证已完成；正式 PyPI 等待环境审批，用户要求暂缓，不标全渠道完成。
-- [ ] 获得反馈仓库写权限或由有权限维护者应用补丁；发布成功后更新八条，复核列表/详情缓存结果。
-- [x] 已回填 Workbench 正式发布事实、整版 DELIVERY 与已完成阶段归档；两项外部待办明确转交协调并保留在 TODO，不用归档隐藏。
+- [x] 2026-11-09 用户确认权限已授予并要求完成回写；复核账号具有写权限后，以[反馈提交](https://github.com/Wifabric/aisc-issues-feedback/commit/d7a4592f39204d9ccb746ae59d046acab6ba4ed8)更新本版八条状态及最终回复。站点列表和八条详情均已回读：七条“已解决”、一条“已上线”，修复说明和 2.1.18 正式链接完整。只改 status/updated_at 并追加回复，原文、附件、投票和历史内容保留，自动索引未手改。
+- [x] 已回填 Workbench 正式发布事实、整版 DELIVERY 与已完成阶段归档；反馈已完成，PyPI 待办继续保留在 TODO，不用归档隐藏。
 - [x] 发布源码长期分支已同步；已清理 26 个安全远端分支和 25 个本地分支；有 worktree 占用或未证明已合并的分支保留。当前无 prerelease Release，稳定 tag 不动。发布后文档通过单独 PR 同步，不覆盖正式 tag。
 - [ ] 下一 CLI 开发号 0.2.1.dev0 依 WIKI 在正式 PyPI 发布结果确认后开启；它是本次暂缓渠道的后续动作，不在正式发布 tag 上改版本。整版交付链接已汇总至 DELIVERY。
 
 ## 已知边界与外部条件
 
-- 反馈仓库 `Wifabric/aisc-issues-feedback` 当前仅 pull 权限，不能本机提权解决；补丁准备不等于已回写。原文、投票、附件及旧回复必须保留。八条仍为 submitted，只有正式发布验证后由获授权写入者更新。
+- 2026-11-09 用户确认权限已授予并要求完成回写；复核账号具有写权限后，以[反馈提交](https://github.com/Wifabric/aisc-issues-feedback/commit/d7a4592f39204d9ccb746ae59d046acab6ba4ed8)更新本版八条状态及最终回复。站点列表和八条详情均已回读：七条“已解决”、一条“已上线”，修复说明和 2.1.18 正式链接完整。只改 status/updated_at 并追加回复，原文、附件、投票和历史内容保留，自动索引未手改。
 - 已核对 GitHub `pypi` environment 的 required reviewers 为 `Evergarden-Alan` / `wangyuncepu`；发布获用户同意后仍须其中有权限维护者在 workflow 完成实际审批，不修改或绕过保护。`testpypi` 无 required reviewer，本轮已实际上传并通过索引安装验证。
 - 真实多人协作未实测；本版交付流程规则/Skill和单代理实际执行，团队试用仍是后续事项，不标 PASS。
 - 插件当前仅 Claude；远程镜像重建入口禁用；GitHub MCP 实际访问需要用户本人有效授权。现有用户验收不等于任意凭据均可访问任意仓库。
