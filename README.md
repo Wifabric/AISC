@@ -7,7 +7,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha（0.x）。** 当前版本：Workbench **v2.1.14** / CLI **0.1.3**（`pip install -U aisc-cli`）。命令、配置和持久化契约仍可能变化，升级前请阅读 [Releases](https://github.com/Wifabric/AISC/releases) 的 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** 本分支版本：Workbench **2.1.18** / CLI **0.2.0**。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
 
 ## 目录
 
@@ -37,15 +37,15 @@ AISC 以开发便利为优先，不是生产级安全沙箱：
 
 ## 安装前提
 
-运行 AISC 需要自行安装并启动 **Docker**（AISC 不代装，检测到缺失时会给出指引；Windows 安装器可一键引导安装 Docker/Python/WebView2）：
+运行 AISC 需要自行安装并启动 **Docker**（AISC 不代装，检测到缺失时会给出指引；Windows 安装器可一键引导安装 Docker/WebView2）：
 
 | 平台 | 官方产物 | Docker |
 | --- | --- | --- |
 | Windows | x86_64（Workbench 安装器） | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
-| Linux | x86_64（CLI 便携包） | Docker Engine；当前用户需有 daemon 权限 |
-| macOS | Apple Silicon arm64（CLI 便携包/PKG） | Docker Desktop |
+| Linux | x86_64（CLI：pip/pipx） | Docker Engine；当前用户需有 daemon 权限 |
+| macOS | Apple Silicon arm64（CLI：pip/pipx） | Docker Desktop |
 
-官方 Release **不提供** Linux arm64、Windows arm64 或 Intel macOS 产物。安装器/便携包渠道不需要 Python、uv 或 Git；pip/pipx 渠道需要 Python 3.11+；从源码构建需要 Python 3.11+ 和 Git，推荐使用 uv。
+官方 Release **不提供** Linux arm64、Windows arm64 或 Intel macOS 产物。Workbench 安装器自带冻结 CLI，不需要宿主 Python、uv 或 Git；pip/pipx 渠道需要 Python 3.11+；从源码构建需要 Python 3.11+ 和 Git，推荐使用 uv。
 
 `aisc doctor` 可在明确确认后协助安装 Docker（需要确认与相应权限），除此之外 AISC 不会代装系统软件。
 
@@ -59,7 +59,7 @@ docker version
 
 ### 安装
 
-从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC Workbench_<版本>_x64-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\Programs\AISC`，并添加用户 `PATH`。
+从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC-Workbench-<版本>-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\AISC Workbench`，并添加用户 `PATH`。
 
 AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目 Release 且 SHA256 正确，再选择“更多信息 -> 仍要运行”。
 
@@ -87,16 +87,24 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 - **诊断**：任何页面可打开诊断对话框（环境检查、最近日志、导出诊断包）。
 - **应用自更新**：Windows 设置页「检查更新」→「下载更新」，校验完成后点击「退出更新」并确认，资源管理器选中安装包、正常打开安装向导后 Workbench 退出；可按向导完成更新。下载完成本身不会退出，取消或启动失败仍保留应用。其他平台按提示手动安装。
 
-### 主题实践工坊（开发分支新功能）
+### 个人能力与主题
 
-在 Bash / Codex 标签栏的「▾」菜单选择「主题实践工坊」，或从「扩展 → 技能 → 主题实践工坊 → 使用这个技能」进入。主题以独立主标签打开；对话横幅中的主题名称也可打开该页面。
+在终端标签栏「▾」选择「个人能力与主题」，或从「扩展 → 技能」顶部点击「使用这个技能」。首页有两个入口：
 
-1. 点击「新建主题」，填写名称、目标与实际条件；参考文件可选，填写工作区内的相对路径，一行一个。点击创建后，资料原件保留，目标存入主题记录。
-2. 创建后自动设为新对话主题；已有主题点击「设为新对话的主题」。点击「与 Claude 开始对话」或「与 Codex 开始对话」，也可从原有新建会话入口打开AI。技能、手册和进度在后台作为会话背景加载，不自动提交开场消息，也不因打开会话而执行任务或修订。直接输入你的第一条消息即可；较长资料按需读取。模型执行任务时的工具活动仍由原生CLI显示。
-3. 正常对话即可：目标、问题、限制、实际反馈直接告诉AI。平台同步关联会话的用户/AI对外文本，AI按skill整理手册、状态和实践依据。聊天区显示当前新对话主题与已保存消息数，同步失败明确提示。
-4. 在主题主标签的「手册 / 迭代 / 进度 / 成果 / 过程」查看持续更新的内容。「迭代」对应主题目录的 `ITERATION_LOG.md`：按最新在前展示每次手册修订的原因、改动、验证、后续及证据。日志从修订事件自动生成；普通聊天不产生修订，旧历史缺失项标明未记录，原始事件与快照保留。修改日志内容应追加修订/纠正事件，不直接编辑生成文件。旧任务和手动整理入口保留在折叠的「可选操作」中。切换主题只影响之后新开的会话；已绑定会话继续记录到原主题。
+1. **设置我的回答偏好**：从模板创建个人副本，或新建空白能力；填写名称和规则，选择是否启用，点击「保存新版本」。在「我的能力 · 已保存的回答偏好」查看、编辑或停用。修改原因、验证和历史在进阶区域；恢复旧版会生成新版本，原版本仍保留。
+2. **围绕一个主题持续做事**：新建主题，填写名称和目标，选择 Claude/Codex，点击「创建并开始主题对话」。检查并编辑开场草稿，点击「填入对话，由我发送」，再自行发送。未配置提供者时先按提示完成登录。
 
-主题保存在工作区 `topics/<主题ID>/`，包含手册、状态、事件、成果和快照；`.skill/` 保存完整技能版本。仅同步明确关联会话的对外文本，不复制推理、工具输出和附件二进制。切换或关闭主题标签仍同步，不会停用主题或关闭终端会话；应用未运行时保留原Agent日志，重新打开工作区后补同步。原始对话已保存不代表手册已整理或方法已验证。「检查记录」检查文件与证据关联，不代替真实效果验证。工作台与CLI须配套更新；会话启动桥接从可信CLI部署到容器临时目录，无需全局安装skill。
+普通「新建 Claude/Codex」对话不会自动关联最近主题；启用的回答偏好独立作用于之后的新对话。只有从主题入口开始的对话关联该主题；已有对话不会被后台强行替换上下文。主题页可查看目标、继续入口、相关对话、总结、手册及成果，原始记录、诊断和历史默认收起。
+
+主题对话顶部只显示当前主题的简短状态。「更多」可查看成果、处理同步提示或停止记录本次对话；停止后保留已保存内容，不再继续采集，也不会撤回模型已收到的上下文。源记录缺失或被截断时暂停同步，可查看详情、重试或停止，不把反复失败当作新增进展。
+
+主题保存在工作区 `topics/<主题ID>/`，`.skill/` 保存技能版本。仅同步明确关联会话的对外文本，不复制推理、工具输出和附件二进制。切换或关闭主题标签不等于停止采集；已保存对话不等于手册已整理或效果已验证。旧主题、个人能力版本、手册和成果保留，旧的工作区全局主题选择不再应用于普通新对话。
+
+### 基础技能与在线模块
+
+通用基础技能随离线资源提供；场景模块在「扩展 → 扩展市场 → 推荐」的模块入口管理。打开「科研基础」或「开发基础」，查看成员和来源后应用；技能可供已启用的目标引擎后续会话读取，必要时新建会话刷新技能列表。安装成功与模型实际使用成功分别验证。
+
+复制默认模块可编辑并保存自己的定义。保存或删除定义不执行安装/卸载；「应用」只补装缺少成员，「卸载模块」先显示计划，保留共享、预装、归属不明和已修改项。插件通路目前只支持 Claude；MCP 安装后还可能需要本人认证，保存认证、握手成功与实际访问仓库是三个不同结果。
 
 ### Provider 模板清单
 
@@ -140,7 +148,7 @@ pipx install aisc-cli        # 首选：自动隔离 + 独立 bin 目录（Windo
 # 或 uv tool install aisc-cli / 裸 pip（请在 venv 内）
 ```
 
-三点须知：① 分发名是 `aisc-cli`，但命令仍是 `aisc`；② **需要自备 Docker**，装完先跑 `aisc doctor`；③ pip 安装**不含构建资源**——`aisc build` / `maintenance docker-rebuild` 前需先 `aisc bundle fetch`（从 GitHub Releases 拉同版本 bundle 到数据根）；此时 `aisc version` 的 `bundle_version=null` 与 `doctor` 的 aisc-bundle WARN 属预期。
+三点须知：① 分发名是 `aisc-cli`，但命令仍是 `aisc`；② **需要自备 Docker**，装完先跑 `aisc doctor`；③ pip 安装**不含构建资源**。2.1.18 的正式 Release 不提供独立 CLI 归档，因此不能承诺 `aisc bundle fetch` 自动取得 CLI 0.2.0 的资源。需要构建镜像时，使用配套 Workbench 的完整 bundle，或按 [开发手册](DEVELOP_WIKI.md) 准备对应源码及资源，并通过 `--aisc-root` 指定；纯 pip 环境的 `bundle_version=null` 表示尚未配置资源根。
 
 安装陷阱 FAQ：
 
@@ -148,24 +156,9 @@ pipx install aisc-cli        # 首选：自动隔离 + 独立 bin 目录（Windo
 - **Windows 裸 pip `--user`**：Scripts 目录（`%APPDATA%\Python\Scripts`）默认不在 PATH → 把它加入 PATH 或改用 pipx。
 - **`python -m aisc`**：永远可用，是 shim 失效时的诊断后门。
 
-**Linux x86_64**（便携）：
+**Linux x86_64 / macOS arm64**：使用上述 pip/pipx 渠道；本版不发布独立 CLI 便携安装包或 macOS PKG。已有历史便携安装仍可按原版本文档维护，但不要寻找本版不存在的下载。
 
-```bash
-sha256sum -c AISC-<ver>-linux-x86_64.tar.gz.sha256
-tar -xzf AISC-<ver>-linux-x86_64.tar.gz
-cd AISC-<ver>-linux-x86_64
-./aisc version
-```
-
-便携运行时，`aisc` 与 `aisc-bundle/` 必须保持相邻。也可用仓库中的脚本安装到用户目录：
-
-```bash
-bash packaging/install.sh /path/to/AISC-<ver>-linux-x86_64.tar.gz
-```
-
-**macOS arm64**：推荐 `.pkg`（需管理员密码，安装到 `/usr/local/lib/aisc/`）；或使用便携 `.tar.gz` / `packaging/install.sh`。
-
-**Windows**：Workbench 安装器已含 CLI；便携 `.zip` 可配合 `packaging/install.ps1` 安装到 `%LOCALAPPDATA%\AISC`。
+**Windows**：Workbench 安装器已包含 CLI 和完整构建资源，通常无需再安装一份 pip CLI。多渠道并存时用 `aisc doctor` 核对 PATH 和版本来源。
 
 **从源码**：
 
@@ -270,7 +263,7 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc network subscription …` | `import/import-file/refresh/show/clear` | 代理订阅数据面（URL 与内容走 stdin） |
 | `aisc maintenance docker-scan/cleanup/rebuild` | `--context`, `--root`, `--tag` | Docker 资源归属扫描/清理/重建（owned-only，卸载与升级同一服务） |
 | `aisc maintenance container-action/image-rm/image-tag` | `--id` 等 | AISC 自有容器的启动/停止/删除、镜像删除与重命名（仅 owned 资源，执行前锁内重扫判权） |
-| `aisc bundle fetch/list/remove/path` | `--version`, `--from-file`, `--sha256`, `--allow-mismatch` | pip 安装的构建资源管理：从 GitHub Releases 拉取同版本 bundle 到数据根（API digest 校验、fail-closed、离线 --from-file） |
+| `aisc bundle fetch/list/remove/path` | `--version`, `--from-file`, `--sha256`, `--allow-mismatch` | pip 安装的构建资源管理：管理已有/历史 CLI bundle（校验、离线导入）；本版正式渠道不保证存在可自动获取的 CLI 归档 |
 | `aisc update` | `--check`, `--version`, `--from-file`, `--sha256`, `--rebuild` | CLI 自更新：`--check` 查看计划。**不再从网络下载 CLI 归档**——pip/pipx 形态走各自渠道（`pipx upgrade aisc-cli` 或 venv 内 `pip install -U aisc-cli`）；便携/冻结形态可用 `--from-file <archive> --sha256 <hex>` 本地换装；Workbench 内置 CLI 随安装器自更新 |
 
 多容器寻址顺序：显式 `--name` -> 唯一匹配的 `--label` -> registry 默认目标 -> 唯一登记容器；无法消歧时列出候选并要求指定。
@@ -333,14 +326,14 @@ Workbench 与 CLI 共享统一数据根：
 - 工作区状态在数据根（不在工作区目录内），「彻底忘记」才会清除。
 - 持久工具链：Agent 安装的用户级 npm/pip/cargo 工具跨容器、跨会话保留（挂载 `/opt/aisc/toolchain`）。
 - AISC 用户配置：`aisc config`（JSON，用户层 + 工作区层 `<workspace>/.aisc/config.json`，未知键告警忽略）。
-- 资源根（`aisc-bundle/`）须包含 `VERSION`、`container/Dockerfile`、`config/versions.env`；查找顺序 `--aisc-root` -> `AISC_ROOT` -> 可执行文件旁 `aisc-bundle/` -> Git 仓库向上查找 -> **数据根 `bundles/<ver>/`（`aisc bundle fetch` 安装，0.1.0 起）** -> editable 源码祖先。pip 安装无前四项时落到 `bundles/`；都没有则 build 类命令报错并指引 `aisc bundle fetch`。
+- 资源根（`aisc-bundle/`）须包含 `VERSION`、`container/Dockerfile`、`config/versions.env`；查找顺序 `--aisc-root` -> `AISC_ROOT` -> 可执行文件旁 `aisc-bundle/` -> Git 仓库向上查找 -> **数据根 `bundles/<ver>/`（`aisc bundle fetch` 安装，0.1.0 起）** -> editable 源码祖先。pip 安装无前四项时尝试已有 `bundles/`；都没有则 build 类命令无法工作。即使旧诊断建议 fetch，也须先确认该 CLI 版本有可获取资产；本版请准备配套资源根。
 
 ## 升级
 
-- **Windows Workbench**：推荐应用内「设置 -> 检查更新」直接升级——下载（带进度条）→ 确认 → 静默安装 → 自动重建镜像 → **自动重启新版**。也可手动运行新版安装器覆盖安装（效果相同）。升级会先停止并删除 AISC 管理的容器，替换文件后对默认镜像执行**无缓存重建**（可能需要几分钟到 30 分钟）；Docker 不可用时文件照常更新，镜像重建转为待办并给出手动命令。用户配置、工作区状态与持久工具链全部保留。
-- **macOS PKG / 便携脚本**：覆盖安装或重新执行 `packaging/install.sh <new-archive>`。
+- **Windows Workbench**：设置 → 检查更新 → 下载更新；校验后点击「退出更新」并确认，程序打开目标安装器交互向导后退出。按向导完成覆盖安装；下载本身不退出，取消或启动失败保留应用。升级前保存未提交工作并关闭占用，安装器可能处理 AISC 管理的运行资源；具体构建/清理结果以向导日志为准。用户配置和工作区数据默认保留。
+- **历史 PKG / 便携脚本**：按该历史版本维护方式处理；本版独立 CLI 改用 pip/pipx，先核对 PATH，避免新旧渠道混用。
 - **uv tool**：`git pull` 后 `uv tool upgrade aisc` 或重装；镜像内容变化时需重新 `aisc build`。
-- **pipx/pip**：`pipx upgrade aisc-cli`（或 venv 内 `pip install -U aisc-cli`）；新版 bundle 用 `aisc bundle fetch` 更新（更新镜像再 `aisc maintenance docker-rebuild`）。
+- **pipx/pip**：`pipx upgrade aisc-cli`（或 venv 内 `pip install -U aisc-cli`）；镜像构建前另外准备与 CLI 配对的资源根，不能把 pip 升级成功当成完整离线资源也已更新。
 
 注：Workbench 内置的 CLI 随安装器一同更新（无独立升级通道）；远程机器上的 CLI 用 `pipx upgrade aisc-cli` / `pip install -U aisc-cli` 独立升级。
 
@@ -349,9 +342,9 @@ Workbench 与 CLI 共享统一数据根：
 | 安装方式 | 卸载方式 |
 | --- | --- |
 | Windows Workbench 安装器 | Windows“设置 -> 应用 -> 已安装的应用” |
-| Windows `packaging/install.ps1` | `powershell -File packaging/uninstall.ps1` |
-| macOS PKG | `sudo /usr/local/lib/aisc/uninstall.sh` |
-| Linux/macOS `packaging/install.sh` | `bash packaging/uninstall.sh` |
+| 历史 Windows `packaging/install.ps1` | `powershell -File packaging/uninstall.ps1` |
+| 历史 macOS PKG | `sudo /usr/local/lib/aisc/uninstall.sh` |
+| 历史 Linux/macOS `packaging/install.sh` | `bash packaging/uninstall.sh` |
 | uv tool | `uv tool uninstall aisc` |
 | pipx/pip | `pipx uninstall aisc-cli`（或 venv 内 `pip uninstall aisc-cli`）；**先**跑下面的 docker 清理，pip 卸载会把工具一起带走 |
 

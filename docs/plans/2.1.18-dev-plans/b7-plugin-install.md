@@ -1,6 +1,8 @@
 # b7 插件安装超时与真实终态
 
-状态：已实现，定向/真实 Docker/前端/Rust 验证通过，Python 全套 1774 passed / 54 skipped / 204 subtests；准备 PR。D-11；F5 / R-7 / H7。基线为 B6 PR #70 合并 `ffc84885`；按 D-14 顺序实施，D-15/D-16 将 GUI/用户验收统一留到 Preview。
+状态：本批及后续整合修正已合入 main，开发者证据见下方历史记录与 [PROGRESS](PROGRESS.md)；用户已报告统一验收通过。正式发布和反馈闭环见 [发布准备](release-readiness.md)。
+
+以下保留本批实施时的基线、验证和决策过程，不将当时的未测项目改写为 PASS。
 
 ## 方案与范围
 

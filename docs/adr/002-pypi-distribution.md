@@ -1,5 +1,7 @@
 # ADR 002: 三轨分发与 PyPI 瘦 wheel（0.1.0）
 
+> **后续修订（当前入口）**：本文保留 2026-09-17 原始决策。正式分发已由 [D-8 第 7 项](../archive/2.1.12-dev-plans/decisions.md) 调整为 Workbench 单安装器＋校验文件、CLI pip 渠道；旧三轨资产、SBOM 附件和 final v* tag 步骤不能直接执行。当前操作见 [WIKI §11](../../DEVELOP_WIKI.md#11-ci-与发布)，CLI preview 的后续专用 Artifact 规则亦在那里说明。
+
 > **状态**：已接受（0.1.0 周期 D-1~D-6、D-26 裁决集）
 > **日期**：2026-09-17
 > **决策者**：用户批准（docs/plans/0.1.0-dev-plans/decisions.md；执行蓝本 docs/plans/0.1.0-dev-plans/pypi-release-guide.md）

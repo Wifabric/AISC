@@ -1,5 +1,7 @@
 # macOS .pkg Manual Test Checklist
 
+> 本文为历史独立 CLI PKG 的验证步骤，不是 2.1.18 已执行证据或正式发行承诺。当前 Workbench/CLI 渠道见 [开发手册](../../DEVELOP_WIKI.md#103-官方产物契约)。
+
 This document describes manual verification steps for the AISC macOS
 installer.  These tests must be performed on a real Apple Silicon Mac
 (macOS 14+).  The CI build (macos-14 runner) verifies structural

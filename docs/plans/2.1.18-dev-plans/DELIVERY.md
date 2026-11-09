@@ -1,14 +1,13 @@
 # 2.1.18 夜间交付与次日验收
 
-## 当前状态：用户验收通过，正式发布准备中
+## 当前状态：已验收并合入 main，发布等待最后确认
 
-用户已明确确认 Preview.13 验收无问题，并要求完成剩余工作直到可确认 main 合并；此前整版手测同样报告通过。b1–b10、S12–S16 的用户验收据此记为 PASS，不改写历史开发者未执行项。正式版本为 Workbench 2.1.18 / CLI 0.2.0，发布分支源于已验收 develop，功能行为不变。
+2026-11-09：用户已确认整版与 Preview.13 验收通过；两个隔离 Windows Sandbox 的新装、升级、启动、取消卸载、默认数据保留及 PATH 验证 PASS，见 [安装验证](installer-verification.md)。原发布 PR [#99](https://github.com/Wifabric/AISC/pull/99) 已合并，main `07d6835c2a0018690ae769c39b7d386f58bbc728`；适用 main 构建通过。Workbench 2.1.18 / CLI 0.2.0 尚未正式发布。
 
-2026-11-09 重启后已完成两个独立 Windows Sandbox 的全新安装、2.1.17 → 2.1.18 升级、卸载取消、默认数据保留及 PATH 验证，全部 PASS；已安装 CLI/bundle 均为 0.2.0，Workbench 为 2.1.18。详见 [安装验证](installer-verification.md)。用户验收已完成，无需重复。main 合并、tag 和公开发布仍未执行；最终进度与合并确认边界见 [发布准备](release-readiness.md)。
+用户最新要求：完成交付补全和开发者验证，正式发布前汇总重要内容，得到明确同意后再发布。当前补全文档与准备反馈补丁，不推发布 tag、不上传 PyPI、不置反馈 resolved、不提前归档。剩余步骤和证据见 [发布准备](release-readiness.md)。以下按日期保留历史过程，历史待办由该文件的当前清单接续，不代表要求用户重复验收。
 
-以下保留 Preview.13 及更早验证证据；“待用户验收”等旧状态以本段为准。
 
-## 当前增补交付：Preview.13 / S16
+## 历史验证：Preview.13 / S16
 
 用户报告前一轮要求手测的项目全部通过；此处作为用户反馈记录，不改写历史开发者 NOT RUN。用户随后确认个人能力与主题体验方案。本批产品已完成并经 [PR #98](https://github.com/Wifabric/AISC/pull/98) 合入 develop `61db0b6fb5be291ea01945b10f306f7d5ca72495`；候选产品提交 `53bbe0e54a855664365cd579b2cb64b4d8e48022`，合并树与该提交完全相同。只有自查，不称独立评审。新版用户验收仍待进行。
 
@@ -70,7 +69,7 @@ Preview.12 真实 GUI / SSH 已通过：同名冲突提示且两文件不变；�
 
 Preview.11 的三层能力和 GUI 故障覆盖证据保留在 preview-gui；Preview.12 只改变远程 Explorer 改名保护及入口校验。真实冻结 CLI 协议验证冲突、内容保留和大小写成功；远程 GUI 重入验证通过。构建不是公开 Release，未创建 tag，未覆盖用户安装。
 
-## 待满足的交付条件
+## Preview.12 当时的交付条件（历史）
 
 | 条件 | 当前状态与责任 |
 | --- | --- |
@@ -147,7 +146,7 @@ Preview.7 补充：#91 [CI](https://github.com/Wifabric/AISC/actions/runs/424290
 
 Preview.8 补充：#93 [CI](https://github.com/Wifabric/AISC/actions/runs/42432013590) 三项 success 后合入，修复旧空插件登记并将新工厂格式设为 v2。新完整资源包/镜像通过校验，真实新工作区首次安装与其他工作区隔离通过；最终标准候选重启回读与 About 通过。最终 NSIS 384409353 字节，完整 bundle 对比只有预期三文件变化，旧版备份保留。首次 GUI 构建与最终重打包二进制的精确哈希分别记录，不混写；详见 [统一候选复测](preview-gui.md)。
 
-## 后续职责与实际阻塞
+## Preview.12 当时的职责与阻塞（历史）
 
 开发者仍负责补足可独立完成的边界验证、测试环境恢复、结果记录及必要修复；不以等待真实认证作为停止全部工作的理由。本轮追加 Preview.11 默认模块复制/隐藏/恢复、窄窗口右边缘菜单、MCP/插件卸载保护和旧适配器保守保留的真实 GUI 证据，详见 preview-gui。
 
