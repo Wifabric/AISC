@@ -1,31 +1,40 @@
 # 2.1.18 正式发布准备
 
-## 授权与基线
+## 当前授权与状态（2026-11-09）
 
-用户已明确确认 Preview.13 验收无问题，并要求完成剩余工作，推进到可确认合并。此前旧一轮验收同样由用户报告通过。本轮记录这两个用户结论，不把它们改写为开发者未执行项目的 PASS。
+用户已验收整版及 Preview.13，PR [#99](https://github.com/Wifabric/AISC/pull/99) 已按用户确认合入 main `07d6835c2a0018690ae769c39b7d386f58bbc728`。隔离交互安装已通过，旧“待重启/待 main 批准”状态结束。用户随后批准交付补全，并明确要求正式发布前确认重要内容，得到同意后再发布；此要求覆盖此前 final 时机委托。
 
-- develop：`9a83cbc603ab760089181c53636d5662aa37b9f9`；main：`bf95ce0aa9eaca0439b52679f97b91c46a25adeb`。
-- 分支：`codex/2.1.18-release-prep`，从上述 develop 创建；发布 PR 目标 main。只准备可审查的合并，不合入 main、不打 tag、不公开发布或上传 PyPI。
-- 主开发/自查：当前开发助手；无独立审查。维持已验收产品行为，只做版本、说明、验收账本和必要发布验证。
-- Workbench 版本 `2.1.18`；CLI `0.2.0`。CLI 新增模块与个人/主题等功能，按 WIKI §8.4 的 0.x minor 功能版本约定升级；协议仍为 4。预检确认该 CLI 版本尚未占用、两个正式标签不存在。
+本轮从 develop `9a83cbc6` 创建 `codex/2.1.18-delivery-closeout`，同步已批准 main 后补全文档。由同一代理执行与自查，不称独立评审。正式 tag、GitHub Release、TestPyPI/PyPI 上传和反馈 resolved 均未执行。
 
-## 本轮执行
+## 待确认的具体发布内容
 
-1. 回写 b1–b10、S12–S16 的用户验收，保留历史验证范围；完成正式发布说明及版本一致性。
-2. 运行版本/打包/安装相关验证。以正式版本号重新构建 CLI、bundle、Workbench/NSIS；容器内容保持已验收版本。准确记录文件哈希和源码，不覆盖 Preview.13。
-3. 创建英文发布 PR，检查精确提交 Workbench、跨平台 Python、CLI sidecar、NSIS、Linux/macOS bundle 和 Artifact 流水线；非 tag dispatch 不进入 release jobs。
-4. 复核发布 PR base/head、main 未漂移、合并预览及全部适用 CI；准备 main/tag/发布后资产校验和反馈闭环步骤。归档和 final 发布在用户合并批准与发布条件满足后执行。
+| 项目 | 准备内容 |
+| --- | --- |
+| Workbench | 2.1.18；Windows x86_64；正式 tag `v2.1.18`，只在已核对的 main 提交上创建 |
+| CLI | 0.2.0，serve protocol 4；随 Workbench 提供；独立正式 tag `cli-v0.2.0`，通过 PyPI `aisc-cli` 分发 |
+| 功能范围 | F1–F8/b1–b10、离线通用技能、在线科研/开发模块、个人能力迭代、S16 主题体验、开发流程/Skill；无新增工具升级或跨平台桌面发行承诺 |
+| 发布说明 | [Workbench](../../releases/v2.1.18.md)、[CLI](../../releases/v0.2.0.md)；README 已按实际入口更新 |
+| Workbench 资产 | `AISC-Workbench-2.1.18-setup.exe` 与 `.sha256`；正式 Release 非 draft/prerelease，核对 Latest、公开下载和更新发现 |
+| CLI 渠道 | wheel/sdist 的守卫、TestPyPI 安装验证、实际 environment 审批、正式 PyPI 及安装验证；不附独立 CLI 安装器/归档/SBOM 到 Workbench Release |
+| 反馈 | 本版 F1–F8 八条；[最终回复草稿](feedback-replies-draft.md) 仅在发布验证后追加，当前未发送 |
 
-## 验证与权限边界
+## 开发者准备清单
 
-- Windows 交互安装 GUI：PASS。重启后已在两个独立 Windows Sandbox 完成全新安装、2.1.17 升级、首次启动、卸载取消及默认数据保留；详见 [安装验证](installer-verification.md)。桌面工具故障已恢复，不再是待办。
-- Windows 静默安装、重装、PATH、卸载数据保留：正式 NSIS CI PASS。交互与自动验证分别记录，不互相冒充。
-- 反馈仓库仍为 private / allow_forking=false / push=false / pull=true。回复草稿已准备；final 发布后才追加最终解决回复/置 resolved，当前不发送。写权限限制属于发布后反馈闭环事项。
-- 用户本轮批准推进到合并确认，未批准合入 main、正式发布、删除历史 prerelease 或临时分支。
+- [x] 对照 WIKI、交接、职责、Skill、D-8 后续裁定、本版 35 文件和当前发布渠道界定范围。
+- [x] 更新用户教程、现行流程、devlog/TODO 与阶段当前状态，保留历史测试的真实结果。
+- [x] 准备八条反馈的具体最终文案和仅本地可审查补丁；写入前仍须复读最新文件及权限。
+- [x] 本轮文档检查 51 PASS / 0 warnings / 0 failures；49 份变更文档的 247 个相对链接/锚点通过；CLI 正式 tag 版本守卫和 git diff --check 通过。个人能力/会话现有测试 53 passed / 1 skipped；最初共享 venv 命中其他工作树，指定本工作树 PYTHONPATH 后重跑通过。打包与远端 CI 另列。
+- [ ] 文档收尾集成到 develop/main，记录精确提交与 PR。
+- [ ] README 属于 bundle 输入，须生成包含新 README 的非发布 NSIS 候选并核对，不能把旧安装包标成新提交构建。
+- [ ] 汇总验证、资产标识与遗留项，提交用户最后发布确认。
 
-## 状态
+## 已完成的产品与安装验证
 
-发布准备 PR：[#99](https://github.com/Wifabric/AISC/pull/99)，英文描述，目标 main。安装验证已完成，最终文档提交通过适用 CI、复核 base/head 后转为 ready，等待用户合并确认。产品构建提交 `fc569ed065f88f252f7201a5ad80c3093511b7f6`；后续 `daf37b7ee935f4766c57f90a7faf5b7640bbf011` 仅修正两处旧版本测试数据，产品源码及打包配置没有变化。未合入 main、未创建正式 tag、未发布或上传 PyPI。
+用户功能验收已完成，本轮不改变功能代码、依赖 pin 或 installer 模板；修正 README 和内置主题 Skill 的接入文字，明确普通会话不绑定主题。两者属于打包输入，因此重建候选。已有功能/交互安装证据按不变代码沿用，新候选构建/安装冒烟另外登记，不将旧文件哈希当作新包。
+
+- Windows 交互安装 GUI：两个独立 Windows Sandbox 的新装、2.1.17 升级、首次启动、取消卸载、默认数据保留及 PATH，PASS，见 [安装验证](installer-verification.md)。guest 无 Docker，因此不声称在该 guest 测过真实 Docker 删除。
+- Preview.13：Python 1843 passed / 74 skipped，Rust 422 passed / 2 ignored，前端 901 passed；真实进程上下文隔离和 GUI 子集见 PROGRESS/preview-gui；这些是对应候选的历史证据。
+- main `07d6835c` 的 [Workbench](https://github.com/Wifabric/AISC/actions/runs/42502975879)、[NSIS](https://github.com/Wifabric/AISC/actions/runs/42502975841)、[sidecar](https://github.com/Wifabric/AISC/actions/runs/42502975813)、[Linux/macOS bundle](https://github.com/Wifabric/AISC/actions/runs/42502975882) 成功。NSIS release job 在分支构建按设计跳过。
 
 ### 已完成验证（2026-11-09）
 
@@ -38,8 +47,21 @@
 - wheel/sdist 构建及 `twine check` PASS。隔离审计环境升级自带旧 pip 后，`pip-audit` 未发现已知依赖漏洞；尚未发布的项目 0.2.0 自身不在 PyPI 数据库，因此跳过该项目项，不冒称审计覆盖产品源码。
 - 文档检查 51 passed / 0 warnings / 0 failures。
 
-### 最终收尾与合并门
 
-2026-11-09 已完成隔离 GUI 补测，详见 [安装验证](installer-verification.md)。已验收产品未作额外变更；最终文档提交仅收拢证据并更新历史状态说明。最终精确 head 的 Workbench/Python CI、main 基线、全仓 open PR 与 mergeability 以 PR #99 合并前复核记录为准。构建流水线沿用产品构建提交的 PASS，并核对后续差异仅为测试 fixture 与文档。
+## 发布后执行，不能提前勾选
 
-用户确认后才能合入 main；正式标签/发布、公开资产校验、反馈最终回复及计划归档仍按发布流程执行，不提前标记完成。main 或产品输入变化时重新评估受影响验证。
+- [ ] 得到用户对上述具体材料的明确发布同意。
+- [ ] Workbench 正式 tag/Release/Latest、下载哈希、随包版本与更新发现验证。
+- [ ] CLI 正式 tag、TestPyPI/PyPI 流程及实际索引安装验证。
+- [ ] 获得反馈仓库写权限或由有权限维护者应用补丁；发布成功后更新八条，复核列表/详情缓存结果。
+- [ ] 回填最终发布事实，归档已完成阶段并修正引用；未完事项明确交接，不用归档隐藏。
+- [ ] 同步长期分支；确认本阶段分支无独有成果及占用再清理；当前没有 prerelease Release 可清理，不动稳定 tag。
+- [ ] 发布后按 WIKI 开启下一 CLI 开发号（当前规则为 0.2.1.dev0），不改稳定 tag；交付完整链接清单。
+
+## 已知边界与外部条件
+
+- 反馈仓库 `Wifabric/aisc-issues-feedback` 当前仅 pull 权限，不能本机提权解决；补丁准备不等于已回写。原文、投票、附件及旧回复必须保留。
+- 真实多人协作未实测；本版交付流程规则/Skill和单代理实际执行，团队试用仍是后续事项，不标 PASS。
+- 插件当前仅 Claude；远程镜像重建入口禁用；GitHub MCP 实际访问需要用户本人有效授权。现有用户验收不等于任意凭据均可访问任意仓库。
+- 独立 pip CLI 是薄包，不包含镜像构建资源。本版不补发独立 CLI 归档；构建需对应源码/资源或 Workbench bundle，不能承诺 `bundle fetch` 自动取得不存在的资产。
+- 自动化跳过/自然竞态未复现等沿用原报告边界。正式发布后的实际下载/更新与索引验证只能发布后执行，当前不预写 PASS。

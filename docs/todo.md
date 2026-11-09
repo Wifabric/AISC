@@ -354,7 +354,7 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；后续 D-17 新增
 - [x] b9 / F7：grill 搜索结果简介与 grill-me 子技能详情读取/恢复已实现，本地门禁及真实容器读取通过，PR #73 三项 CI PASS 并已合入；真实 GUI 详情/恢复/受控迟到查询子集见 PROGRESS，用户验收已报告通过；[方案](plans/2.1.18-dev-plans/b9-skill-details.md)，R-9/H9，D-11。
 - [x] b10 / F8：关闭当前扩展失败提示、保留历史与新失败提醒已实现；前端全套 882、定向 48 与构建通过，PR #74 三项 CI PASS 并已合入；真实 GUI 关闭/焦点/新失败/切目标子集见 PROGRESS，用户验收已报告通过；[方案](plans/2.1.18-dev-plans/b10-failure-dismiss.md)，R-10/H10，D-11。
 - [x] 本阶段用户功能验收：前轮完整清单与 Preview.13 增补体验均由用户明确报告通过；历史开发者 NOT RUN 不改写。
-- [ ] 正式发布收尾：版本/说明/构建/发布 PR 与精确提交 CI；Windows Sandbox 已启用待重启补交互安装；main 合并和 final 发布仍待批准。详见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
+- [ ] 正式发布收尾：#99 已合入 main，隔离安装 PASS，用户验收通过；正在补全用户/流程文档、发布准备验证与反馈补丁。最终 tag/Release/PyPI 必须待用户查看重要内容并同意；发布后才回写反馈、归档并清理分支。详见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
 
 未决产品规则见 [decisions](plans/2.1.18-dev-plans/decisions.md)；实时终端扩展和无关工具升级不自动入版。
 用户已触发正式发布准备，推进到 main 合并确认点；final 发布、反馈站关闭和归档尚未执行。
@@ -371,6 +371,6 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；后续 D-17 新增
 - [ ] 使用真实 PR 试用多人交接，按实际问题完善流程；不以文档完成替代产品验收。
 - [ ] 实证后提炼通用小团队开发元 Skill。
 
-- [ ] 2.1.18 协作流程与开发 Skill：主开发者统一 Preview、小修正直接处理、贡献者自测后 PR 的文档及 Skill 已经 #75 合入，并用于本轮集成/统一候选；最终用户验收待完成，单代理自查不称独立评审；见 [team-workflow](plans/2.1.18-dev-plans/team-workflow.md)。
+- [x] 2.1.18 协作流程与开发 Skill：#75 已集成，用于本轮自查、CI、整合与统一 Preview，用户已验收；仅代表规则/Skill 及单人执行完成，真实多人交接未实测，见 [team-workflow](plans/2.1.18-dev-plans/team-workflow.md)。
 
-2026-11-08 当前交付：本版实现、流程及 S11–S15 已进入 develop（最新 #97，Workbench 三项、跨平台九项 CI 和 NSIS 自动安装验证通过）；本机统一候选 Preview.12，U-4 已落实，真实 SSH 改名与远程镜像维护已补测。未验收 TODO 保持未勾选，开发者交互安装环境阻塞、本人认证、用户验收和发布条件分别见 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md)。
+2026-11-09 当前交付：Workbench 2.1.18 / CLI 0.2.0 源码已进入 main；Preview.13 用户验收和隔离交互安装完成。正式发布、反馈闭环及归档尚未执行；以 [DELIVERY](plans/2.1.18-dev-plans/DELIVERY.md) 和 release-readiness 为当前结果，历史 Preview.12 状态不再作为未完成清单。

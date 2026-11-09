@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — b1–b10、三层能力、协作流程及 S16 已由用户确认验收通过；正在准备 Workbench 2.1.18 / CLI 0.2.0 正式发布 PR。Windows Sandbox 已启用待重启，随后补交互安装；main 合并/发布尚未批准，见 release-readiness。
+- [`2.1.18-dev-plans`](2.1.18-dev-plans/README.md) — 本版功能、流程/Skill、S16 和用户验收已完成，隔离 Windows 交互安装 PASS，#99 已合入 main。当前补全交付文档、分发准备和反馈补丁；正式发布须用户最后确认，见 release-readiness。发布/反馈未闭环前保持活动计划。
 
 ## Previous stages and intake
 

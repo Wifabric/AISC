@@ -31,4 +31,4 @@
 
 隔离 guest 内没有 Docker，故本报告不声称验证 guest 内容器运行或真实 Docker 资源删除。缺依赖提示与客户端启动已测；真实容器/产品交互沿用已验收 Preview.13 的独立证据。Windows 静默安装、重装、PATH 和卸载数据保留另有 [正式 NSIS CI](https://github.com/Wifabric/AISC/actions/runs/42496738996) PASS。此前等待重启/桌面工具故障的 NOT RUN 状态由本次实际结果取代，不需要用户重新手测产品。
 
-结论：剩余 Windows 交互安装验证已完成。main 合并仍需用户最终确认；正式 tag、发布与发布后资产校验尚未执行。详见 [发布准备](release-readiness.md)。
+结论：剩余 Windows 交互安装验证已完成。PR #99 已按用户确认合入 main；当前文档收尾后，正式发布仍需用户最后确认；正式 tag、发布与发布后资产校验尚未执行。详见 [发布准备](release-readiness.md)。

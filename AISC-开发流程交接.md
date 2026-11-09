@@ -1,5 +1,7 @@
 # AISC 小版本开发生命流程（交接文档）
 
+> **阅读入口（2026-11-09）**：本文是历史快照。当前分工、统一 Preview 与发布渠道以 [DEVELOP_WIKI](DEVELOP_WIKI.md)、[开发职责](docs/workflows/development-roles.md) 和 [贡献者流程](docs/workflows/contributor-workflow.md) 为准；旧版本、个人路径及当时状态不代表当前安装/发布步骤。
+
 > 导出于 2026-09-25。**权威依据是仓库内 `DEVELOP_WIKI.md` §1.1–§1.3**，本文为可直接上手的流程快照，两者冲突时以仓库文档为准。
 > 交接背景：2.1.14 已 final（2026-09-24）、CLI 0.1.3 已上 PyPI（2026-09-25）；develop 为干净基线。
 
