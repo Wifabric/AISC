@@ -23,10 +23,10 @@
 - [x] 对照 WIKI、交接、职责、Skill、D-8 后续裁定、本版 35 文件和当前发布渠道界定范围。
 - [x] 更新用户教程、现行流程、devlog/TODO 与阶段当前状态，保留历史测试的真实结果。
 - [x] 准备八条反馈的具体最终文案和仅本地可审查补丁；写入前仍须复读最新文件及权限。
-- [x] 本轮文档检查 51 PASS / 0 warnings / 0 failures；49 份变更文档的 247 个相对链接/锚点通过；CLI 正式 tag 版本守卫和 git diff --check 通过。个人能力/会话现有测试 53 passed / 1 skipped；最初共享 venv 命中其他工作树，指定本工作树 PYTHONPATH 后重跑通过。打包与远端 CI 另列。
-- [ ] 文档收尾集成到 develop/main，记录精确提交与 PR。
-- [ ] README 属于 bundle 输入，须生成包含新 README 的非发布 NSIS 候选并核对，不能把旧安装包标成新提交构建。
-- [ ] 汇总验证、资产标识与遗留项，提交用户最后发布确认。
+- [x] 本轮文档检查 51 PASS / 0 warnings / 0 failures；52 份变更文档的相对链接/锚点通过（最终统计见本轮校验记录）；CLI 正式 tag 版本守卫和 git diff --check 通过。个人能力/会话现有测试 53 passed / 1 skipped；最初共享 venv 命中其他工作树，指定本工作树 PYTHONPATH 后重跑通过。打包与远端 CI 另列。
+- [x] 交付补全 PR [#100](https://github.com/Wifabric/AISC/pull/100) 已合入 develop `c7c8790a791c89d751b7085e6d0d9043a57522ee`，合并树等于验证提交 `5362d08b`；main 同步 PR 和最终合并事实在 PR_INTAKE/发布确认时补充，不提前视为已发布。
+- [x] 已生成包含新 README 和随包主题技能文字的非发布 NSIS 候选；精确构建、安装冒烟和下载哈希见下方。
+- [x] 版本、范围、资产标识、验证及遗留项已备齐；最终提交与 CI 核对后提交用户发布确认。批准状态仍未完成。
 
 ## 已完成的产品与安装验证
 
@@ -48,7 +48,17 @@
 - 文档检查 51 passed / 0 warnings / 0 failures。
 
 
-## 发布后执行，不能提前勾选
+## 本轮交付补全验证（源码 5362d08b，2026-11-09）
+
+- [PR #100](https://github.com/Wifabric/AISC/pull/100)：head `5362d08b684711d45f00b02d4ed2e3ece838762a`，原 base `9a83cbc603ab760089181c53636d5662aa37b9f9`，merge `c7c8790a791c89d751b7085e6d0d9043a57522ee`；合并树与测试 head 完全相同。后续只补交付账本文档；自查，不称独立评审。
+- 精确 head 的 [Workbench 三项](https://github.com/Wifabric/AISC/actions/runs/42582017470)、[Python 三平台九组合](https://github.com/Wifabric/AISC/actions/runs/42582037501)、[CLI sidecar 三平台](https://github.com/Wifabric/AISC/actions/runs/42582044253)、[Windows NSIS](https://github.com/Wifabric/AISC/actions/runs/42582041009) 全部成功。NSIS 包含安装、重装、PATH、卸载保留；公开发布 job 按分支构建规则跳过。
+- 本轮本地 packaging：190 passed / 9 skipped；个人能力/会话 53 passed / 1 skipped。wheel/sdist 构建、twine、薄包检查、实际产物凭据扫描通过；隔离依赖审计未发现已知漏洞，未发布项目自身不在数据库，不能算源码安全审计。
+- wheel/sdist 的安装、重装与卸载后重装及 pipx 验证通过。仓库外运行检查在清除继承 PYTHONPATH、使用仓库外 TEMP、启用 UTF-8、启动本机 Docker 后单独重跑通过；不宣称最初整套命令一次全绿。
+- 已验证 wheel/sdist 内的接入说明、STATE 0.3.2 与源码一致；实际新主题复制新版随包技能，已有用户修改副本保持不变。
+- 新候选安装器：384,135,154 bytes；SHA-256 `246d7d4c7769d92d67ae3154a1fb16cc531a7b3e7d9b10c2f9e26169fde9a539`；来源为上方 NSIS run 的 artifact `13657757926`，下载压缩包与 GitHub artifact digest 一致。该文件是内部候选，不是已经发布的公开资产。正式 tag 流水线会重建，发布后须对正式下载另验哈希，不能预先复用候选哈希。
+- CLI 本地 wheel SHA-256 `afbadcd4b20ef29c75b9d07185cbbd6b3f992628cf6faf27327b7551a80fa309`；sdist `4ef7fdb72c4f6ba13d52ff3914fc29013357ffa638e981c6f768aa35a2fbd406`。正式 PyPI 产物以批准后 workflow 的实际构建/上传记录为准。
+
+## 发布批准与后续执行，不能提前勾选
 
 - [ ] 得到用户对上述具体材料的明确发布同意。
 - [ ] Workbench 正式 tag/Release/Latest、下载哈希、随包版本与更新发现验证。
@@ -60,7 +70,8 @@
 
 ## 已知边界与外部条件
 
-- 反馈仓库 `Wifabric/aisc-issues-feedback` 当前仅 pull 权限，不能本机提权解决；补丁准备不等于已回写。原文、投票、附件及旧回复必须保留。
+- 反馈仓库 `Wifabric/aisc-issues-feedback` 当前仅 pull 权限，不能本机提权解决；补丁准备不等于已回写。原文、投票、附件及旧回复必须保留。八条仍为 submitted，只有正式发布验证后由获授权写入者更新。
+- 已核对 GitHub `pypi` environment 的 required reviewers 为 `Evergarden-Alan` / `wangyuncepu`；发布获用户同意后仍须其中有权限维护者在 workflow 完成实际审批，不修改或绕过保护。`testpypi` 无 required reviewer，但本轮也尚未上传。
 - 真实多人协作未实测；本版交付流程规则/Skill和单代理实际执行，团队试用仍是后续事项，不标 PASS。
 - 插件当前仅 Claude；远程镜像重建入口禁用；GitHub MCP 实际访问需要用户本人有效授权。现有用户验收不等于任意凭据均可访问任意仓库。
 - 独立 pip CLI 是薄包，不包含镜像构建资源。本版不补发独立 CLI 归档；构建需对应源码/资源或 Workbench bundle，不能承诺 `bundle fetch` 自动取得不存在的资产。

@@ -354,7 +354,7 @@ D-11 已确认本版包含 F1–F8 八条反馈，共十批；后续 D-17 新增
 - [x] b9 / F7：grill 搜索结果简介与 grill-me 子技能详情读取/恢复已实现，本地门禁及真实容器读取通过，PR #73 三项 CI PASS 并已合入；真实 GUI 详情/恢复/受控迟到查询子集见 PROGRESS，用户验收已报告通过；[方案](plans/2.1.18-dev-plans/b9-skill-details.md)，R-9/H9，D-11。
 - [x] b10 / F8：关闭当前扩展失败提示、保留历史与新失败提醒已实现；前端全套 882、定向 48 与构建通过，PR #74 三项 CI PASS 并已合入；真实 GUI 关闭/焦点/新失败/切目标子集见 PROGRESS，用户验收已报告通过；[方案](plans/2.1.18-dev-plans/b10-failure-dismiss.md)，R-10/H10，D-11。
 - [x] 本阶段用户功能验收：前轮完整清单与 Preview.13 增补体验均由用户明确报告通过；历史开发者 NOT RUN 不改写。
-- [ ] 正式发布收尾：#99 已合入 main，隔离安装 PASS，用户验收通过；正在补全用户/流程文档、发布准备验证与反馈补丁。最终 tag/Release/PyPI 必须待用户查看重要内容并同意；发布后才回写反馈、归档并清理分支。详见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
+- [ ] 正式发布收尾：#99 已合入 main，隔离安装 PASS，用户验收通过；交付文档与反馈补丁已备齐，#100 已合入 develop，新候选构建及安装/包验证通过；main 同步与最终发布确认按发布准备记录。最终 tag/Release/PyPI 必须待用户查看重要内容并同意；发布后才回写反馈、归档并清理分支。详见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
 
 未决产品规则见 [decisions](plans/2.1.18-dev-plans/decisions.md)；实时终端扩展和无关工具升级不自动入版。
 用户已触发正式发布准备，推进到 main 合并确认点；final 发布、反馈站关闭和归档尚未执行。

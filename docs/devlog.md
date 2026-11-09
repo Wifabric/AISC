@@ -5,6 +5,7 @@
 - 用户已验收整版和 Preview.13；重启后的两个隔离 Windows Sandbox 已完成新装、2.1.17 升级、启动、取消卸载、默认数据保留和 PATH 检查，见本版 installer-verification。
 - PR #99 已按用户确认合入 main `07d6835c`，Workbench/NSIS/sidecar/Linux-macOS bundle 的 main 构建成功；分支构建没有创建正式 Release。
 - 补正 README 的版本、安装文件/路径和 S16 主题使用教程；统一 WIKI 当前发布渠道、职责/交接入口、本版计划和反馈草案。同步纠正随包主题 Skill 的接入说明；功能代码和依赖 pin 不变，README/Skill 文本属于打包输入，重新构建候选并单列验证。
+- 交付补全 PR #100 已合入 develop `c7c8790a`；精确 head `5362d08b` 的 Workbench、跨平台九组合、sidecar、NSIS/安装冒烟通过。新候选已下载校验，wheel/sdist/pipx 与仓库外运行验证通过；本轮补全证据、外部审批及反馈权限边界见发布准备。
 - 按用户最新要求，正式发布前汇总版本、范围、资产渠道、验证及遗留项等待明确同意。当前未创建 v2.1.18/cli-v0.2.0、未上传 PyPI、未关闭反馈；下方日志保留当时事实，当前状态见 [发布准备](plans/2.1.18-dev-plans/release-readiness.md)。
 
 > 记录规则：版本按发布时间从新到旧排列。版本内只记录已经进入对应标签或当前发布提交的内容；计划、未提交实验和后续修复不提前归入旧版本。

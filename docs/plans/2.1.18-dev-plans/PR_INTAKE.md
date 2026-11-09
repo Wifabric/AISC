@@ -7,6 +7,13 @@
 用户最新要求：完成交付补全和开发者验证，正式发布前汇总重要内容，得到明确同意后再发布。当前补全文档与准备反馈补丁，不推发布 tag、不上传 PyPI、不置反馈 resolved、不提前归档。剩余步骤和证据见 [发布准备](release-readiness.md)。以下按日期保留历史过程，历史待办由该文件的当前清单接续，不代表要求用户重复验收。
 
 
+## 2026-11-09 交付补全：PR #100
+
+- [PR #100](https://github.com/Wifabric/AISC/pull/100) 已按本轮授权合入 develop `c7c8790a791c89d751b7085e6d0d9043a57522ee`；head `5362d08b684711d45f00b02d4ed2e3ece838762a`，原 base `9a83cbc603ab760089181c53636d5662aa37b9f9`，merge tree 与 head 相同。
+- 自查覆盖用户教程、开发 WIKI/交接/Skill、devlog/TODO、本版计划与发布渠道；仅文字修正，无功能代码或依赖变化。root README 和随包主题技能属于打包输入，已经重新构建。
+- 精确 head 的 Workbench、九组合 Python、三平台 sidecar、Windows NSIS 与安装冒烟全部 PASS，链接及本地包验证/资产哈希见 [发布准备](release-readiness.md)。用户原有功能验收保持有效，本轮不冒称再次完成全套用户验收。
+- main 同步将在同一批次完成；是否合入以实际 PR/远端记录为准。正式 tag、GitHub Release、TestPyPI/PyPI 和反馈回写仍等待用户发布批准及实际渠道权限。
+
 ## 历史验证：Preview.13 / S16
 
 用户报告前一轮要求手测的项目全部通过；此处作为用户反馈记录，不改写历史开发者 NOT RUN。用户随后确认个人能力与主题体验方案。本批产品已完成并经 [PR #98](https://github.com/Wifabric/AISC/pull/98) 合入 develop `61db0b6fb5be291ea01945b10f306f7d5ca72495`；候选产品提交 `53bbe0e54a855664365cd579b2cb64b4d8e48022`，合并树与该提交完全相同。只有自查，不称独立评审。新版用户验收仍待进行。
