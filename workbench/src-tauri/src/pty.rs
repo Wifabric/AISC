@@ -655,6 +655,7 @@ pub async fn spawn_serve_pty_session(
     workspace: &str,
     resume_conversation_id: Option<&str>,
     fork_session: bool,
+    working_directory: Option<&str>,
     cols: u16,
     rows: u16,
     event_tx: mpsc::Sender<PtyEvent>,
@@ -689,6 +690,7 @@ pub async fn spawn_serve_pty_session(
         "cols": cols,
         "rows": rows,
     });
+    if let Some(dir) = working_directory { open_args["working_directory"] = serde_json::json!(dir); }
     if let Some(r) = resume_conversation_id {
         open_args["resume_conversation_id"] = serde_json::json!(r);
         if fork_session {

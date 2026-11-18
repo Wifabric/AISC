@@ -204,7 +204,7 @@ export const useCcSwitchUiStore = defineStore("ccSwitchUi", () => {
     { id: "zhipu", name: "zhipu",
       claude_endpoint: "https://open.bigmodel.cn/api/anthropic",
       codex_endpoint: "https://open.bigmodel.cn/api/anthropic",
-      codex_endpoint_native: "https://open.bigmodel.cn/api/paas/v4", codex_api_format: "anthropic" },
+      codex_endpoint_native: "https://open.bigmodel.cn/api/v1", codex_api_format: "anthropic" },
     { id: "kimi", name: "kimi",
       claude_endpoint: "https://api.moonshot.cn/anthropic",
       codex_endpoint: "https://api.moonshot.cn/anthropic",

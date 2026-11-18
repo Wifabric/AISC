@@ -235,6 +235,17 @@ def op_fs_rename(_ns, payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list
     return {}, 0, []
 
 
+def op_fs_move(ns, payload: Dict[str, Any], runtime) -> Tuple[Any, int, list]:
+    root = os.path.realpath(payload["root"])
+    source = _resolve(root, payload["from"])
+    dest = _resolve(root, payload["to"])
+    if (os.path.realpath(source) != source or os.path.realpath(os.path.dirname(dest)) != os.path.dirname(dest)
+            or dest.startswith(source + "/") or os.path.lexists(dest)):
+        raise CliError(message="linked, nested or occupied destination", exit_code=2,
+                       error_code="AISC_ERR_FS_CONFLICT")
+    return op_fs_rename(ns, {**payload, "root": root}, runtime)
+
+
 def op_fs_delete(_ns, payload: Dict[str, Any], _runtime) -> Tuple[Any, int, list]:
     root = str(payload.get("root") or "/")
     target = _resolve(root, str(payload.get("path") or ""))
@@ -411,6 +422,7 @@ OPS: Dict[str, Callable[..., Tuple[Any, int, list]]] = {
     "fs.write": op_fs_write,
     "fs.mkdir": op_fs_mkdir,
     "fs.rename": op_fs_rename,
+    "fs.move": op_fs_move,
     "fs.delete": op_fs_delete,
     "fs.watch": op_fs_watch,
     "fs.unwatch": op_fs_unwatch,

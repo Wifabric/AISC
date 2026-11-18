@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SessionDirectory from "../workspace/SessionDirectory.vue";
 /**
  * GuidePane (G-12, Step 8; 04-observability.md §三): the single guide banner
  * lives at the TOP of a claude/codex tab whose provider needs attention -
@@ -87,6 +88,7 @@ function loginOfficial() {
 // --- G-17: guide panes (claude/codex) offer split via right-click too ---
 const menu = ref<{ x: number; y: number } | null>(null);
 const splitPicker = ref<{ x: number; y: number; axis: "horizontal" | "vertical" } | null>(null);
+const directory = ref("");
 
 function onContext(e: MouseEvent) {
   e.preventDefault();
@@ -102,7 +104,8 @@ function openSplit(axis: "horizontal" | "vertical") {
 function pickAgent(agent: LaunchAgent) {
   const axis = splitPicker.value?.axis ?? "horizontal";
   splitPicker.value = null;
-  store.splitTabPane(props.tabId, axis, agent, true, props.paneId);
+  if (directory.value) store.splitTabPane(props.tabId, axis, agent, true, props.paneId, directory.value);
+  else store.splitTabPane(props.tabId, axis, agent, true, props.paneId);
 }
 function closeMenus() {
   menu.value = null;
@@ -151,6 +154,7 @@ function closeMenus() {
       @contextmenu.prevent
       @click.stop
     >
+      <SessionDirectory v-model="directory" />
       <button v-for="a in AGENTS" :key="a" @click="pickAgent(a)">{{ t(`tabbar.menu.${a}`) }}</button>
     </div>
     <div v-if="menu || splitPicker" class="ctx-backdrop" @click="closeMenus" @contextmenu.prevent="closeMenus" />

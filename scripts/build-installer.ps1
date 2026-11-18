@@ -10,16 +10,33 @@
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1 -Mode online
 #   powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1 -Mode offline -CopyToDownloads
+#   .\scripts\build-installer.ps1 -SigningConfig C:\release\tauri.signing.json
+# SigningConfig is a Tauri config overlay with bundle.windows.certificateThumbprint
+# or bundle.windows.signCommand for the publisher's signing service.
 
 param(
     [ValidateSet("online", "offline")]
     [string]$Mode = "online",
-    [switch]$CopyToDownloads
+    [switch]$CopyToDownloads,
+    [string]$SigningConfig
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $MyInvocation.MyCommand.Path -Parent | Split-Path -Parent
 $Wb = Join-Path $Root "workbench"
+
+$buildArgs = @("run", "tauri", "build", "--", "--bundles", "nsis")
+if ($Mode -eq "offline") {
+    $buildArgs += @("--config", "src-tauri/tauri.offline.conf.json")
+}
+if ($PSBoundParameters.ContainsKey("SigningConfig")) {
+    $signingFile = Get-Item -LiteralPath $SigningConfig -ErrorAction Stop
+    $signing = (Get-Content -Raw -LiteralPath $signingFile.FullName | ConvertFrom-Json).bundle.windows
+    if (-not ($signing.certificateThumbprint -or $signing.signCommand)) {
+        throw "SigningConfig must specify bundle.windows.certificateThumbprint or signCommand."
+    }
+    $buildArgs += @("--config", $signingFile.FullName)
+}
 
 if ($Mode -eq "offline") {
     Write-Host "== offline mode: fetching Docker Desktop installer =="
@@ -30,21 +47,31 @@ if ($Mode -eq "offline") {
 Push-Location $Wb
 try {
     Write-Host "== tauri build (bundles=nsis, mode=$Mode) =="
-    if ($Mode -eq "offline") {
-        # --config resolves relative to the CWD (workbench/), hence src-tauri/ prefix.
-        npm run tauri build -- --bundles nsis --config src-tauri/tauri.offline.conf.json
-    } else {
-        npm run tauri build -- --bundles nsis
-    }
+    $buildStartedUtc = [DateTime]::UtcNow
+    npm @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "tauri build failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location
 }
 
 $bundle = Join-Path $Wb "src-tauri\target\release\bundle\nsis"
-$setup = Get-ChildItem -Path $bundle -Filter "*-setup.exe" |
+$setup = Get-ChildItem -Path $bundle -Filter "*-setup.exe" -File |
+    Where-Object {
+        $_.Name -notlike "*-offline-setup.exe" -and
+        (-not $SigningConfig -or $_.LastWriteTimeUtc -ge $buildStartedUtc)
+    } |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $setup) { throw "No *-setup.exe found under $bundle" }
+
+if ($SigningConfig) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $setup.FullName
+    if ($signature.Status -ne 'Valid') {
+        throw "Installer signature verification failed for $($setup.Name): $($signature.Status)"
+    }
+    if ($signing.certificateThumbprint -and $signature.SignerCertificate.Thumbprint -ne $signing.certificateThumbprint) {
+        throw "Installer was signed by a different certificate than SigningConfig specifies."
+    }
+}
 
 if ($Mode -eq "offline") {
     $dest = $setup.FullName -replace "-setup\.exe$", "-offline-setup.exe"

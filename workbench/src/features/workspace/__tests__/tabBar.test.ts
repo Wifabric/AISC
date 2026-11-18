@@ -83,15 +83,74 @@ function setupStore() {
   return s;
 }
 
+function sendPointer(target: EventTarget, kind: string, x: number) {
+  const event = new MouseEvent(kind, { button: 0, clientX: x, clientY: 10, bubbles: true });
+  Object.defineProperty(event, "pointerId", { value: 1 });
+  target.dispatchEvent(event);
+}
+
 beforeEach(() => {
   setActivePinia(createPinia());
   i18n.global.locale.value = "zh-CN";
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("S1.6 TabBar structure (no nested buttons)", () => {
+  it("reorders a dragged tab without changing the active session, and clears cancelled drags", async () => {
+    const s = setupStore();
+    const wrapper = mount(TabBar, { global: { plugins: [i18n] } });
+    const tabs = wrapper.findAll(".tab");
+    const hit = vi.fn(() => tabs[0]!.element);
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: hit });
+    const pointer = (kind: string, x: number) => {
+      const event = new MouseEvent(kind, { clientX: x, clientY: 10, bubbles: true });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      window.dispatchEvent(event);
+    };
+    sendPointer(tabs[1]!.find(".tab-main").element, "pointerdown", 100);
+    pointer("pointermove", 10);
+    pointer("pointerup", 10);
+    await nextTick();
+    expect(s.tabs.map(tab => tab.tabId)).toEqual(["t2", "t1"]);
+    expect(s.activeTabId).toBe("t1");
+    expect(s.tabs.map(tab => tab.sessionId)).toEqual(["t2", "t1"]);
+    const reordered = wrapper.findAll(".tab");
+    hit.mockReturnValue(reordered[1]!.element);
+    sendPointer(reordered[0]!.find(".tab-main").element, "pointerdown", 10);
+    pointer("pointermove", 100);
+    pointer("pointercancel", 100);
+    pointer("pointerup", 100);
+    expect(s.tabs.map(tab => tab.tabId)).toEqual(["t2", "t1"]);
+    wrapper.unmount();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("does not reorder a click or a drag released outside the tab bar", async () => {
+    const s = setupStore();
+    const wrapper = mount(TabBar, { global: { plugins: [i18n] } });
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
+    const main = wrapper.findAll(".tab-main")[1]!;
+    sendPointer(main.element, "pointerdown", 100);
+    const pointer = (kind: string, x: number) => {
+      const event = new MouseEvent(kind, { clientX: x, clientY: 10, bubbles: true });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      window.dispatchEvent(event);
+    };
+    pointer("pointermove", 102);
+    pointer("pointerup", 102);
+    await main.trigger("click");
+    expect(s.activeTabId).toBe("t2");
+    sendPointer(main.element, "pointerdown", 100);
+    pointer("pointermove", 300);
+    pointer("pointerup", 300);
+    expect(s.tabs.map(tab => tab.tabId)).toEqual(["t1", "t2"]);
+    wrapper.unmount();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
   it("renders one role=tab activation button per tab, no nested buttons", () => {
     setupStore();
     const wrapper = mount(TabBar, { global: { plugins: [i18n] } });

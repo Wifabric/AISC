@@ -30,6 +30,7 @@ import {
   workspaceOpen,
   workspaceReadImage,
   workspaceRename,
+  workspaceMove,
   workspaceReveal,
   workspaceWatchStart,
   workspaceWatchStop,
@@ -952,6 +953,14 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
 
     /** Rename an entry inside its own parent directory. Directory caches and
      *  expansion state move to the new key (children reload lazily). */
+    async moveEntry(relativePath: string, destinationDir: string) {
+      if (!this.workspace) throw { code: "WB_ERR_WORKSPACE_INVALID" };
+      await workspaceMove(this.workspace, relativePath, destinationDir);
+      delete this.tree[relativePath];
+      this.expanded.delete(relativePath);
+      await this.loadDir(parentDirOf(relativePath), true);
+      await this.loadDir(destinationDir, true);
+    },
     async renameEntry(relativePath: string, newName: string): Promise<WorkspaceMutationResult> {
       if (!this.workspace) throw { code: "WB_ERR_WORKSPACE_INVALID" };
       const result = await workspaceRename(this.workspace, relativePath, newName);

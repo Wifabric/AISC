@@ -92,6 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("remote workspace initial load race (b14)", () => {
@@ -435,6 +436,7 @@ describe("WorkspaceExplorer context menus (11c)", () => {
       "paste",
       "copy-entry",
       "rename",
+      "move",
       "delete",
       "refresh",
     ]);
@@ -446,7 +448,7 @@ describe("WorkspaceExplorer context menus (11c)", () => {
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const menu = await openRowMenu(wrapper, 1); // a.md
     const ids = menu.findAll("button").map((b) => b.attributes("data-action"));
-    expect(ids).toEqual(["open", "reveal", "copy-entry", "copy-path", "paste", "delete", "rename"]);
+    expect(ids).toEqual(["open", "reveal", "copy-entry", "copy-path", "paste", "delete", "rename", "move"]);
     wrapper.unmount();
   });
 
@@ -625,6 +627,76 @@ describe("WorkspaceExplorer inline naming (11c)", () => {
 
 /** Stage 11 (11d): drag payload + type icons (D11-09/10). */
 describe("WorkspaceExplorer drag & icons (11d)", () => {
+  function pointer(target: EventTarget, type: string, x: number) {
+    const event = new Event(type, { bubbles: true });
+    Object.assign(event, { button: 0, pointerId: 1, clientX: x, clientY: 20 });
+    target.dispatchEvent(event);
+  }
+
+  it("moves a single entry on pointer release when native drag is unavailable", async () => {
+    const { explorer } = await setup();
+    const move = vi.spyOn(explorer, "moveEntry").mockResolvedValue(undefined);
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    const rows = wrapper.findAll("[role=treeitem]");
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => rows[0].element });
+    pointer(rows[1].element, "pointerdown", 10);
+    pointer(window, "pointermove", 40);
+    expect(move).not.toHaveBeenCalled();
+    pointer(window, "pointerup", 40);
+    await flushPromises();
+    expect(move).toHaveBeenCalledExactlyOnceWith("a.md", "src");
+    wrapper.unmount();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("does not move on a click, cancellation, or release outside the tree", async () => {
+    const { explorer } = await setup();
+    const move = vi.spyOn(explorer, "moveEntry").mockResolvedValue(undefined);
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    const rows = wrapper.findAll("[role=treeitem]");
+    const hit = vi.fn((): Element | null => rows[0].element);
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: hit });
+    pointer(rows[1].element, "pointerdown", 10);
+    pointer(window, "pointerup", 11);
+    pointer(rows[1].element, "pointerdown", 10);
+    pointer(window, "pointermove", 40);
+    pointer(window, "pointercancel", 40);
+    pointer(window, "pointerup", 40);
+    hit.mockReturnValue(null);
+    pointer(rows[1].element, "pointerdown", 10);
+    pointer(window, "pointermove", 40);
+    pointer(window, "pointerup", 40);
+    await flushPromises();
+    expect(move).not.toHaveBeenCalled();
+    wrapper.unmount();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("preserves the terminal drop contract when dragging with pointers", async () => {
+    await setup();
+    const payload = new Map<string, string>();
+    vi.stubGlobal("DataTransfer", class {
+      setData(type: string, value: string) { payload.set(type, value); }
+    });
+    vi.stubGlobal("DragEvent", class extends Event {
+      dataTransfer: unknown;
+      constructor(type: string, init: DragEventInit) { super(type, init); this.dataTransfer = init.dataTransfer; }
+    });
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    const terminal = document.createElement("div");
+    terminal.className = "terminal";
+    const receive = vi.fn();
+    terminal.addEventListener("drop", receive);
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => terminal });
+    pointer(wrapper.findAll("[role=treeitem]")[1].element, "pointerdown", 10);
+    pointer(window, "pointermove", 50);
+    pointer(window, "pointerup", 50);
+    expect(receive).toHaveBeenCalledTimes(1);
+    expect([...payload]).toEqual([["application/x-aisc-workspace-path", "a.md"]]);
+    wrapper.unmount();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
   it("file dragstart sets ONLY the controlled relative-path MIME", async () => {
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
@@ -633,7 +705,7 @@ describe("WorkspaceExplorer drag & icons (11d)", () => {
     await rows[1].trigger("dragstart", { dataTransfer: dt }); // a.md
     expect(dt.setData).toHaveBeenCalledTimes(1);
     expect(dt.setData).toHaveBeenCalledWith("application/x-aisc-workspace-path", "a.md");
-    expect(dt.effectAllowed).toBe("copy");
+    expect(dt.effectAllowed).toBe("copyMove");
     wrapper.unmount();
   });
 

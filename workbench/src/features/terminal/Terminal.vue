@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SessionDirectory from "../workspace/SessionDirectory.vue";
 
 /**
 
@@ -249,6 +250,7 @@ const ctxMenu = ref<{ x: number; y: number } | null>(null);
 /** G-17: after picking a split axis, choose which session type to open. */
 
 const splitPicker = ref<{ x: number; y: number; axis: "horizontal" | "vertical" } | null>(null);
+const directory = ref("");
 
 const hasSelection = ref(false);
 
@@ -280,6 +282,7 @@ function terminalOptions(): ITerminalOptions {
     letterSpacing: s?.letter_spacing,
 
     scrollback: s?.scrollback,
+    overviewRuler: { width: 12 },
     // b9 手测 #3: 右键先选词——TUI（codex 等）接管鼠标后拖选不产生选区，
     // 用户「选中文本右键复制」时按钮恒灰。rightClickSelectsWord 让右键
     // 本身建立选区，随后的自定义菜单「复制」可用并写入系统剪贴板。
@@ -328,6 +331,7 @@ function mountWebgl() {
       addon.dispose();
 
       if (webgl === addon) webgl = null;
+      if (visible.value && term) term.refresh(0, term.rows - 1);
 
       store.logRendererEvent("context_loss", "error", "webgl|fallback_to_dom");
 
@@ -631,6 +635,10 @@ function scheduleResize(reason: string) {
 /** Named wrapper so removeEventListener stays paired after the reason
 
  *  parameter was added for the B-05 probe. */
+
+function refreshVisibleTerminal() {
+  if (!document.hidden && visible.value && term) term.refresh(0, term.rows - 1);
+}
 
 function onWindowResize() {
 
@@ -1396,7 +1404,8 @@ function chooseSplitAgent(agent: LaunchAgent) {
 
   if (!p) return;
 
-  store.splitTabPane(props.tabId, p.axis, agent, true, props.paneId);
+  if (directory.value) store.splitTabPane(props.tabId, p.axis, agent, true, props.paneId, directory.value);
+  else store.splitTabPane(props.tabId, p.axis, agent, true, props.paneId);
 
 }
 
@@ -2014,6 +2023,8 @@ onMounted(() => {
   if (container.value) resizeObserver.observe(container.value);
 
   window.addEventListener("resize", onWindowResize);
+  window.addEventListener("focus", refreshVisibleTerminal);
+  document.addEventListener("visibilitychange", refreshVisibleTerminal);
 
   // B-05 (fix F1, remount case): a Terminal that mounts onto an
 
@@ -2432,6 +2443,8 @@ onBeforeUnmount(() => {
   veilFading.value = false;
 
   window.removeEventListener("resize", onWindowResize);
+  window.removeEventListener("focus", refreshVisibleTerminal);
+  document.removeEventListener("visibilitychange", refreshVisibleTerminal);
   detachTerminalWheelListener();
   detachCodexMouseSelection?.();
   detachCodexMouseSelection = null;
@@ -2691,6 +2704,7 @@ defineExpose({
       @click.stop
 
     >
+      <SessionDirectory v-model="directory" />
 
       <span class="sep" />
 
@@ -2734,6 +2748,11 @@ defineExpose({
 /* Stage 11 (11d): lightweight drop-target affordance while a workspace file
 
  * hovers over this pane (03 §6). */
+
+.terminal :deep(.xterm-scrollable-element > .scrollbar.vertical:has(.slider:not([style*="height: 0px"]))) {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .terminal.drop-target {
 

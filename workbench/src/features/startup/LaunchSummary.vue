@@ -22,20 +22,15 @@ const usageStore = useUsageStore();
 
 // IDEA-2 (2d): proxy mode with no imported subscription mounts nothing (the
 // entrypoint silently skips mihomo). Hint + jump to the「网络与用量」panel.
-const subConfigured = ref<boolean | null>(null);
 watch(
   () => store.launch.network,
   (network) => {
-    if (network === "proxy" && subConfigured.value === null) {
-      void usageStore.refreshSubscriptionStatus().then((configured) => {
-        subConfigured.value = configured;
-      });
-    }
+    if (network === "proxy") void usageStore.refreshSubscriptionStatus();
   },
   { immediate: true },
 );
 const proxyNoSub = computed(
-  () => store.launch.network === "proxy" && store.showAdvanced && subConfigured.value === false,
+  () => store.launch.network === "proxy" && store.showAdvanced && usageStore.subscription?.configured === false,
 );
 
 // S8e (user ruling 2026-08-29): the action LABEL left the UI (「运行时：新建

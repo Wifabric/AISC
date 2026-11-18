@@ -62,6 +62,7 @@ export const openSession = (
   onEvent: Channel<PtyEvent>,
   resumeConversationId?: string | null,
   forkSession = false,
+  workingDirectory?: string,
 ) =>
   invoke<SessionSnapshot>("open_session", {
     runtimeId,
@@ -73,6 +74,7 @@ export const openSession = (
     resumeConversationId: resumeConversationId ?? null,
     // b8 R2: Claude-only fork resume (creates a new provider session).
     forkSession,
+    ...(workingDirectory ? { workingDirectory } : {}),
   });
 
 // --- v2.1.8 T4: agent conversation discovery (captured, no PTY) ---
@@ -1061,6 +1063,13 @@ export const workspaceRename = (workspace: string, relativePath: string, newName
     relativePath,
     newName,
   });
+
+export const workspaceMove = (workspace: string, relativePath: string, destinationDir: string) =>
+  invoke<import("../types").WorkspaceMutationResult>("workspace_move", { workspace, relativePath, destinationDir });
+
+export type ProxyGroups = Record<string, { current: string; nodes: string[] }>;
+export const proxyNodes = (workspace: string, runtimeId: string, action: "list" | "select" | "delay", group = "", node = "") =>
+  invoke<{ groups?: ProxyGroups; delay?: number }>("proxy_nodes", { workspace, runtimeId, action, group, node });
 
 // --- Stage 3 (3d): workspace watcher ---
 

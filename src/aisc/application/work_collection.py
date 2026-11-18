@@ -464,7 +464,7 @@ def _supported_conversations(workspace: str) -> List[Dict[str, Any]]:
 
 
 def reconcile(registry_root: Any, workspace: str) -> Dict[str, Any]:
-    """Refresh the provider baseline without adopting conversations.
+    """Refresh the baseline and file newly observed descendants with their parent.
 
     b15 removes the Active collection semantic: new sessions stay unfiled and
     are filed explicitly. Legacy ledgers may still carry an active id; it is
@@ -476,16 +476,35 @@ def reconcile(registry_root: Any, workspace: str) -> Dict[str, Any]:
             _member_key(item["agent"], item["conversation_id"])
             for item in providers
         ]
-        provider_key_set = set(provider_keys)
         doc = load(registry_root)
+        known = set(doc.get("observed_provider_keys", []))
+        owners = {m["member_key"]: collection for collection in doc["collections"]
+                  for m in collection["members"]}
+        pending = {key: item for key, item in zip(provider_keys, providers)
+                   if key not in owners and key not in known and item.get("parent_thread_id")}
+        added = []
+        while pending:
+            count = len(pending)
+            for key, item in list(pending.items()):
+                parent = owners.get(_member_key(item["agent"], item["parent_thread_id"]))
+                if parent is None:
+                    continue
+                member = {"member_key": key, "agent": item["agent"],
+                          "conversation_id": item["conversation_id"].lower(),
+                          "runtime_id": None, "source": "active_auto", "added_at": _now_iso()}
+                parent["members"].append(member)
+                parent["updated_at"] = member["added_at"]
+                owners[key] = parent
+                added.append(key)
+                del pending[key]
+            if len(pending) == count:
+                break
         doc["active_collection_id"] = None
-        doc["observed_provider_keys"] = [
-            key for key in provider_keys if key in provider_key_set
-        ]
+        doc["observed_provider_keys"] = provider_keys
         _write(registry_root, doc)
         return {
             "schema_version": WORK_COLLECTION_SCHEMA,
-            "added": [],
+            "added": added,
             "active_collection_id": None,
             "collections": copy.deepcopy(doc["collections"]),
             "observed_provider_keys": doc["observed_provider_keys"],

@@ -1253,11 +1253,25 @@ def start_runtime(
                 if proc.exit_code == 0 and (proc.stdout or "").strip():
                     break
                 stderr = (proc.stderr or "").strip()
-                if is_bind_conflict(stderr) and _attempt < 4:
-                    gw_exclude.add(gw_host_port)
-                    gw_host_port = allocate_gateway_host_port(
-                        exclude=gw_exclude, start_hint=gw_host_port + 1)
-                    continue
+                if is_bind_conflict(stderr):
+                    # Docker can create the container before host-port binding
+                    # fails. Retrying its name without removing that object
+                    # masks the port error with a name conflict. Remove only
+                    # the exact ID returned by THIS run, never a name lookup,
+                    # and do not force-remove a container that became running.
+                    created_id = (proc.stdout or "").strip()
+                    cleaned = not created_id
+                    if re.fullmatch(r"[0-9a-f]{64}", created_id):
+                        try:
+                            cleaned = executor.remove_container(
+                                created_id, force=False).exit_code == 0
+                        except Exception:
+                            cleaned = False
+                    if cleaned and _attempt < 4:
+                        gw_exclude.add(gw_host_port)
+                        gw_host_port = allocate_gateway_host_port(
+                            exclude=gw_exclude, start_hint=gw_host_port + 1)
+                        continue
                 raise CliError(
                     message=f"Failed to create runtime container: {stderr}",
                     exit_code=RuntimeExitCode.RUNTIME_OPERATION_FAILED,

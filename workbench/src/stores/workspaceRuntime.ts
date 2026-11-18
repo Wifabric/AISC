@@ -1326,6 +1326,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         ch,
         resumeConversationId ?? null,
         forkSession,
+        ...(p.workingDirectory ? [p.workingDirectory] : []),
       );
       if (p.sessionId !== sid || !tab.panes[paneId]) return;
       // v2.1.8 T4: remember the conversation this tab resumed so the
@@ -1362,7 +1363,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     axis: SplitAxis,
     sessionType: LaunchAgent,
     sizeOk = true,
-    targetPaneId?: string
+    targetPaneId?: string,
+    workingDirectory?: string,
   ): string | null {
     const tab = findTab(tabId);
     if (!tab || !sizeOk) return null;
@@ -1374,6 +1376,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (!tree) return null;
     tab.tree = tree;
     tab.panes[newPaneId] = { sessionId: null, sessionState: "idle", exit: null };
+    if (workingDirectory) tab.panes[newPaneId].workingDirectory = workingDirectory;
     tab.activePaneId = newPaneId;
     syncProjection(tab);
     scheduleSave();
@@ -1497,6 +1500,15 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   }
 
   /** Activate a tab; idle tabs are opened on first activation. */
+  function reorderTab(sourceId: string, targetId: string) {
+    const from = tabs.value.findIndex(tab => tab.tabId === sourceId);
+    const to = tabs.value.findIndex(tab => tab.tabId === targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    const [tab] = tabs.value.splice(from, 1);
+    tabs.value.splice(to, 0, tab);
+    scheduleSave();
+  }
+
   function activateTab(tabId: string) {
     if (tabId === TOPICS_TAB_ID) { openTopicsTab(); return; }
     const tab = findTab(tabId);
@@ -1521,12 +1533,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     forkSession = false,
     collectionId?: string | null,
     topic?: { id: string; title: string; prompt: string },
+    workingDirectory?: string,
   ): string | null {
     // G-17 (A-G17-6): the global leaf cap governs (a split tab holds >1 leaf).
     if (totalLeaves() >= MAX_PANES) return null;
     const tabId = uuid();
     tabs.value.push(newPaneTab(tabId, agent, AGENT_TITLE[agent], null));
     const createdPane = activePane(tabs.value[tabs.value.length - 1]);
+    if (workingDirectory) createdPane.workingDirectory = workingDirectory;
     if (topic) Object.assign(createdPane, { topicId: topic.id, topicTitle: topic.title, openingPrompt: topic.prompt });
     if (resumeConversationId) {
       createdPane.resumeConversationId = resumeConversationId;
@@ -2277,6 +2291,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     paneStreamMeta,
     streamCursor,
     activateTab,
+    reorderTab,
     closeTab,
     reopenTab,
     createTab,

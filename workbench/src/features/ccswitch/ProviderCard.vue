@@ -97,6 +97,7 @@ const actualModel = computed(() => {
         <button class="edit" :disabled="busy" :title="t('ccswitch.edit')" @click="emit('edit')">✎</button>
         <button class="danger" :disabled="busy" :title="t('ccswitch.delete')" @click="emit('remove')">🗑</button>
       </template>
+      <button v-if="official && provider.is_current" class="edit" :disabled="busy" @click="emit('activate')">{{ t("common.refresh") }}</button>
     </span>
   </div>
 </template>

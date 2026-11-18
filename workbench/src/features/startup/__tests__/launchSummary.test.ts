@@ -10,7 +10,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
+import { nextTick } from "vue";
+import { useUsageStore } from "../../../stores/usage";
+import * as ipc from "../../../lib/ipc";
 import { i18n } from "../../../i18n";
 import { useRuntimeStore } from "../../../stores/runtime";
 import LaunchSummary from "../LaunchSummary.vue";
@@ -20,6 +23,9 @@ vi.mock("../../../lib/ipc", () => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   buildImage: vi.fn(),
   negotiateCapabilities: vi.fn(),
+  networkSubscriptionShow: vi.fn(),
+  networkSubscriptionImportFile: vi.fn(),
+  networkSubscriptionClear: vi.fn(),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn().mockResolvedValue(true),
@@ -106,4 +112,27 @@ describe("build button visibility (G-14 bugfix)", () => {
     expect(buildBtn(wrapper)).toBe(false);
     void s;
   });
+});
+
+it("updates the proxy warning after import and clear while the summary stays open", async () => {
+  const status = { configured: false, source: null, url_masked: null, fetched_at: null,
+    config_sha256: null, has_config_file: false, userinfo: null };
+  vi.mocked(ipc.networkSubscriptionShow).mockResolvedValue(status);
+  vi.mocked(ipc.networkSubscriptionImportFile).mockResolvedValue({
+    ...status, configured: true, source: "manual", has_config_file: true,
+  });
+  const runtime = setup("start", null);
+  runtime.launch.network = "proxy";
+  runtime.showAdvanced = true;
+  const wrapper = mount(LaunchSummary, { global: { plugins: [i18n] } });
+  await flushPromises();
+  expect(wrapper.find(".sub-hint").exists()).toBe(true);
+  const usage = useUsageStore();
+  expect(await usage.importContent("rules: []")).toBe(true);
+  await nextTick();
+  expect(wrapper.find(".sub-hint").exists()).toBe(false);
+  expect(await usage.clearSubscription()).toBe(true);
+  await nextTick();
+  expect(wrapper.find(".sub-hint").exists()).toBe(true);
+  wrapper.unmount();
 });

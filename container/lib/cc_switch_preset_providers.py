@@ -273,6 +273,7 @@ def build_preset_providers(fixture_path: Path = FIXTURE_PATH) -> list[dict[str, 
             "id": "zhipu",
             "name": "Zhipu GLM",
             "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "codex_native_base_url": "https://open.bigmodel.cn/api/v1",
             "anthropic_base_url": "https://open.bigmodel.cn/api/anthropic",
             # S8g-2 fix (2026-08-29 user correction): GLM-5.3 is the current
             # flagship (official migrate guide: glm-5.3, context 1M, output
@@ -697,7 +698,7 @@ def provider_templates_manifest() -> list[dict[str, Any]]:
         # The provider's OpenAI-side base — the endpoint behind the NATIVE
         # Responses format (when the user flips the upstream format off the
         # S9a anthropic translation, the URL must switch with it).
-        entry["codex_endpoint_native"] = provider["base_url"]
+        entry["codex_endpoint_native"] = provider.get("codex_native_base_url", provider["base_url"])
         entry["codex_api_format"] = provider.get("codex_api_format") or "anthropic"
         manifest.append(entry)
     return manifest

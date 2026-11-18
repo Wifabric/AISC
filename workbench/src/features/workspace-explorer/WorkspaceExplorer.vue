@@ -450,8 +450,83 @@ function nodeOf(rel: string): WorkspaceNode | null {
 // the container-path mapping and quoting happen at the terminal drop edge.
 
 const draggingPath = ref<string | null>(null);
+let cancelPointerMove: (() => void) | undefined;
+let suppressMoveClick = false;
+// WebView native HTML dragging is unreliable on Windows. Track single-entry
+// drags with pointers; terminal drops reuse the controlled relative-path MIME.
+function onMovePointerDown(node: WorkspaceNode, event: PointerEvent) {
+  if (event.button !== 0 || (event.target as HTMLElement).closest('input, button')) return;
+  cancelPointerMove?.();
+  if (contextSelection(node).length !== 1) return;
+  event.preventDefault();
+  const sourceTree = (event.currentTarget as HTMLElement).closest('[role="tree"]');
+  const { clientX: startX, clientY: startY, pointerId } = event;
+  let moved = false;
+  const move = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId || Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
+    moved = true;
+    e.preventDefault();
+    draggingPath.value = node.relative_path;
+  };
+  const cleanup = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', cancel);
+    window.removeEventListener('blur', cleanup);
+    cancelPointerMove = undefined;
+    draggingPath.value = null;
+  };
+  const up = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const row = hit?.closest<HTMLElement>('.explorer-row[data-kind="dir"]');
+    if (moved) {
+      suppressMoveClick = true;
+      setTimeout(() => { suppressMoveClick = false; }, 0);
+      if (row?.closest('[role="tree"]') === sourceTree && row?.dataset.path) {
+        void moveTo(node.relative_path, row.dataset.path);
+      } else {
+        const terminal = hit?.closest<HTMLElement>('.terminal');
+        if (terminal) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.setData(WORKSPACE_PATH_MIME, node.relative_path);
+          terminal.dispatchEvent(new DragEvent('drop', { dataTransfer, bubbles: true, cancelable: true }));
+        }
+      }
+    }
+    cleanup();
+  };
+  const cancel = (e: PointerEvent) => { if (e.pointerId === pointerId) cleanup(); };
+  cancelPointerMove = cleanup;
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', cancel);
+  window.addEventListener('blur', cleanup);
+}
+onBeforeUnmount(() => cancelPointerMove?.());
+const moveSource = ref<string | null>(null);
+const moveDestination = ref("");
+async function browseDestination(dir: string) {
+  moveDestination.value = dir;
+  await explorer.loadDir(dir);
+}
+function beginMove(path: string) {
+  menu.value = null;
+  moveSource.value = path;
+  void browseDestination("");
+}
+async function moveTo(source: string | null, dir: string) {
+  if (!source || source === dir || dir.startsWith(source + "/") || parentOf(source) === dir) return;
+  try {
+    await explorer.moveEntry(source, dir);
+    moveSource.value = null;
+  } catch (error) {
+    flash(errorI18nKey(error), undefined, "warn");
+  }
+}
 
 function onDragStart(node: WorkspaceNode, e: DragEvent) {
+  cancelPointerMove?.();
   if (!e.dataTransfer) {
     e.preventDefault();
     return;
@@ -462,8 +537,8 @@ function onDragStart(node: WorkspaceNode, e: DragEvent) {
     return;
   }
   e.dataTransfer.setData(WORKSPACE_PATH_MIME, rows.map((row) => row.relative_path).join("\n"));
-  e.dataTransfer.effectAllowed = "copy";
-  draggingPath.value = node.relative_path;
+  e.dataTransfer.effectAllowed = "copyMove";
+  draggingPath.value = rows.length === 1 ? node.relative_path : null;
 }
 
 function onDragEnd() {
@@ -743,6 +818,7 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
         },
       },
       { id: "rename", label: t("explorer.menu.rename"), run: () => void beginRename(target.relativePath) },
+      { id: "move", label: t("explorer.menu.move"), run: () => beginMove(target.relativePath) },
       { id: "delete", label: t("explorer.menu.delete"), run: () => requestDelete(contextSelection(nodeFromMenuTarget(target)!).map((node) => node.relative_path)) },
       { id: "refresh", label: t("explorer.menu.refresh"), run: refreshFromMenu },
     );
@@ -773,6 +849,7 @@ function buildMenuItems(target: MenuTarget): MenuAction[] {
   );
   if (target.renamable) {
     actions.push({ id: "rename", label: t("explorer.menu.rename"), run: () => void beginRename(target.relativePath) });
+    actions.push({ id: "move", label: t("explorer.menu.move"), run: () => beginMove(target.relativePath) });
   }
   return actions;
 }
@@ -1158,6 +1235,7 @@ function onTreeKeydown(e: KeyboardEvent) {
           <div
             :class="['explorer-row', { selected: selectedPaths.includes(node.relative_path), dragging: draggingPath === node.relative_path, 'name-input-row': isRenaming(node) }]"
             :data-path="node.relative_path"
+            :data-kind="node.kind"
             role="treeitem"
             :aria-selected="selectedPaths.includes(node.relative_path)"
             :aria-expanded="node.kind === 'dir' ? isExpanded(node) : undefined"
@@ -1165,10 +1243,13 @@ function onTreeKeydown(e: KeyboardEvent) {
             :tabindex="i === focusIndex ? 0 : -1"
             :style="{ paddingLeft: `${8 + depthOf(node) * 16}px` }"
             :draggable="true"
-            @click="onSelect(node, $event)"
+            @pointerdown="onMovePointerDown(node, $event)"
+            @click="!suppressMoveClick && onSelect(node, $event)"
             @dblclick="onOpen(node)"
             @contextmenu.prevent.stop="onRowContextMenu(node, $event)"
             @dragstart="onDragStart(node, $event)"
+            @dragover="draggingPath && node.kind === 'dir' && $event.preventDefault()"
+            @drop="draggingPath && node.kind === 'dir' && ($event.preventDefault(), moveTo(draggingPath, node.relative_path))"
             @dragend="onDragEnd"
             @focus="focusIndex = i"
           >
@@ -1387,6 +1468,20 @@ function onTreeKeydown(e: KeyboardEvent) {
     <!-- Click-away backdrop: closes the menu without selecting a tree row. -->
     <div v-if="menu" class="explorer-menu-backdrop" @mousedown="menu = null" @contextmenu.prevent="menu = null" />
 
+    <div v-if="moveSource" class="explorer-dialog-backdrop" @keydown.esc="moveSource = null">
+      <section class="explorer-dialog" role="dialog" aria-modal="true" :aria-label="t('explorer.menu.move')">
+        <h3>{{ t("explorer.menu.move") }} · {{ moveSource }}</h3>
+        <p>/{{ moveDestination }}</p>
+        <button v-if="moveDestination" @click="browseDestination(parentOf(moveDestination))">..</button>
+        <ul class="explorer-dialog-list">
+          <li v-for="dir in (explorer.tree[moveDestination] ?? []).filter(n => n.kind === 'dir' && n.relative_path !== moveSource)" :key="dir.relative_path">
+            <button @click="browseDestination(dir.relative_path)">{{ dir.name }}/</button>
+          </li>
+        </ul>
+        <button class="ui-button" @click="moveSource = null">{{ t("common.cancel") }}</button>
+        <button class="ui-button" :disabled="parentOf(moveSource) === moveDestination" @click="moveTo(moveSource, moveDestination)">{{ t("explorer.menu.move") }}</button>
+      </section>
+    </div>
     <div v-if="pendingDelete" class="explorer-dialog-backdrop" @mousedown.stop>
       <div class="explorer-dialog" role="dialog" aria-modal="true" :aria-label="t('explorer.batch.deleteTitle')" data-testid="explorer-delete-dialog">
         <p>{{ t("explorer.batch.deleteConfirm", { count: pendingDelete.paths.length }) }}</p>

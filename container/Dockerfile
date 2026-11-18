@@ -77,7 +77,7 @@ RUN set -eux; \
     apt_ok=0; \
     for apt_try in 1 2 3; do \
         if apt-get update && apt-get install -y git curl tmux iptables iproute2 ca-certificates \
-                neovim ripgrep unzip procps file \
+                neovim ripgrep unzip procps file gh \
                 zsh zsh-autosuggestions zsh-syntax-highlighting; then \
             apt_ok=1; break; \
         fi; \
@@ -391,6 +391,7 @@ RUN chmod +x /usr/local/bin/aisc-provider-inspect
 COPY container/aisc-cc-provider /usr/local/bin/aisc-cc-provider
 # b5 (2.1.16): skills/MCP/plugins 统一管理适配器（同 provider 模式）。
 COPY container/aisc-extensions-adapter /usr/local/bin/aisc-extensions-adapter
+COPY --chmod=755 container/aisc-proxy-nodes /usr/local/bin/aisc-proxy-nodes
 # P3 热切换：模型映射 shim（15711/15712 → 15721/15722，见 entrypoint）
 COPY container/aisc-model-shim /usr/local/bin/aisc-model-shim
 RUN chmod +x /usr/local/bin/aisc-cc-provider /usr/local/bin/aisc-extensions-adapter /usr/local/bin/aisc-model-shim

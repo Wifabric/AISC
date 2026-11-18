@@ -1,5 +1,7 @@
 # AISC 使用手册
 
+本轮变化见 [2.1.19-preview.1 发布说明](docs/releases/v2.1.19-preview.1.md)，功能验收见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)，已完成和未验证项见[交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)。
+
 AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switch 的个人开发工作站，提供两种使用方式：
 
 - **AISC Workbench（推荐）**——桌面应用（Windows）。图形界面完成工作区选择、镜像构建、容器启动、终端、文件管理、Provider 配置与诊断；还可经 SSH 驱动装有 aisc 的远程机器（见[远程机器](#远程机器)）。
@@ -7,7 +9,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha（0.x）。** 本分支版本：Workbench **2.1.18** / CLI **0.2.0**。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** 本分支为本地候选：Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**，尚未公开发布。Windows 安装、升级和卸载数据保留尚未完成验收。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
 
 ## 目录
 
@@ -61,7 +63,7 @@ docker version
 
 从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC-Workbench-<版本>-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\AISC Workbench`，并添加用户 `PATH`。
 
-AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目 Release 且 SHA256 正确，再选择“更多信息 -> 仍要运行”。
+AISC 当前候选尚未代码签名。本轮 Windows Sandbox 的应用控制策略阻止了安装程序启动，因此新装、升级及安装后的 CLI/PATH 仍待验收。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。本地候选的功能测试入口见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
 
 ### 首次使用流程
 
@@ -74,18 +76,33 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 ### 日常使用
 
 - **终端**：`bash` / `claude` / `codex` 多页签，支持分屏；首次进入有上手速查卡，容器内输入 `help` 查看常用操作。`Ctrl+Shift+V` 粘贴、`Ctrl+F` 终端内搜索、`Ctrl+Alt+hjkl`（或方向键）移动分屏焦点、`Ctrl+Shift+W` 关闭当前分屏。codex 中 `Ctrl+/` 可在 `/btw` 旁路与主线对话间往返切换。
-- **资源管理器（文件）**：目录树懒加载、右键新建/重命名/复制/粘贴、拖拽文件进终端（自动转容器路径）、顶部搜索（支持模糊与 `/正则/`）。
+- **资源管理器（文件）**：目录树懒加载、右键新建/重命名/复制/粘贴/移动；单个文件或目录可拖到目标目录，同名目标不覆盖。本地和 SSH 工作区均支持移动。拖入终端只插入转义后的路径，不自动执行；顶部搜索支持模糊与 `/正则/`。
 - **变更面板**：Agent 产出与文件改动统一呈现——徽章区分类型（新增/修改/删除/移动）与来源（Agent 登记或系统检测），支持分类筛选与搜索。
 - **历史会话**：会话列表可查看聊天式只读对话记录（claude/codex 双侧）。
-- **工作记录**：把 provider 会话聚合成 Work Record / Collection。active Collection 自动收容新开的 Claude/Codex 会话；支持重命名、设为 Active、归档/恢复、手动加入/移出。删除 Collection 前会普通确认一次，然后级联删除成员 transcript；删除失败会列出成员、阶段和原因。`bash` / `cc-switch` 不进入工作记录。
+- **工作记录**：把 provider 会话聚合成 Work Record / Collection。active Collection 自动收容新开的 Claude/Codex 会话；支持重命名、设为 Active、归档/恢复、手动加入/移出。记录按原生父子关系显示层级，移动或删除父记录包含后代；删除前显示影响数量，失败列出原因。缺少父级信息的记录保留未归档。`bash` / `cc-switch` 不进入工作记录。
 - **服务面板**：容器内通过 `aisc-web-expose <端口>` 注册的 Web 服务，可从面板一键在宿主浏览器打开。
 - **Provider 管理**：顶栏进入 Providers 页。基于内置模板清单添加（见下），填入 API Key 即可使用，切换即时生效、无需重启；添加时可直接「拉取模型」验证 Key 与端点（无效 Key 会明确报「API Key 无效或被上游拒绝」）。
-- **网络与用量**（设置页）：代理模式可导入机场订阅（自动转换为容器 TUN 配置）；用量面板聚合各工作区 token 消耗与余量。
-- **Docker 资源管理**（设置页）：AISC 名下容器/镜像的扫描、清理与重建；破坏性操作仅限 AISC 自有资产，绝不触碰其它容器/镜像。
+- **网络与用量**（设置页）：可打开当前工作区的网络面板。代理模式可导入及刷新订阅，运行新版镜像后可查看手动选择组、切换节点和测延时；用量面板聚合各工作区 token 消耗与余量。
+- **Docker 资源管理**（设置页）：AISC 名下容器/镜像的扫描、清理与重建。另有 Docker Desktop 重置指引，仅说明操作入口与影响；恢复出厂由用户在 Docker Desktop 中执行，其范围与 AISC 自有资源清理不同。
 - **多工作区**：最多同时打开 3 个工作区，页签条切换；关闭即自动停止并清理对应容器。顶栏「关闭工作区」可随时回到选择页重选（清理运行环境，窗口保留）。
 - **彻底忘记工作区**：工作区历史右键 -> 彻底忘记，单事务清理 AISC 数据根内该工作区的状态与记录（容器先停止删除，失败自动回滚）；你磁盘上的原始文件永不被触碰。
 - **诊断**：任何页面可打开诊断对话框（环境检查、最近日志、导出诊断包）。
 - **应用自更新**：Windows 设置页「检查更新」→「下载更新」，校验完成后点击「退出更新」并确认，资源管理器选中安装包、正常打开安装向导后 Workbench 退出；可按向导完成更新。下载完成本身不会退出，取消或启动失败仍保留应用。其他平台按提示手动安装。
+
+### 标签、启动目录与工作记录定位
+
+拖动终端标签可调整当前工作区内的顺序，保持正在操作的会话。新建标签或分屏时先选启动目录，再选择 Bash、Claude 或 Codex；目录相对于工作区，例如 `frontend`、`backend`，各分屏独立使用所选目录。更深的子目录随目录树加载后可选。
+
+标签采用与工作记录对应的编号，并按引擎区分颜色；双击已关联会话的标签可定位记录，独立终端显示自己的编号。重新打开工作区仍从单个 Bash 开始，不恢复全部旧标签和进程。终端右侧滚动条可以拖动回看历史输出；原反馈的偶发卡死尚未复现，不能将滚动条改善视作该问题已解决。
+
+### 代理节点与新版镜像
+
+1. 启动使用本版资源构建的测试工作区，在设置中打开“网络与用量”。
+2. 选择代理模式并导入可用订阅；需要更新订阅时使用刷新入口。
+3. 查看节点列表，在可手动选择的组中选节点并应用，然后刷新核对当前节点。
+4. 点击测速查看延时或错误；切换选项后重新测速，避免把上一个节点的结果当成当前结果。
+
+该操作控制当前工作区的代理，不修改宿主机的系统代理。节点列表依赖运行中的代理服务；没有订阅、使用旧镜像或容器未启动时，不代表节点功能已可用。技能适配器、官方直连刷新、节点控制及新增 `gh` 均依赖新版镜像，升级桌面文件后仍需用配套 bundle 构建并选择新镜像。
 
 ### 个人能力与主题
 
@@ -106,20 +123,24 @@ AISC 尚未代码签名。SmartScreen 提示时，请先确认文件来自项目
 
 复制默认模块可编辑并保存自己的定义。保存或删除定义不执行安装/卸载；「应用」只补装缺少成员，「卸载模块」先显示计划，保留共享、预装、归属不明和已修改项。插件通路目前只支持 Claude；MCP 安装后还可能需要本人认证，保存认证、握手成功与实际访问仓库是三个不同结果。
 
+技能市场的仓库分组可“安装全部”，已安装分组可“更新全部”。本版修复嵌套子目录技能定位，保留已有启停状态；操作后刷新已安装列表核对结果，缺失、歧义或异常链接仍会报错。本轮实际通过 `mattpocock/skills` 的 20 项安装与更新，后续上游数量可能变化。
+
 ### Provider 模板清单
 
 「添加 provider」时镜像内置以下模板，用户只需填 API Key：
 
 | 供应商 | 说明 |
 | --- | --- |
-| **DeepSeek** | V4 系列（pro/flash）；Codex 走官方 Responses 端点 |
-| **火山引擎 Ark** | 兼容 OpenAI 格式；需配置接入点 ID |
-| **智谱 GLM** | GLM-5.2 旗舰模型 |
-| **Kimi** | 月之暗面 Kimi K3 |
+| **DeepSeek** | Codex 新建原生格式默认地址 `https://api.deepseek.com` |
+| **火山引擎 Ark** | Claude 模板保留；本版 Codex 新建列表隐藏，已有配置不因此删除 |
+| **智谱 GLM** | Codex 新建原生格式默认地址 `https://open.bigmodel.cn/api/v1` |
+| **Kimi** | Codex 新建原生格式默认地址 `https://api.moonshot.cn/v1` |
 | **Codesome V3** | 月卡/按量中转（`sk-` Key，后台建 Key 选分组） |
 | **Codesome 二合一** | V5 月卡中转（`cr-` 卡密即 Key，Claude/GPT 双端通用） |
 
-模板模式下模型映射/模型目录随首次保存生效；手动填写的端点不会被模板清单静默改写。模板的 Codex 上游走 S9a 形态（本地路由把 Responses 翻译为 Anthropic Messages，直连模板声明的 Anthropic 端点）；Codesome 两模板的 Claude 侧不含模型键（官方要求，模型由 Key 的服务端分组路由），并预填官方推荐的自动压缩水位（claude 150k / codex 900k）。也支持自定义 Provider（OpenAI 兼容格式，端点/模型/上下文窗口全手填）。
+新建 Codex Provider 默认选择 OpenAI Responses；若改选 Anthropic 等格式，未手动改过的地址会随模板切换到对应端点。编辑已有 Provider 沿用其已保存格式和地址，不批量迁移。模板的模型映射/目录随首次保存生效，实际可用模型取决于服务商与账号权限；手动填写的端点不会被模板清单静默改写。
+
+选择 Anthropic 格式时，Codex 走本地 Responses → Anthropic Messages 转换；原生 Responses 格式使用相应原生端点。Codesome 两模板的 Claude 侧不含模型键，模型由 Key 的服务端分组路由，并预填模板配置的自动压缩水位（claude 150k / codex 900k）。也支持自定义 Provider。当前官方直连卡的刷新会重新应用官方配置；刷新成功与真实账号对话成功仍需分别确认。
 
 ## 远程机器
 
@@ -244,7 +265,7 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc status` | `--name`, `--label` | 查看目标容器状态 |
 | `aisc stop` / `aisc restart` | `--name`, `--label` | 停止（幂等）/ 重启目标容器 |
 | `aisc shell` | `--name`, `--label` | 执行 `docker exec -it <name> bash` |
-| `aisc session open` | — | 打开托管会话终端（Workbench 内部使用同一通道） |
+| `aisc session open` | `--runtime-id`, `--session-id`, `--agent`, `--workspace`, `--working-directory` | 打开托管会话终端；启动目录为工作区相对子目录，前三项必填 |
 | `aisc serve` | — | 长驻远程通道（stdin/stdout JSON 帧协议；Workbench 经 SSH 调用，一般无需手动运行） |
 | `aisc switch` | `--name`, `--label`, `--quick PROVIDER` | 打开 cc-switch TUI，或快速切换 Claude Provider |
 | `aisc provider set-key` | `PROVIDER_ID`, `--name`, `--label`, `--agent` | 打开 cc-switch provider 安全交互编辑器；凭据不进命令行参数 |
@@ -261,6 +282,7 @@ aisc run --non-interactive   # 脚本/CI：无 TTY，项目作用域
 | `aisc logs show/path` | `--source app\|cli\|ui\|all` | 查看统一 JSONL 日志时间线 |
 | `aisc usage overview` | 全局选项 | 跨工作区聚合用量 |
 | `aisc network subscription …` | `import/import-file/refresh/show/clear` | 代理订阅数据面（URL 与内容走 stdin） |
+| `aisc network nodes list/select/delay` | `--workspace`, `--runtime-id`, `--group`, `--node` | 在运行中的新版代理镜像列节点、切换或测速；前两项必填，后两项用于 select/delay |
 | `aisc maintenance docker-scan/cleanup/rebuild` | `--context`, `--root`, `--tag` | Docker 资源归属扫描/清理/重建（owned-only，卸载与升级同一服务） |
 | `aisc maintenance container-action/image-rm/image-tag` | `--id` 等 | AISC 自有容器的启动/停止/删除、镜像删除与重命名（仅 owned 资源，执行前锁内重扫判权） |
 | `aisc bundle fetch/list/remove/path` | `--version`, `--from-file`, `--sha256`, `--allow-mismatch` | pip 安装的构建资源管理：管理已有/历史 CLI bundle（校验、离线导入）；本版正式渠道不保证存在可自动获取的 CLI 归档 |
@@ -329,6 +351,8 @@ Workbench 与 CLI 共享统一数据根：
 - 资源根（`aisc-bundle/`）须包含 `VERSION`、`container/Dockerfile`、`config/versions.env`；查找顺序 `--aisc-root` -> `AISC_ROOT` -> 可执行文件旁 `aisc-bundle/` -> Git 仓库向上查找 -> **数据根 `bundles/<ver>/`（`aisc bundle fetch` 安装，0.1.0 起）** -> editable 源码祖先。pip 安装无前四项时尝试已有 `bundles/`；都没有则 build 类命令无法工作。即使旧诊断建议 fetch，也须先确认该 CLI 版本有可获取资产；本版请准备配套资源根。
 
 ## 升级
+
+当前 2.1.19-preview.1 仅为本地候选。以下是产品升级方式说明，不代表本候选已通过 2.1.18 → 2.1.19 的安装升级验收。先测试新功能可使用对应源码构建或完整便携候选，见[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)；公开渠道尚不能保证下载到本开发版。
 
 - **Windows Workbench**：设置 → 检查更新 → 下载更新；校验后点击「退出更新」并确认，程序打开目标安装器交互向导后退出。按向导完成覆盖安装；下载本身不退出，取消或启动失败保留应用。升级前保存未提交工作并关闭占用，安装器可能处理 AISC 管理的运行资源；具体构建/清理结果以向导日志为准。用户配置和工作区数据默认保留。
 - **历史 PKG / 便携脚本**：按该历史版本维护方式处理；本版独立 CLI 改用 pip/pipx，先核对 PATH，避免新旧渠道混用。
