@@ -54,7 +54,7 @@ function buildConfig(proxies) {
   y += 'rules:\n';
   y += '  - IP-CIDR,127.0.0.0/8,DIRECT\n';
   y += '  - DOMAIN-KEYWORD,localhost,DIRECT\n';
-  y += '  - MATCH,PROXY\n';
+  y += '  - MATCH,SELECT\n';
   return y;
 }
 

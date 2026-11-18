@@ -24,6 +24,7 @@ const rebuild = useImageRebuildStore();
 const update = useUpdateStore();
 const supportsInstaller = update.supportsInstaller();
 const confirmationPending = ref(false);
+const showDockerReset = ref(false);
 let disposed = false;
 onBeforeUnmount(() => { disposed = true; });
 
@@ -803,7 +804,10 @@ async function reopenOnboarding() {
               :title="store.target?.kind === 'remote' ? t('imageRebuild.localOnly') : t('settings.docker.rebuildTip')"
               @click="onDockerRebuild"
             >{{ rebuild.busy ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}</button>
+            <button :disabled="store.target?.kind === 'remote'" :aria-expanded="showDockerReset"
+                    @click="showDockerReset = !showDockerReset">{{ t("settings.docker.reset") }}</button>
           </div>
+          <p v-if="showDockerReset" class="note" role="status">{{ t("settings.docker.resetSteps") }}</p>
 
           <template v-if="store.dockerReport">
             <p v-if="!store.dockerReport.dockerAvailable" class="note">

@@ -50,6 +50,7 @@ def cmd_session_open(
     executor: Optional[DockerExecutor] = None,
     resume_conversation_id: Optional[str] = None,
     fork_session: bool = False,
+    working_directory: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """Execute ``aisc session open`` per contract §6.1.
 
@@ -74,6 +75,7 @@ def cmd_session_open(
         registry_root=reg_root,
         resume_conversation_id=resume_conversation_id,
         fork_session=fork_session,
+        working_directory=working_directory,
         workspace=str(_ws) if _ws else None,
     )
 

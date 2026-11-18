@@ -23,6 +23,9 @@ export const useUsageStore = defineStore("usage", () => {
 
   const subscription = ref<SubscriptionStatus | null>(null);
   const subBusy = ref(false);
+  async function proxyNodes(workspace: string, runtimeId: string, action: "list" | "select" | "delay", group = "", node = "") {
+    return ipc.proxyNodes(workspace, runtimeId, action, group, node);
+  }
   const subError = ref<WorkbenchError | null>(null);
   /** Surfaced after a successful refresh/import (D1: next-start effect). */
   const refreshedNote = ref(false);
@@ -130,6 +133,7 @@ export const useUsageStore = defineStore("usage", () => {
   }
 
   return {
+    proxyNodes,
     subscription,
     subBusy,
     subError,

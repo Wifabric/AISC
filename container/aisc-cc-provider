@@ -2297,13 +2297,14 @@ def op_switch(agent: str, provider_id: str) -> list[dict[str, Any]]:
     settings.json and ``enable`` re-writes the local-route stub, so the
     cancel-proxy path ends truly direct (live-probed 2026-08-21).
     """
-    if provider_id == OFFICIAL_TARGET:
+    refresh_official = provider_id == OFFICIAL_TARGET
+    if refresh_official:
         provider_id = _OFFICIAL_ROW_ID[agent]
     snapshot = read_snapshot(agent)
     row = next((r for r in snapshot if r["id"] == provider_id), None)
     if row is None:
         raise AdapterError(ERR_NOT_FOUND, f"provider not found: {provider_id}")
-    if row["is_current"]:
+    if row["is_current"] and not refresh_official:
         # Already active — idempotent success. BUT a previous attempt may
         # have died between the CLI switch and the post-hooks (a guard
         # failure skips the route verify AND the codex catalog/auth tail),

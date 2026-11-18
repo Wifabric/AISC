@@ -924,16 +924,34 @@ def _stage_skills_from_git_source(specs: list[str], repo: str,
 
         sources: list[tuple[Path, Path]] = []
         missing: list[str] = []
+        manifests: list[Path] | None = None
         for spec, relative in zip(specs, relatives):
             candidates = [clone / "skills" / relative, clone / relative]
             source = next((candidate for candidate in candidates
                            if (candidate / "SKILL.md").is_file()), None)
+            if source is None:
+                if manifests is None:
+                    manifests = [path.parent for path in clone.rglob("SKILL.md")
+                                 if path.is_file() and not path.is_symlink()]
+                suffix = "/" + _skill_name_key(relative.as_posix())
+                matches = [path for path in manifests
+                           if ("/" + _skill_name_key(path.relative_to(clone).as_posix())).endswith(suffix)]
+                if len(matches) == 1:
+                    source = matches[0]
             if source is None:
                 missing.append(spec)
             else:
                 sources.append((source, relative))
         if missing:
             return missing
+
+        for source, _ in sources:
+            root = source.resolve()
+            if not root.is_relative_to(clone.resolve()):
+                raise AdapterError(ERR_BAD_REQUEST, "Skill source is outside the repository")
+            for path in source.rglob("*"):
+                if path.is_symlink() and (not path.is_file() or not path.resolve().is_relative_to(root)):
+                    raise AdapterError(ERR_BAD_REQUEST, "Unsupported link in skill source")
 
         for source, relative in sources:
             destination = _db_path().parent / "skills" / relative
@@ -946,7 +964,8 @@ def _stage_skills_from_git_source(specs: list[str], repo: str,
 
 def _stage_skill_from_git_source_one(spec: str, repo: str,
                                      git_env: dict[str, str]) -> None:
-    _stage_skills_from_git_source([spec], repo, git_env)
+    if _stage_skills_from_git_source([spec], repo, git_env):
+        raise AdapterError(ERR_NOT_FOUND, f"SKILL.md not found for {spec}")
 
 
 def _install_skill(spec: str, *, enable_both: bool,

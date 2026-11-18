@@ -1,5 +1,19 @@
 # NSIS installer template
 
+## Current candidate and acceptance
+
+Workbench **2.1.19-preview.1** carries CLI **0.3.0.dev0**. The local installer was built, but Windows Sandbox application control blocked both the baseline and candidate installers before the wizard ran. Fresh installation, upgrade from official 2.1.18, installed startup/PATH, and upgrade/uninstall data retention are **not verified**. The user stopped VM preparation at the 2026-11-19 02:15 deadline; documentation work does not resume it. See the [delivery record](../../../docs/plans/2.1.19-dev-plans/DELIVERY.md).
+
+The desktop configuration uses `installMode: currentUser`. A separate local Windows account can separate user-scoped installation state, but it is not a clean OS and does not isolate shared Docker resources. Portable desktop tests do not exercise the NSIS installation or uninstallation sections.
+
+## Publisher signing configuration
+
+From the repository root, `scripts/build-installer.ps1 -SigningConfig <path-to-tauri-overlay.json>` accepts a publisher-provided Tauri configuration with `bundle.windows.certificateThumbprint` or `bundle.windows.signCommand`. With this option, the script selects an installer produced during the current build, requires a valid Authenticode signature, and checks the signer thumbprint when one was specified. Keep private keys and signing credentials outside the repository.
+
+Omitting the option does not sign the installer. The present candidate is unsigned; adding configuration support is not evidence of a successful signed build or of compatibility with the sandbox policy. Verify the actual output signature and installed behavior separately. Do not use an old setup file as proof of the current build.
+
+## Template implementation
+
 `installer.nsi` is a **Handlebars template** rendered by tauri-bundler at build
 time (`bundle.windows.nsis.template`). It is a copy of the tauri-bundler 2.9.4
 default template with the G-18 additions:

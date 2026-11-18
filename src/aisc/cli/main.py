@@ -571,6 +571,13 @@ def _build_parser() -> _AiscArgumentParser:
     nwsub = nwp.add_subparsers(dest="network_command", title="network commands",
                                parser_class=_AiscArgumentParser, required=True)
 
+    nodes = nwsub.add_parser("nodes", help="List, select or measure live proxy nodes")
+    _add_global_args(nodes, is_subparser=True)
+    nodes.add_argument("action", choices=("list", "select", "delay"))
+    nodes.add_argument("--workspace", required=True)
+    nodes.add_argument("--runtime-id", required=True)
+    nodes.add_argument("--group", default="")
+    nodes.add_argument("--node", default="")
     nws = nwsub.add_parser(
         "subscription", help="Manage the proxy subscription (IDEA-2)",
         allow_abbrev=False,
@@ -1136,6 +1143,7 @@ def _build_parser() -> _AiscArgumentParser:
                      help="Agent type (claude|codex|bash|cc-switch)")
     sso.add_argument("--workspace", type=str, default=None,
                      help="Workspace path (default: current directory)")
+    sso.add_argument("--working-directory", help="Subdirectory relative to the workspace")
     sso.add_argument("--resume-id", type=str, default=None,
                      help="Provider conversation ID to resume (claude|codex only, v2.1.8 T4)")
     sso.add_argument("--fork-session", action="store_true",
@@ -2203,6 +2211,12 @@ def _cmd_network(
     """
     from aisc.cli.commands import network as nw_cmd
 
+    if args.network_command == "nodes":
+        data = nw_cmd.cmd_proxy_nodes(args)
+        if effective_format == "text":
+            import json
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        return data, 0, []
     if getattr(args, "network_command", None) != "subscription":
         raise CliError(message="unknown network subcommand",
                        exit_code=2, error_code="AISC_ERR_USAGE")
@@ -2804,6 +2818,7 @@ def _cmd_session(
             agent=args.agent,
             workspace=args.workspace,
             resume_conversation_id=args.resume_id,
+            working_directory=getattr(args, "working_directory", None),
             fork_session=args.fork_session,
         )
         errors: List[Dict[str, Any]] = []

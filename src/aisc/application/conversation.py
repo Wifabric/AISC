@@ -324,16 +324,28 @@ def _summarize(agent: str, conv_id: str, file_size: int,
     return entry
 
 
+def _session_files(base: Path, agent: str, wanted: str = "") -> Dict[str, List[Path]]:
+    """Group by native ID and prefer the most recently written rollout."""
+    files = {}
+    for path in base.rglob("*.jsonl"):
+        cid = _conversation_id_for(agent, path.name)
+        if not cid or (wanted and cid.lower() != wanted.lower()):
+            continue
+        try:
+            modified = path.stat().st_mtime_ns
+        except OSError:
+            continue
+        if path.is_file():
+            files.setdefault(cid.lower(), []).append((modified, path))
+    return {cid: [p for _, p in sorted(rows, reverse=True)] for cid, rows in files.items()}
+
+
 def _scan_agent_dir(base: Path, agent: str) -> List[Dict[str, Any]]:
     if not base.is_dir():
         return []
     out: List[Dict[str, Any]] = []
-    for path in sorted(base.rglob("*.jsonl")):
-        if not path.is_file():
-            continue
-        conv_id = _conversation_id_for(agent, path.name)
-        if conv_id is None:
-            continue
+    for conv_id, paths in _session_files(base, agent).items():
+        path = paths[0]
         try:
             size = path.stat().st_size
         except OSError:
@@ -424,24 +436,9 @@ def _find_conversation_file(ws_dir: Path, agent: str,
     """Exact provider-specific file match for a conversation id (design §2).
     Claude: filename stem == id. Codex: rollout filename's trailing id,
     case-insensitive. Returns None when absent — never a glob substring."""
-    if agent == "claude":
-        base = ws_dir / "claude" / "projects"
-        if not base.is_dir():
-            return None
-        for p in base.rglob("*.jsonl"):
-            if p.is_file() and p.stem == conversation_id:
-                return p
-        return None
-    base = ws_dir / "codex" / "sessions"
-    if not base.is_dir():
-        return None
-    for p in base.rglob("*.jsonl"):
-        if not p.is_file():
-            continue
-        m = _CODEX_FILENAME_RE.match(p.name)
-        if m is not None and m.group(1).lower() == conversation_id.lower():
-            return p
-    return None
+    base = ws_dir / agent / ("projects" if agent == "claude" else "sessions")
+    paths = _session_files(base, agent, conversation_id).get(conversation_id.lower())
+    return paths[0] if paths else None
 
 
 def preflight_conversation(workspace: str, conversation_id: str,
@@ -496,15 +493,17 @@ def delete_conversation(workspace: str, conversation_id: str,
             error_code=ERROR_INVALID_AGENT,
         )
     ws_dir = _workspace_dir(workspace)
-    path = _find_conversation_file(ws_dir, agent, conversation_id)
-    if path is None:
+    base = ws_dir / agent / ("projects" if agent == "claude" else "sessions")
+    paths = _session_files(base, agent, conversation_id).get(conversation_id.lower(), [])
+    if not paths:
         raise CliError(
             message=f"Conversation {conversation_id} not found for agent {agent}",
             exit_code=3,
             error_code=ERROR_UNRESUMABLE,
         )
     try:
-        path.unlink()
+        for path in reversed(paths):
+            path.unlink(missing_ok=True)
     except OSError as exc:
         raise CliError(
             message=f"Failed to delete conversation {conversation_id}: {exc}",

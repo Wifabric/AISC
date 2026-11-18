@@ -12,12 +12,90 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { TOPICS_TAB_ID, useRuntimeStore } from "../../stores/runtime";
 import { useTopicsStore } from "../../stores/topics";
+import SessionDirectory from "./SessionDirectory.vue";
+import { findLeaf } from "../../stores/paneTree";
+import { useWorkRecordsStore } from "../../stores/workRecords";
+import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useSettingsStore } from "../../stores/settings";
 import { AGENTS } from "../../stores/tabLayout";
 import type { LaunchAgent, Tab, TabSessionState } from "../../types";
 
 const { t } = useI18n();
 const store = useRuntimeStore();
+const directory = ref("");
+const records = useWorkRecordsStore();
+const explorer = useWorkspaceExplorerStore();
+watch(() => [store.workspace, store.tabs.some(tab => !!tab.resumeConversationId)], () => {
+  if (store.workspace && store.tabs.some(tab => tab.resumeConversationId) && records.workspace !== store.workspace) {
+    void records.load(store.workspace);
+  }
+}, { immediate: true });
+function recordKey(tab: Tab) {
+  const id = tab.panes[tab.activePaneId]?.resumeConversationId ?? (Object.keys(tab.panes).length === 1 ? tab.resumeConversationId : null);
+  if (!id || records.workspace !== store.workspace) return "";
+  const agent = findLeaf(tab.tree, tab.activePaneId)?.sessionType ?? tab.agent;
+  return agent + ":" + id.toLowerCase();
+}
+async function revealRecord(tab: Tab) {
+  if (!store.workspace || !tab.resumeConversationId && !tab.panes[tab.activePaneId]?.resumeConversationId) return;
+  explorer.activateView("work-records");
+  await records.load(store.workspace);
+  records.revealKey = recordKey(tab);
+}
+const draggingTab = ref<string | null>(null);
+const dropTab = ref<string | null>(null);
+let cancelTabDrag: (() => void) | undefined;
+let suppressTabClick = false;
+function startTabDrag(event: PointerEvent, tabId: string) {
+  if (event.button !== 0) return;
+  cancelTabDrag?.();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const pointerId = event.pointerId;
+  const targetAt = (e: PointerEvent) => document.elementFromPoint(e.clientX, e.clientY)
+    ?.closest<HTMLElement>(".tab[data-tab-id]")?.dataset.tabId ?? null;
+  const move = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId) return;
+    if (!draggingTab.value && Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
+    // Internal reordering uses pointer events: native WebView drag/drop can
+    // intercept HTML drag events before the destination receives them.
+    e.preventDefault();
+    draggingTab.value = tabId;
+    dropTab.value = targetAt(e);
+  };
+  const cleanup = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", cancel);
+    window.removeEventListener("blur", cleanup);
+    draggingTab.value = null;
+    dropTab.value = null;
+    cancelTabDrag = undefined;
+  };
+  const up = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId) return;
+    if (draggingTab.value) {
+      const target = targetAt(e);
+      if (target) moveToTab(target);
+      suppressTabClick = true;
+      setTimeout(() => { suppressTabClick = false; }, 0);
+    }
+    cleanup();
+  };
+  const cancel = (e: PointerEvent) => { if (e.pointerId === pointerId) cleanup(); };
+  cancelTabDrag = cleanup;
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", cancel);
+  window.addEventListener("blur", cleanup);
+}
+onBeforeUnmount(() => cancelTabDrag?.());
+function moveToTab(target: string) {
+  const source = draggingTab.value;
+  draggingTab.value = null;
+  if (!source || source === target) return;
+  store.reorderTab(source, target);
+}
 const settingsStore = useSettingsStore();
 const topics = useTopicsStore();
 
@@ -122,6 +200,7 @@ function onMenuKeydown(e: KeyboardEvent) {
 function choose(agent: LaunchAgent | "topics") {
   menuOpen.value = false;
   if (agent === "topics") store.openTopicsTab();
+  else if (directory.value) store.createTab(agent, undefined, false, undefined, undefined, directory.value);
   else store.createTab(agent);
 }
 
@@ -217,6 +296,7 @@ function closeTopics() {
 }
 
 function onTabClick(tabId: string) {
+  if (suppressTabClick) return;
   roving.value = -1;
   store.activateTab(tabId);
 }
@@ -358,19 +438,24 @@ function canReopen(s: TabSessionState): boolean {
       v-for="(tab, i) in store.tabs"
       :key="tab.tabId"
       class="tab"
-      :class="[tab.sessionState, { active: tab.tabId === store.activeTabId }]"
+      :data-agent="findLeaf(tab.tree, tab.activePaneId)?.sessionType ?? tab.agent"
+      :data-tab-id="tab.tabId"
+      :class="[tab.sessionState, { active: tab.tabId === store.activeTabId, 'drop-target': dropTab === tab.tabId && draggingTab !== tab.tabId }]"
     >
       <button
         :ref="setTabRef(i)"
         role="tab"
         class="tab-main"
+        @pointerdown="startTabDrag($event, tab.tabId)"
+        @dragstart.prevent
         :tabindex="tabIndex(tab, i)"
         :aria-selected="tab.tabId === store.activeTabId"
         :aria-controls="`terminal-${tab.tabId}`"
         :title="tab.title"
         @click="onTabClick(tab.tabId)"
+        @dblclick="revealRecord(tab)"
       >
-        <span class="title">{{ tab.title }}</span>
+        <span class="title">{{ records.numbers.get(recordKey(tab)) ?? ('T' + (i + 1)) }}</span>
         <span v-if="stickyLabels.get(tab.tabId)" class="state">{{ stickyLabels.get(tab.tabId) }}</span>
       </button>
       <span class="actions" v-if="canClose(tab.sessionState) || canReopen(tab.sessionState)">
@@ -456,6 +541,7 @@ function canReopen(s: TabSessionState): boolean {
           :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
           @keydown="onMenuKeydown"
         >
+          <li><SessionDirectory v-model="directory" /></li>
           <li
             v-for="a in AGENTS"
             :key="a"
@@ -475,6 +561,11 @@ function canReopen(s: TabSessionState): boolean {
 </template>
 
 <style scoped>
+.tab.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tab-main { touch-action: none; user-select: none; }
+.tab[data-agent="claude"] { border-top: 2px solid var(--warn); }
+.tab[data-agent="codex"] { border-top: 2px solid var(--accent); }
+.tab[data-agent="bash"] { border-top: 2px solid var(--text-2); }
 .tabbar {
   position: relative; /* 10e: tab-anim leave anchors here (position:absolute) */
   display: flex;

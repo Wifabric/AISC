@@ -78,6 +78,7 @@ def build_session_exec(
     resume_conversation_id: Optional[str] = None,
     fork_session: bool = False,
     workspace: Optional[str] = None,
+    working_directory: Optional[str] = None,
 ) -> Tuple[str, List[str], Optional[Dict[str, str]]]:
     """Resolve + validate + construct the exec for one interactive session.
 
@@ -133,6 +134,10 @@ def build_session_exec(
         "--agent", agent,
     ]
 
+    if working_directory:
+        if not isinstance(working_directory, str) or any(part in ("", ".", "..") for part in working_directory.split("/")):
+            raise CliError(message="Invalid workspace subdirectory", exit_code=2, error_code="AISC_ERR_USAGE")
+        docker_argv.extend(["--working-directory", working_directory])
     if fork_session and resume_conversation_id is None:
         raise CliError(
             message="Invalid conversation ID: None",
@@ -209,6 +214,7 @@ def open_session(
     resume_conversation_id: Optional[str] = None,
     fork_session: bool = False,
     workspace: Optional[str] = None,
+    working_directory: Optional[str] = None,
 ) -> Any:
     """Open an interactive agent session via ``docker exec -it``.
 
@@ -231,6 +237,7 @@ def open_session(
         resume_conversation_id=resume_conversation_id,
         fork_session=fork_session,
         workspace=workspace,
+        working_directory=working_directory,
     )
     return executor.open_interactive(container_name, docker_argv, env=env)
 

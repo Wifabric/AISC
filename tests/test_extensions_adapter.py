@@ -708,7 +708,7 @@ class MarketTests(TempEnv):
             if argv[:2] == ["git", "clone"]:
                 destination = Path(argv[-1])
                 for name in ("cavecrew", "caveman-commit"):
-                    skill = destination / "skills" / name
+                    skill = destination / "skills" / "engineering" / name
                     skill.mkdir(parents=True)
                     (skill / "SKILL.md").write_text(
                         f"---\nname: {name}\n---\n", encoding="utf-8")
