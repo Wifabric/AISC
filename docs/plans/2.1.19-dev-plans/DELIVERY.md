@@ -1,6 +1,6 @@
 # AISC 2.1.19-preview.1 整版交付记录
 
-核对日期：2026-11-19。**本轮主要功能、已发现的编码/会话选择/滚动条缺口已修复；Python、前端、Rust 回归和 Windows 静默新装/升级链路通过。PR #104 已合入 develop，收尾 PR #105 正在完成最终提交验证。偶发卡死按用户决定暂缓。没有 leader 签收或正式 Release。**
+核对日期：2026-11-19。**本轮主要功能、已发现的编码/会话选择/滚动条缺口已修复；Python、前端、Rust 回归和 Windows 静默新装/升级链路通过。PR #104 已合入 develop，收尾 PR #105 的代码验收提交 `2a8758af` 已通过全部适用 CI 与 Windows 安装升级检查；合入状态见 PR 链接。偶发卡死按用户决定暂缓。没有 leader 签收或正式 Release。**
 
 ## 1. 当前状态与责任
 
@@ -12,7 +12,7 @@
 | Windows 静默安装链路 | PASS | 正式旧版升级、启动/CLI/PATH、设置/记录/项目保留、静默卸载通过 |
 | 人工安装体验 | NOT RUN | GUI 向导、Docker 依赖引导、取消卸载与额外清理选择不由静默 CI 代替 |
 | 用户账号验收 | 用户报告 PASS | 不重复账号测试；技术编码与权限回归独立记录 |
-| PR 与集成 | #104 已合入；#105 收尾 | 精确提交和 CI 见 §2、§4；按已有授权完成 develop 合入，自查不冒称独立评审 |
+| PR 与集成 | #104 已合入；#105 提交与验收完成 | [#105](https://github.com/Wifabric/AISC/pull/105) 记录最终合入状态；代码验收提交和 CI 见 §2、§4；本轮为自查 |
 | leader 功能验收 | 未取得结论 | 按 HANDTEST 测试，同意上线需实际回复 |
 | 正式发布/反馈/归档 | 待发布条件 | 不提前写 resolved、不创建 final tag、不归档活动计划 |
 
@@ -25,12 +25,12 @@
 | 初始基线 | v2.1.18 后的 `1c39903dc146e00ac5b7d92c8bd48433a3d4a7f5` |
 | 主更新 | [PR #104](https://github.com/Wifabric/AISC/pull/104)，develop 合入 `df448d3af9aa287e8337789583f05612fe3c4850` |
 | 收尾 | [PR #105](https://github.com/Wifabric/AISC/pull/105)，`codex/2.1.19-closeout`；首个已通过 CI 的提交 `58b25ecdfd0dfed3c0d920a05d7d612eccb75d40` |
-| 当前补修 | Codex 内联滚动及交付文档；最终 head 和后续 CI 以 PR 检查和本记录后续补记为准，不把首轮结果当作补修提交结果 |
+| 最终代码验收 | `2a8758af212493b1321e3a434992fa1451ff03f4`，Workbench CI 44462727381 和 NSIS 44462773106 全部 PASS；其后的修订仅更新不随程序打包的验收文档，构建输入不变 |
 | Workbench / CLI | `2.1.19-preview.1` / `0.3.0.dev0`，serve protocol 4 |
 | 本地便携入口 | `D:\AISC\output\2.1.19-acceptance\打开本地测试版.cmd`；配套 `client-retest` 程序、CLI 和 bundle 已更新 |
 | 便携可执行文件 SHA-256 | Workbench `7b94806eb4c42dde03d6cb0626880f2182ffcc7ebe68ff3b9234bb318ddf983d`；CLI `91d2841c0b15a7b46241cee7c8fc409ff95f505423eb3e25eb09b4c1e89643a5`；后续仅更新外部容器脚本和校验表 |
 | 初次 CI 安装包 | [run 44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580)，artifact `aisc-workbench-windows-nsis`，对应 58b25ecd；SHA-256 `1a9ba08b5089a53f7b39d058675222f0f59ed236fc46ba6fa5c87985bc63546f` |
-| 旧本地安装包 | acceptance 目录中旧摘要 `c40d352f…` 的安装包不含 #105 补修；不能仅按相同版本号当作最新候选 |
+| 最终 CI 安装包 | [run 44462773106](https://github.com/Wifabric/AISC/actions/runs/44462773106)，artifact `aisc-workbench-windows-nsis`；SHA-256 `cc330f34980b4b82ffff7288ce8a38200812d303e54fe7a59060ae3a60aa2b7f`；早期 `c40d352f…` 包不含本轮收尾修复 |
 | 隔离数据 | acceptance 下 `test-data` / `test-webview`；测试工作区和宿主 Docker 仍是真实资源 |
 | 公开渠道 | 没有本版 Release/tag、PyPI/TestPyPI 或公开 final 下载；Actions artifact 不是正式 Release |
 
@@ -88,6 +88,13 @@
 
 旧 `2.1.19-python-port-final.log` 的 10 失败为历史记录：9 项与 Bash 环境有关，剩余模型目录日志编码已修复；以本轮明确源码路径的全集及编码回归为准。
 
+最终代码验收提交 `2a8758af212493b1321e3a434992fa1451ff03f4`：
+
+- [Workbench CI 44462727381](https://github.com/Wifabric/AISC/actions/runs/44462727381)：frontend / rust / cli 全部 success。
+- [Windows NSIS 44462773106](https://github.com/Wifabric/AISC/actions/runs/44462773106)：构建、静默新装/PATH/重装保留、官方 2.1.18 升级全部 success；`windows-upgrade-acceptance` 的六个步骤均 PASS。
+- 从最终镜像重新创建运行时、新建 Codex 正常进入；实际进程包含 `--no-alt-screen`，容器脚本摘要与最终源码一致。证据：`2.1.19-closeout-runtime-final.json`、`2.1.19-closeout-codex-new-final.png`。
+- 原模拟 Provider 已移除并恢复原官方选择；两轮桌面测试运行时及权限测试容器已删除，保留测试样本与证据。没有重置宿主 Docker。
+
 ## 5. Windows 安装覆盖与历史环境问题
 
 **已通过：**静默全新安装、用户 PATH、同版本重装/保留；校验官方 2.1.18 安装包后升级到候选；升级前后真实设置、最近工作区、项目文件和原生 Codex 会话字节对照；已安装 CLI 读取会话；Workbench 创建原生窗口；启动后设置和历史语义保留；静默卸载保留样本并移除程序 bundle。测试只运行在一次性 Windows runner，不碰用户现有安装。
@@ -136,4 +143,4 @@ PR #105 按已有授权提交、验证和合入 develop。正式版本、main/fi
 
 本轮文档检查 51 项通过、0 警告、0 失败；会话/版本/工作流契约 81 项通过、11 项按环境跳过；1368 个容器资源摘要全部一致。日志为 `2.1.19-closeout-docs-check.log`、`2.1.19-closeout-final-contracts.log`、`2.1.19-closeout-vendor-final.json`。便携包关键文件摘要见 `2.1.19-closeout-portable-final-sha256.json`。
 
-最终 head 的 CI、产物摘要及合入结果在本记录后续补记；早期文档检查和旧产物不能代替最终提交验证。本地手测教程与沙盒交接开头同步当前状态，避免后续误按历史 VM 步骤重建环境。
+最终代码验收 CI 与产物摘要见上文；PR 页面记录文档修订 head 与实际合入结果。文档修订不得改变已验收的构建输入；若修改程序、容器或安装逻辑，须重新验证。本地手测教程与沙盒交接开头同步当前状态，避免后续误按历史 VM 步骤重建环境。
