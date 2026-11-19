@@ -9,7 +9,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha（0.x）。** 本分支为本地候选：Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**，尚未公开发布。Windows 安装、升级和卸载数据保留尚未完成验收。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** 本分支为本地候选：Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**，尚未公开发布。Windows runner 已通过静默新装、2.1.18 升级、启动/CLI/PATH 与数据保留检查；图形向导、依赖安装及交互卸载另行验收。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
 
 ## 目录
 
@@ -63,7 +63,7 @@ docker version
 
 从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC-Workbench-<版本>-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\AISC Workbench`，并添加用户 `PATH`。
 
-AISC 当前候选尚未代码签名。本轮 Windows Sandbox 的应用控制策略阻止了安装程序启动，因此新装、升级及安装后的 CLI/PATH 仍待验收。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。本地候选的功能测试入口见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
+AISC 当前候选尚未代码签名。本机 Windows Sandbox 曾阻止安装程序启动；后续已在一次性 Windows runner 验证静默新装、升级及安装后的 CLI/PATH。该结果不解决强制应用控制环境对未签名包的拦截。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。本地候选的功能测试入口见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
 
 ### 首次使用流程
 
@@ -83,7 +83,7 @@ AISC 当前候选尚未代码签名。本轮 Windows Sandbox 的应用控制策�
 - **服务面板**：容器内通过 `aisc-web-expose <端口>` 注册的 Web 服务，可从面板一键在宿主浏览器打开。
 - **Provider 管理**：顶栏进入 Providers 页。基于内置模板清单添加（见下），填入 API Key 即可使用，切换即时生效、无需重启；添加时可直接「拉取模型」验证 Key 与端点（无效 Key 会明确报「API Key 无效或被上游拒绝」）。
 - **网络与用量**（设置页）：可打开当前工作区的网络面板。代理模式可导入及刷新订阅，运行新版镜像后可查看手动选择组、切换节点和测延时；用量面板聚合各工作区 token 消耗与余量。
-- **Docker 资源管理**（设置页）：AISC 名下容器/镜像的扫描、清理与重建。另有 Docker Desktop 重置指引，仅说明操作入口与影响；恢复出厂由用户在 Docker Desktop 中执行，其范围与 AISC 自有资源清理不同。
+- **Docker 资源管理**（设置页）：AISC 名下容器/镜像的扫描、清理与重建。“重置 Docker Desktop…”会打开官方 Dashboard，按页面指引进入 Troubleshoot → Reset to factory defaults；最终确认由 Docker 展示，其范围与 AISC 自有资源清理不同。
 - **多工作区**：最多同时打开 3 个工作区，页签条切换；关闭即自动停止并清理对应容器。顶栏「关闭工作区」可随时回到选择页重选（清理运行环境，窗口保留）。
 - **彻底忘记工作区**：工作区历史右键 -> 彻底忘记，单事务清理 AISC 数据根内该工作区的状态与记录（容器先停止删除，失败自动回滚）；你磁盘上的原始文件永不被触碰。
 - **诊断**：任何页面可打开诊断对话框（环境检查、最近日志、导出诊断包）。
@@ -93,7 +93,7 @@ AISC 当前候选尚未代码签名。本轮 Windows Sandbox 的应用控制策�
 
 拖动终端标签可调整当前工作区内的顺序，保持正在操作的会话。新建标签或分屏时先选启动目录，再选择 Bash、Claude 或 Codex；目录相对于工作区，例如 `frontend`、`backend`，各分屏独立使用所选目录。更深的子目录随目录树加载后可选。
 
-标签采用与工作记录对应的编号，并按引擎区分颜色；双击已关联会话的标签可定位记录，独立终端显示自己的编号。重新打开工作区仍从单个 Bash 开始，不恢复全部旧标签和进程。终端右侧滚动条可以拖动回看历史输出；原反馈的偶发卡死尚未复现，不能将滚动条改善视作该问题已解决。
+标签采用与工作记录对应的编号，并按引擎区分颜色；双击已关联会话的标签可定位记录，独立终端显示自己的编号。重新打开工作区仍从单个 Bash 开始，不恢复全部旧标签和进程。终端右侧滚动条可以拖动回看历史输出；新建和恢复 Codex 使用保留终端历史的内联模式，需要用本版 bundle 构建镜像；原反馈的偶发卡死尚未复现，不能将滚动条改善视作该问题已解决。
 
 ### 代理节点与新版镜像
 

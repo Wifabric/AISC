@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -347,6 +348,32 @@ class TestConversationRename:
 # ---------------------------------------------------------------------------
 
 class TestConversationRead:
+    def test_codex_native_index_wins_over_a_newer_duplicate_copy(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        original = next((ws_dir / "codex" / "sessions").rglob("*.jsonl"))
+        duplicate = original.with_name(f"rollout-2026-11-19T00-00-00-{CODEX_ID}.jsonl")
+        row = {"type": "response_item", "payload": {"type": "message", "role": "user",
+               "content": [{"type": "input_text", "text": "stale copied transcript"}]}}
+        duplicate.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        os.utime(duplicate, (original.stat().st_mtime + 60,) * 2)
+        database = sqlite3.connect(ws_dir / "codex" / "state_5.sqlite")
+        database.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT)")
+        # Native paths refer to the container mount, not the Windows host path.
+        indexed = "/root/.codex/" + original.relative_to(ws_dir / "codex").as_posix()
+        database.execute("INSERT INTO threads VALUES (?, ?)", (CODEX_ID, indexed))
+        database.commit()
+        database.close()
+        result = self._read(ws)
+        assert result["messages"][0]["text"] == "test"
+        assert _by_id(list_conversations(str(ws)), CODEX_ID)["title"] == "test"
+
+    def test_unreadable_native_index_keeps_imported_transcripts_available(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        (ws_dir / "codex" / "state_5.sqlite").write_bytes(b"not a sqlite database")
+        assert self._read(ws)["messages"][0]["text"] == "test"
+
     @pytest.mark.parametrize("agent", ["codex", "claude"])
     def test_multimodal_blocks_survive_projection(self, ws_env, agent):
         ws, ws_dir = ws_env

@@ -2,7 +2,9 @@
 
 ## Current candidate and acceptance
 
-Workbench **2.1.19-preview.1** carries CLI **0.3.0.dev0**. The local installer was built, but Windows Sandbox application control blocked both the baseline and candidate installers before the wizard ran. Fresh installation, upgrade from official 2.1.18, installed startup/PATH, and upgrade/uninstall data retention are **not verified**. The user stopped VM preparation at the 2026-11-19 02:15 deadline; documentation work does not resume it. See the [delivery record](../../../docs/plans/2.1.19-dev-plans/DELIVERY.md).
+Workbench **2.1.19-preview.1** carries CLI **0.3.0.dev0**. GitHub Windows run [44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580) passed silent fresh installation, PATH, reinstall/retention, and upgrade from official 2.1.18 at `58b25ecdfd0dfed3c0d920a05d7d612eccb75d40`. The upgrade verifies real settings/history/project/transcript samples, installed CLI reads, native window creation, and retention after silent uninstall. Later candidate results and exact heads are recorded in [DELIVERY](../../../docs/plans/2.1.19-dev-plans/DELIVERY.md).
+
+`scripts/test-windows-upgrade.ps1` deliberately refuses execution outside a GitHub Windows runner. It validates the official baseline SHA-256 and emits `upgrade-result.json` in the `windows-upgrade-acceptance` artifact. Never remove that guard to run it against a personal installation. Silent checks do not exercise the interactive wizard, Docker dependency onboarding, cancellation, or optional Docker/data cleanup. Those remain separate manual acceptance items. The earlier local sandbox policy block and VM cleanup remain historical evidence; no local VM is required for this CI path.
 
 The desktop configuration uses `installMode: currentUser`. A separate local Windows account can separate user-scoped installation state, but it is not a clean OS and does not isolate shared Docker resources. Portable desktop tests do not exercise the NSIS installation or uninstallation sections.
 

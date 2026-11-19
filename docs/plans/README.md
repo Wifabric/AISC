@@ -10,7 +10,7 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- [2.1.19 本地候选](2.1.19-dev-plans/README.md)：Workbench 2.1.19-preview.1 / CLI 0.3.0.dev0，汇集 11 月 13 日及 18 日的 15 条反馈。主要功能实测与文档完成，leader 验收待执行；安装测试按用户截止要求暂停，Provider 仍保留 1 条单测失败。尚未提交 PR、推送或发布；[发布说明](../releases/v2.1.19-preview.1.md)、[测试教程](2.1.19-dev-plans/HANDTEST.md)、[整版交付](2.1.19-dev-plans/DELIVERY.md)。
+- [2.1.19 候选收尾](2.1.19-dev-plans/README.md)：Workbench 2.1.19-preview.1 / CLI 0.3.0.dev0，覆盖 15 条反馈的实施清单。PR #104 已合入 develop；PR #105 补充日志编码、原生会话索引、Docker 官方入口和 Windows 跨版本升级检查。Python、前端及 Rust 回归通过，安装 CI 与桌面补验结果见[整版交付](2.1.19-dev-plans/DELIVERY.md)。偶发卡死按用户决定暂缓；leader 验收和正式发布单列。[发布说明](../releases/v2.1.19-preview.1.md)、[测试教程](2.1.19-dev-plans/HANDTEST.md)。
 
 - 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；反馈站回写已完成；正式 PyPI 相关事项继续保留在 [TODO](../todo.md)。当前本地 CLI 已进入 0.3.0.dev0 功能开发，这不表示旧 PyPI 待办完成或新开发号已发布；不再沿用历史的“下一开发号尚未开启”描述。
 

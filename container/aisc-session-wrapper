@@ -238,7 +238,7 @@ def _agent_argv(agent: str, resume_id: Optional[str], fork_session: bool = False
         if agent == "codex":
             if fork_session:
                 raise ValueError("agent does not support --fork-session: codex")
-            return "codex", ["codex", "resume", resume_id] + _codex_resume_overrides()
+            return "codex", ["codex", "--no-alt-screen", "resume", resume_id] + _codex_resume_overrides()
         raise ValueError(f"agent does not support --resume-id: {agent}")
     if agent == "bash":
         # v2.1.8 T2/D-4: the interactive shell is zsh (ghost text via
@@ -252,6 +252,12 @@ def _agent_argv(agent: str, resume_id: Optional[str], fork_session: bool = False
         if os.path.isfile("/usr/local/share/aisc/bashrc"):
             return "bash", ["bash", "--rcfile", "/usr/local/share/aisc/bashrc"]
     binary = AGENT_BINARIES[agent]
+    if agent == "codex":
+        # Workbench owns the visible scrollbar. Codex's fullscreen default
+        # has no terminal scrollback, so widening that bar alone cannot let
+        # users drag through history. Use the upstream inline mode for both
+        # new and resumed sessions; do not change the user's global config.
+        return binary, [binary, "--no-alt-screen"]
     return binary, [binary]
 
 

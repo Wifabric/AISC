@@ -271,6 +271,7 @@ class TestCodexResumeOverrides(unittest.TestCase):
             "codex",
             [
                 "codex",
+                "--no-alt-screen",
                 "resume",
                 SID,
                 "-c",
@@ -303,8 +304,8 @@ class TestCodexResumeOverrides(unittest.TestCase):
                 argv = wrapper._codex_resume_overrides()
         assert "model=not-the-model" not in argv
 
-    def test_non_resume_and_claude_are_untouched(self):
-        assert wrapper._agent_argv("codex", None)[1] == ["codex"]
+    def test_new_codex_uses_terminal_scrollback_and_claude_is_unchanged(self):
+        assert wrapper._agent_argv("codex", None)[1] == ["codex", "--no-alt-screen"]
         assert wrapper._agent_argv("claude", SID)[1] == ["claude", "--resume", SID]
 
     def test_claude_fork_flag_and_codex_rejection(self):

@@ -1,40 +1,40 @@
 # AISC 2.1.19-preview.1 整版交付记录
 
-核对日期：2026-11-19。面向用户和 leader 的当前结论：**本地候选已完成开发、构建和主要功能实测，文档已同步；尚未创建 PR、完成 leader 验收或正式发布。安装、升级和卸载的数据保留尚未验证，不能称全项通过。**
+核对日期：2026-11-19。**本轮主要功能、已发现的编码/会话选择/滚动条缺口已修复；Python、前端、Rust 回归和 Windows 静默新装/升级链路通过。PR #104 已合入 develop，收尾 PR #105 的代码验收提交 `2a8758af` 已通过全部适用 CI 与 Windows 安装升级检查；合入状态见 PR 链接。偶发卡死按用户决定暂缓。没有 leader 签收或正式 Release。**
 
-## 1. 当前状态与下一步
+## 1. 当前状态与责任
 
-| 环节 | 状态 | 结论与责任 |
+| 环节 | 状态 | 结论与接续 |
 | --- | --- | --- |
-| 本轮功能及修复 | 本地实现完成，存在验证边界 | 15 条反馈逐项见下表；偶发卡死按用户要求跳过，原权限/日志问题保留 |
-| 候选构建 | 已完成 | Workbench 2.1.19-preview.1 + CLI 0.3.0.dev0；Windows 安装包及便携测试目录均保留 |
-| 自动化与真实操作 | 部分通过，1 条单测失败保留 | 前端、Rust、运行时定向检查通过；Python 全集不是全绿 |
-| 用户账号验收 | 用户报告通过 | Provider 不再重复检查，不代替失败单测或原权限问题的复现 |
-| leader 新功能验收 | 待执行 | 用户转交候选/后续 PR，leader 按 [HANDTEST](HANDTEST.md)填写实际结果 |
-| Windows 安装链路 | NOT RUN / 已暂停 | 沙盒拦截安装程序；按 02:15 截止要求停止，不自动继续环境搭建 |
-| 本轮文档 | 已更新 | 发布说明、用户/开发手册、测试交接、Skill、计划、TODO、devlog 均同步；检查结果见本文末 |
-| PR、CI、合入 | 未完成 | 用户先前要求保留本地，尚无 PR；后续操作由用户决定，执行人届时补实际 head/CI |
-| 正式发布及反馈闭环 | 未完成 | 尚无本版 Release/tag、公开下载或反馈回写；不提前归档 |
+| 15 条当前版本反馈 | 14 条有实现和相应证据，1 条暂缓 | 逐条见 §3；受控样本与反馈者原场景分开记录 |
+| 自动化回归 | PASS | Python 1841 + 220 子测试；前端 902；Rust 455；环境跳过如实保留 |
+| 实际桌面/容器 | PASS（已执行范围） | 文件/SSH/技能/节点/标签/记录，另补三引擎滚动条和 Docker 官方入口 |
+| Windows 静默安装链路 | PASS | 正式旧版升级、启动/CLI/PATH、设置/记录/项目保留、静默卸载通过 |
+| 人工安装体验 | NOT RUN | GUI 向导、Docker 依赖引导、取消卸载与额外清理选择不由静默 CI 代替 |
+| 用户账号验收 | 用户报告 PASS | 不重复账号测试；技术编码与权限回归独立记录 |
+| PR 与集成 | #104 已合入；#105 提交与验收完成 | [#105](https://github.com/Wifabric/AISC/pull/105) 记录最终合入状态；代码验收提交和 CI 见 §2、§4；本轮为自查 |
+| leader 功能验收 | 未取得结论 | 按 HANDTEST 测试，同意上线需实际回复 |
+| 正式发布/反馈/归档 | 待发布条件 | 不提前写 resolved、不创建 final tag、不归档活动计划 |
 
-用户计划先让 leader 测试新功能，再安排上线。功能验收可使用同一候选的完整便携程序或源码构建；新版镜像也必须来自配套资源。功能通过不自动把安装风险标成已解决。恢复安装验证、接受遗留风险或变更发布范围时，据实际决定回写本记录。
+当前代码收尾与正式发布是不同阶段。最后一次难复现的卡死继续暂缓；原权限问题和日志问题缺少反馈者原始样本，已完成受控回归，但保留复现证据的限制。
 
 ## 2. 版本、来源与产物
 
 | 项目 | 当前事实 |
 | --- | --- |
-| 基线 | 2026-11-18 核对的 main/develop：`1c39903dc146e00ac5b7d92c8bd48433a3d4a7f5`，位于正式 v2.1.18 后 |
-| 本地目录 / 分支 | `D:\AISC\output\2.1.19-local` / `codex/2.1.19-local` |
-| 候选源码提交 | 尚未创建；当前为上述基线上的未提交修改，不能拿基线 SHA 冒充候选 head |
+| 初始基线 | v2.1.18 后的 `1c39903dc146e00ac5b7d92c8bd48433a3d4a7f5` |
+| 主更新 | [PR #104](https://github.com/Wifabric/AISC/pull/104)，develop 合入 `df448d3af9aa287e8337789583f05612fe3c4850` |
+| 收尾 | [PR #105](https://github.com/Wifabric/AISC/pull/105)，`codex/2.1.19-closeout`；首个已通过 CI 的提交 `58b25ecdfd0dfed3c0d920a05d7d612eccb75d40` |
+| 最终代码验收 | `2a8758af212493b1321e3a434992fa1451ff03f4`，Workbench CI 44462727381 和 NSIS 44462773106 全部 PASS；其后的修订仅更新不随程序打包的验收文档，构建输入不变 |
 | Workbench / CLI | `2.1.19-preview.1` / `0.3.0.dev0`，serve protocol 4 |
-| Windows 安装包 | `D:\AISC\output\2.1.19-acceptance\AISC-Workbench-2.1.19-preview.1-setup.exe`，384,144,213 字节，未签名 |
-| SHA-256 | `c40d352fcd0b98a9f2a5028a2286c1b13f3c2c3d124225859253a4d99909bf3b`；同目录有 `.sha256` |
-| 本地功能测试 | 同目录“打开本地测试版.cmd”，读取 `client-retest` 中程序、CLI 与配套 bundle |
-| 隔离数据 | 启动脚本使用同目录 `test-data` / `test-webview`；工作区文件及宿主 Docker 仍是真实资源 |
-| 公开渠道 | 本轮没有 GitHub Release、PyPI/TestPyPI 上传、公开下载或发布 tag |
+| 本地便携入口 | `D:\AISC\output\2.1.19-acceptance\打开本地测试版.cmd`；配套 `client-retest` 程序、CLI 和 bundle 已更新 |
+| 便携可执行文件 SHA-256 | Workbench `7b94806eb4c42dde03d6cb0626880f2182ffcc7ebe68ff3b9234bb318ddf983d`；CLI `91d2841c0b15a7b46241cee7c8fc409ff95f505423eb3e25eb09b4c1e89643a5`；后续仅更新外部容器脚本和校验表 |
+| 初次 CI 安装包 | [run 44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580)，artifact `aisc-workbench-windows-nsis`，对应 58b25ecd；SHA-256 `1a9ba08b5089a53f7b39d058675222f0f59ed236fc46ba6fa5c87985bc63546f` |
+| 最终 CI 安装包 | [run 44462773106](https://github.com/Wifabric/AISC/actions/runs/44462773106)，artifact `aisc-workbench-windows-nsis`；SHA-256 `cc330f34980b4b82ffff7288ce8a38200812d303e54fe7a59060ae3a60aa2b7f`；早期 `c40d352f…` 包不含本轮收尾修复 |
+| 隔离数据 | acceptance 下 `test-data` / `test-webview`；测试工作区和宿主 Docker 仍是真实资源 |
+| 公开渠道 | 没有本版 Release/tag、PyPI/TestPyPI 或公开 final 下载；Actions artifact 不是正式 Release |
 
-来源入口：[v2.1.18](https://github.com/Wifabric/AISC/releases/tag/v2.1.18)、[基线提交](https://github.com/Wifabric/AISC/commit/1c39903dc146e00ac5b7d92c8bd48433a3d4a7f5)、[反馈站](https://feedback.alanevergarden.xyz)。这些是历史核对来源，不表示本轮文档更新重新查询了远端最新状态。
-
-交给另一台电脑时，需准备不含测试状态和凭据的完整运行文件；不能只发送启动脚本或单个 Workbench exe。正式版版本号、提交、tag、资产和校验值在发布准备时重新核对；当前文档更新没有重打二进制或变更产品版本。
+转交其他机器时只提供完整运行文件或 CI 安装包，不打包测试凭据、test-data、test-webview 或个人配置。包、提交和摘要应成套交接。
 
 ## 3. 全部 15 条反馈的处理
 
@@ -46,13 +46,13 @@
 | 2 | Codex Provider 默认配置 | 新建默认 Responses；仅 Codex 新建列表隐藏 Ark；按格式填入 DeepSeek/智谱/Kimi 地址，已有和手填地址保留 | 用户报告账号手测通过；公开模型接口的鉴权响应不当作真实账号成功 |
 | 3 | 侧边栏移动文件和文件夹 | 右键移动及单项拖动到目录，本地/SSH 接入文件操作；同名不覆盖，拖入终端不执行 | 本地与真实 SSH 文件/目录、冲突及内容对照通过 |
 | 4 | 默认安装 gh CLI | 新镜像增加 GitHub CLI | 真实镜像执行 `gh --version` 返回 2.23.0；仅是本轮实测版本 |
-| 5 | Codex、Bash、Claude 终端滚动条 | 加宽终端滚动条，便于回看历史输出 | Bash 从第 274 行回到第 85 行，再回到第 300 行；其他两个 agent 独立场景未逐项实测 |
-| 6 | 工作记录与实际会话不一致 | 按引擎与原生 ID 归并，重复日志取最近写入记录；依据原生父子信息归档，缺信息留未归档 | 自动化及受控样本通过；反馈者原始日志的预览/恢复一致性尚需核对 |
+| 5 | Codex、Bash、Claude 终端滚动条 | 加宽滚动条；Codex 新建/恢复使用 --no-alt-screen，保留外层终端历史，不改全局配置 | Bash 300 行回滚通过；Claude 原生客户端经本地模拟接口产生 220 行，拖到第 37 行再回第 220 行；Codex 内联模式拖看四轮原生历史并返回输入行通过 |
+| 6 | 工作记录与实际会话不一致 | 按引擎与原生 ID 归并，Codex 优先选择原生 SQLite 索引指定的记录；无可用索引时取最近写入记录；依据原生父子信息归档，缺信息留未归档 | 重复旧日志/原生索引回归通过；Codex 8 条消息预览与原生恢复四轮一致，Claude 4 条消息含相同 220 行输出；无反馈者原样本，不称原自然场景已复现 |
 | 7 | 父工作记录移动/删除时的子记录 | 移动覆盖后代，删除确认计算受影响数量，列表按层级显示 | 父/子/孙整体移入、移出、删除通过，无关记录保留；取消删除通过 |
 | 8 | 标签导航栏调整 | 拖动排序、加号及分屏选择启动目录；修复桌面原生拖动失效 | 双向排序、当前会话不变、A/B 分屏独立目录通过；重开工作区仍从单个 Bash 开始 |
-| 9 | Codex、Claude 官方直连报错 | 刷新当前官方卡时重新应用配置 | 新容器两个 agent 连续切换及用户账号手测通过；重建卷权限错误未复现 |
+| 9 | Codex、Claude 官方直连报错 | 刷新当前官方卡时重新应用配置 | 用户账号手测通过；隔离无网络容器内两个 agent 各验证正常刷新、真实 EACCES 拒绝、恢复权限后三阶段，共 6 项 PASS；原重建卷自然触发条件未知 |
 | 10 | 标签与会话对应关系不清楚 | 标签和记录对应编号，引擎颜色区分，双击关联标签定位 | 桌面双击定位通过；独立终端单独编号 |
-| 11 | Docker 重置按钮 | 设置提供 Docker Desktop 恢复出厂指引 | 只验证入口和说明；没有执行宿主 Docker 恢复出厂 |
+| 11 | Docker 重置按钮 | 设置打开 Docker 官方 Dashboard，提示进入 Troubleshoot，由官方最终确认 | Computer Use 验证 Dashboard 关闭后可从 AISC 重新打开、官方 Troubleshoot 有重置入口、退出页面；未执行宿主恢复出厂 |
 | 12 | 镜像构建 UI 重复提示 | 按提示内容去重，避免相同警告反复出现 | 真实专用镜像构建 140.3 秒完成，未观察到原重复提示；另有前端回归 |
 | 13 | 技能更新全部报错 | 嵌套目录定位、唯一匹配及异常链接检查 | 真实 `mattpocock/skills` 20 项更新通过，界面恢复可操作，适配器退出码 0 |
 | 14 | 技能安装全部报错 | 同一定位修复用于整组安装，保留原启停状态 | GUI 安装列表从 2 项增至 20 项，刷新后数量正确，适配器退出码 0 |
@@ -62,30 +62,46 @@
 
 ## 4. 验证证据与实际限制
 
-下列日志位于开发机 `D:\AISC\output`。未上传到 PR 的本地证据不能当作远端 CI 已通过。
+本地证据位于 `D:\AISC\output`。下列本地计数不冒充远端 CI，独立重测也不相加成全集数量。
 
-| 类别 | 结果 | 证据 |
+| 类别 | 实际结果 | 证据 |
 | --- | --- | --- |
-| 最终前端 | PASS：107 个文件、900 项测试 | `2.1.19-ui-pointer-final.log` |
-| Rust | PASS：455 项通过、2 项忽略；之后未再改 Rust | `2.1.19-rust-verified.log` |
-| 运行时定向 | PASS：75 项、6 项子测试 | `2.1.19-port-retry-tests.log` |
-| 最新 Python 全集 | FAIL：1827 通过、74 跳过、218 子测试通过、10 失败 | `2.1.19-python-port-final.log` |
-| Bash 环境失败复测 | PASS：上述 10 失败中的 9 项改用 Git Bash 后通过；该次另有 2 项跳过 | `2.1.19-python-port-env-recheck.log` |
-| Provider 剩余单测 | FAIL：`test_live_fetch_fills_an_empty_catalog`；按用户决定停止此项复查 | 同 Python 全集日志；不因用户账号手测通过而删除失败记录 |
-| 本地 GUI | PASS（已执行子集）：移动/冲突、目录、排序、记录操作 | `2.1.19-device-checks/cu-file-conflict.png`、`cu-split-directories.png`、`cu-tabs-pointer-reordered.png`、`cu-records-deleted-unrelated-retained.png` |
-| SSH GUI 与内容 | PASS（已执行子集）：文件/目录移动、冲突、拖入 Bash、最近列表 | 同目录 `cu-remote-directory-moved.png`、`cu-remote-move-conflict.png`、`cu-remote-move-content-proof.json`、`cu-remote-terminal-drop.png`、`cu-remote-recent-layout-fixed.png` |
-| 技能真实数据面/GUI | PASS：20 项安装、20 项更新 | `2.1.19-gui-market20.log`、`2.1.19-gui-frontend-verified.log` |
-| 代理节点与启动摘要 | PASS：QA-Select 切换/读回、DIRECT 1131 ms、导入后警告消失 | `2.1.19-proxy-session.log`、`2.1.19-packaged-nodes.json`、device-checks 中 before-import/after-import 截图 |
-| 便携程序 | PASS：本地测试入口启动最终候选 | `2.1.19-portable-smoke.json` 及后续 device-checks；不代表安装流程通过 |
-| 用户账号测试 | 用户报告 PASS | 2026-11-18 用户回复“全部测试过了，没问题”；范围为其账号教程 |
-| PR CI / leader 验收 | NOT RUN | 尚无候选 PR/head 或 leader 结论 |
-| Windows 安装链路 | NOT RUN / 暂停 | 下节说明 |
+| Python 全集 | PASS：1841 通过、74 跳过、220 子测试通过 | `2.1.19-closeout-python-all.log`，显式 candidate PYTHONPATH 与 Git Bash |
+| 前端 | PASS：107 文件、902 项 | `2.1.19-closeout-frontend-all.log` |
+| Rust | PASS：455 项、2 忽略 | `2.1.19-closeout-rust.log`；环境门控的 SSH/运行时用例不等于实际数据面执行 |
+| Windows 编码 | PASS：原空目录失败及 UTF-8/写入错误回归 | `2.1.19-closeout-catalog-cp1252.log`，PYTHONUTF8=0 |
+| 工作记录 | PASS：79 项 | `2.1.19-closeout-conversations.log` |
+| Codex 内联补修 | PASS：55 项、11 环境跳过 | `2.1.19-closeout-inline-tests.log`，新建/恢复参数及会话命令 |
+| 本地编译 | PASS：冻结 CLI、前端 production、Tauri release | `2.1.19-closeout-cli-build.log`、`2.1.19-closeout-desktop-build.log` |
+| 首轮 Workbench CI | PASS，58b25ecd | [run 44458639592](https://github.com/Wifabric/AISC/actions/runs/44458639592) |
+| 首轮 NSIS / 安装升级 | PASS，58b25ecd | [run 44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580)，`windows-upgrade-acceptance/upgrade-result.json` |
+| 安装报告本地副本 | PASS：6 个升级步骤及摘要 | `2.1.19-44458626580-windows-upgrade-acceptance/upgrade-result.json` |
+| Codex 原生预览/恢复/滚动 | PASS：8 条消息、四轮历史一致；滚动条回顶/中间/末尾 | `2.1.19-closeout-codex-preview.png`、`-codex-inline-top.png`、`-codex-inline-history.png`、`-codex-inline-bottom.png` |
+| Claude 原生滚动与预览 | PASS：220 行回滚，预览含同一输出 | `2.1.19-closeout-claude-scroll-history.png`、`-claude-scroll-returned.png`、`-claude-preview.png`；使用容器内本地模拟接口，不是新账号测试 |
+| Docker 官方入口 | PASS：从 AISC 重开 Dashboard、进入官方 Troubleshoot 后退出 | `2.1.19-closeout-docker-official-flow.png`、`-docker-reopened.png`；没有重置宿主数据 |
+| 权限拒绝与恢复 | PASS：Claude/Codex 共 6 阶段 | `2.1.19-closeout-permissions.json`；隔离、无网络、无用户账号，不能替代反馈者自然复现 |
+| 本地/SSH GUI | PASS：移动、冲突、目录、标签、多代记录；远程内容对照 | `2.1.19-device-checks/cu-file-conflict.png`、`cu-remote-move-content-proof.json`、`cu-tabs-pointer-reordered.png`、`cu-records-deleted-unrelated-retained.png` |
+| 技能真实数据面/GUI | PASS：20 项安装及更新 | `2.1.19-gui-market20.log`、`2.1.19-gui-frontend-verified.log` |
+| 网络节点与摘要 | PASS：切换/读回、DIRECT 测速及导入摘要 | `2.1.19-proxy-session.log`、`2.1.19-packaged-nodes.json` |
+| 用户账号测试 | 用户报告 PASS | 2026-11-18 用户回复“全部测试过了，没问题” |
+| leader、人工安装交互、final 发布 | 未执行/未取得结论 | 不用自动化或本地开发者自测代签 |
 
-历史 `2.1.19-python-final.log` 的 1834 通过属于前一轮结果，不用来覆盖最终全集的失败。测试数量按各次运行分别列出，不将重测次数加总成“全套通过”。
+旧 `2.1.19-python-port-final.log` 的 10 失败为历史记录：9 项与 Bash 环境有关，剩余模型目录日志编码已修复；以本轮明确源码路径的全集及编码回归为准。
 
-## 5. Windows 安装问题与清理记录
+最终代码验收提交 `2a8758af212493b1321e3a434992fa1451ff03f4`：
 
-未验收项目：全新安装；正式 2.1.18 → 候选升级；安装后启动及 CLI/PATH；升级保留设置/记录/项目文件；取消卸载、默认数据保留及额外清理范围。
+- [Workbench CI 44462727381](https://github.com/Wifabric/AISC/actions/runs/44462727381)：frontend / rust / cli 全部 success。
+- [Windows NSIS 44462773106](https://github.com/Wifabric/AISC/actions/runs/44462773106)：构建、静默新装/PATH/重装保留、官方 2.1.18 升级全部 success；`windows-upgrade-acceptance` 的六个步骤均 PASS。
+- 从最终镜像重新创建运行时、新建 Codex 正常进入；实际进程包含 `--no-alt-screen`，容器脚本摘要与最终源码一致。证据：`2.1.19-closeout-runtime-final.json`、`2.1.19-closeout-codex-new-final.png`。
+- 原模拟 Provider 已移除并恢复原官方选择；两轮桌面测试运行时及权限测试容器已删除，保留测试样本与证据。没有重置宿主 Docker。
+
+## 5. Windows 安装覆盖与历史环境问题
+
+**已通过：**静默全新安装、用户 PATH、同版本重装/保留；校验官方 2.1.18 安装包后升级到候选；升级前后真实设置、最近工作区、项目文件和原生 Codex 会话字节对照；已安装 CLI 读取会话；Workbench 创建原生窗口；启动后设置和历史语义保留；静默卸载保留样本并移除程序 bundle。测试只运行在一次性 Windows runner，不碰用户现有安装。
+
+**NOT RUN：**图形安装向导的逐页点击、缺失 Docker 时的依赖安装、交互卸载取消以及可选额外清理。CI 的 `/S` 刻意跳过这些交互；原生窗口启动仅为启动检查。未签名包在强制应用控制环境中的拦截仍可能存在，需发布方签名或可接受候选的正常测试环境；没有改任何 Windows 安全策略。
+
+以下保留本机历史环境调查和清理事实，不把它们作为当前自动化安装失败：
 
 - 本轮沙盒内 Smart App Control 状态为 1（强制执行），CodeIntegrity 3077/3033 指向候选安装程序；正式旧版也受阻。安装向导未运行，不能据此判定 AISC 安装逻辑本身成功或失败。
 - 宿主只读核对 SAC 为 0，不能把原因归结为宿主 SAC 已开启。旧成功沙盒未保存策略状态，差异原因仍未证实。
@@ -116,14 +132,15 @@
 | [CLI Release Notes](../../releases/v0.3.0.dev0.md) | 补充命令参数、文件服务、会话与运行时变化、配对及渠道边界 |
 | [用户手册](../../../README.md) | 更新候选版本、文件移动、标签/目录、节点、Provider 模板、技能与升级限制 |
 | [开发手册](../../../DEVELOP_WIKI.md) / [Workbench](../../../workbench/README.md) / [安装器维护](../../../workbench/src-tauri/nsis/README.md) | 补齐本版交接、构建资源配对、接口与签名说明、功能与安装验收边界 |
-| [活动计划](README.md) / [手测教程](HANDTEST.md) | 范围、顺序、暂停决定、leader 测试步骤及结果模板已同步 |
+| [活动计划](README.md) / [手测教程](HANDTEST.md) | 范围、实际 CI/桌面结果、leader 步骤及安装边界已同步 |
 | [devlog](../../devlog.md) / [TODO](../../todo.md) / [计划索引](../README.md) | 功能、文档更新与待办分别记账；旧版 PyPI 外部待办独立保留 |
 | [开发 Skill](../../../skills/aisc-development/SKILL.md) | 补充发布说明需与实现及 tag 文件命名一致的检查，保留原授权边界 |
 | 正式 2.1.19 / CLI final 说明与资产 | 尚未定稿或发布；当前说明属于预览候选，不伪造 final 验收结论 |
 | 反馈站、归档、分支清理 | 未执行；发布及验收未闭环，计划保留活动状态 |
 
-下一步按现有授权推进：用户确定 PR 提交时机；开发者准备实际提交及适用 CI；leader 执行功能验收；安装风险、Provider 剩余单测与未复现问题的后续处置由实际决定记录。正式发布后才填写 Release/tag/下载/反馈回写/归档证据，不能预先勾选完成。
 
-本轮文档检查：仓库 `tools/check-docs.sh` **51 项通过、0 警告、0 失败**；版本与发布说明的现有契约测试 **10 项通过**；两条版本及对应 Release Notes 文件名/标题匹配；本轮新增和修改内容中的 **54 个相对链接有效**；开发 Skill 校验通过。日志位于 `D:\AISC\output\2.1.19-docs-check.log`、`2.1.19-docs-contract-tests.log`、`2.1.19-docs-version-check.log` 和 `2.1.19-docs-links.json`。
+PR #105 按已有授权提交、验证和合入 develop。正式版本、main/final tag、公开资产及反馈 resolved 回写等到 leader 结果与对应发布条件满足后执行；当前计划保持活动状态。反馈站当前版本 15 条中偶发卡死继续单列，未发布之前不伪装“用户已拿到修复”。历史实时富文本增强另属既有 intake，不追加进本版范围。
 
-共同步 13 份仓库文档；本地 `2.1.19-acceptance/一步一步测试.md` 已同步新版教程并转换为本机可用的链接，沙盒续测说明已在开头标注停止状态，防止后续误执行历史连接步骤。当前更新不重跑暂停的安装测试、不重建二进制，也不代表新增 PR 或发布。
+本轮文档检查 51 项通过、0 警告、0 失败；会话/版本/工作流契约 81 项通过、11 项按环境跳过；1368 个容器资源摘要全部一致。日志为 `2.1.19-closeout-docs-check.log`、`2.1.19-closeout-final-contracts.log`、`2.1.19-closeout-vendor-final.json`。便携包关键文件摘要见 `2.1.19-closeout-portable-final-sha256.json`。
+
+最终代码验收 CI 与产物摘要见上文；PR 页面记录文档修订 head 与实际合入结果。文档修订不得改变已验收的构建输入；若修改程序、容器或安装逻辑，须重新验证。本地手测教程与沙盒交接开头同步当前状态，避免后续误按历史 VM 步骤重建环境。

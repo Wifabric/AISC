@@ -42,8 +42,8 @@ npm test
 npm run build
 ```
 
-Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；没有执行的项写 NOT RUN。当前尚无 PR/远端 CI/leader 验收结论；已知 1 条 Provider 单测失败与暂停的 Windows 安装验收保留在 DELIVERY 中。
+Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；没有执行的项写 NOT RUN。PR #104 已合入 develop，收尾 PR #105 的实际 head、CI 和桌面证据见 DELIVERY。Provider 编码单测已修复，Windows 静默安装/升级检查已通过；人工向导和 leader 结论单列。
 
 ## 打包与发布
 
-Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。当前仍为本地未签名候选，没有公开 Release 或 final 产物。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；创建 PR、推送、tag 和发布沿用用户当次授权。
+Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。当前仍为未签名预览候选，CI 可下载构建产物，没有公开 Release 或 final 产物。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；创建 PR、推送、tag 和发布沿用用户当次授权。

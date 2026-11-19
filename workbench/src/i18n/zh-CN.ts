@@ -450,6 +450,7 @@ export const zhCN = {
   "tabbar.directory": "工作目录",
   "settings.docker.reset": "重置 Docker Desktop…",
   "settings.docker.resetSteps": "请先备份需要的容器、镜像和数据卷。在 Docker Desktop 右上角打开 Troubleshoot（疑难解答），选择 Reset to factory defaults（恢复出厂设置），核对影响后在 Docker 中确认。",
+  "settings.docker.resetFailed": "无法打开 Docker Desktop。请确认已安装，或手动打开后进入疑难解答",
   "usage.nodes.list": "刷新代理节点",
   "usage.nodes.select": "使用节点",
   "usage.nodes.delay": "测延时",

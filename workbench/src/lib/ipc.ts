@@ -510,6 +510,7 @@ export const cancelBuild = (tag: string) => invoke<boolean>("cancel_build", { ta
 // --- S4.1.b fix: start the Docker engine (Docker Desktop) ---
 
 export const startDocker = () => invoke<void>("start_docker");
+export const openDockerReset = () => invoke<void>("open_docker_reset");
 
 // --- Stage 5 (A-ONB02): environment readiness (installed ≠ engine ready) ---
 

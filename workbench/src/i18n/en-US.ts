@@ -450,6 +450,7 @@ export const enUS: Record<string, string> = {
   "tabbar.directory": "Working directory",
   "settings.docker.reset": "Reset Docker Desktop…",
   "settings.docker.resetSteps": "Open Docker Desktop and select Troubleshoot (the question mark at the top right). Choose Reset to factory defaults and review Docker’s confirmation. Back up any containers, images and volumes you need first.",
+  "settings.docker.resetFailed": "Could not open Docker Desktop. Check that it is installed, or open it manually and select Troubleshoot",
   "usage.nodes.list": "Load proxy nodes",
   "usage.nodes.select": "Use node",
   "usage.nodes.delay": "Test latency",
