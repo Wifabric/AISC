@@ -1,6 +1,6 @@
 # AISC 开发者手册
 
-当前本地候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**，基线 `1c39903d`，本地分支 `codex/2.1.19-local`；尚未提交候选 PR、合入或发布。功能范围见[发布说明](docs/releases/v2.1.19-preview.1.md)，实际证据与遗留项见[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)，leader 操作步骤见[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
+当前候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104) 已合入 develop（`df448d3a`）；后续收尾在 [PR #105](https://github.com/Wifabric/AISC/pull/105)、分支 `codex/2.1.19-closeout`，尚未正式发布。功能范围见[发布说明](docs/releases/v2.1.19-preview.1.md)，实际证据与遗留项见[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)，leader 操作步骤见[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
 
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
@@ -323,9 +323,9 @@ python3 -c "import aisc; print(aisc.__file__)"
 
 ### 2.1.19 候选接续
 
-本轮已有前端 900 项、Rust 455 项和运行时相关 75 项通过的记录，但最新 Python 全集仍保留 1 条 Provider 单测失败；不能把单组 PASS 写成全门禁通过。用户报告 Provider 账号手测通过并要求停止该项复查，偶发卡死也按要求跳过。Windows 安装环境在用户 02:15 截止前没有进入 AISC 实测，已停止并清理，后续文档更新不恢复测试。
+本轮收尾回归前端 902 项、Rust 455 项、Python 1841 项及 220 子测试通过；原模型目录日志编码失败已修复。用户报告 Provider 账号手测通过，不重复账号测试；偶发卡死按要求暂缓。Windows 安装改用一次性 GitHub runner，静默新装、正式 2.1.18 升级、启动/CLI/PATH 与数据保留已通过；人工向导、依赖安装及交互卸载单列 NOT RUN。本机沙盒/虚拟机已停止清理，不重新搭建。
 
-给 leader 验收时记录实际 PR head（目前尚无），并配对当前 Workbench、冻结 CLI 和完整 bundle。便携版可先验证功能；工作区文件和 Docker 资源依然真实可写。远程文件移动需要对应的远端 CLI，新节点控制、技能修复及 gh 需要本版资源构建的镜像。仅启动 Vite 网页或替换前端不能覆盖这些变化。
+给 leader 验收时记录 PR #105 的实际 head 和对应 CI，并配对当前 Workbench、冻结 CLI 和完整 bundle。便携版可先验证功能；工作区文件和 Docker 资源依然真实可写。远程文件移动需要对应的远端 CLI，新节点控制、技能修复、Codex 内联滚动及 gh 需要本版资源构建的镜像。仅启动 Vite 网页或替换前端不能覆盖这些变化。
 
 当前新增接口为 `network nodes list/select/delay`（必填 workspace/runtime ID）、`session open --working-directory`（工作区相对子目录）和 serve `fs.move`。serve protocol 仍为 4；旧 CLI 同协议号不代表已实现这些接口。兼容性与错误边界见 [CLI Release Notes](docs/releases/v0.3.0.dev0.md)。文件移动不能降级为覆盖目标的操作；端口冲突清理仅作用于本次返回的完整容器 ID。
 
