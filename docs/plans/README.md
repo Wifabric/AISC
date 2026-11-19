@@ -10,7 +10,9 @@ topical plans under their own directories.
 
 ## Current active plan
 
-- 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；反馈站回写已完成；正式 PyPI 相关事项继续保留在 [TODO](../todo.md)，不把归档当作外部事项完成。下一 CLI 开发号在正式 PyPI 验证后开启。
+- [2.1.19 正式发布准备](2.1.19-dev-plans/README.md)：PR #104、#105 已合入 develop；公开候选 Workbench 2.1.19-preview.1 / CLI 0.3.0.dev0 的回归、CI、桌面检查以及用户功能/安装手测已通过。偶发卡死暂缓；当前准备 Workbench 2.1.19 / CLI 0.3.0 的正式版本、main 集成、产物和渠道，尚未发布 Final。[整版交付](2.1.19-dev-plans/DELIVERY.md)、[正式说明准备稿](../releases/v2.1.19.md)、[操作参考](2.1.19-dev-plans/HANDTEST.md)。
+
+- 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；反馈站回写已完成；正式 PyPI 相关事项继续保留在 [TODO](../todo.md)。当前本地 CLI 已进入 0.3.0.dev0 功能开发，这不表示旧 PyPI 待办完成或新开发号已发布；不再沿用历史的“下一开发号尚未开启”描述。
 
 ## Previous stages and intake
 

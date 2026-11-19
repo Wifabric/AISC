@@ -127,13 +127,13 @@ const flashId = ref("");
 let rowFlashTimer: number | null = null;
 
 async function activate(p: CcSwitchProvider): Promise<void> {
-  if (mutating.value || p.is_current) return;
+  if (mutating.value || (p.is_current && p.base_url)) return;
   let target = p.id;
   if (!p.base_url) {
     // Official-direct card: enabling it cancels the active proxy
     // (IDEA-4 round 3 semantics, relocated from the old current-row click).
     const current = providers.value.find((x) => x.is_current);
-    if (current) {
+    if (current && !p.is_current) {
       const ok = await confirm(
         t("ccswitch.cancelProxyConfirm", { name: current.name || current.id }));
       if (!ok) return;

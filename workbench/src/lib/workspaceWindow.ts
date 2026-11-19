@@ -41,6 +41,8 @@ export async function openWorkspaceWindow(opts: WorkspaceWindowOpts = {}): Promi
     width: inner.width,
     height: inner.height,
     center: true,
+    // Match the main window: let HTML drag/drop reach file and record lists.
+    dragDropEnabled: false,
   });
   win.once("tauri://error", (e) => console.warn("[w3] window spawn failed:", e));
 }

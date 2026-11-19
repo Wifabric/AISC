@@ -10,6 +10,7 @@ import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
+import { memberRows, type MemberTreeRow } from './workRecordLayout';
 import type { WorkRecordMember, WorkRecordCollection } from "../../types";
 
 const props = defineProps<{ workspace: string | null }>();
@@ -178,6 +179,23 @@ function requestConversationDelete(item: ConversationSummary, collectionId?: str
   const conversations = matches.some((candidate) => candidate.conversation_id === item.conversation_id)
     ? matches
     : [...matches, item];
+  const ids = new Set(conversations.map(c => c.conversation_id.toLowerCase()));
+  const children = new Map<string, ConversationSummary[]>();
+  for (const c of explorer.conversations) {
+    if (c.agent !== item.agent || !c.parent_thread_id) continue;
+    const parent = c.parent_thread_id.toLowerCase();
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent)!.push(c);
+  }
+  for (const c of conversations) {
+    for (const child of children.get(c.conversation_id.toLowerCase()) ?? []) {
+      const id = child.conversation_id.toLowerCase();
+      if (!ids.has(id)) {
+        ids.add(id);
+        conversations.push(child);
+      }
+    }
+  }
   pendingDelete.value = {
     kind: "conversation",
     collectionId: collectionId ?? undefined,
@@ -190,8 +208,6 @@ function requestConversationDelete(item: ConversationSummary, collectionId?: str
 async function performConversationDelete(conversations: ConversationSummary[]) {
   for (const item of conversations) {
     await explorer.deleteConversation(item);
-  }
-  for (const item of conversations) {
     const id = item.conversation_id.toLowerCase();
     for (const collection of records.collections) {
       if (collection.members.some((m) => m.agent === item.agent && m.conversation_id.toLowerCase() === id)) {
@@ -214,36 +230,8 @@ async function confirmQuietDelete() {
 }
 
 
-interface MemberTreeRow {
-  member: WorkRecordMember;
-  depth: number;
-  childCount: number;
-  parentKey: string | null;
-}
-
-function memberTree(collection: WorkRecordCollection): MemberTreeRow[] {
-  const byId = new Map(collection.members.map((member) => [member.conversation_id.toLowerCase(), member]));
-  const children = new Map<string, WorkRecordMember[]>();
-  for (const member of collection.members) {
-    const conversation = conversationBy.value.get(member.agent + ":" + member.conversation_id.toLowerCase());
-    const parentId = conversation?.parent_thread_id?.toLowerCase();
-    const parentMember = parentId ? byId.get(parentId) : undefined;
-    const key = parentMember ? parentMember.conversation_id.toLowerCase() : "";
-    const bucket = children.get(key) ?? [];
-    bucket.push(member);
-    children.set(key, bucket);
-  }
-  const rows: MemberTreeRow[] = [];
-  const visit = (parentKey: string, depth: number, stack: Set<string>): void => {
-    for (const member of children.get(parentKey) ?? []) {
-      const key = member.conversation_id.toLowerCase();
-      if (stack.has(key)) continue;
-      rows.push({ member, depth, childCount: (children.get(key) ?? []).length, parentKey: parentKey || null });
-      visit(key, depth + 1, new Set([...stack, key]));
-    }
-  };
-  visit("", 0, new Set());
-  return rows;
+function memberTree(collection: WorkRecordCollection) {
+  return memberRows(collection, conversationBy.value);
 }
 
 function memberVisible(row: MemberTreeRow): boolean {
@@ -343,17 +331,13 @@ function areaKeys(collectionId: string | null): string[] {
   if (collectionId === null) return unfiledTreeRows.value.map((row) => unfiledKey(row.conversation));
   return (records.byId(collectionId)?.members ?? []).map((member) => member.member_key);
 }
-function orderWithKey(keys: string[], key: string, beforeKey?: string): string[] {
-  const without = keys.filter((item) => item !== key);
-  const index = beforeKey ? keys.indexOf(beforeKey) : without.length;
-  without.splice(index < 0 ? without.length : index, 0, key);
-  return without;
-}
 async function dropMember(event: DragEvent, targetCollectionId: string | null, targetMemberKey?: string) {
   event.preventDefault();
   event.stopPropagation();
   const source = draggedMember(event);
-  if (!source) return;
+  if (source) await moveSubtree(source, targetCollectionId, targetMemberKey);
+}
+async function moveSubtree(source: DragMemberPayload, targetCollectionId: string | null, targetMemberKey?: string) {
   // b2 (反馈 #11): moving a parent moves its whole subtree, in source order.
   const moving = source.subtree?.length
     ? source.subtree
@@ -376,9 +360,10 @@ async function dropMember(event: DragEvent, targetCollectionId: string | null, t
   }
   for (const entry of moving) {
     if (source.collectionId === null) {
-      await records.addMember(targetCollectionId!, entry.agent, entry.conversationId);
+      if (!await records.addMember(targetCollectionId!, entry.agent, entry.conversationId)) return;
     } else {
-      await records.moveMember(source.collectionId, targetCollectionId, entry.agent, entry.conversationId, area);
+      const order = moving.length === 1 ? area : undefined;
+      if (!await records.moveMember(source.collectionId, targetCollectionId, entry.agent, entry.conversationId, order)) return;
     }
   }
   if (targetCollectionId === null) await records.reorderUnfiled(area);
@@ -621,16 +606,37 @@ async function forkSessionFromMenu(): Promise<void> {
   await refreshWorkRecords();
 }
 defineExpose({ buildMemberDragSubtree });
+watch(() => records.revealKey, async key => {
+  if (!key) return;
+  const collection = records.collections.find(c => c.members.some(m => m.member_key === key));
+  if (collection?.status === "archived") showArchived.value = true;
+  if (collection) collapsedCollections.value.delete(collection.id);
+  else unfiledExpanded.value = true;
+  const expanded = collection ? expandedMembers.value : expandedUnfiled.value;
+  const visited = new Set<string>();
+  let c = conversationBy.value.get(key) ?? records.unfiled.find(c => unfiledKey(c) === key);
+  while (c?.parent_thread_id && !visited.has(c.parent_thread_id)) {
+    visited.add(c.parent_thread_id);
+    expanded.add(c.parent_thread_id.toLowerCase());
+    c = conversationBy.value.get(c.agent + ":" + c.parent_thread_id.toLowerCase());
+  }
+  await nextTick();
+  const row = document.querySelector<HTMLElement>(`[data-record-key="${CSS.escape(key)}"]`);
+  row?.focus();
+  row?.scrollIntoView?.({ block: "nearest" });
+  records.revealKey = "";
+}, { immediate: true });
 async function moveFromMenu(targetId: string | null) {
   const menu = contextMenu.value;
   if (!menu) return;
-  const next = orderWithKey(areaKeys(targetId), menu.memberKey);
-  if (menu.collectionId) {
-    await records.moveMember(menu.collectionId, targetId, menu.agent, menu.conversationId, next);
-  } else if (targetId) {
-    await records.addMember(targetId, menu.agent, menu.conversationId);
-    await records.reorderMembers(targetId, next);
-  }
+  const collection = menu.collectionId ? records.byId(menu.collectionId) : null;
+  const keys = collection ? buildMemberDragSubtree(collection.id, menu.memberKey)
+    : subtreeKeysFrom(unfiledTreeRows.value, row => unfiledKey(row.conversation), menu.memberKey);
+  const subtree = collection ? collectionEntries(collection, keys) : keys.flatMap(key => {
+    const c = records.unfiled.find(item => unfiledKey(item) === key);
+    return c ? [{ memberKey: key, agent: c.agent, conversationId: c.conversation_id }] : [];
+  });
+  await moveSubtree({ ...menu, subtree }, targetId);
   if (contextMenu.value === menu) closeMenu();
 }
 
@@ -742,7 +748,7 @@ watch(() => props.workspace, async (workspace) => {
             @keydown.esc.prevent="renamingCollectionId = null"
             @blur="commitCollectionRename(collection.id)"
           >
-          <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ collection.title }}</h4>
+          <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ records.numbers.get(collection.id) }} {{ collection.title }}</h4>
           <span v-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
           <span class="head-actions">
             <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" :data-testid="'new-session-' + collection.id" @click.stop="createSessionInRecord(collection)">＋</button>
@@ -760,6 +766,7 @@ watch(() => props.workspace, async (workspace) => {
               draggable="true"
               tabindex="0"
               :data-testid="'member-' + row.member.member_key"
+              :data-record-key="row.member.member_key"
               @dragstart="memberDragStart($event, collection.id, row.member)"
               @dragover.prevent
               @drop.stop="dropMember($event, collection.id, row.member.member_key)"
@@ -774,7 +781,7 @@ watch(() => props.workspace, async (workspace) => {
               </button>
               <span v-else class="conversation-twisty spacer" aria-hidden="true" />
               <input v-if="renamingConversationKey === row.member.member_key" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @click.stop @keydown.enter.prevent="commitConversationRename(memberConversation(row.member.member_key)!)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(memberConversation(row.member.member_key)!)">
-              <span v-else class="member-title">{{ memberTitle(row.member.member_key) }}</span>
+              <span v-else class="member-title">{{ records.numbers.get(row.member.member_key) }} {{ memberTitle(row.member.member_key) }}</span>
               <span class="member-agent">{{ row.member.agent }}</span>
               <button class="ui-icon-button sm" type="button" :data-testid="'resume-' + row.member.member_key" :disabled="!memberConversation(row.member.member_key)?.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" @click.stop="resumeMember(row.member.member_key)">▶</button>
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(row.member.member_key)">✎</button>
@@ -792,7 +799,7 @@ watch(() => props.workspace, async (workspace) => {
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path :d="unfiledExpanded ? 'M3 4.5 6 8l3-3.5' : 'M4.5 2.5 8 6l-3.5 3.5'" /></svg>
             <span class="conversation-child-count">{{ records.unfiled.length }}</span>
           </button>
-          {{ t("workRecords.unfiled") }}
+          C0 {{ t("workRecords.unfiled") }}
         </h4>
         <div v-if="unfiledExpanded" class="work-record-members">
           <template v-for="row in unfiledTreeRows" :key="unfiledKey(row.conversation)">
@@ -801,6 +808,7 @@ watch(() => props.workspace, async (workspace) => {
               class="unfiled-row"
               draggable="true"
               :data-testid="'unfiled-' + unfiledKey(row.conversation)"
+              :data-record-key="unfiledKey(row.conversation)"
               @dragstart="unfiledDragStart($event, row.conversation)"
               @dragover.prevent
               @drop.stop="dropMember($event, null, unfiledKey(row.conversation))"
@@ -816,7 +824,7 @@ watch(() => props.workspace, async (workspace) => {
               </button>
               <span v-else class="conversation-twisty spacer" aria-hidden="true" />
               <input v-if="renamingConversationKey === unfiledKey(row.conversation)" v-model="renameValue" class="title-input member-title-input" type="text" data-testid="conversation-rename-input" @click.stop @keydown.enter.prevent="commitConversationRename(row.conversation)" @keydown.esc.prevent="renamingConversationKey = null" @blur="commitConversationRename(row.conversation)">
-              <span v-else class="member-title">{{ row.conversation.title }}</span>
+              <span v-else class="member-title">{{ records.numbers.get(unfiledKey(row.conversation)) }} {{ row.conversation.title }}</span>
               <span class="member-agent">{{ row.conversation.agent }}</span>
               <button class="ui-icon-button sm" type="button" :disabled="!row.conversation.resumable" :title="t('workRecords.resume')" :aria-label="t('workRecords.resume')" :data-testid="'resume-' + unfiledKey(row.conversation)" @click.stop="explorer.resumeConversation(row.conversation)">▶</button>
               <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" @click.stop="beginConversationRename(unfiledKey(row.conversation))">✎</button>

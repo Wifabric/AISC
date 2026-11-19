@@ -2364,6 +2364,61 @@ pub async fn workspace_copy_entry(
 }
 
 #[tauri::command]
+pub async fn workspace_move(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    relative_path: String,
+    destination_dir: String,
+) -> Result<WorkspaceMutationResult, WorkbenchError> {
+    validate_relative(&relative_path)?;
+    validate_relative_or_root(&destination_dir)?;
+    let name = validate_basename(relative_path.rsplit('/').next().unwrap_or(""))?;
+    let relative = if destination_dir.is_empty() { name.clone() } else { format!("{destination_dir}/{name}") };
+    if is_remote(&app, &window, &workspace).await {
+        return remote_mutation(&app, &window, &workspace, "fs.move",
+            &serde_json::json!({"root": workspace, "from": relative_path, "to": relative}),
+            "move", relative, "entry").await;
+    }
+    let root = Path::new(&workspace);
+    let source = resolve_existing(root, &relative_path)?;
+    let dest = resolve_contained_dir(root, &destination_dir)?;
+    let target = dest.join(&name);
+    if source.is_dir() && dest.starts_with(&source) {
+        return Err(WorkbenchError::workspace_invalid().with_detail("destination is inside source"));
+    }
+    if exists_nofollow(&target) { return Err(WorkbenchError::workspace_conflict()); }
+    // Refuse linked source paths: canonicalization must never move the referent.
+    let lexical = canonicalize_lenient(root)?.join(validate_relative(&relative_path)?);
+    if !path_eq(&lexical, &source) { return Err(WorkbenchError::workspace_invalid()); }
+    let kind = if source.is_dir() { "dir" } else { "file" };
+    move_exclusive(&source, &target).map_err(map_io_err)?;
+    Ok(WorkspaceMutationResult { schema_version: 1, operation: "move".into(), relative_path: relative, kind: kind.into() })
+}
+
+#[cfg(windows)]
+fn move_exclusive(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" { fn MoveFileW(from: *const u16, to: *const u16) -> i32; }
+    let wide = |p: &Path| p.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    if unsafe { MoveFileW(wide(source).as_ptr(), wide(target).as_ptr()) } != 0 { Ok(()) }
+    else { Err(std::io::Error::last_os_error()) }
+}
+
+#[cfg(unix)]
+fn move_exclusive(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let src = CString::new(source.as_os_str().as_bytes())?;
+    let dst = CString::new(target.as_os_str().as_bytes())?;
+    #[cfg(target_os = "linux")]
+    let rc = unsafe { libc::syscall(libc::SYS_renameat2, libc::AT_FDCWD, src.as_ptr(), libc::AT_FDCWD, dst.as_ptr(), libc::RENAME_NOREPLACE) };
+    #[cfg(target_os = "macos")]
+    let rc = unsafe { libc::renamex_np(src.as_ptr(), dst.as_ptr(), libc::RENAME_EXCL) };
+    if rc == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+}
+
+#[tauri::command]
 pub async fn workspace_rename(
     app: AppHandle,
     window: tauri::WebviewWindow,
@@ -3621,6 +3676,20 @@ mod mutation_tests {
         assert!(dir.path().join("archive/报告 (终稿).md").exists());
         let r = rename_entry(dir.path(), "报告 (终稿).md", "新名字 (v2).md").unwrap();
         assert_eq!(r.relative_path, "新名字 (v2).md");
+    }
+
+    #[test]
+    fn move_preserves_existing_destination_and_directory_contents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let dest = tmp.path().join("dest");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("note"), "contents").unwrap();
+        fs::create_dir(&dest).unwrap();
+        assert!(move_exclusive(&src, &dest).is_err());
+        let final_dir = dest.join("src");
+        move_exclusive(&src, &final_dir).unwrap();
+        assert_eq!(fs::read_to_string(final_dir.join("note")).unwrap(), "contents");
     }
 
     #[test]

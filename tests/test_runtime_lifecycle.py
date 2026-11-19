@@ -201,6 +201,65 @@ class TestContainerNaming(unittest.TestCase):
 
 
 class TestStartRuntime(unittest.TestCase):
+    def test_bind_retry_removes_only_created_id_before_reusing_name(self):
+        ws = _make_workspace()
+        events = []
+
+        class BindConflict(RuntimeFakeExecutor):
+            def run_captured(self, argv, *, timeout=None):
+                if argv and argv[0] == "run":
+                    events.append(("run", " ".join(argv)))
+                    if len(events) == 1:
+                        return ProcessResult(stdout="a" * 64 + "\n",
+                                             stderr="port is already allocated", exit_code=125)
+                return super().run_captured(argv, timeout=timeout)
+
+            def remove_container(self, name, force=False):
+                events.append(("remove", name, force))
+                return ProcessResult(stdout=name, stderr="", exit_code=0)
+
+        with patch("aisc.application.web_gateway.allocate_gateway_host_port", side_effect=[47000, 47001]):
+            result = start_runtime(RID_A, str(ws), "qa:latest", "direct", "project",
+                                   "workbench", executor=BindConflict(),
+                                   registry_root=ws / ".aisc", ready_timeout=2.0)
+        self.assertTrue(result.ready)
+        self.assertEqual([item[0] for item in events], ["run", "remove", "run"])
+        self.assertEqual(events[1], ("remove", "a" * 64, False))
+        self.assertIn("47000", events[0][1])
+        self.assertIn("47001", events[2][1])
+
+    def test_bind_cleanup_failure_preserves_error_without_retry_or_force(self):
+        ws = _make_workspace()
+        ex = RuntimeFakeExecutor()
+        original_run = ex.run_captured
+        def run_or_conflict(argv, **kwargs):
+            if argv[0] == "run":
+                return ProcessResult(stdout="a" * 64, stderr="port is already allocated", exit_code=125)
+            return original_run(argv, **kwargs)
+        with patch.object(ex, "run_captured", side_effect=run_or_conflict) as run, \
+             patch.object(ex, "remove_container", return_value=ProcessResult(
+                 stdout="", stderr="container is running", exit_code=1)) as remove:
+            with self.assertRaises(CliError) as caught:
+                start_runtime(RID_A, str(ws), "qa:latest", "direct", "project",
+                              "workbench", executor=ex, registry_root=ws / ".aisc")
+        self.assertIn("port is already allocated", caught.exception.message)
+        self.assertEqual(sum(call.args[0][0] == "run" for call in run.call_args_list), 1)
+        remove.assert_called_once_with("a" * 64, force=False)
+
+    def test_bind_error_with_untrusted_stdout_does_not_delete_by_name(self):
+        ws = _make_workspace()
+        ex = RuntimeFakeExecutor()
+        original_run = ex.run_captured
+        def run(argv, **kwargs):
+            if argv[0] == "run":
+                return ProcessResult(stdout="aisc-wb-existing", stderr="port is already allocated", exit_code=125)
+            return original_run(argv, **kwargs)
+        with patch.object(ex, "run_captured", side_effect=run), patch.object(ex, "remove_container") as remove:
+            with self.assertRaises(CliError):
+                start_runtime(RID_A, str(ws), "qa:latest", "direct", "project",
+                              "workbench", executor=ex, registry_root=ws / ".aisc")
+        remove.assert_not_called()
+
     def test_start_success(self):
         ws = _make_workspace()
         ex = RuntimeFakeExecutor()

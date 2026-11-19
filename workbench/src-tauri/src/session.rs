@@ -428,6 +428,7 @@ pub async fn open_session(
     on_event: Channel<PtyEvent>,
     resume_conversation_id: Option<String>,
     fork_session: bool,
+    working_directory: Option<String>,
 ) -> Result<SessionSnapshot, WorkbenchError> {
     if !is_uuid_v4(&runtime_id) {
         return Err(WorkbenchError::map_aisc("AISC_ERR_INVALID_RUNTIME_ID"));
@@ -498,8 +499,9 @@ pub async fn open_session(
     // (writes/resize in-band, G1's answer).
     let spawned = match &target {
         crate::cli::CliTarget::Local(pin) => {
-            let argv = session_open_argv(&runtime_id, &session_id, &agent, &ws,
+            let mut argv = session_open_argv(&runtime_id, &session_id, &agent, &ws,
                                          resume_conversation_id.as_deref(), fork_session);
+            if let Some(dir) = working_directory { argv.extend(["--working-directory".into(), dir]); }
             spawn_pipe_session(pin, argv, DEFAULT_COLS, DEFAULT_ROWS, event_tx, spool_path)
         }
         crate::cli::CliTarget::Remote(_) => {
@@ -511,6 +513,7 @@ pub async fn open_session(
                 &ws,
                 resume_conversation_id.as_deref(),
                 fork_session,
+                working_directory.as_deref(),
                 DEFAULT_COLS,
                 DEFAULT_ROWS,
                 event_tx,

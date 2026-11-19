@@ -669,7 +669,8 @@ if [ -f /etc/mihomo/config.yaml ]; then
         # 容器没有 procps（无 pgrep/ps），存活检查只能靠 kill -0（2026-08-19
         # 实测：旧版用 pgrep 判活，命令不存在导致探测失败时永远误报
         # 「mihomo 进程已退出」，实际进程健在且代理正常）。
-        bash -c "exec mihomo -d '$MIHOMO_DATA_DIR' -f '$MIHOMO_CFG' > '$MIHOMO_DATA_DIR/mihomo.log' 2>&1" &
+        install -d -m 700 /run/aisc-mihomo
+        mihomo -d "$MIHOMO_DATA_DIR" -f "$MIHOMO_CFG" -ext-ctl-unix /run/aisc-mihomo/control.sock > "$MIHOMO_DATA_DIR/mihomo.log" 2>&1 &
         MIHOMO_PID=$!
         # 健康探测（带重试）：url-test 初选节点 + MMDB 加载需要数秒，机场的
         # 信息假节点（"剩余流量/官网地址"等）也可能拖慢首个可用节点选定；

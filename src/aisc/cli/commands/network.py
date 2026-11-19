@@ -13,6 +13,23 @@ from typing import Any, Dict
 from aisc.domain.models import CliError
 
 
+def cmd_proxy_nodes(args):
+    import json
+    from pathlib import Path
+    from aisc.adapters.docker_ import RealDockerExecutor
+    from aisc.application.data_root import workspace_state_dir
+    from aisc.application.runtime import resolve_running_container
+
+    executor = RealDockerExecutor()
+    registry = workspace_state_dir(Path(args.workspace).resolve())
+    container = resolve_running_container(args.runtime_id, executor, registry)
+    result = executor.run_captured(["exec", container, "aisc-proxy-nodes", args.action, args.group, args.node], timeout=20)
+    if result.exit_code:
+        raise CliError(message="Proxy control unavailable. Check that the workspace is running the current image with a subscription.",
+                       exit_code=1, error_code="AISC_ERR_NETWORK_PROXY_CONTROL")
+    return json.loads(result.stdout)
+
+
 def _read_stdin_text(*, what: str) -> str:
     raw = sys.stdin.read()
     if not raw.strip():

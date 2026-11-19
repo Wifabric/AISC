@@ -1775,6 +1775,28 @@ class CodexModelCatalogHookTests(unittest.TestCase):
         self.assertIn("deepseek-v4-next", slugs)
         self.assertNotIn("text-embedding-3", slugs)
 
+    def test_live_catalog_survives_a_non_utf8_system_encoding(self):
+        log_path = self.dir / "catalog.log"
+        real_open = open
+
+        def system_open(path, mode, **kwargs):
+            # Simulate Windows cp1252 when a caller omits an encoding.
+            self.assertEqual(path, "/tmp/aisc-live-catalog.log")
+            return real_open(log_path, mode, encoding=kwargs.get("encoding", "cp1252"))
+
+        with mock.patch.object(A, "open", side_effect=system_open, create=True):
+            self.test_live_fetch_fills_an_empty_catalog()
+        self.assertIn("→ 2 ids", log_path.read_text(encoding="utf-8"))
+
+    def test_live_catalog_survives_diagnostic_write_errors(self):
+        for error in (OSError("diagnostic disk unavailable"),
+                      UnicodeEncodeError("cp1252", "→", 0, 1, "not representable")):
+            with self.subTest(error=type(error).__name__):
+                log = mock.mock_open()
+                log.return_value.write.side_effect = error
+                with mock.patch.object(A, "open", log, create=True):
+                    self.test_live_fetch_fills_an_empty_catalog()
+
     def test_catalog_default_reasoning_follows_config_effort(self):
         """D-7 (2026-09-19 user report 思考深度没有生效): the 思考深度
         dropdown writes config model_reasoning_effort — the generated

@@ -7,6 +7,9 @@
  */
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { useWorkspaceExplorerStore } from "./workspaceExplorer";
+import { memberRows } from "../features/workspace-explorer/workRecordLayout";
+import { buildConversationTreeRows } from "../features/workspace-explorer/conversationTree";
 import type {
   ConversationSummary,
   WorkRecordCollection,
@@ -25,6 +28,21 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   const schemaVersion = ref<string>("");
   const collections = ref<WorkRecordCollection[]>([]);
   const unfiled = ref<ConversationSummary[]>([]);
+  const revealKey = ref("");
+  let loadGeneration = 0;
+  const numbers = computed(() => {
+    const labels = new Map<string, string>();
+    const explorer = useWorkspaceExplorerStore();
+    const summaries = new Map(explorer.conversations.map(c => [c.agent + ":" + c.conversation_id.toLowerCase(), c]));
+    collections.value.forEach((collection, i) => {
+      const prefix = "C" + (i + 1);
+      labels.set(collection.id, prefix);
+      memberRows(collection, summaries).forEach(({ member }, j) => labels.set(member.member_key, prefix + "-" + (j + 1)));
+    });
+    buildConversationTreeRows(unfiled.value).forEach(({ conversation: c }, i) =>
+      labels.set(c.agent + ":" + c.conversation_id.toLowerCase(), "C0-" + (i + 1)));
+    return labels;
+  });
   const loading = ref(false);
   const error = ref<string | null>(null);
   const lastDeleteFailure = ref<WorkRecordDeleteResult | null>(null);
@@ -47,6 +65,8 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   }
 
   function clear(): void {
+    loadGeneration++;
+    revealKey.value = "";
     workspace.value = null;
     schemaVersion.value = "";
     collections.value = [];
@@ -63,17 +83,20 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
 
   async function load(target: string): Promise<void> {
     setWorkspace(target);
+    const generation = ++loadGeneration;
     loading.value = true;
     error.value = null;
     try {
       const result = await ipc.workRecordList(target);
+      if (generation !== loadGeneration) return;
       schemaVersion.value = result.schema_version;
       collections.value = result.collections;
       unfiled.value = result.unfiled;
     } catch (e) {
+      if (generation !== loadGeneration) return;
       error.value = messageOf(e);
     } finally {
-      loading.value = false;
+      if (generation === loadGeneration) loading.value = false;
     }
   }
 
@@ -289,6 +312,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   }
 
   return {
+    numbers, revealKey,
     workspace,
     schemaVersion,
     unarchivedCollections,

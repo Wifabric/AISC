@@ -32,6 +32,7 @@ on:
       - 'src/aisc/**'
       - 'packaging/**'
       - 'scripts/build-cli.*'
+      - 'scripts/test-windows-upgrade.ps1'
       - 'VERSION'
       - 'pyproject.toml'
       - 'vendor/**'
@@ -301,6 +302,21 @@ jobs:
             Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA "AISC") -ErrorAction SilentlyContinue
           }
 
+
+      - name: Upgrade from official 2.1.18 and verify installed startup
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem workbench/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $expected = (Get-Content workbench/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -like 'v*') { $expected = $env:GITHUB_REF_NAME.Substring(1) }
+          scripts/test-windows-upgrade.ps1 -CandidateInstaller $setup.FullName -ReportDirectory "$env:RUNNER_TEMP/aisc-upgrade-evidence" -ExpectedVersion $expected
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-upgrade-acceptance
+          path: ${{ runner.temp }}/aisc-upgrade-evidence
+          if-no-files-found: warn
 
   # D-8 (2026-09-19): a v* tag publishes the Workbench NSIS release from this
   # branch (the installer bundles the current CLI). Pre-release suffixes remain

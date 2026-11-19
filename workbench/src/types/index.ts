@@ -787,6 +787,7 @@ export interface SplitLayout {
 /** Live per-pane session state (pane tree leaf runtime; the pane's static
  * session type lives in the leaf, not here). */
 export interface PaneRuntime {
+  workingDirectory?: string;
   /** Explicit topic intent belongs only to this pane, never the workspace. */
   topicId?: string;
   topicTitle?: string;

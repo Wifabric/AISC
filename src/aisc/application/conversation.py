@@ -23,6 +23,8 @@ still rejected (the check's stated intent).
 from __future__ import annotations
 
 import json
+import sqlite3
+from contextlib import closing
 from collections import deque
 import os
 import re
@@ -324,16 +326,70 @@ def _summarize(agent: str, conv_id: str, file_size: int,
     return entry
 
 
+def _codex_native_rollouts(base: Path) -> Dict[str, str]:
+    """Read Codex's canonical rollout mapping without changing its database.
+
+    Native resume resolves threads.rollout_path first. A copied older log may
+    have a newer mtime, so mtime alone is not a reliable source of truth.
+    Only suffixes of already-discovered session files are used by the caller:
+    container paths can map to the host mount, but cannot open outside files.
+    """
+    databases = []
+    for path in base.parent.glob("state_*.sqlite"):
+        match = re.fullmatch(r"state_(\d+)\.sqlite", path.name)
+        if match and path.is_file() and not path.is_symlink():
+            databases.append((int(match.group(1)), path))
+    if not databases:
+        return {}
+    database = max(databases)[1]
+    try:
+        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro",
+                                     uri=True, timeout=0.2)) as conn:
+            rows = conn.execute("SELECT id, rollout_path FROM threads").fetchall()
+        indexed = {}
+        for cid, raw in rows:
+            if not isinstance(cid, str) or not isinstance(raw, str):
+                continue
+            normalized = "/" + raw.replace("\\", "/").lstrip("/")
+            if "/sessions/" not in normalized:
+                continue
+            suffix = normalized.rsplit("/sessions/", 1)[1]
+            if ".." not in suffix.split("/"):
+                indexed[cid.lower()] = suffix
+        return indexed
+    except (OSError, sqlite3.Error, ValueError):
+        # Imported/older versions may have no usable native index.
+        return {}
+
+
+def _session_files(base: Path, agent: str, wanted: str = "") -> Dict[str, List[Path]]:
+    """Group by ID; prefer native Codex resume's source, then latest mtime."""
+    files = {}
+    for path in base.rglob("*.jsonl"):
+        cid = _conversation_id_for(agent, path.name)
+        if not cid or (wanted and cid.lower() != wanted.lower()):
+            continue
+        try:
+            modified = path.stat().st_mtime_ns
+        except OSError:
+            continue
+        if path.is_file():
+            files.setdefault(cid.lower(), []).append((modified, path))
+    indexed = _codex_native_rollouts(base) if agent == "codex" else {}
+    return {
+        cid: [p for _, p in sorted(rows, key=lambda row: (
+            row[1].relative_to(base).as_posix() == indexed.get(cid), row[0], row[1]),
+            reverse=True)]
+        for cid, rows in files.items()
+    }
+
+
 def _scan_agent_dir(base: Path, agent: str) -> List[Dict[str, Any]]:
     if not base.is_dir():
         return []
     out: List[Dict[str, Any]] = []
-    for path in sorted(base.rglob("*.jsonl")):
-        if not path.is_file():
-            continue
-        conv_id = _conversation_id_for(agent, path.name)
-        if conv_id is None:
-            continue
+    for conv_id, paths in _session_files(base, agent).items():
+        path = paths[0]
         try:
             size = path.stat().st_size
         except OSError:
@@ -424,24 +480,9 @@ def _find_conversation_file(ws_dir: Path, agent: str,
     """Exact provider-specific file match for a conversation id (design §2).
     Claude: filename stem == id. Codex: rollout filename's trailing id,
     case-insensitive. Returns None when absent — never a glob substring."""
-    if agent == "claude":
-        base = ws_dir / "claude" / "projects"
-        if not base.is_dir():
-            return None
-        for p in base.rglob("*.jsonl"):
-            if p.is_file() and p.stem == conversation_id:
-                return p
-        return None
-    base = ws_dir / "codex" / "sessions"
-    if not base.is_dir():
-        return None
-    for p in base.rglob("*.jsonl"):
-        if not p.is_file():
-            continue
-        m = _CODEX_FILENAME_RE.match(p.name)
-        if m is not None and m.group(1).lower() == conversation_id.lower():
-            return p
-    return None
+    base = ws_dir / agent / ("projects" if agent == "claude" else "sessions")
+    paths = _session_files(base, agent, conversation_id).get(conversation_id.lower())
+    return paths[0] if paths else None
 
 
 def preflight_conversation(workspace: str, conversation_id: str,
@@ -496,15 +537,17 @@ def delete_conversation(workspace: str, conversation_id: str,
             error_code=ERROR_INVALID_AGENT,
         )
     ws_dir = _workspace_dir(workspace)
-    path = _find_conversation_file(ws_dir, agent, conversation_id)
-    if path is None:
+    base = ws_dir / agent / ("projects" if agent == "claude" else "sessions")
+    paths = _session_files(base, agent, conversation_id).get(conversation_id.lower(), [])
+    if not paths:
         raise CliError(
             message=f"Conversation {conversation_id} not found for agent {agent}",
             exit_code=3,
             error_code=ERROR_UNRESUMABLE,
         )
     try:
-        path.unlink()
+        for path in reversed(paths):
+            path.unlink(missing_ok=True)
     except OSError as exc:
         raise CliError(
             message=f"Failed to delete conversation {conversation_id}: {exc}",

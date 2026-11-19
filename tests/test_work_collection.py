@@ -240,6 +240,19 @@ class TestCollectionCrud:
 
 
 class TestReconcile:
+    def test_new_descendants_follow_filed_parent_in_either_scan_order(self, ws_env, work_collection, monkeypatch):
+        ws, _, runtime = ws_env
+        collection = work_collection.create(runtime, title="session family")
+        work_collection.add_member(runtime, collection["id"], agent="codex", conversation_id=CODEX_ID)
+        child = "99000000-0000-4000-8000-000000000001"
+        grandchild = "99000000-0000-4000-8000-000000000002"
+        rows = [{"agent": "codex", "conversation_id": grandchild, "parent_thread_id": child},
+                {"agent": "codex", "conversation_id": child, "parent_thread_id": CODEX_ID}]
+        monkeypatch.setattr(work_collection, "_supported_conversations", lambda workspace: rows)
+        result = work_collection.reconcile(runtime, str(ws))
+        assert [m["conversation_id"] for m in result["collections"][0]["members"]] == [CODEX_ID, child, grandchild]
+        assert not work_collection.reconcile(runtime, str(ws))["added"]
+
     def test_no_active_collection_only_refreshes_baseline(self, ws_env, work_collection):
         ws, ws_dir, runtime = ws_env
         _claude(ws_dir)

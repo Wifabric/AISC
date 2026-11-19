@@ -60,6 +60,16 @@ function buttonsOf(wrapper: ReturnType<typeof mount>) {
 }
 
 describe("BuildProgress rebuild button (B1)", () => {
+  it("shows each warning once when a build repeats the same message", () => {
+    const store = useRuntimeStore();
+    store.buildWarnings = ["cc-switch not pinned", "another warning", "cc-switch not pinned"];
+    const view = mount(BuildProgress, { global: { plugins: [i18n] } });
+    expect(view.findAll(".warn").map(warning => warning.text())).toEqual([
+      "cc-switch not pinned", "another warning",
+    ]);
+    view.unmount();
+  });
+
   it("failed state shows Rebuild; click re-runs the same tag and can complete", async () => {
     mockIpc.buildImage
       .mockRejectedValueOnce({ code: "AISC_ERR_GENERAL" })

@@ -127,7 +127,7 @@ watch(
     </div>
 
     <!-- S8b: degraded-but-continuing notices (e.g. offline unpinned build). -->
-    <p v-for="(w, i) in store.buildWarnings" :key="i" class="warn" role="status">{{ w }}</p>
+    <p v-for="w in new Set(store.buildWarnings)" :key="w" class="warn" role="status">{{ w }}</p>
 
     <p v-if="store.buildError" class="err">{{ store.buildError.message }}</p>
     <!-- S8b: the failure's real diagnosis (backend detail, e.g. the cc-switch

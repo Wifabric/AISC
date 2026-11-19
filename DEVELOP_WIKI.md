@@ -1,5 +1,7 @@
 # AISC 开发者手册
 
+当前已发布候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104)、[PR #105](https://github.com/Wifabric/AISC/pull/105) 均已合入 develop，当前集成提交为 `6877334d`。2026-11-19 用户确认功能及剩余安装交互手测全部通过，进入正式发布准备；本分支已切换为正式 **2.1.19 / 0.3.0**，用户已授权发布，main 集成与渠道验证正在执行。功能范围见[Preview 说明](docs/releases/v2.1.19-preview.1.md)，[正式版说明](docs/releases/v2.1.19.md)、[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)及[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)同步当前状态。
+
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
 ## 1. 分支与发布角色
@@ -318,6 +320,16 @@ python3 -c "import aisc; print(aisc.__file__)"
 不要为了排查路径问题盲目卸载系统中其他 AISC 安装；先明确当前 shell、虚拟环境和 executable 的来源。
 
 ## 3. 快速验证
+
+### 2.1.19 候选接续
+
+本轮收尾回归前端 902 项、Rust 455 项、Python 1841 项及 220 子测试通过；原模型目录日志编码失败已修复。用户报告 Provider 账号手测通过，不重复账号测试；偶发卡死按要求暂缓。一次性 GitHub Windows runner 的静默新装、正式 2.1.18 升级、启动/CLI/PATH 与数据保留通过；Computer Use 导航及受控 Docker 提示检查通过。2026-11-19 用户进一步确认安装完成页、Docker 缺失/启动/重新检测，以及交互卸载保留和清理五轮全部手测无问题，记为用户报告 PASS，不改写开发者测试来源。本机临时沙盒/虚拟机已清理，不再搭建。
+
+给 leader 验收时记录 PR #105 的实际 head 和对应 CI，并配对当前 Workbench、冻结 CLI 和完整 bundle。便携版可先验证功能；工作区文件和 Docker 资源依然真实可写。远程文件移动需要对应的远端 CLI，新节点控制、技能修复、Codex 内联滚动及 gh 需要本版资源构建的镜像。仅启动 Vite 网页或替换前端不能覆盖这些变化。
+
+当前新增接口为 `network nodes list/select/delay`（必填 workspace/runtime ID）、`session open --working-directory`（工作区相对子目录）和 serve `fs.move`。serve protocol 仍为 4；旧 CLI 同协议号不代表已实现这些接口。兼容性与错误边界见 [CLI Release Notes](docs/releases/v0.3.0.dev0.md)。文件移动不能降级为覆盖目标的操作；端口冲突清理仅作用于本次返回的完整容器 ID。
+
+### 常用检查
 
 CLI 最小无 Docker 验证（venv 外也能跑）：
 
@@ -835,6 +847,12 @@ Workbench 正式 GitHub Release 提供 Windows x86_64 的 `AISC-Workbench-<Workb
 
 bundle 中 executable 与 `aisc-bundle/` 必须相邻，manifest 的 compatible CLI version 必须与实际程序一致。文件存在、CI artifact 上传和正式发布可下载分别检查。
 
+### 10.4 Windows 签名与安装验收
+
+`scripts/build-installer.ps1 -SigningConfig <发布方的 Tauri 配置文件>` 接受 `bundle.windows.certificateThumbprint` 或 `bundle.windows.signCommand`。提供配置时，脚本仅选择本次构建生成的 NSIS 产物，要求 Authenticode 状态为 Valid；若指定证书指纹，还需与产物一致。不传该参数不代表已签名，当前 2.1.19 候选仍未签名。不要把私钥或签名凭据写进仓库。
+
+新装、正式旧版升级、安装后启动及 CLI/PATH、升级与卸载数据保留必须使用实际安装产物分别记账。源码构建、静态安装器检查或便携版启动不能替代这些结果。当前沙盒策略拦截保留为环境证据，不推断为宿主安全策略变化；详情见 DELIVERY。leader 先测功能与安装验收分开，不自动解除用户已明确停止的测试任务。
+
 ## 11. CI 与发布
 
 ### 11.1 Workflow 清单
@@ -916,6 +934,8 @@ git diff --check
 dev 迭代仅 TestPyPI：使用新的 `.devN` 和对应 tag，每次上传前同步 CLI 版本、fixture 与说明；Workbench 不跟随 CLI `.devN`。clean-room repo 外冒烟需清除影响定位的 `AISC_ROOT`。
 
 不要覆盖已发布 tag 或 force-push 发布引用。正式发布前必须有完整发布说明，不能依赖自动生成 notes 掩盖遗漏；失败渠道单独保留未完成状态。
+
+发布说明参照相邻正式版本（如 [2.1.17](docs/releases/v2.1.17.md)）的清晰程度，按用户功能分组写触发场景、变化后的行为、使用入口和兼容限制；不要只罗列“修复若干问题”或链接到计划。测试证据、未执行项与渠道状态另列，完整原始记录放 DELIVERY。文件名必须与实际 tag 对应，修改名称时同步入口链接；候选文档不能写成 final 已上线。README 正文、WIKI、Skill、教程、devlog、TODO 与阶段状态一并核对，不以添加一个链接代替内容同步。
 
 ## 12. 安全边界
 

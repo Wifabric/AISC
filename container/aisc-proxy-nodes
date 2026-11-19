@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Operate the running workspace proxy through its private control socket."""
+import json
+import subprocess
+import sys
+from urllib.parse import quote
+
+
+def request(path, payload=None):
+    argv = ["curl", "--silent", "--show-error", "--fail", "--max-time", "8",
+            "--unix-socket", "/run/aisc-mihomo/control.sock", "--noproxy", "*"]
+    if payload is not None:
+        argv += ["--request", "PUT", "--header", "Content-Type: application/json",
+                 "--data-binary", json.dumps(payload)]
+    response = subprocess.check_output(argv + ["http://localhost" + path])
+    return json.loads(response) if response.strip() else {}
+
+
+def main(action, group="", node=""):
+    proxies = request("/proxies")["proxies"]
+    groups = {name: {"current": info.get("now", ""), "nodes": info["all"]}
+              for name, info in proxies.items() if info.get("type") == "Selector" and info.get("all")}
+    if action == "list":
+        return {"groups": groups}
+    if node not in groups.get(group, {}).get("nodes", []):
+        raise ValueError("Proxy group or node is no longer available")
+    if action == "select":
+        request("/proxies/" + quote(group, safe=""), {"name": node})
+        return {"selected": node}
+    if action == "delay":
+        return request("/proxies/" + quote(node, safe="") +
+                       "/delay?timeout=5000&url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204")
+    raise ValueError("Unknown proxy operation")
+
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(main(*sys.argv[1:])))
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+        sys.exit("Proxy control unavailable or node request failed")

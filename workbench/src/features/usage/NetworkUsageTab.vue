@@ -14,6 +14,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { useUsageStore } from "../../stores/usage";
 import type { UsageModelRow, UsageWorkspaceEntry } from "../../types";
 import SubscriptionForm from "./SubscriptionForm.vue";
+import ProxyNodes from "./ProxyNodes.vue";
 
 const { t } = useI18n();
 const usage = useUsageStore();
@@ -214,6 +215,7 @@ onMounted(() => void usage.fetchOverview());
             {{ t("usage.sub.clear") }}
           </button>
         </div>
+        <ProxyNodes />
       </template>
       <template v-else>
         <p class="dim">{{ t("usage.sub.none") }}</p>

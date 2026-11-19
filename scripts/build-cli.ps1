@@ -33,6 +33,7 @@ if (-not $TargetTriple) {
 
 Write-Host "== building aisc sidecar ($TargetTriple) =="
 python -m PyInstaller --noconfirm --clean packaging/aisc.spec
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 
 New-Item -ItemType Directory -Force -Path dist | Out-Null
 Move-Item -Force dist\aisc.exe "dist\aisc-$TargetTriple.exe"
@@ -75,6 +76,11 @@ foreach ($Bundle in @(
         foreach ($Dir in @("container", "config", "vendor")) {
             $DstDir = Join-Path $Bundle $Dir
             if (Test-Path $DstDir) {
+                $BundleRoot = [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Bundle)).TrimEnd('\') + '\'
+                $ResolvedDst = [IO.Path]::GetFullPath($DstDir)
+                if (-not $ResolvedDst.StartsWith($BundleRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Refusing to clear a directory outside the generated bundle: $ResolvedDst"
+                }
                 robocopy $EmptyDir $DstDir /MIR $RoboQuiet | Out-Null
                 if ($LASTEXITCODE -ge 8) { throw "robocopy clear failed for $DstDir (exit $LASTEXITCODE)" }
                 Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $DstDir
@@ -88,3 +94,5 @@ foreach ($Bundle in @(
         Write-Host "== synced: $Bundle"
     }
 }
+# Robocopy's successful copy code (1) must not make a calling CI job fail.
+$global:LASTEXITCODE = 0

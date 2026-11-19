@@ -602,10 +602,10 @@ async function confirmForget(): Promise<void> {
   min-height: var(--control-h-sm); padding: 0 var(--space-2);
 }
 .target-badge {
-.target-badge.needs-update { color: var(--warn); border-color: var(--warn); }
   color: var(--info); font-size: var(--font-xs);
   border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 6px;
 }
+.target-badge.needs-update { color: var(--warn); border-color: var(--warn); }
 .picker .hint { font-size: var(--font-sm); color: var(--text-muted); margin: 0; }
 /* 10d: recents reuse the .ui-section inset-grouped card; rows come from
  * .ui-section-row (padding/hover/dividers), so only content styles stay. */
@@ -617,7 +617,7 @@ async function confirmForget(): Promise<void> {
 .recent {
   /* Grid with fixed name column: every row aligns regardless of name/path
    * length (user round-2 feedback — flex rows misaligned on long names). */
-  flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+  flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr);
   align-items: center; gap: var(--space-2); text-align: left;
   background: transparent; color: var(--text-2);
   border: none; font-size: var(--font-sm); cursor: pointer;
@@ -631,6 +631,7 @@ async function confirmForget(): Promise<void> {
 .r-machine {
   color: var(--info); font-size: var(--font-xs); border: 1px solid currentColor;
   border-radius: var(--radius-sm); padding: 0 4px; flex: none;
+  white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis;
 }
 .r-path {
   flex: 1; min-width: 0; /* flex ellipsis needs min-width: 0 */

@@ -1371,6 +1371,18 @@ pub async fn network_subscription_show(app: tauri::AppHandle, window: tauri::Web
 
 /// Subscription status + per-provider token usage across all workspaces.
 #[tauri::command]
+pub async fn proxy_nodes(app: AppHandle, window: tauri::WebviewWindow, workspace: String, runtime_id: String,
+                         action: String, group: String, node: String) -> Result<Value, WorkbenchError> {
+    if !matches!(action.as_str(), "list" | "select" | "delay") {
+        return Err(WorkbenchError::map_aisc("AISC_ERR_USAGE"));
+    }
+    let argv = vec!["network".into(), "nodes".into(), action, "--workspace".into(), workspace,
+                    "--runtime-id".into(), runtime_id, format!("--group={group}"), format!("--node={node}"),
+                    "--format".into(), "json".into()];
+    aisc_data_call(&app, &window, argv, None, PROVIDER_TIMEOUT).await
+}
+
+#[tauri::command]
 pub async fn usage_overview(
     app: AppHandle,
     window: tauri::WebviewWindow,
@@ -1942,6 +1954,17 @@ pub async fn cancel_build(app: AppHandle, tag: String) -> Result<bool, Workbench
 #[tauri::command]
 pub async fn start_docker(app: AppHandle) -> Result<(), WorkbenchError> {
     crate::trace::timed("docker", "start_docker", start_docker_inner(app)).await
+}
+
+/// Open Docker's own reset workflow. Docker owns the destructive confirmation;
+/// this command only opens its dashboard and never resets an engine itself.
+#[tauri::command]
+pub async fn open_docker_reset(app: AppHandle) -> Result<(), WorkbenchError> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url("docker-desktop://dashboard/open", None::<&str>)
+        .map_err(|e| WorkbenchError::cli_protocol()
+            .with_detail(format!("failed to open Docker Desktop: {e}")))
 }
 
 async fn start_docker_inner(app: AppHandle) -> Result<(), WorkbenchError> {

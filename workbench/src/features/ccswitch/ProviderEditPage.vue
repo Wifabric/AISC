@@ -72,7 +72,7 @@ const form = reactive({
    * ROW in the mapping table (cc-switch desktop parity — 2026-09-19). */
   compactThreshold: props.provider?.compact_threshold
     ? String(props.provider.compact_threshold) : "",
-  apiFormat: (props.provider?.api_format ?? "anthropic") as
+  apiFormat: (props.provider?.api_format ?? (props.agent === "codex" && !props.provider ? "openai_responses" : "anthropic")) as
     "anthropic" | "openai_chat" | "openai_responses",
   notes: props.provider?.notes ?? "",
   website: props.provider?.website_url ?? "",
@@ -390,7 +390,7 @@ function onSave(): void {
           <label class="field">
             <span>{{ t("ccswitch.preset") }}</span>
             <select v-model="form.preset" @change="onPresetChange">
-              <option v-for="tpl in templates" :key="tpl.id" :value="tpl.id">
+              <option v-for="tpl in templates.filter(tpl => agent !== 'codex' || tpl.id !== 'volcengine-ark')" :key="tpl.id" :value="tpl.id">
                 {{ tpl.name || tpl.id }}
               </option>
             </select>

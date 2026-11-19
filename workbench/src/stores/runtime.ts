@@ -222,6 +222,7 @@ export const useRuntimeStore = defineStore("runtime", () => {
     navigatePane: fwdFn("navigatePane"),
     setSplitRatio: fwdFn("setSplitRatio"),
     activateTab: fwdFn("activateTab"),
+    reorderTab: fwdFn("reorderTab"),
     closeTab: fwdFn("closeTab"),
     reopenTab: fwdFn("reopenTab"),
     createTab: fwdFn("createTab"),
