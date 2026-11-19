@@ -45,11 +45,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/wangyuncepu/AISC"
-Source = "https://github.com/wangyuncepu/AISC"
-Releases = "https://github.com/wangyuncepu/AISC/releases"
-"Bug Tracker" = "https://github.com/wangyuncepu/AISC/issues"
-Security = "https://github.com/wangyuncepu/AISC/security/advisories/new"
+Homepage = "https://github.com/Wifabric/AISC"
+Source = "https://github.com/Wifabric/AISC"
+Releases = "https://github.com/Wifabric/AISC/releases"
+"Bug Tracker" = "https://github.com/Wifabric/AISC/issues"
+Security = "https://github.com/Wifabric/AISC/security/advisories/new"
 
 [project.scripts]
 aisc = "aisc.cli.main:main"

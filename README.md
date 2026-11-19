@@ -1,6 +1,6 @@
 # AISC 使用手册
 
-本轮变化见 [2.1.19-preview.1 发布说明](docs/releases/v2.1.19-preview.1.md)，功能验收见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)，已完成和未验证项见[交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)。
+本轮变化见 [2.1.19-preview.1 发布说明](docs/releases/v2.1.19-preview.1.md)，操作步骤见[测试教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)，验收与发布状态见[交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)。[2.1.19 正式版说明](docs/releases/v2.1.19.md)对应本分支定版，发布状态以交付记录为准。
 
 AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switch 的个人开发工作站，提供两种使用方式：
 
@@ -9,7 +9,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha（0.x）。** 本分支为本地候选：Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**，尚未公开发布。Windows runner 已通过静默新装、2.1.18 升级、启动/CLI/PATH 与数据保留检查；图形向导、依赖安装及交互卸载另行验收。公开可安装版本及发布状态以 [Releases](https://github.com/Wifabric/AISC/releases) 和 PyPI 为准，不能仅凭源码版本号认定已经上线。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** Workbench **2.1.19-preview.1** 已发布为 [Preview Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19-preview.1)，提供 Windows 安装包及校验文件，随包 CLI 为 **0.3.0.dev0**；本轮没有发布独立 CLI PyPI 包。Windows runner 已通过静默新装、2.1.18 升级、启动/CLI/PATH 与数据保留检查；2026-11-19 用户确认本轮功能及剩余安装、Docker 引导和交互卸载手测全部通过。本分支已定版为 **Workbench 2.1.19 / CLI 0.3.0**，用户已授权正式发布；正式渠道正在执行，已公开版本与实际产物见交付记录。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
 
 ## 目录
 
@@ -39,7 +39,7 @@ AISC 以开发便利为优先，不是生产级安全沙箱：
 
 ## 安装前提
 
-运行 AISC 需要自行安装并启动 **Docker**（AISC 不代装，检测到缺失时会给出指引；Windows 安装器可一键引导安装 Docker/WebView2）：
+运行 AISC 需要自行安装并启动 **Docker**。Windows 安装器检测 Docker Desktop；缺失时可打开官方下载页，Workbench 首次引导提示自行安装后重新检测。安装完成页启动 Workbench 时，会尝试启动已安装但未运行的 Docker Desktop。WebView2 缺失时由安装器按运行时配置处理。
 
 | 平台 | 官方产物 | Docker |
 | --- | --- | --- |

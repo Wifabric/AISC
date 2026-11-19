@@ -2,9 +2,9 @@
 
 ## Current candidate and acceptance
 
-Workbench **2.1.19-preview.1** carries CLI **0.3.0.dev0**. GitHub Windows run [44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580) passed silent fresh installation, PATH, reinstall/retention, and upgrade from official 2.1.18 at `58b25ecdfd0dfed3c0d920a05d7d612eccb75d40`. The upgrade verifies real settings/history/project/transcript samples, installed CLI reads, native window creation, and retention after silent uninstall. Later candidate results and exact heads are recorded in [DELIVERY](../../../docs/plans/2.1.19-dev-plans/DELIVERY.md).
+The final source is Workbench **2.1.19** with CLI **0.3.0**. The accepted preview was **2.1.19-preview.1 / 0.3.0.dev0**; the final installer is rebuilt from the release source. GitHub Windows run [44458626580](https://github.com/Wifabric/AISC/actions/runs/44458626580) passed silent fresh installation, PATH, reinstall/retention, and upgrade from official 2.1.18 at `58b25ecdfd0dfed3c0d920a05d7d612eccb75d40`. The upgrade verifies real settings/history/project/transcript samples, installed CLI reads, native window creation, and retention after silent uninstall. Later candidate results and exact heads are recorded in [DELIVERY](../../../docs/plans/2.1.19-dev-plans/DELIVERY.md).
 
-`scripts/test-windows-upgrade.ps1` deliberately refuses execution outside a GitHub Windows runner. It validates the official baseline SHA-256 and emits `upgrade-result.json` in the `windows-upgrade-acceptance` artifact. Never remove that guard to run it against a personal installation. Silent checks do not exercise the interactive wizard, Docker dependency onboarding, cancellation, or optional Docker/data cleanup. Those remain separate manual acceptance items. The earlier local sandbox policy block and VM cleanup remain historical evidence; no local VM is required for this CI path.
+`scripts/test-windows-upgrade.ps1` deliberately refuses execution outside a GitHub Windows runner. It validates the official baseline SHA-256 and emits `upgrade-result.json` in the `windows-upgrade-acceptance` artifact. Never remove that guard to run it against a personal installation. Silent checks do not exercise the interactive wizard, Docker dependency onboarding, cancellation, or optional Docker/data cleanup. On 2026-11-19 the user reported all remaining manual cases passed, including finish-page launch/shortcut options, Docker installation/start/recheck, and all five uninstall retention/cleanup cases. This is user-reported acceptance, separate from CI and Computer Use evidence. The earlier local sandbox policy block and VM cleanup remain historical evidence; no local VM is required for this CI path.
 
 The desktop configuration uses `installMode: currentUser`. A separate local Windows account can separate user-scoped installation state, but it is not a clean OS and does not isolate shared Docker resources. Portable desktop tests do not exercise the NSIS installation or uninstallation sections.
 
@@ -21,12 +21,11 @@ time (`bundle.windows.nsis.template`). It is a copy of the tauri-bundler 2.9.4
 default template with the G-18 additions:
 
 - `Section Docker` (runs after `Section Install`): on **interactive GUI
-  installs only** (`${Silent}` / `$PassiveMode` guards), if Docker Desktop is
-  missing it is installed via winget (`Docker.DockerDesktop`) with live
-  progress streamed into the INSTFILES Details pane (`nsExec::ExecToLog`).
-  Silent/passive installs skip it entirely (the CI smoke installs with `/S`).
-  Failures do not abort the install; the Workbench preflight reports the real
-  engine state at first launch.
+  installs only** (`${Silent}` / `$PassiveMode` guards), detects Docker Desktop
+  and prints its presence or absence. It does not install Docker via winget.
+  Silent/passive installs skip this detection (the CI smoke installs with `/S`).
+  When Docker is missing, the Workbench first-run environment page asks the
+  user to install Docker Desktop separately and then select **Re-check**.
 - `RunFinishApp` (finish-page "Start AISC Workbench"): three-way Docker
   handling before launching the Workbench - installed + running → no-op;
   installed + stopped → silently start it; not installed → prompt to open the

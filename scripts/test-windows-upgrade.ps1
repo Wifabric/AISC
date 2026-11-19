@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$CandidateInstaller,
     [Parameter(Mandatory)][string]$ReportDirectory,
-    [string]$ExpectedVersion = '2.1.19-preview.1'
+    [string]$ExpectedVersion = '2.1.19'
 )
 $ErrorActionPreference = 'Stop'
 # This script installs/uninstalls an application. Never run it on a developer's
