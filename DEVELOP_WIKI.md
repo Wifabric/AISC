@@ -1,6 +1,6 @@
 # AISC 开发者手册
 
-当前候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104) 已合入 develop（`df448d3a`）；后续收尾在 [PR #105](https://github.com/Wifabric/AISC/pull/105)、分支 `codex/2.1.19-closeout`，尚未正式发布。功能范围见[发布说明](docs/releases/v2.1.19-preview.1.md)，实际证据与遗留项见[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)，leader 操作步骤见[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)。
+当前已发布候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104)、[PR #105](https://github.com/Wifabric/AISC/pull/105) 均已合入 develop，当前集成提交为 `6877334d`。2026-11-19 用户确认功能及剩余安装交互手测全部通过，进入正式发布准备；本分支已切换为正式 **2.1.19 / 0.3.0**，用户已授权发布，main 集成与渠道验证正在执行。功能范围见[Preview 说明](docs/releases/v2.1.19-preview.1.md)，[正式版说明](docs/releases/v2.1.19.md)、[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)及[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)同步当前状态。
 
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
@@ -323,7 +323,7 @@ python3 -c "import aisc; print(aisc.__file__)"
 
 ### 2.1.19 候选接续
 
-本轮收尾回归前端 902 项、Rust 455 项、Python 1841 项及 220 子测试通过；原模型目录日志编码失败已修复。用户报告 Provider 账号手测通过，不重复账号测试；偶发卡死按要求暂缓。Windows 安装改用一次性 GitHub runner，静默新装、正式 2.1.18 升级、启动/CLI/PATH 与数据保留已通过；人工向导、依赖安装及交互卸载单列 NOT RUN。本机沙盒/虚拟机已停止清理，不重新搭建。
+本轮收尾回归前端 902 项、Rust 455 项、Python 1841 项及 220 子测试通过；原模型目录日志编码失败已修复。用户报告 Provider 账号手测通过，不重复账号测试；偶发卡死按要求暂缓。一次性 GitHub Windows runner 的静默新装、正式 2.1.18 升级、启动/CLI/PATH 与数据保留通过；Computer Use 导航及受控 Docker 提示检查通过。2026-11-19 用户进一步确认安装完成页、Docker 缺失/启动/重新检测，以及交互卸载保留和清理五轮全部手测无问题，记为用户报告 PASS，不改写开发者测试来源。本机临时沙盒/虚拟机已清理，不再搭建。
 
 给 leader 验收时记录 PR #105 的实际 head 和对应 CI，并配对当前 Workbench、冻结 CLI 和完整 bundle。便携版可先验证功能；工作区文件和 Docker 资源依然真实可写。远程文件移动需要对应的远端 CLI，新节点控制、技能修复、Codex 内联滚动及 gh 需要本版资源构建的镜像。仅启动 Vite 网页或替换前端不能覆盖这些变化。
 

@@ -1,5 +1,7 @@
 # AISC 小版本开发生命流程（交接文档）
 
+> **当前版本接续（2026-11-19）**：2.1.19 Preview 用户功能与安装手测已通过，正式发布准备见 [整版交付](docs/plans/2.1.19-dev-plans/DELIVERY.md)；本文历史步骤不表示仍需重做安装或重建虚拟机。
+
 > **阅读入口（2026-11-09）**：本文是历史快照。当前分工、统一 Preview 与发布渠道以 [DEVELOP_WIKI](DEVELOP_WIKI.md)、[开发职责](docs/workflows/development-roles.md) 和 [贡献者流程](docs/workflows/contributor-workflow.md) 为准；旧版本、个人路径及当时状态不代表当前安装/发布步骤。
 
 > 每次交付均按[完整版本交付标准](docs/workflows/development-roles.md#complete-version-delivery)提供整版成果及证据清单，供用户转交 leader 确认；不得只列最后补做的内容。下方历史流程不替代这一现行要求。
