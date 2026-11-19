@@ -31,6 +31,7 @@ const mockIpc = vi.hoisted(() => ({
   dockerScan: vi.fn(),
   dockerCleanup: vi.fn(),
   dockerRebuild: vi.fn(),
+  openDockerReset: vi.fn().mockResolvedValue(undefined),
   imageTag: vi.fn(),
   targetSet: vi.fn(),
   appCheckUpdate: vi.fn(),
@@ -72,6 +73,34 @@ beforeEach(() => {
   vi.mocked(confirm).mockReset().mockResolvedValue(true);
   mockIpc.loadSettings.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows NT 10.0");
+});
+
+describe("Docker official reset handoff", () => {
+  async function ready() {
+    await useSettingsStore().load();
+    const wrapper = mount(SettingsForm, { global: { plugins: [i18n] } });
+    await wrapper.findAll('.nav-item')[5]!.trigger('click');
+    return wrapper;
+  }
+  it("opens Docker's UI without invoking any destructive resource operation", async () => {
+    const wrapper = await ready();
+    await wrapper.get('[data-testid="docker-reset-button"]').trigger('click');
+    await flushPromises();
+    expect(mockIpc.openDockerReset).toHaveBeenCalledOnce();
+    expect(mockIpc.dockerCleanup).not.toHaveBeenCalled();
+    expect(mockIpc.dockerRebuild).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(i18n.global.t('settings.docker.resetSteps'));
+    wrapper.unmount();
+  });
+  it("keeps manual recovery guidance visible when Docker cannot be opened", async () => {
+    mockIpc.openDockerReset.mockRejectedValueOnce(new Error('no protocol handler'));
+    const wrapper = await ready();
+    await wrapper.get('[data-testid="docker-reset-button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain(i18n.global.t('settings.docker.resetFailed'));
+    expect(wrapper.get('[data-testid="docker-reset-button"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
 });
 
 describe("b5 explicit update confirmation", () => {

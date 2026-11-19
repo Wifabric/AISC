@@ -25,6 +25,17 @@ const update = useUpdateStore();
 const supportsInstaller = update.supportsInstaller();
 const confirmationPending = ref(false);
 const showDockerReset = ref(false);
+const dockerResetOpening = ref(false);
+const dockerResetError = ref("");
+async function onDockerReset() {
+  if (dockerResetOpening.value || store.target?.kind === "remote") return;
+  showDockerReset.value = true;
+  dockerResetError.value = "";
+  dockerResetOpening.value = true;
+  try { await store.openDockerReset(); }
+  catch (e) { dockerResetError.value = String(e); }
+  finally { dockerResetOpening.value = false; }
+}
 let disposed = false;
 onBeforeUnmount(() => { disposed = true; });
 
@@ -804,10 +815,11 @@ async function reopenOnboarding() {
               :title="store.target?.kind === 'remote' ? t('imageRebuild.localOnly') : t('settings.docker.rebuildTip')"
               @click="onDockerRebuild"
             >{{ rebuild.busy ? t("settings.docker.rebuilding") : t("settings.docker.rebuild") }}</button>
-            <button :disabled="store.target?.kind === 'remote'" :aria-expanded="showDockerReset"
-                    @click="showDockerReset = !showDockerReset">{{ t("settings.docker.reset") }}</button>
+            <button :disabled="dockerResetOpening || store.target?.kind === 'remote'" :aria-expanded="showDockerReset"
+                    data-testid="docker-reset-button" @click="onDockerReset">{{ t("settings.docker.reset") }}</button>
           </div>
           <p v-if="showDockerReset" class="note" role="status">{{ t("settings.docker.resetSteps") }}</p>
+          <p v-if="dockerResetError" class="err-text" role="alert">{{ t("settings.docker.resetFailed") }}: {{ dockerResetError }}</p>
 
           <template v-if="store.dockerReport">
             <p v-if="!store.dockerReport.dockerAvailable" class="note">

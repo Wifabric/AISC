@@ -476,6 +476,10 @@ export const useSettingsStore = defineStore("settings", () => {
     scanDockerResources,
     runDockerCleanup,
     runDockerRebuild,
+    async openDockerReset(): Promise<void> {
+      if (targetRef.value?.kind === "remote") return;
+      await ipc.openDockerReset();
+    },
     readOnly,
     corrupted,
     dirty,

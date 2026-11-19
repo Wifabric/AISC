@@ -1956,6 +1956,17 @@ pub async fn start_docker(app: AppHandle) -> Result<(), WorkbenchError> {
     crate::trace::timed("docker", "start_docker", start_docker_inner(app)).await
 }
 
+/// Open Docker's own reset workflow. Docker owns the destructive confirmation;
+/// this command only opens its dashboard and never resets an engine itself.
+#[tauri::command]
+pub async fn open_docker_reset(app: AppHandle) -> Result<(), WorkbenchError> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url("docker-desktop://dashboard/open", None::<&str>)
+        .map_err(|e| WorkbenchError::cli_protocol()
+            .with_detail(format!("failed to open Docker Desktop: {e}")))
+}
+
 async fn start_docker_inner(app: AppHandle) -> Result<(), WorkbenchError> {
     // Launch-only (S8h): no branch uses the handle anymore (the install
     // heartbeat used to emit through it).

@@ -1,5 +1,15 @@
 # AISC — 开发日志
 
+## 2.1.19 合入后收尾（2026-11-19）
+
+[PR #104](https://github.com/Wifabric/AISC/pull/104) 已按用户授权合入 develop，合入提交为 `df448d3af9aa287e8337789583f05612fe3c4850`。继续处理除偶发标签卡死之外的遗留事项；用户已确认 Docker 重置采用 Docker Desktop 官方确认流程。
+
+补充修复：模型目录诊断日志明确使用 UTF-8，日志写入失败不再阻断模型发现；Codex 工作记录优先采用原生 SQLite 索引指向的会话文件，避免较新复制时间的旧日志与原生恢复选用不同内容；设置中的 Docker 重置入口打开官方 Dashboard，并提示进入 Troubleshoot，由 Docker 自己确认重置。构建脚本检查 PyInstaller 失败，并把 Robocopy 成功返回码规范化。
+
+新增一次性 GitHub Windows runner 的正式 2.1.18 升级验收：校验旧包摘要、检查安装版本、保留实际设置/历史/项目/原生会话、验证 CLI 读取、Workbench 启动及静默卸载后保留。脚本拒绝在普通桌面环境运行；结果写入独立 CI artifact。该检查不冒充安装向导、依赖安装或交互式卸载的 Computer Use 验收。
+
+本地 Python 全集 1841 通过、74 跳过及 220 子测试通过；前端 902 项通过；Rust 回归通过（环境条件未满足的真实 SSH/运行时测试不计实际执行）。定向 Windows 非 UTF-8 编码与工作记录回归均通过。安装 CI 和桌面实测结果完成后回写 DELIVERY。下文为各阶段历史记录，保留当时状态。
+
 ## 2.1.19 文档交接补全（2026-11-19）
 
 按用户要求参照 2.1.17 的说明清晰度，重写 Workbench 与 CLI Release Notes：按功能写明行为变化、使用入口、配套镜像/CLI、实际验证与遗留项；Workbench 文件改为发布流程要求的 `v2.1.19-preview.1.md`，同步入口引用。README 更新本分支版本以及文件移动、标签/启动目录、节点、技能和 Provider 正文，修正“Codex 模板一律走 Anthropic”等过时说明。
