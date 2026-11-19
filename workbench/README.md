@@ -1,6 +1,6 @@
 # AISC Workbench 开发与验收入口
 
-本目录为 AISC 桌面端（Vue/TypeScript + Tauri/Rust），通过 CLI 和 Docker 运行 Claude/Codex。本分支定版为 **2.1.19**，配套 CLI **0.3.0**；版本事实源是 `src-tauri/tauri.conf.json` 和仓库的 `src/aisc/VERSION`，不要使用前端工具包的 package.json 版本作为产品版本。
+本目录为 AISC 桌面端（Vue/TypeScript + Tauri/Rust），通过 CLI 和 Docker 运行 Claude/Codex。对外正式版为 **2.1.19**，随包 CLI **0.3.0**；develop 的 CLI 已开启 **0.3.1.dev0**，仅为下一开发号；版本事实源是 `src-tauri/tauri.conf.json` 和仓库的 `src/aisc/VERSION`，不要使用前端工具包的 package.json 版本作为产品版本。
 
 用户使用见[根 README](../README.md)，本版变化见[发布说明](../docs/releases/v2.1.19-preview.1.md)，操作参考见[功能验收教程](../docs/plans/2.1.19-dev-plans/HANDTEST.md)，测试证据与发布准备见[交付记录](../docs/plans/2.1.19-dev-plans/DELIVERY.md)。2026-11-19 用户已确认本轮功能及剩余安装交互手测全部通过。
 
