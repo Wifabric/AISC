@@ -2,7 +2,7 @@
 
 本目录为 AISC 桌面端（Vue/TypeScript + Tauri/Rust），通过 CLI 和 Docker 运行 Claude/Codex。对外正式版为 **2.1.19**，随包 CLI **0.3.0**；develop 的 CLI 已开启 **0.3.1.dev0**，仅为下一开发号；版本事实源是 `src-tauri/tauri.conf.json` 和仓库的 `src/aisc/VERSION`，不要使用前端工具包的 package.json 版本作为产品版本。
 
-用户使用见[根 README](../README.md)，本版变化见[发布说明](../docs/releases/v2.1.19-preview.1.md)，操作参考见[功能验收教程](../docs/plans/2.1.19-dev-plans/HANDTEST.md)，测试证据与发布准备见[交付记录](../docs/plans/2.1.19-dev-plans/DELIVERY.md)。2026-11-19 用户已确认本轮功能及剩余安装交互手测全部通过。
+用户使用见[根 README](../README.md)，本版变化见[发布说明](../docs/releases/v2.1.19.md)，操作参考见[功能验收教程](../docs/archive/2.1.19-dev-plans/HANDTEST.md)，测试证据与发布结果见[交付记录](../docs/archive/2.1.19-dev-plans/DELIVERY.md)。2026-11-19 用户已确认本轮功能及剩余安装交互手测全部通过。
 
 ## 准备真实桌面环境
 
@@ -42,8 +42,8 @@ npm test
 npm run build
 ```
 
-Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；未执行的自动化项不因用户手测通过而改记开发者 PASS。PR #104、#105 均已合入 develop，当前集成提交为 6877334d。Provider 编码单测、Windows 静默安装/升级与用户安装交互验收已通过，具体来源见 DELIVERY。
+Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；未执行的自动化项不因用户手测通过而改记开发者 PASS。PR #104、#105 已合入 develop，PR #106 已将正式发布源码合入 main 8d748eef。Provider 编码单测、Windows 静默安装/升级与用户安装交互验收已通过，具体来源见 DELIVERY。
 
 ## 打包与发布
 
-Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。[Preview Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19-preview.1) 已公开，候选仍未签名，签名按用户决定暂不处理。[2.1.19 正式版说明](../docs/releases/v2.1.19.md)已定稿，用户已授权正式发布，构建与渠道状态见 DELIVERY。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；先同步两个版本事实源，再构建并验证正式包，不能仅重命名 Preview 安装包。创建 PR、推送、tag 和发布沿用用户当次授权。
+Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。[正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19) 已公开，正式安装包仍未签名，签名按用户决定暂不处理。[2.1.19 正式版说明](../docs/releases/v2.1.19.md)已发布，构建与渠道结果见 DELIVERY。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；先同步两个版本事实源，再构建并验证正式包，不能仅重命名 Preview 安装包。创建 PR、推送、tag 和发布沿用用户当次授权。

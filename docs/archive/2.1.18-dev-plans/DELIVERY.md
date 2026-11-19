@@ -1,5 +1,7 @@
 # AISC 2.1.18 整版交付清单（供 leader 确认）
 
+> **2026-11-19 渠道接续：** CLI 0.2.0 正式 PyPI 仍未上传；原等待审批任务 42590823276 已取消以释放发布队列。独立 [CLI 0.3.0](https://pypi.org/project/aisc-cli/0.3.0/) 已通过新流程正式发布及安装验证。下文保留 11 月 9 日当时状态，不再要求审批已取消的旧任务；如需补发 0.2.0 另行安排。
+
 ## 发布结论
 
 - **Workbench 2.1.18 已正式发布并验证**：[Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.18)；Windows x86_64 安装器自带 CLI **0.2.0**，serve protocol 4。普通桌面用户无需另行安装 Python CLI。

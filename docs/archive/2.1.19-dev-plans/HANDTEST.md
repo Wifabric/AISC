@@ -1,19 +1,19 @@
-# 2.1.19-preview.1 功能验收教程
+# 2.1.19 功能操作与复测参考
 
-本教程保留本轮新增功能的操作参考。先阅读 [Workbench 发布说明](../../releases/v2.1.19-preview.1.md)，分项证据见 [DELIVERY](DELIVERY.md)。**2026-11-19 用户已确认功能及剩余安装交互手测全部通过；无需重复执行本清单。后续复测时使用新的结果表，不覆盖本轮验收结论。**
+本教程保留本轮新增功能的操作参考。先阅读 [Workbench 发布说明](../../releases/v2.1.19.md)，分项证据见 [DELIVERY](DELIVERY.md)。**2026-11-19 用户已确认功能及剩余安装交互手测全部通过；无需重复执行本清单。后续复测时使用新的结果表，不覆盖本轮验收结论。**
 
 ## 1. 取得正确的测试版本
 
-当前 Workbench 为 **2.1.19-preview.1**，随包 CLI 为 **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104) 已合入 develop；后续修复为 [PR #105](https://github.com/Wifabric/AISC/pull/105)，分支 `codex/2.1.19-closeout`。测试时记录实际 PR head；同版本号的早期本地安装包不包含后续修复，不能仅凭版本号认定文件相同。
+当前正式 Workbench 为 **2.1.19**，随包 CLI 为 **0.3.0**，发布源码为 `8d748eefa37b39baaf7563a556e1a7d0c74f43cc`，由 [PR #106](https://github.com/Wifabric/AISC/pull/106) 合入 main。原用户手测基于定版前 Preview，正式包的安装及下载校验见 DELIVERY 第 8 节；程序功能一致，不重复要求用户执行已通过清单。
 
 功能测试入口：
 
-- **下载安装（推荐）**：打开 [v2.1.19-preview.1 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19-preview.1)，从 Assets 下载 `AISC-Workbench-2.1.19-preview.1-setup.exe` 和同名 `.sha256`，校验后安装并核对版本。图形安装及卸载选项的结果按第 4 节单独填写。
+- **下载安装（推荐）**：打开 [v2.1.19 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)，从 Assets 下载 `AISC-Workbench-2.1.19-setup.exe` 和同名 `.sha256`，校验后安装并核对版本。图形安装及卸载选项的结果按第 4 节单独填写。
 
-- **当前开发机**：由交付方提供与 PR #105 相同源码构建的 Workbench、CLI 和 bundle，具体二进制位置与 SHA-256 见 DELIVERY。`2.1.19-acceptance/打开本地测试版.cmd` 已更新配套程序和 bundle；隔离状态仍在该目录的 `test-data`、`test-webview`，不要转发这些目录。
+- **历史开发机入口**：`2.1.19-acceptance/打开本地测试版.cmd` 保留的是已验收 Preview，不能据此认作正式 2.1.19。正式验收或转交请使用上面的 Release 安装包；不要转发 `test-data`、`test-webview` 或个人配置。
 - **其他测试机或 PR 源码**：由交付方提供同一候选的完整运行文件及启动脚本，或按 [Workbench 开发入口](../../../workbench/README.md)和 [开发手册](../../../DEVELOP_WIKI.md)构建。运行文件必须包含配套 CLI 与完整 bundle；单独复制一个 exe、cmd，或只运行前端网页，都不能完成整套验收。不要转发开发机的测试数据、凭据目录或个人配置。
 
-Windows runner 已通过静默新装、正式 2.1.18 升级及数据保留；Computer Use 已验证中英文安装导航、运行中应用保护，以及 Docker Desktop 缺失提示/路径恢复后重新检测。用户进一步确认安装完成页、Docker 从零安装/停止后启动、卸载确认/取消与五轮保留/清理全部手测通过，结果分别见 DELIVERY。公开可下载版本仍为 Preview；正式包重新构建后的版本与安装冒烟应绑定新产物。
+Windows runner 已通过静默新装、正式 2.1.18 升级及数据保留；Computer Use 已验证中英文安装导航、运行中应用保护，以及 Docker Desktop 缺失提示/路径恢复后重新检测。用户进一步确认安装完成页、Docker 从零安装/停止后启动、卸载确认/取消与五轮保留/清理全部手测通过，结果分别见 DELIVERY。正式包已重新构建，安装升级和下载摘要与公开产物一致，见 DELIVERY 第 8 节。
 
 ## 2. 准备一个可丢弃的工作区
 
@@ -22,7 +22,7 @@ Windows runner 已通过静默新装、正式 2.1.18 升级及数据保留；Com
 3. 在 `A` 放入 `file.txt`（内容“源文件”）、`conflict.txt`（内容“源冲突文件”）及 `folder/child.txt`；在 `dest` 放入同名 `conflict.txt`（内容“目标保留文件”）。
 4. 使用本候选的资源构建并选择专用测试镜像。旧镜像不会因替换桌面程序自动获得技能修复、代理节点适配器和 gh。
 5. 启动该测试工作区。应用数据目录的隔离不代表工作区文件或宿主 Docker 引擎也被隔离；后续只操作这个测试目录和专用资源。
-6. 验证远程文件操作时，在已有 SSH 测试机准备同样目录，并部署对应 CLI 0.3.0.dev0。没有远程环境就记录 NOT RUN，不能用本地结果替代。
+6. 验证远程文件操作时，在已有 SSH 测试机准备同样目录，并部署对应 CLI 0.3.0。没有远程环境就记录 NOT RUN，不能用本地结果替代。
 
 不要为本轮验收重置日常 Docker Desktop，也不需要重复测试用户已确认的 Provider 或已要求跳过的偶发卡死。
 
