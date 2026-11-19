@@ -1,8 +1,10 @@
 # AISC 开发者手册
 
-当前已发布候选为 Workbench **2.1.19-preview.1** / CLI **0.3.0.dev0**。[PR #104](https://github.com/Wifabric/AISC/pull/104)、[PR #105](https://github.com/Wifabric/AISC/pull/105) 均已合入 develop，当前集成提交为 `6877334d`。2026-11-19 用户确认功能及剩余安装交互手测全部通过，进入正式发布准备；本分支已切换为正式 **2.1.19 / 0.3.0**，用户已授权发布，main 集成与渠道验证正在执行。功能范围见[Preview 说明](docs/releases/v2.1.19-preview.1.md)，[正式版说明](docs/releases/v2.1.19.md)、[开发交付记录](docs/plans/2.1.19-dev-plans/DELIVERY.md)及[验收教程](docs/plans/2.1.19-dev-plans/HANDTEST.md)同步当前状态。
+当前正式版为 Workbench **2.1.19** / CLI **0.3.0**。[PR #106](https://github.com/Wifabric/AISC/pull/106) 已合入 main，发布源码为 `8d748eefa37b39baaf7563a556e1a7d0c74f43cc`；[正式下载](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)已验证 Latest、安装包、校验文件与升级报告一致。独立 CLI **0.3.0** 已发布至 [PyPI](https://pypi.org/project/aisc-cli/0.3.0/)，TestPyPI 与正式 index 安装验证通过。用户已确认功能及全部安装交互手测通过，14 条已纳入反馈完成 final 回复及 resolved 回写，偶发卡死暂缓。完整来源及交付结果见[正式说明](docs/releases/v2.1.19.md)、[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)和[操作参考](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
 
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
+
+CLI 0.3.0 正式发布后，[PR #107](https://github.com/Wifabric/AISC/pull/107) 已按流程在 develop 开启 **0.3.1.dev0**。该开发号尚未发布；正式下载和不可变标签仍对应 Workbench 2.1.19 / CLI 0.3.0。
 
 ## 1. 分支与发布角色
 
@@ -321,13 +323,13 @@ python3 -c "import aisc; print(aisc.__file__)"
 
 ## 3. 快速验证
 
-### 2.1.19 候选接续
+### 2.1.19 正式版接续
 
 本轮收尾回归前端 902 项、Rust 455 项、Python 1841 项及 220 子测试通过；原模型目录日志编码失败已修复。用户报告 Provider 账号手测通过，不重复账号测试；偶发卡死按要求暂缓。一次性 GitHub Windows runner 的静默新装、正式 2.1.18 升级、启动/CLI/PATH 与数据保留通过；Computer Use 导航及受控 Docker 提示检查通过。2026-11-19 用户进一步确认安装完成页、Docker 缺失/启动/重新检测，以及交互卸载保留和清理五轮全部手测无问题，记为用户报告 PASS，不改写开发者测试来源。本机临时沙盒/虚拟机已清理，不再搭建。
 
 给 leader 验收时记录 PR #105 的实际 head 和对应 CI，并配对当前 Workbench、冻结 CLI 和完整 bundle。便携版可先验证功能；工作区文件和 Docker 资源依然真实可写。远程文件移动需要对应的远端 CLI，新节点控制、技能修复、Codex 内联滚动及 gh 需要本版资源构建的镜像。仅启动 Vite 网页或替换前端不能覆盖这些变化。
 
-当前新增接口为 `network nodes list/select/delay`（必填 workspace/runtime ID）、`session open --working-directory`（工作区相对子目录）和 serve `fs.move`。serve protocol 仍为 4；旧 CLI 同协议号不代表已实现这些接口。兼容性与错误边界见 [CLI Release Notes](docs/releases/v0.3.0.dev0.md)。文件移动不能降级为覆盖目标的操作；端口冲突清理仅作用于本次返回的完整容器 ID。
+当前新增接口为 `network nodes list/select/delay`（必填 workspace/runtime ID）、`session open --working-directory`（工作区相对子目录）和 serve `fs.move`。serve protocol 仍为 4；旧 CLI 同协议号不代表已实现这些接口。兼容性与错误边界见 [CLI Release Notes](docs/releases/v0.3.0.md)。文件移动不能降级为覆盖目标的操作；端口冲突清理仅作用于本次返回的完整容器 ID。
 
 ### 常用检查
 
