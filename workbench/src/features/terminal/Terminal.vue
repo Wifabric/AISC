@@ -287,6 +287,7 @@ function terminalOptions(): ITerminalOptions {
     // 用户「选中文本右键复制」时按钮恒灰。rightClickSelectsWord 让右键
     // 本身建立选区，随后的自定义菜单「复制」可用并写入系统剪贴板。
     rightClickSelectsWord: true,
+    macOptionClickForcesSelection: true,
 
     // Stage 6 (UX-03): reduced motion zeroes the terminal smooth scroll too.
 
@@ -1305,9 +1306,7 @@ function searchPrev() {
 
 }
 
-/** b12: Codex enables mouse tracking, which disables ordinary xterm drag
- * selection. Convert an unmodified Codex drag into xterm's forced-selection
- * path and preserve unmoved clicks by replaying them to the TUI. */
+/** Agent TUIs can enable mouse tracking at any time during a session. */
 function attachCodexMouseSelection(): void {
   const host = container.value;
   if (!host) return;
@@ -1315,7 +1314,7 @@ function attachCodexMouseSelection(): void {
   detachCodexMouseSelection = createCodexMouseSelectionBypass({
     host,
     getTerminalElement: () => term?.element ?? null,
-    isCodexPane: () => leafSessionType.value === "codex",
+    isAgentPane: () => leafSessionType.value === "codex" || leafSessionType.value === "claude",
     clearSelection: () => term?.clearSelection(),
   });
 }

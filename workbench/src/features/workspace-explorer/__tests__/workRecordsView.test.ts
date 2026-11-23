@@ -200,7 +200,19 @@ describe("WorkRecordsView", () => {
     expect(wrapper.findAll("button").some((b) => b.text() === "激活")).toBe(false);
   });
 
-  it("uses a silent in-app delete confirmation instead of the native dialog", async () => {
+  it("opens the collection context menu and cancels deletion in a top-layer dialog", async () => {
+    const { wrapper } = await mountView();
+    await wrapper.get(".work-record-head").trigger("contextmenu");
+    await flushPromises();
+    (document.querySelector("[data-testid=work-record-context-menu] button") as HTMLButtonElement).click();
+    await flushPromises();
+    const dialog = wrapper.get("dialog[data-testid=quiet-delete-dialog]");
+    await dialog.get("[data-testid=quiet-delete-cancel]").trigger("click");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(workRecordDelete).not.toHaveBeenCalled();
+  });
+
+  it("confirms the deletion in the Workbench dialog", async () => {
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
     await flushPromises();

@@ -170,7 +170,7 @@ onMounted(() => void usage.fetchOverview());
 <template>
   <section class="usage-tab" :aria-label="t('usage.title')">
     <div class="scroll">
-      <!-- ============ subscription ============ -->
+      <section class="panel" :aria-label="t('usage.sub.title')">
       <h2>{{ t("usage.sub.title") }}</h2>
       <template v-if="usage.subConfigured && !replacing">
         <dl class="sub-facts">
@@ -222,8 +222,9 @@ onMounted(() => void usage.fetchOverview());
         <SubscriptionForm />
       </template>
 
-      <!-- ============ provider usage ============ -->
-      <h2>{{ t("usage.providers.title") }}</h2>
+      </section>
+      <section class="panel" :aria-label="t('usage.stats')">
+      <h2>{{ t("usage.stats") }}</h2>
       <div class="controls">
         <label>
           <span>{{ t("usage.rangeLabel") }}</span>
@@ -257,6 +258,9 @@ onMounted(() => void usage.fetchOverview());
       <p v-else-if="usage.usageError" class="error" role="alert">{{ usage.usageError }}</p>
 
       <template v-else>
+        <div class="reports">
+        <section class="report">
+        <h3>{{ t("usage.providers.title") }}</h3>
         <table v-if="providerRows.length" class="usage-table">
           <thead>
             <tr>
@@ -281,17 +285,13 @@ onMounted(() => void usage.fetchOverview());
             </tr>
           </tbody>
         </table>
-        <!-- P2-1 (A2): empty states carry an action (VS Code parity). -->
-        <div v-else class="dim usage-empty">
-          <p>{{ t("usage.empty") }}</p>
-          <button class="ui-button sm" :disabled="usage.loading" @click="usage.fetchOverview()">
-            {{ t("common.refresh") }}
-          </button>
-        </div>
+        <p v-else class="dim usage-empty">{{ t("usage.empty") }}</p>
+        </section>
 
         <!-- PP r5③: per-model usage — the actual upstream model ids the
              proxy forwarded (ground truth for mapping verification). -->
-        <h2>{{ t("usage.models.title") }}</h2>
+        <section class="report">
+        <h3>{{ t("usage.models.title") }}</h3>
         <p class="hint">{{ t("usage.models.hint") }}</p>
         <table v-if="modelRows.length" class="usage-table">
           <thead>
@@ -315,12 +315,8 @@ onMounted(() => void usage.fetchOverview());
             </tr>
           </tbody>
         </table>
-        <!-- P2-1 (A2): empty states carry an action (VS Code parity). -->
-        <div v-else class="dim usage-empty">
-          <p>{{ t("usage.empty") }}</p>
-          <button class="ui-button sm" :disabled="usage.loading" @click="usage.fetchOverview()">
-            {{ t("common.refresh") }}
-          </button>
+        <p v-else class="dim usage-empty">{{ t("usage.empty") }}</p>
+        </section>
         </div>
 
         <ul v-if="usage.scope === 'all'" class="ws-states">
@@ -332,6 +328,7 @@ onMounted(() => void usage.fetchOverview());
         </ul>
         <p class="hint">{{ t("usage.note") }}</p>
       </template>
+      </section>
     </div>
   </section>
 </template>
@@ -339,8 +336,13 @@ onMounted(() => void usage.fetchOverview());
 <style scoped>
 .usage-tab { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column;
   background: var(--surface); }
-.scroll { flex: 1; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; }
-h2 { font-size: var(--font-lg); margin: var(--space-3) 0 2px; }
+.scroll { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px; }
+.panel { display: grid; gap: 12px; min-width: 0; padding-bottom: 20px; }
+.panel + .panel { border-top: 1px solid var(--border); padding-top: 20px; }
+.reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 27rem), 1fr)); gap: 20px; }
+.report { min-width: 0; overflow-x: auto; }
+h2 { font-size: var(--font-lg); margin: 0; }
+h3 { font-size: var(--font-md); margin: 0 0 8px; }
 .dim { color: var(--text-muted); font-size: var(--font-md); }
 .sub-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
 .sub-facts div { display: contents; }
@@ -351,7 +353,7 @@ h2 { font-size: var(--font-lg); margin: var(--space-3) 0 2px; }
 .sub-usage { margin: 0; font-size: 13px; }
 .note { margin: 0; font-size: var(--font-sm); color: var(--warn); }
 .error { color: var(--error); font-size: var(--font-md); margin: 0; }
-.actions { display: flex; gap: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .controls { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
 .controls label { display: flex; flex-direction: column; gap: 3px; font-size: var(--font-sm); color: var(--text-muted); }
 .usage-table { border-collapse: collapse; font-size: var(--font-md); max-width: 860px; }

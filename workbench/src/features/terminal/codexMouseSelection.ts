@@ -1,7 +1,7 @@
 export interface CodexMouseSelectionOptions {
   host: HTMLElement;
   getTerminalElement: () => HTMLElement | null;
-  isCodexPane: () => boolean;
+  isAgentPane: () => boolean;
   clearSelection: () => void;
 }
 
@@ -34,12 +34,8 @@ function cloneMouseEvent(
 }
 
 /**
- * Codex enables terminal mouse tracking. xterm then forwards ordinary drags to
- * the TUI and disables its selection service; Shift+drag remains xterm's
- * built-in forced-selection bypass. This adapter converts a Codex drag into a
- * synthetic Shift+drag while preserving a click without movement: the latter is
- * replayed to Codex as normal mousedown/mouseup after the forced selection is
- * cleared.
+ * While an agent requests mouse reporting, route text drags through xterm's
+ * platform-specific selection modifier. An unmoved click still reaches the TUI.
  */
 export function createCodexMouseSelectionBypass(options: CodexMouseSelectionOptions): () => void {
   let active = false;
@@ -58,9 +54,11 @@ export function createCodexMouseSelectionBypass(options: CodexMouseSelectionOpti
   const onMouseUp = (event: MouseEvent): void => {
     if (!active || forwardingClick) return;
     active = false;
-    document.removeEventListener("mousemove", onMouseMove, true);
+    const doc = options.host.ownerDocument;
+    doc.removeEventListener("mousemove", onMouseMove, true);
+    doc.removeEventListener("mouseup", onMouseUp, true);
     const terminal = options.getTerminalElement();
-    if (!terminal || moved) return;
+    if (!terminal || moved || !terminal.querySelector(".xterm-screen")?.contains(event.target as Node)) return;
 
     options.clearSelection();
     forwardingClick = true;
@@ -75,10 +73,11 @@ export function createCodexMouseSelectionBypass(options: CodexMouseSelectionOpti
   };
 
   const onMouseDownCapture = (event: MouseEvent): void => {
-    if (forwardingClick || event.button !== 0 || event.shiftKey) return;
-    if (!options.isCodexPane() || !event.cancelable) return;
+    if (forwardingClick || event.button !== 0 || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+    if (!options.isAgentPane() || !event.cancelable) return;
     const terminal = options.getTerminalElement();
-    if (!terminal?.classList.contains("enable-mouse-events")) return;
+    if (!terminal?.classList.contains("enable-mouse-events") ||
+        !terminal.querySelector(".xterm-screen")?.contains(event.target as Node)) return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -86,24 +85,20 @@ export function createCodexMouseSelectionBypass(options: CodexMouseSelectionOpti
     moved = false;
     startX = event.clientX;
     startY = event.clientY;
-    document.addEventListener("mousemove", onMouseMove, true);
-    terminal.dispatchEvent(cloneMouseEvent(event, "mousedown", { shiftKey: true }));
-  };
-
-  const onMouseUpCapture = (event: MouseEvent): void => {
-    // Do not stop this event: xterm's SelectionService listens on document and
-    // needs the same mouseup to finalize the selection and fire copy auto-sync.
-    if (!active || forwardingClick) return;
-    onMouseUp(event);
+    const doc = options.host.ownerDocument;
+    doc.addEventListener("mousemove", onMouseMove, true);
+    // Selection may end outside the pane. Let xterm receive the same mouseup.
+    doc.addEventListener("mouseup", onMouseUp, true);
+    const mac = /Mac/.test(navigator.platform);
+    terminal.dispatchEvent(cloneMouseEvent(event, "mousedown", { shiftKey: !mac, altKey: mac }));
   };
 
   options.host.addEventListener("mousedown", onMouseDownCapture, true);
-  options.host.addEventListener("mouseup", onMouseUpCapture, true);
 
   return () => {
     options.host.removeEventListener("mousedown", onMouseDownCapture, true);
-    options.host.removeEventListener("mouseup", onMouseUpCapture, true);
-    document.removeEventListener("mousemove", onMouseMove, true);
+    options.host.ownerDocument.removeEventListener("mouseup", onMouseUp, true);
+    options.host.ownerDocument.removeEventListener("mousemove", onMouseMove, true);
     active = false;
     forwardingClick = false;
   };

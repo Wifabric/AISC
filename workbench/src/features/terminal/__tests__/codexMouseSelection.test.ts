@@ -8,6 +8,7 @@ function mouseEvent(type: "mousedown" | "mousemove" | "mouseup", init: MouseEven
 describe("codex mouse selection bypass", () => {
   let host: HTMLDivElement;
   let terminal: HTMLDivElement;
+  let surface: HTMLDivElement;
   let clearSelection: () => void;
   let detach: () => void;
 
@@ -15,13 +16,16 @@ describe("codex mouse selection bypass", () => {
     host = document.createElement("div");
     terminal = document.createElement("div");
     terminal.className = "terminal enable-mouse-events";
+    surface = document.createElement('div');
+    surface.className = 'xterm-screen';
+    terminal.appendChild(surface);
     host.appendChild(terminal);
     document.body.appendChild(host);
     clearSelection = vi.fn();
     detach = createCodexMouseSelectionBypass({
       host,
       getTerminalElement: () => terminal,
-      isCodexPane: () => true,
+      isAgentPane: () => true,
       clearSelection,
     });
   });
@@ -31,14 +35,14 @@ describe("codex mouse selection bypass", () => {
     host.remove();
   });
 
-  it("converts a codex drag into forced xterm selection and does not replay a click", () => {
+  it("converts an agent drag into forced xterm selection and does not replay a click", () => {
     const dispatched: MouseEvent[] = [];
     vi.spyOn(terminal, "dispatchEvent").mockImplementation((event) => {
       dispatched.push(event as MouseEvent);
       return true;
     });
     const down = mouseEvent("mousedown", { clientX: 10, clientY: 10 });
-    host.dispatchEvent(down);
+    surface.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(true);
     expect(dispatched).toHaveLength(1);
     expect(dispatched[0]?.shiftKey).toBe(true);
@@ -47,8 +51,8 @@ describe("codex mouse selection bypass", () => {
     const onDocumentMouseUp = () => { documentSawMouseUp = true; };
     document.addEventListener("mouseup", onDocumentMouseUp);
     try {
-      host.dispatchEvent(mouseEvent("mousemove", { clientX: 24, clientY: 14 }));
-      host.dispatchEvent(mouseEvent("mouseup", { clientX: 24, clientY: 14 }));
+      surface.dispatchEvent(mouseEvent("mousemove", { clientX: 24, clientY: 14 }));
+      document.dispatchEvent(mouseEvent("mouseup", { clientX: 24, clientY: 14 }));
     } finally {
       document.removeEventListener("mouseup", onDocumentMouseUp);
     }
@@ -60,14 +64,14 @@ describe("codex mouse selection bypass", () => {
     expect(documentSawMouseUp).toBe(true);
   });
 
-  it("replays an unmoved click to codex after forced selection starts", () => {
+  it("replays an unmoved click to the agent after forced selection starts", () => {
     const dispatched: MouseEvent[] = [];
     vi.spyOn(terminal, "dispatchEvent").mockImplementation((event) => {
       dispatched.push(event as MouseEvent);
       return true;
     });
-    host.dispatchEvent(mouseEvent("mousedown", { clientX: 10, clientY: 10 }));
-    host.dispatchEvent(mouseEvent("mouseup", { clientX: 11, clientY: 11 }));
+    surface.dispatchEvent(mouseEvent("mousedown", { clientX: 10, clientY: 10 }));
+    surface.dispatchEvent(mouseEvent("mouseup", { clientX: 11, clientY: 11 }));
     expect(clearSelection).toHaveBeenCalled();
     expect(dispatched.map((event) => [event.type, event.shiftKey])).toEqual([
       ["mousedown", true],
@@ -76,12 +80,22 @@ describe("codex mouse selection bypass", () => {
     ]);
   });
 
-  it("leaves ordinary terminal selection untouched outside codex", () => {
+  it("keeps modified clicks and clicks on the scrollbar native", () => {
+    const modified = mouseEvent("mousedown", { ctrlKey: true });
+    surface.dispatchEvent(modified);
+    expect(modified.defaultPrevented).toBe(false);
+    const scrollbar = terminal.appendChild(document.createElement("div"));
+    const down = mouseEvent("mousedown");
+    scrollbar.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+  });
+
+  it("leaves ordinary terminal selection untouched in a shell pane", () => {
     detach();
     detach = createCodexMouseSelectionBypass({
       host,
       getTerminalElement: () => terminal,
-      isCodexPane: () => false,
+      isAgentPane: () => false,
       clearSelection,
     });
     const dispatched: MouseEvent[] = [];
@@ -90,7 +104,7 @@ describe("codex mouse selection bypass", () => {
       return true;
     });
     const down = mouseEvent("mousedown", { clientX: 10, clientY: 10 });
-    host.dispatchEvent(down);
+    surface.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(false);
     expect(dispatched).toHaveLength(0);
   });
