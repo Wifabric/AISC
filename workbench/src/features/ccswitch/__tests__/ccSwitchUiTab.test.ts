@@ -223,7 +223,7 @@ describe("CcSwitchUiTab (Stage 8e)", () => {
 
   it("official entries stay visible and pin first (PP r3)", async () => {
     setup();
-    const bare = RESULT(["deepseek", "zhipu"]);
+    const bare = RESULT(["deepseek", "claude-official"]);
     bare.providers[1]!.base_url = "";
     vi.mocked(ipc.ccSwitchProviders).mockResolvedValue(bare);
     const w = mount(CcSwitchUiTab, { global: { plugins: [i18n] } });
@@ -255,6 +255,25 @@ describe("CcSwitchUiTab (Stage 8e)", () => {
     await vi.waitFor(() =>
       expect(toast.toasts.map((x) => x.message).join("|"))
         .toContain("官方直连"));
+    w.unmount();
+  });
+
+  it("shows one official entry alongside editable legacy configurations without URLs", async () => {
+    setup();
+    const snapshot = resultWithOfficial();
+    const legacy = snapshot.providers[snapshot.providers.length - 1]!;
+    legacy.is_current = true;
+    snapshot.providers[0]!.is_current = false;
+    snapshot.providers.push({ ...legacy, id: "claude-official", is_current: false });
+    snapshot.providers.push({ ...legacy, id: "my-relay", name: "My relay", is_current: false });
+    vi.mocked(ipc.ccSwitchProviders).mockResolvedValue(snapshot);
+    const w = mount(CcSwitchUiTab, { global: { plugins: [i18n] } });
+    await vi.waitFor(() => expect(w.findAll(".card")).toHaveLength(4));
+    const cards = w.findAll(".card");
+    expect(cards[0]!.get(".name").text()).toBe("官方直连");
+    expect(cards[0]!.classes()).toContain("current");
+    const custom = cards.find(card => card.get(".name").text() === "My relay");
+    expect(custom?.find("button.edit").exists()).toBe(true);
     w.unmount();
   });
 

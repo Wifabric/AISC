@@ -127,9 +127,10 @@ const flashId = ref("");
 let rowFlashTimer: number | null = null;
 
 async function activate(p: CcSwitchProvider): Promise<void> {
-  if (mutating.value || (p.is_current && p.base_url)) return;
+  const direct = p === officialCard.value;
+  if (mutating.value || (p.is_current && !direct)) return;
   let target = p.id;
-  if (!p.base_url) {
+  if (direct) {
     // Official-direct card: enabling it cancels the active proxy
     // (IDEA-4 round 3 semantics, relocated from the old current-row click).
     const current = providers.value.find((x) => x.is_current);
@@ -173,15 +174,22 @@ async function remove(p: CcSwitchProvider): Promise<void> {
 
 const hasRuntime = computed(() => Boolean(store.runtimeId && store.workspace));
 
-/**
- * PP r3 (user ruling): official-direct entries (no base_url) are ALWAYS
- * visible and pinned first (cc-switch parity — supersedes the S8g-2 hiding
- * rule); everything else keeps the store's stable first-seen order.
- */
-const displayProviders = computed(() => [
-  ...providers.value.filter((p) => !p.base_url),
-  ...providers.value.filter((p) => Boolean(p.base_url)),
-]);
+// Older images can expose the upstream's automatic "default" import alongside
+// the canonical direct route. Only collapse a bare, uncustomized placeholder.
+const legacyDirect = computed(() => providers.value.find(p =>
+  p.id === "default" && (!p.name || p.name.toLowerCase() === "default") &&
+  !p.base_url && !p.model && !p.has_api_key && !p.notes && !p.website_url &&
+  !p.icon && !p.model_catalog?.length && !Object.keys(p.role_env ?? {}).length));
+const officialCard = computed(() => {
+  const canonical = providers.value.find(p => p.id === `${agent.value}-official` && !p.base_url);
+  if (canonical && legacyDirect.value?.is_current) return { ...canonical, is_current: true };
+  return canonical ?? legacyDirect.value;
+});
+const displayProviders = computed(() => {
+  const direct = officialCard.value;
+  if (!direct) return providers.value;
+  return [direct, ...providers.value.filter(p => p.id !== direct.id && p !== legacyDirect.value)];
+});
 
 onMounted(() => {
   if (hasRuntime.value) {
@@ -287,6 +295,7 @@ onBeforeUnmount(() => {
           v-for="p in displayProviders"
           :key="p.id"
           :provider="p"
+          :official="p === officialCard"
           :busy="mutating"
           :class="{ flash: p.id === flashId }"
           @activate="activate(p)"
