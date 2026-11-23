@@ -52,7 +52,7 @@ const dlPercent = computed(() => {
   if (!total) return 0;
   return Math.min(100, Math.round((update.downloaded / total) * 100));
 });
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; openNetwork: [] }>();
 
 type EffectKind = "immediate" | "rebuild" | "restart";
 interface FieldDef {
@@ -575,7 +575,7 @@ async function reopenOnboarding() {
           class="nav-search"
           type="text"
           :placeholder="t('settings.searchPlaceholder')"
-          aria-label="t('settings.searchPlaceholder')"
+          :aria-label="t('settings.searchPlaceholder')"
         />
         <button
           v-for="g in GROUPS"
@@ -588,6 +588,9 @@ async function reopenOnboarding() {
           }"
           @click="pickGroup(g)"
         >{{ t(GROUP_KEY[g] ?? g) }}</button>
+        <button type="button" class="nav-item" @click="emit('openNetwork')">
+          {{ t("workspbar.networkUsage") }}
+        </button>
       </nav>
       <div class="settings-pane">
       <template v-for="group in visibleGroups" :key="group">
