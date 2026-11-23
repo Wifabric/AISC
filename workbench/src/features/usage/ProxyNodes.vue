@@ -55,6 +55,7 @@ async function run(action: "list" | "select" | "delay", group = "") {
 </script>
 <template>
   <section v-if="runtime.runtimeId && runtime.workspace">
+    <h3>{{ t("usage.nodes.title") }}</h3>
     <button class="ui-button" :disabled="busy" @click="run('list')">{{ t("usage.nodes.list") }}</button>
     <p v-if="loaded && !Object.keys(groups).length">{{ t("usage.nodes.empty") }}</p>
     <div v-for="(data, name) in groups" :key="name">

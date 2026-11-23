@@ -24,13 +24,11 @@ function closeTab() {
 
 <template>
   <section class="settings-tab" :aria-label="t('settings.title')">
-    <button class="ui-button network-entry" @click="workspaces.openNetworkUsageTab()">{{ t("workspbar.networkUsage") }}</button>
-    <SettingsForm @close="closeTab" />
+    <SettingsForm @close="closeTab" @open-network="workspaces.openNetworkUsageTab()" />
   </section>
 </template>
 
 <style scoped>
-.network-entry { align-self: flex-start; margin: var(--space-3); }
 .settings-tab {
   flex: 1; min-height: 0; min-width: 0;
   display: flex; flex-direction: column;
