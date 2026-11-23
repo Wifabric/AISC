@@ -649,6 +649,48 @@ class MarketTests(TempEnv):
             A.skill_install("caveman")
         self.assertEqual(calls[0]["argv"], ["cc-switch", "skills", "install", "caveman"])
 
+    def test_unavailable_archives_still_try_git_before_enabling(self):
+        spec = "owner/tools:example"
+        with mock.patch.object(A, "_github_branch", return_value="main"), \
+             mock.patch.object(A, "_archive_reachable", return_value=False), \
+             mock.patch.object(A, "_stage_skill_from_git_source_one") as stage, \
+             mock.patch.object(A, "_run_cli") as cli:
+            A.skill_install(spec)
+        stage.assert_called_once_with(spec, "owner/tools", {})
+        self.assertEqual(cli.call_args_list[0].args[0], ["cc-switch", "skills", "install", spec])
+
+    def test_office_hours_includes_only_selected_skill_and_referenced_runtime(self):
+        def cli(argv, **kwargs):
+            if argv[:2] == ["git", "clone"]:
+                checkout = Path(argv[-1])
+                files = {
+                    "office-hours/SKILL.md": "~/.claude/skills/gstack/bin/gstack-skill-load",
+                    "review/SKILL.md": "unselected",
+                    "bin/gstack-skill-load": '"$_BIN/gstack-helper"',
+                    "bin/gstack-skill-start": "",
+                    "bin/gstack-helper": "import { run } from '../lib/helper';",
+                    "lib/helper.ts": "export const run = true",
+                    "bin/unrelated": "",
+                    "scripts/one-way-doors.ts": "",
+                    "scripts/psychographic-signals.ts": "",
+                    "LICENSE": "", "VERSION": "1",
+                }
+                for name, content in files.items():
+                    file = checkout / name
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    file.write_text(content, encoding="utf-8")
+            return "main"
+
+        with mock.patch.object(A, "_run_cli", side_effect=cli), \
+             mock.patch.object(A, "_ensure_office_hours_bun"):
+            A.skill_install("garrytan/gstack:office-hours")
+        installed = self.root / "skills" / "office-hours"
+        shared = installed / ".aisc-gstack"
+        self.assertIn(installed.as_posix(), (installed / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertTrue((shared / "lib/helper.ts").is_file())
+        self.assertFalse((shared / "bin/unrelated").exists())
+        self.assertEqual(list((self.root / "skills").iterdir()), [installed])
+
     def test_skill_install_stages_mirror_clone_when_direct_archive_fails(self):
         calls = []
 
