@@ -238,6 +238,9 @@ export const conversationRead = (
     before: before ?? null,
   });
 
+export const conversationExportMarkdown = (workspace: string, conversationId: string, agent: string, title: string) =>
+  invoke<string | null>("conversation_export_markdown", { workspace, conversationId, agent, title });
+
 export const writeSession = (sessionId: string, bytes: number[]) =>
   invoke<void>("write_session", { sessionId, bytes });
 

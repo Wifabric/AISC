@@ -28,6 +28,7 @@ const expandedUnfiled = ref(new Set<string>());
 const collapsedCollections = ref(new Set<string>());
 const unfiledExpanded = ref(true);
 const sessionLaunchError = ref<string | null>(null);
+const deleteDialog = ref<HTMLDialogElement | null>(null);
 const pendingDelete = ref<{
   kind: "collection" | "conversation";
   message: string;
@@ -41,8 +42,7 @@ const contextMenu = ref<{
   y: number;
   collectionId: string | null;
   memberKey: string;
-  agent: "claude" | "codex";
-  conversationId: string;
+  collectionOnly: boolean;
 } | null>(null);
 
 const visibleCollections = computed(() =>
@@ -140,6 +140,22 @@ function previewConversation(item: ConversationSummary | null): void {
 function previewMember(memberKey: string): void {
   previewConversation(memberConversation(memberKey));
 }
+
+async function exportFromMenu() {
+  const item = menuConversation();
+  closeMenu();
+  if (!item) return;
+  try { await explorer.exportConversation(item.agent, item.conversation_id, item.title); }
+  catch (cause) { sessionLaunchError.value = (cause as Error)?.message || String(cause); }
+}
+
+watch(pendingDelete, async (pending) => {
+  if (pending) {
+    await nextTick();
+    deleteDialog.value?.showModal?.();
+  }
+});
+watch(() => props.workspace, () => { pendingDelete.value = null; });
 // b2 (反馈 #11): while the provider conversation list is loading, a member row
 // must show a loading placeholder — never flash "missing reference" before the
 // lookup data has actually arrived.
@@ -487,9 +503,9 @@ function leaveMoveSubmenu(event: MouseEvent) {
   if (target instanceof Node && (submenuEl.value?.contains(target) || submenuTrigger.value?.contains(target))) return;
   moveSubOpen.value = false;
 }
-async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null) {
+async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null, collectionOnly = false) {
   event.preventDefault();
-  if (!item) { closeMenu(); return; }
+  if (!item && !collectionOnly) { closeMenu(); return; }
   menuOrigin = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   const anchor = menuOrigin?.getBoundingClientRect();
   moveSubOpen.value = false;
@@ -499,9 +515,8 @@ async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: s
     x: "clientX" in event ? event.clientX : anchor?.left ?? 8,
     y: "clientY" in event ? event.clientY : anchor?.bottom ?? 8,
     collectionId,
-    memberKey: member?.member_key ?? unfiledKey(item),
-    agent: item.agent,
-    conversationId: item.conversation_id,
+    memberKey: member?.member_key ?? (item ? unfiledKey(item) : ""),
+    collectionOnly,
   };
   const menu = contextMenu.value;
   await nextTick();
@@ -517,6 +532,12 @@ function closeMenu(restoreFocus = false) {
   moveSubOpen.value = false;
   menuOrigin = null;
   if (restoreFocus && origin?.isConnected) origin.focus({ preventScroll: true });
+}
+function deleteMenuCollection() {
+  const id = contextMenu.value?.collectionId;
+  const collection = id && records.byId(id);
+  closeMenu(true);
+  if (collection) requestCollectionDelete(collection.id, collection.title);
 }
 function isMenuTarget(target: EventTarget | null) {
   return target instanceof Node && !!(menuEl.value?.contains(target) || submenuEl.value?.contains(target));
@@ -636,7 +657,8 @@ async function moveFromMenu(targetId: string | null) {
     const c = records.unfiled.find(item => unfiledKey(item) === key);
     return c ? [{ memberKey: key, agent: c.agent, conversationId: c.conversation_id }] : [];
   });
-  await moveSubtree({ ...menu, subtree }, targetId);
+  const source = subtree.find(entry => entry.memberKey === menu.memberKey);
+  if (source) await moveSubtree({ ...source, collectionId: menu.collectionId, subtree }, targetId);
   if (contextMenu.value === menu) closeMenu();
 }
 
@@ -726,7 +748,8 @@ watch(() => props.workspace, async (workspace) => {
         @dragover.prevent
         @drop="dropCollection($event, collection.id)"
       >
-        <header class="work-record-head">
+        <header class="work-record-head" @contextmenu.prevent="openMemberMenu($event, collection.id, null, null, true)"
+          @keydown.shift.f10.prevent="openMemberMenu($event, collection.id, null, null, true)">
           <button
             class="conversation-twisty"
             type="button"
@@ -842,19 +865,21 @@ watch(() => props.workspace, async (workspace) => {
           </li>
         </ul>
       </section>
-    <div v-if="pendingDelete" class="quiet-delete-overlay" data-testid="quiet-delete-overlay" @mousedown.stop>
-      <div class="quiet-delete" role="dialog" aria-modal="true" :aria-label="t('workRecords.deleteTitle')" data-testid="quiet-delete-dialog">
+    <dialog v-if="pendingDelete" ref="deleteDialog" class="quiet-delete" aria-modal="true" :aria-label="t('workRecords.deleteTitle')" data-testid="quiet-delete-dialog" @cancel.prevent="pendingDelete = null">
+        <h3>{{ t("workRecords.deleteTitle") }}</h3>
         <p>{{ pendingDelete.message }}</p>
         <div class="quiet-delete-actions">
-          <button type="button" data-testid="quiet-delete-cancel" @click="pendingDelete = null">{{ t("workRecords.cancel") }}</button>
+          <button autofocus type="button" data-testid="quiet-delete-cancel" @click="pendingDelete = null">{{ t("workRecords.cancel") }}</button>
           <button type="button" class="danger" data-testid="quiet-delete-confirm" @click="confirmQuietDelete">{{ t("workRecords.delete") }}</button>
         </div>
-      </div>
-    </div>
+    </dialog>
     <Teleport to="body">
       <div v-if="contextMenu" ref="menuEl" class="work-record-menu" role="menu" :aria-label="t('workRecords.title')" :style="{ ...menuLimits, left: menuPosition.x + 'px', top: menuPosition.y + 'px', visibility: menuReady ? 'visible' : 'hidden' }" data-testid="work-record-context-menu" @click.stop>
+        <button v-if="contextMenu.collectionOnly" role="menuitem" type="button" @click="deleteMenuCollection">{{ t("workRecords.delete") }}</button>
+        <template v-else>
         <button role="menuitem" type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
         <button role="menuitem" v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
+        <button role="menuitem" v-if="menuConversation()" type="button" @click="exportFromMenu">{{ t("workRecords.exportMarkdown") }}</button>
         <button role="menuitem" v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
         <button role="menuitem" type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
         <button role="menuitem" type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
@@ -870,6 +895,7 @@ watch(() => props.workspace, async (workspace) => {
           </div>
           </Teleport>
         </div>
+        </template>
       </div>
     </Teleport>
   </div>
@@ -915,7 +941,8 @@ watch(() => props.workspace, async (workspace) => {
 
 </style>
 
-.quiet-delete-overlay { position:fixed; inset:0; z-index:95; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }
+.quiet-delete::backdrop { background: var(--scrim); }
+.quiet-delete h3 { margin: 0 0 var(--space-3); color: var(--text); }
 .quiet-delete { width:min(420px,90vw); padding:var(--space-3); background:var(--surface); border:var(--border-w) solid var(--border-strong); border-radius:var(--radius-md); box-shadow:var(--shadow-menu); }
 .quiet-delete p { margin:0 0 var(--space-3); color:var(--text); }
 .quiet-delete-actions { display:flex; justify-content:flex-end; gap:var(--space-2); }

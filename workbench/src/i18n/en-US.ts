@@ -1115,6 +1115,7 @@ export const enUS: Record<string, string> = {
   "workRecords.deleteConfirm": "Delete \"{title}\"? Running member sessions will be terminated and {count} member provider transcripts will be permanently deleted.",
   "workRecords.missing": "Missing reference",
   "workRecords.preview": "Preview",
+  "workRecords.exportMarkdown": "Export Markdown…",
   "workRecords.newSession": "New session",
   "workRecords.newSessionInRecord": "New session in Work Record",
   "workRecords.providerNotConfigured": "This engine is not signed in or configured. Configure the Provider first.",

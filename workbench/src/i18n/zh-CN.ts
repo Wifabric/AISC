@@ -1115,6 +1115,7 @@ export const zhCN = {
   "workRecords.deleteConfirm": "确定删除「{title}」？将终止运行中成员会话并永久删除 {count} 个成员 provider transcript。",
   "workRecords.missing": "引用缺失",
   "workRecords.preview": "预览",
+  "workRecords.exportMarkdown": "导出 Markdown…",
   "workRecords.newSession": "新建会话",
   "workRecords.newSessionInRecord": "工作记录内新建会话",
   "workRecords.providerNotConfigured": "该引擎尚未登录或未配置，请先完成 Provider 配置。",

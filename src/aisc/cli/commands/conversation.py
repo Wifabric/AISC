@@ -82,6 +82,9 @@ def print_conversation_text(subcommand: str, data: Any, errors: list) -> None:
         print(f"renamed: {data.get('conversation_id', '')} "
               f"agent={data.get('agent', '')} title={data.get('title', '')}")
     elif subcommand == "read":
+        if "markdown" in data:
+            print(data["markdown"], end="")
+            return
         for m in data.get("messages", []):
             head = f"#{m.get('ordinal')} {m.get('role')}/{m.get('kind')}"
             if m.get("name"):
