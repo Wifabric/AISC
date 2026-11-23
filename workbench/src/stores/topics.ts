@@ -14,6 +14,15 @@ function describeError(value: unknown): string {
     ? `${message}: ${error.technical_detail}` : message;
 }
 
+export function createTopicSession(agent: "claude" | "codex", topic?: { id: string; title: string; prompt: string }) {
+  const runtime = useRuntimeStore();
+  const context = runtime.topicLaunchContext;
+  if (!context) return topic ? runtime.createTab(agent, null, false, null, topic) : runtime.createTab(agent);
+  const id = runtime.createTab(agent, null, false, context.collectionId, topic, context.directory || undefined);
+  if (id) runtime.topicLaunchContext = null;
+  return id;
+}
+
 export const useTopicsStore = defineStore("topics", () => {
   const runtime = useRuntimeStore();
   const workspace = ref("");
@@ -168,14 +177,14 @@ export const useTopicsStore = defineStore("topics", () => {
   function openAgent(agent: "claude" | "codex"): void {
     if (!activeContext()) return;
     error.value = null;
-    if (!runtime.createTab(agent)) error.value = i18n.global.t("topics.sessionLimit");
+    if (!createTopicSession(agent)) error.value = i18n.global.t("topics.sessionLimit");
   }
 
   async function startConversation(agent: "claude" | "codex"): Promise<void> {
     if (!activeContext() || !detail.value || busy.value) return;
     error.value = null;
     const topic = detail.value;
-    if (!runtime.createTab(agent, null, false, null, {
+    if (!createTopicSession(agent, {
       id: topic.id, title: topic.title,
       prompt: `我们开始“${topic.title}”。请根据已保存的目标和条件，建议第一个可以实际完成的小步骤；缺少必要信息时先向我询问。`,
     })) error.value = i18n.global.t("topics.sessionLimit");

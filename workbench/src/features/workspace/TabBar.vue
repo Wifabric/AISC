@@ -8,11 +8,11 @@
  * id. ARIA tablist with arrow/Home/End navigation; the ▾ menu is a
  * keyboard-reachable popup.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { TOPICS_TAB_ID, useRuntimeStore } from "../../stores/runtime";
 import { useTopicsStore } from "../../stores/topics";
-import SessionDirectory from "./SessionDirectory.vue";
+import SessionLaunchMenu from "./SessionLaunchMenu.vue";
 import { findLeaf } from "../../stores/paneTree";
 import { useWorkRecordsStore } from "../../stores/workRecords";
 import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
@@ -101,10 +101,8 @@ const topics = useTopicsStore();
 
 // --- G-08 + menu (aria-haspopup; Enter/Space opens, arrows move, Enter picks) ---
 const menuOpen = ref(false);
-const menuRef = ref<HTMLUListElement | null>(null);
-const addBtnRef = ref<HTMLButtonElement | null>(null);
+watch(() => store.workspace, () => { menuOpen.value = false; directory.value = ""; });
 const caretBtnRef = ref<HTMLButtonElement | null>(null);
-const menuPos = ref({ x: 0, y: 0 });
 
 /** IDEA-1: the + main button creates this agent directly (ui.default_tab_agent;
  * unknown/missing values fall back to bash, mirroring the Rust default). */
@@ -117,107 +115,12 @@ function createDefaultTab() {
   store.createTab(defaultAgent.value);
 }
 
-/**
- * The menu is teleported to <body> with fixed positioning: the tabbar is an
- * `overflow-x: auto` scroll container (UX-02), which CLIPS an absolutely
- * positioned dropdown that drops below the bar (Stage 6 regression — the
- * agent list appeared cut off). The app chrome is CSS-zoomed
- * (`ui.font_scale` → `.app { zoom }`), so button-rect coordinates must be
- * divided by the live zoom — same pattern as the Explorer context menu.
- */
-function placeMenu(): boolean {
-  const btn = caretBtnRef.value ?? addBtnRef.value;
-  if (!btn) return false;
-  const rect = btn.getBoundingClientRect();
-  // 10d: a detached / not-yet-laid-out ref reports an all-zero rect, and the
-  // clamped minimum then parked the menu at the window's top-left corner
-  // (user evidence 2.png). Refuse to open instead.
-  if (rect.width === 0 && rect.height === 0) return false;
-  // The teleported menu lives OUTSIDE the zoomed .app, so its fixed px are
-  // viewport (VISUAL) px. r4: .app is sized width:100vw/scale, so the live
-  // scale is innerWidth / app.offsetWidth regardless of engine. A visual-space
-  // rect (modern engines: ratio == scale) is already correct; a layout-space
-  // rect (legacy: ratio == 1) must be MULTIPLIED by the scale. Never divided —
-  // dividing made the offset grow with the caret's distance from the left
-  // edge (user evidence: more tabs → bigger drift at font_scale 1.5).
-  const app = document.querySelector<HTMLElement>(".app");
-  const scale = app && app.offsetWidth > 0 ? window.innerWidth / app.offsetWidth : 1;
-  const ratio = btn.offsetWidth > 0 ? rect.width / btn.offsetWidth : 1;
-  const z = Math.abs(scale - 1) < 0.02 ? 1 : (Math.abs(ratio - scale) < 0.05 ? 1 : scale);
-  const menuWidth = 160;
-  menuPos.value = {
-    x: Math.max(4, Math.min(rect.left * z, window.innerWidth - menuWidth)),
-    y: rect.bottom * z + 2,
-  };
-  return true;
-}
-
-function toggleMenu() {
-  menuOpen.value = !menuOpen.value;
-  if (menuOpen.value) {
-    // Place after the menu mounts AND after the next paint: opening the
-    // menu right after closing a tab catches the +/▾ mid-FLIP, and transforms
-    // DO land in getBoundingClientRect — the menu then anchored at the
-    // transient position (occasional repro, user evidence 1.png). Double
-    // rAF measures the settled layout.
-    void nextTick(() => {
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          if (!placeMenu()) {
-            menuOpen.value = false;
-            return;
-          }
-          menuRef.value?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-        }),
-      );
-    });
-  }
-}
-
-function onMenuKeydown(e: KeyboardEvent) {
-  if (!menuOpen.value) return;
-  const items = Array.from(menuRef.value?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
-  const idx = items.findIndex((el) => el === document.activeElement);
-  if (e.key === "Escape" || e.key === "Tab") {
-    menuOpen.value = false;
-    if (e.key === "Escape") e.preventDefault();
-    return;
-  }
-  if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-    e.preventDefault();
-    items[(idx + 1) % items.length]?.focus();
-  } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-    e.preventDefault();
-    items[(idx - 1 + items.length) % items.length]?.focus();
-  } else if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    if (idx >= 0) {
-      choose(items[idx].dataset.agent as LaunchAgent | "topics");
-    }
-  }
-}
-
-function choose(agent: LaunchAgent | "topics") {
+function choose(agent: LaunchAgent | "topics", cwd: string) {
   menuOpen.value = false;
-  if (agent === "topics") store.openTopicsTab();
-  else if (directory.value) store.createTab(agent, undefined, false, undefined, undefined, directory.value);
+  if (agent === "topics") store.openTopicsTab({ directory: cwd });
+  else if (cwd) store.createTab(agent, undefined, false, undefined, undefined, cwd);
   else store.createTab(agent);
 }
-
-
-function onDocMousedown(e: MouseEvent) {
-  // The menu is teleported to <body>, so the containment check covers BOTH
-  // the anchor button and the teleported menu itself (a mousedown on a menu
-  // item must not close the menu before the click lands).
-  const target = e.target as HTMLElement;
-  if (menuOpen.value && !target.closest(".menu-wrap") && !target.closest(".tab-new-menu")) {
-    menuOpen.value = false;
-  }
-}
-
-onMounted(() => document.addEventListener("mousedown", onDocMousedown));
-onBeforeUnmount(() => document.removeEventListener("mousedown", onDocMousedown));
-
 // S3.3 / S1.6: ARIA tabs keyboard navigation (APG tabs pattern).
 // Arrow/Home/End move FOCUS within the tablist (roving tabindex) WITHOUT
 // activating - activation happens on Enter/Space, which is what sends the
@@ -515,7 +418,6 @@ function canReopen(s: TabSessionState): boolean {
          would clip an in-flow dropdown (Stage 6 UX-02 regression). -->
     <div class="menu-wrap">
       <button
-        ref="addBtnRef"
         class="icon add"
         :aria-label="t('tabbar.newTabDefault', { agent: t(`tabbar.menu.${defaultAgent}`) })"
         :title="t('tabbar.newTabDefault', { agent: t(`tabbar.menu.${defaultAgent}`) })"
@@ -528,34 +430,9 @@ function canReopen(s: TabSessionState): boolean {
         :title="t('tabbar.newTabChoose')"
         aria-haspopup="menu"
         :aria-expanded="menuOpen"
-        @click="toggleMenu"
-        @keydown="onMenuKeydown"
+        @click="menuOpen = !menuOpen"
       >▾</button>
-      <Teleport to="body">
-        <Transition name="pop">
-        <ul
-          v-if="menuOpen"
-          ref="menuRef"
-          class="menu tab-new-menu"
-          role="menu"
-          :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
-          @keydown="onMenuKeydown"
-        >
-          <li><SessionDirectory v-model="directory" /></li>
-          <li
-            v-for="a in AGENTS"
-            :key="a"
-            role="menuitem"
-            tabindex="0"
-            :data-agent="a"
-            @click="choose(a)"
-          >{{ t(`tabbar.menu.${a}`) }}</li>
-          <li role="menuitem" tabindex="0" data-agent="topics" @click="choose('topics')">{{ t("explorer.tab.topics") }}</li>
-
-
-        </ul>
-        </Transition>
-      </Teleport>
+      <SessionLaunchMenu v-if="menuOpen" v-model="directory" :anchor="caretBtnRef" @close="menuOpen = false" @choose="choose" />
     </div>
   </div>
 </template>
@@ -660,19 +537,4 @@ function canReopen(s: TabSessionState): boolean {
 /* IDEA-1: split-button caret — visually attached to the + button. */
 .icon.add-caret { color: var(--info); font-size: var(--font-sm); padding: 0 2px; }
 .menu-wrap { position: relative; display: flex; align-items: center; }
-/* Teleported to <body>: fixed + zoom-compensated coordinates (see placeMenu);
-   scoped styles still apply because Teleport preserves scope ids. */
-.menu {
-  position: fixed; z-index: var(--z-drawer);
-  list-style: none; margin: 0; padding: 4px 0;
-  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-md);
-  min-width: 140px;
-}
-.menu li {
-  padding: 6px 12px; font-size: var(--font-md); color: var(--text-2); cursor: pointer;
-  outline: none;
-}
-.menu li:hover, .menu li:focus { background: var(--surface-hover); color: var(--text); }
-.menu .sep { padding: 0; height: 1px; margin: 4px 8px; background: var(--border); cursor: default; }
-.menu .sep:hover, .menu .sep:focus { background: var(--border); }
 </style>

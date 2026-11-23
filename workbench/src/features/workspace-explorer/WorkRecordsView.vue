@@ -10,6 +10,8 @@ import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
+import type { LaunchAgent } from "../../types";
+import SessionLaunchMenu from "../workspace/SessionLaunchMenu.vue";
 import { memberRows, type MemberTreeRow } from './workRecordLayout';
 import type { WorkRecordMember, WorkRecordCollection } from "../../types";
 
@@ -28,6 +30,8 @@ const expandedUnfiled = ref(new Set<string>());
 const collapsedCollections = ref(new Set<string>());
 const unfiledExpanded = ref(true);
 const sessionLaunchError = ref<string | null>(null);
+const sessionMenu = ref<{ anchor: HTMLElement; collectionId: string } | null>(null);
+watch(() => props.workspace, () => { sessionMenu.value = null; });
 const pendingDelete = ref<{
   kind: "collection" | "conversation";
   message: string;
@@ -569,17 +573,15 @@ function onMemberMenuKey(event: KeyboardEvent, collectionId: string | null, memb
 function menuConversation(): ConversationSummary | null {
   return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
 }
-function collectionLaunchAgent(collection: WorkRecordCollection): "claude" | "codex" {
-  const member = [...collection.members].reverse().find((item) => item.agent === "claude" || item.agent === "codex");
-  return member?.agent === "claude" ? "claude" : "codex";
-}
-
 // b5 (反馈 #7/#8): a Work Record launch is tracked; launch failure closes only
 // the new label and preserves the readable error for recovery.
-async function createSessionInRecord(collection: WorkRecordCollection): Promise<void> {
-  if (runtime.lastCreatedTabId) return;
+async function createSessionInRecord(agent: LaunchAgent | "topics", directory: string): Promise<void> {
+  const menu = sessionMenu.value;
+  sessionMenu.value = null;
+  if (!menu || !records.byId(menu.collectionId) || runtime.lastCreatedTabId) return;
+  if (agent === "topics") { runtime.openTopicsTab({ collectionId: menu.collectionId, directory }); return; }
   sessionLaunchError.value = null;
-  const result = await runtime.createTrackedTab(collectionLaunchAgent(collection), collection.id);
+  const result = await runtime.createTrackedTab(agent, menu.collectionId, directory || undefined);
   if (result.error) {
     sessionLaunchError.value = result.error === "tab-limit"
       ? t("history.viewer.tabLimit")
@@ -751,7 +753,7 @@ watch(() => props.workspace, async (workspace) => {
           <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ records.numbers.get(collection.id) }} {{ collection.title }}</h4>
           <span v-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
           <span class="head-actions">
-            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" :data-testid="'new-session-' + collection.id" @click.stop="createSessionInRecord(collection)">＋</button>
+            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" aria-haspopup="menu" :aria-expanded="sessionMenu?.collectionId === collection.id" :data-testid="'new-session-' + collection.id" @click.stop="sessionMenu = sessionMenu?.collectionId === collection.id ? null : { anchor: $event.currentTarget as HTMLElement, collectionId: collection.id }">＋</button>
             <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" :data-testid="'rename-' + collection.id" @click.stop="beginCollectionRename(collection)">✎</button>
             <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.archive')" :aria-label="t('workRecords.archive')" @click.stop="records.archive(collection.id)">🗄</button>
             <button v-else class="ui-icon-button sm" type="button" :title="t('workRecords.restore')" :aria-label="t('workRecords.restore')" @click.stop="records.restore(collection.id)">♻</button>
@@ -851,6 +853,7 @@ watch(() => props.workspace, async (workspace) => {
         </div>
       </div>
     </div>
+    <SessionLaunchMenu v-if="sessionMenu" :key="sessionMenu.collectionId" :anchor="sessionMenu.anchor" @close="sessionMenu = null" @choose="createSessionInRecord" />
     <Teleport to="body">
       <div v-if="contextMenu" ref="menuEl" class="work-record-menu" role="menu" :aria-label="t('workRecords.title')" :style="{ ...menuLimits, left: menuPosition.x + 'px', top: menuPosition.y + 'px', visibility: menuReady ? 'visible' : 'hidden' }" data-testid="work-record-context-menu" @click.stop>
         <button role="menuitem" type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>

@@ -571,6 +571,17 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       }
     },
 
+    async sessionDirectories(workspace: string, parent: string): Promise<string[]> {
+      const folders: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: import("../types").WorkspaceListResult = await workspaceList(workspace, parent, cursor);
+        folders.push(...page.nodes.filter(node => node.kind === "dir").map(node => node.relative_path));
+        cursor = page.next_cursor;
+      } while (cursor);
+      return folders.sort();
+    },
+
     /** Load the next page for an already-listed directory. */
     async loadMore(dir: string) {
       if (!this.workspace) return;
