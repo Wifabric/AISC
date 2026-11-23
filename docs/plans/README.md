@@ -10,6 +10,8 @@ topical plans under their own directories.
 
 ## Current active plan
 
+- [Workbench 2.1.20](2.1.20-dev-plans/README.md) 已开工，覆盖 2026-11-19 和 11-23 的 11 条新反馈。采用分批开发、统一 Preview 验收。
+
 - 2.1.19 功能、用户验收及 Workbench 正式交付已完成，计划已[归档](../archive/2.1.19-dev-plans/README.md)。[整版交付](../archive/2.1.19-dev-plans/DELIVERY.md)记录正式下载、安装升级、用户手测、14 条反馈回写及 CLI 独立渠道状态；偶发卡死暂缓，后续事项见 [TODO](../todo.md)。
 
 - 2.1.18 的功能开发、验收及 Workbench 发布交付已完成，主体材料已[归档](../archive/2.1.18-dev-plans/README.md)。整版成果见 [DELIVERY](../archive/2.1.18-dev-plans/DELIVERY.md)；反馈站回写已完成；正式 PyPI 相关事项继续保留在 [TODO](../todo.md)。CLI 0.3.0 已随 Workbench 2.1.19 定版；0.2.0 历史上传状态继续单独记账。
