@@ -471,6 +471,22 @@ class DeprovisionMigrationTests(unittest.TestCase):
             required, _reason = H.preset_required(config_dir, "codex", revision)
             self.assertFalse(required)
 
+    def test_inactive_saved_configs_at_the_factory_endpoint_survive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._mk_db(root)
+            self._insert(root, "claude", "deepseek", json.dumps({"env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com",
+                "ANTHROPIC_AUTH_TOKEN": "fixture-value",
+            }}))
+            self._insert(root, "codex", "deepseek", json.dumps({"config":
+                '[model_providers.deepseek]\nbase_url="https://api.deepseek.com"\n'
+                'env_key="TEST_PROVIDER_KEY"\n'}))
+            for agent in ("claude", "codex"):
+                with (root / "migration.log").open("a", encoding="utf-8") as log:
+                    self.assertEqual(H.migrate_deprovisioned(root, agent, "test", log), 0)
+                self.assertEqual(self._ids(root, agent), {"deepseek"})
+
     def test_missing_db_is_a_clean_noop(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_dir = Path(tmp)
