@@ -193,7 +193,10 @@ describe("SettingsForm section headings (manual-test #1)", () => {
       i18n.global.t("settings.group.performance"),
       i18n.global.t("settings.group.disk"),
       i18n.global.t("settings.group.about"),
+      i18n.global.t("workspbar.networkUsage"),
     ]);
+    await wrapper.findAll(".nav-item").at(-1)!.trigger("click");
+    expect(wrapper.emitted("openNetwork")).toHaveLength(1);
     expect(wrapper.findAll("h3.group").map((h) => h.text())).toEqual([
       i18n.global.t("settings.group.ui"),
     ]);
