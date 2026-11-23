@@ -15,6 +15,7 @@ import {
   conversationList,
   conversationPreflight,
   conversationRead,
+  conversationExportMarkdown,
   conversationRename,
   workspaceCopyEntriesToSystemClipboard,
   workspaceCopyPath,
@@ -36,6 +37,7 @@ import {
   workspaceWatchStop,
 } from "../lib/ipc";
 import { useSettingsStore } from "./settings";
+import type { WorkspaceListResult } from "../types";
 import { i18n } from "../i18n";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -756,6 +758,11 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       this.conversationViewer = null;
     },
 
+    async exportConversation(agent: "claude" | "codex", id: string, title: string) {
+      if (!this.workspace) throw new Error("No active workspace");
+      return conversationExportMarkdown(this.workspace, id, agent, title);
+    },
+
     /** 批 2 聊天式 UI: captured read through the viewer (the component must
      *  not import lib/ipc directly — front-end layer contract F-A01). */
     async readConversationPage(conversationId: string, agent: "claude" | "codex",
@@ -849,6 +856,29 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
       if (!link || link.kind === "anchor") throw new Error(i18n.global.t("history.viewer.linkUnavailable"));
       if (link.kind === "web") await openUrl(link.url);
       else await workspaceOpen(workspace, link.path);
+    },
+
+    async missingRecordPaths(workspace: string, paths: string[]) {
+      const parents = new Map<string, Set<string>>();
+      const missing = new Set<string>();
+      for (const path of paths) {
+        const parent = parentDirOf(path);
+        if (!parents.has(parent)) parents.set(parent, new Set());
+        parents.get(parent)!.add(path);
+      }
+      for (const [parent, wanted] of parents) {
+        let cursor: string | null = null;
+        try {
+          do {
+            const page: WorkspaceListResult = await workspaceList(workspace, parent, cursor, true);
+            for (const node of page.nodes) wanted.delete(node.relative_path);
+            if (page.truncated && !page.next_cursor) break;
+            cursor = page.next_cursor;
+            if (!cursor) for (const path of wanted) missing.add(path);
+          } while (cursor && wanted.size);
+        } catch { /* A temporarily unavailable workspace can be retried on click. */ }
+      }
+      return missing;
     },
 
     async copyRecordText(text: string): Promise<void> { await writeText(text); },

@@ -5,6 +5,7 @@ import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import type { ConversationReadMessage } from "../../types";
 import { readingTurns } from "./conversationReading";
 import RecordContent from "./RecordContent.vue";
+import RecordToolValue from "./RecordToolValue.vue";
 
 const { t } = useI18n();
 const explorer = useWorkspaceExplorerStore();
@@ -21,6 +22,8 @@ const openSteps = ref(new Set<number>());
 const loading = ref(false);
 const loadingEarlier = ref(false);
 const error = ref("");
+const exportError = ref("");
+const exporting = ref(false);
 const bodyEl = ref<HTMLElement | null>(null);
 const panel = ref<HTMLElement | null>(null);
 let generation = 0;
@@ -64,6 +67,15 @@ async function loadEarlier() {
 }
 
 function close() { explorer.closeConversationViewer(); }
+async function exportCurrent() {
+  const item = target.value;
+  if (!item || exporting.value) return;
+  exporting.value = true;
+  exportError.value = "";
+  try { await explorer.exportConversation(item.agent, item.conversationId, item.title); }
+  catch (cause) { if (item === target.value) exportError.value = (cause as Error)?.message || String(cause); }
+  finally { exporting.value = false; }
+}
 function time(ts?: string | null) {
   if (!ts) return "";
   const date = new Date(ts);
@@ -84,6 +96,7 @@ function keydown(event: KeyboardEvent) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 watch(target, async (value, old) => {
+  exportError.value = "";
   if (!value) {
     generation++; messages.value = []; error.value = "";
     await nextTick(); if (opener?.isConnected) opener.focus(); opener = null;
@@ -124,11 +137,11 @@ onBeforeUnmount(() => { generation++; });
                 <summary><span class="cv-chevron" aria-hidden="true">›</span><span>{{ t('history.viewer.activity') }}</span><span class="cv-activity-count">{{ t('history.viewer.steps', { count: turn.activity.length }) }}</span></summary>
                 <div v-if="openActivities.has(turn.id)" class="cv-activity-list">
                   <details v-for="m in turn.activity" :key="m.ordinal" class="cv-step" :open="openSteps.has(m.ordinal)" @toggle="toggle(openSteps, m.ordinal, $event)">
-                    <summary><span class="cv-chevron" aria-hidden="true">›</span><strong>{{ m.kind === 'reasoning' ? t('history.viewer.reasoning') : m.kind === 'message' ? t('history.viewer.progress') : m.name || t('history.viewer.toolResult') }}</strong><span class="cv-step-preview">{{ preview(m.text) }}</span></summary>
+                    <summary><span class="cv-chevron" aria-hidden="true">›</span><strong>{{ m.kind === 'reasoning' ? t('history.viewer.reasoning') : m.kind === 'message' ? t('history.viewer.progress') : m.name || t('history.viewer.toolResult') }}</strong><span v-if="m.kind === 'message' || m.kind === 'reasoning'" class="cv-step-preview">{{ preview(m.text) }}</span></summary>
                     <template v-if="openSteps.has(m.ordinal)">
-                      <RecordContent v-if="m.kind === 'reasoning' || m.kind === 'message'" :text="m.text" :attachments="m.attachments" :workspace="explorer.workspace ?? ''" />
-                      <pre v-else>{{ m.text }}</pre>
-                      <template v-if="m.result != null"><h3>{{ t('history.viewer.toolResult') }}</h3><pre>{{ m.result }}</pre></template>
+                      <RecordContent v-if="m.kind === 'reasoning' || m.kind === 'message' || m.kind === 'skill'" :text="m.text" :attachments="m.attachments" :workspace="explorer.workspace ?? ''" />
+                      <RecordToolValue v-else :value="m.text" :workspace="explorer.workspace ?? ''" />
+                      <template v-if="m.result != null"><h3>{{ t('history.viewer.toolResult') }}</h3><RecordToolValue :value="m.result" :workspace="explorer.workspace ?? ''" /></template>
                       <RecordContent v-if="m.result_attachments?.length" text="" :attachments="m.result_attachments" :workspace="explorer.workspace ?? ''" />
                     </template>
                   </details>
@@ -141,7 +154,11 @@ onBeforeUnmount(() => { generation++; });
             </article>
           </div>
         </div>
-        <footer class="cv-foot"><span>{{ t('history.viewer.count', { start: total ? start + 1 : 0, end: start + messages.length, total }) }}</span><span>{{ t('history.viewer.readonly') }}</span></footer>
+        <footer class="cv-foot">
+          <span>{{ t('history.viewer.count', { start: total ? start + 1 : 0, end: start + messages.length, total }) }}</span>
+          <span v-if="exportError" role="alert">{{ exportError }}</span>
+          <button type="button" class="ui-button" :disabled="exporting" @click="exportCurrent">{{ t("workRecords.exportMarkdown") }}</button>
+        </footer>
       </section>
     </div>
   </Teleport>

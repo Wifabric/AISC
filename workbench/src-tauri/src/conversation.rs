@@ -384,6 +384,54 @@ pub async fn conversation_read(
         })
 }
 
+/// Save only to the local file chosen in the native dialog. The transcript
+/// itself is read on the workspace target, including remote workspaces.
+#[tauri::command]
+pub async fn conversation_export_markdown(
+    app: AppHandle, window: tauri::WebviewWindow, workspace: String,
+    conversation_id: String, agent: String, title: String,
+) -> Result<Option<String>, WorkbenchError> {
+    use std::io::Write;
+    use tauri_plugin_dialog::DialogExt;
+    if !is_conversation_uuid(&conversation_id) {
+        return Err(WorkbenchError::map_aisc("AISC_ERR_CONVERSATION_INVALID_ID"));
+    }
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
+    let safe_title: String = title.chars().filter(|c| c.is_alphanumeric() || " -_".contains(*c)).take(64).collect();
+    let filename = format!("{}-{}.md", safe_title.trim(), &conversation_id[..8]);
+    let (send, receive) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_parent(&window).add_filter("Markdown", &["md"]).set_file_name(filename);
+    if std::path::Path::new(&workspace).is_dir() {
+        dialog = dialog.set_directory(&workspace);
+    }
+    dialog.save_file(move |file| { let _ = send.send(file); });
+    let Some(file) = receive.await.map_err(|_| WorkbenchError::workspace_io())? else { return Ok(None); };
+    let path = file.into_path().map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?;
+    if !path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
+        return Err(WorkbenchError::workspace_io().with_detail("Choose a Markdown (.md) file"));
+    }
+    let parent = path.parent().ok_or_else(WorkbenchError::workspace_io)?;
+    let io_error = |e: std::io::Error| WorkbenchError::workspace_io().with_detail(e.to_string());
+    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
+    let mut cursor = String::from("start");
+    loop {
+        let mut argv = conversation_read_argv(&workspace, &conversation_id, &agent, None, None);
+        argv.extend(["--markdown-cursor".into(), cursor.clone()]);
+        let envelope = run_control_target(&target, argv, CONVERSATION_TIMEOUT, CancellationToken::new()).await?;
+        if let Some(error) = envelope_error(&envelope) { return Err(error); }
+        let data = envelope.data.unwrap_or(Value::Null);
+        let markdown = data["markdown"].as_str().ok_or_else(WorkbenchError::cli_protocol)?;
+        temporary.write_all(markdown.as_bytes()).map_err(io_error)?;
+        match data.get("next") {
+            Some(Value::Null) => break,
+            Some(Value::String(next)) if next != &cursor => cursor.clone_from(next),
+            _ => return Err(WorkbenchError::cli_protocol()),
+        }
+    }
+    temporary.persist(&path).map_err(|e| io_error(e.error))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 // -- tests --
 
 #[cfg(test)]

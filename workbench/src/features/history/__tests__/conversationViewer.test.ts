@@ -33,6 +33,18 @@ function show(pinia: ReturnType<typeof createPinia>) {
   wrapper = mount(ConversationViewer, { attachTo: document.body, global: { plugins: [pinia, i18n] } });
 }
 describe("Work Record reader", () => {
+  it("only links existing bare workspace paths and exports through the active record", async () => {
+    const { pinia, explorer, read } = setup();
+    read.mockResolvedValue(page("Files: `src/known file.md` and `src/missing.md`"));
+    vi.spyOn(explorer, "missingRecordPaths").mockResolvedValue(new Set(["src/missing.md"]));
+    const save = vi.spyOn(explorer, "exportConversation").mockResolvedValue(null);
+    show(pinia); await flushPromises();
+    expect([...document.querySelectorAll(".cv-answer a")].map(a => a.textContent)).toEqual(["src/known file.md"]);
+    (document.querySelector(".cv-foot button") as HTMLButtonElement).click();
+    await flushPromises();
+    expect(save).toHaveBeenCalledWith("codex", "id", "记录阅读");
+    expect(document.querySelector(".cv-answer")?.textContent).toContain("src/missing.md");
+  });
   it("shows one collapsed activity item and a fully rendered answer, with no input or live stream", async () => {
     const { pinia, read } = setup(); read.mockResolvedValue(page("## 阅读结果\n\n**完整答案**\n\n$E=mc^2$"));
     show(pinia); await flushPromises();

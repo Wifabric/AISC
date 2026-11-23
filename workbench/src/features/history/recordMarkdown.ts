@@ -32,13 +32,48 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   return imageRule(tokens, idx, options, env, self);
 };
 md.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
-  const href = String(tokens[idx].attrGet("href") ?? "");
+  let href = String(tokens[idx].attrGet("href") ?? "");
+  const label = tokens[idx + 1]?.content ?? "";
+  if (tokens[idx].markup === "linkify" && /^[\w.-]+\.(?:md|rs|py|js|ts|vue|json|toml|yaml|yml|sh|txt)$/i.test(label)) {
+    href = label;
+  }
   if (!/^https?:\/\//i.test(href) && !href.startsWith("#")) {
     tokens[idx].attrSet("data-record-href", href);
     tokens[idx].attrSet("href", "#");
   }
   return self.renderToken(tokens, idx, options);
 };
+
+/** Recognize path literals in prose and inline code after Markdown is sanitized. */
+export function markRecordPaths(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  const pattern = /(?:[a-z]:[\\/]|\.{0,2}[\\/])?(?:[\p{L}\p{N}_@.-]+[\\/])*[\p{L}\p{N}_@-][\p{L}\p{N}_.-]*\.[a-z][a-z0-9]{0,9}(?::\d+(?::\d+)?|#L\d+)?/giu;
+  for (const node of nodes) {
+    if (node.parentElement?.closest("a,pre,button,.katex")) continue;
+    const fragment = document.createDocumentFragment();
+    // Inline code delimits an entire path, including spaces and extensionless files.
+    if (node.parentElement?.tagName === "CODE" && /[\\/]/.test(node.data) &&
+        !/^[\w+.-]+:\/\//.test(node.data) && !/[\n`|<>"*?]/.test(node.data)) {
+      const anchor = document.createElement("a");
+      anchor.href = "#"; anchor.dataset.recordHref = node.data; anchor.textContent = node.data;
+      node.replaceWith(anchor);
+      continue;
+    }
+    let end = 0;
+    for (const match of node.data.matchAll(pattern)) {
+      const start = match.index!;
+      const raw = match[0];
+      fragment.append(node.data.slice(end, start));
+      const a = document.createElement("a");
+      a.href = "#"; a.dataset.recordHref = raw; a.textContent = raw;
+      fragment.append(a);
+      end = start + raw.length;
+    }
+    if (end) { fragment.append(node.data.slice(end)); node.replaceWith(fragment); }
+  }
+}
 
 export function renderRecordMarkdown(text: string): string {
   try {
