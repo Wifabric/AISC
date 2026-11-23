@@ -7,15 +7,15 @@ line; ``import-file`` reads the full subscription content), never argv.
 
 from __future__ import annotations
 
+import json
 import sys
+from pathlib import Path
 from typing import Any, Dict
 
 from aisc.domain.models import CliError
 
 
-def cmd_proxy_nodes(args):
-    import json
-    from pathlib import Path
+def cmd_proxy_nodes(args: Any) -> Dict[str, Any]:
     from aisc.adapters.docker_ import RealDockerExecutor
     from aisc.application.data_root import workspace_state_dir
     from aisc.application.runtime import resolve_running_container
@@ -25,8 +25,19 @@ def cmd_proxy_nodes(args):
     container = resolve_running_container(args.runtime_id, executor, registry)
     result = executor.run_captured(["exec", container, "aisc-proxy-nodes", args.action, args.group, args.node], timeout=20)
     if result.exit_code:
-        raise CliError(message="Proxy control unavailable. Check that the workspace is running the current image with a subscription.",
-                       exit_code=1, error_code="AISC_ERR_NETWORK_PROXY_CONTROL")
+        # Inspect the running container, including older images whose helper
+        # returns the same status for every failure. No subscription data leaves it.
+        probe = executor.run_captured(["exec", container, "sh", "-c",
+            "command -v aisc-proxy-nodes >/dev/null || exit 10; "
+            "test -f /etc/mihomo/config.yaml || exit 11; "
+            "test -S /run/aisc-mihomo/control.sock || exit 12"], timeout=5)
+        code, message = {
+            10: ("AISC_ERR_PROXY_IMAGE", "Rebuild the workspace image with the current AISC resources."),
+            11: ("AISC_ERR_PROXY_CONFIG", "Reopen the workspace in proxy mode to apply the subscription."),
+            12: ("AISC_ERR_PROXY_SOCKET", "The proxy control socket is not ready. Retry after startup or check the proxy log."),
+        }.get(probe.exit_code, ("AISC_ERR_NETWORK_PROXY_CONTROL",
+                               "Could not query the running proxy. Refresh the node list and retry."))
+        raise CliError(message=message, exit_code=1, error_code=code)
     return json.loads(result.stdout)
 
 
