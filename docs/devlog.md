@@ -1,5 +1,9 @@
 # AISC — 开发日志
 
+## Workbench 2.1.20 开工（2026-11-23）
+
+已确认反馈站 11 条反馈，分为 7 个批次，采用统一 Preview。首批修复供应商迁移期间对已配置旧预置的清理，以及工作台把其他无端点记录误显示为官方直连的问题。测试范围和整版进展见[开发计划](plans/2.1.20-dev-plans/README.md)。
+
 ## 2.1.19 正式发布完成（2026-11-19）
 
 [PR #106](https://github.com/Wifabric/AISC/pull/106) 合入 main `8d748eef`，两个 annotated 标签固定同源源码。Workbench [v2.1.19](https://github.com/Wifabric/AISC/releases/tag/v2.1.19) 已发布为 Latest，随包 CLI 0.3.0；正式标签 NSIS 44499717575 成功，公开下载 SHA-256 `c790ed32e2360964813500382f578952617cd76b7dd4a9344f39427fc82be60d` 与升级测试产物一致。定版复核 Python 1841 项及 220 子测试通过，58 项跳过；51 项文档检查、1368 项容器摘要和正式 bundle 校验通过。

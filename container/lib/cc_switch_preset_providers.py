@@ -26,6 +26,7 @@ import time
 import tomllib
 from pathlib import Path
 from typing import Any, TextIO
+from urllib.parse import urlsplit
 
 FIXTURE_PATH = Path(__file__).parent / "deepseek-official-facts.json"
 FIXTURE_SCHEMA = "aisc.deepseek-official-facts/v1"
@@ -600,6 +601,39 @@ def preset_required(config_dir: Path, agent: str, revision: str) -> tuple[bool, 
     return False, "current"
 
 
+def _unused_retired_settings(agent: str, raw: str, fingerprint: str) -> bool:
+    """Only retire a recognizable keyless config. Unknown formats are kept."""
+    try:
+        settings = json.loads(raw)
+        if not isinstance(settings, dict):
+            return False
+        if agent == "claude":
+            env = settings.get("env")
+            if not isinstance(env, dict) or any(env.get(k) for k in USER_ONLY_ENV_KEYS):
+                return False
+            endpoint = env.get("ANTHROPIC_BASE_URL")
+        else:
+            if settings.get("auth"):
+                return False
+            config = tomllib.loads(settings.get("config", ""))
+            entries = config.get("model_providers", {})
+            if not isinstance(entries, dict) or len(entries) > 1:
+                return False
+            entry = next(iter(entries.values()), config)
+            if not isinstance(entry, dict) or any(entry.get(k) for k in (
+                "api_key", "experimental_bearer_token", "env_key", "http_headers", "env_http_headers",
+            )):
+                return False
+            endpoint = entry.get("base_url")
+        if not isinstance(endpoint, str):
+            return False
+        host = urlsplit(endpoint).hostname or ""
+        domains = ("codesome.cn", "codesome.ai") if fingerprint == "codesome" else (fingerprint,)
+        return any(host == domain or host.endswith("." + domain) for domain in domains)
+    except (TypeError, ValueError):
+        return False
+
+
 def _remove_retired_providers(
     conn: sqlite3.Connection,
     agent: str,
@@ -611,7 +645,7 @@ def _remove_retired_providers(
     for retired_id, fingerprint in RETIRED_PROVIDER_IDS.items():
         if retired_id not in existing:
             continue
-        if fingerprint not in (existing.get(retired_id) or ""):
+        if not _unused_retired_settings(agent, existing.get(retired_id) or "", fingerprint):
             # The id exists but no longer matches the old preset shape; the
             # user likely repurposed it, so leave it alone.
             print(
@@ -652,7 +686,11 @@ def migrate_deprovisioned(
             existing = {
                 str(row[0]): (row[1] if row[1] is not None else "")
                 for row in conn.execute(
-                    "SELECT id, settings_config FROM providers WHERE app_type = ?",
+                    "SELECT id, settings_config FROM providers WHERE app_type = ? "
+                    "AND COALESCE(is_current, 0) = 0 AND COALESCE(in_failover_queue, 0) = 0 "
+                    "AND COALESCE(notes, '') = '' AND COALESCE(icon, '') = '' "
+                    "AND COALESCE(icon_color, '') = '' "
+                    "AND (lower(name) = lower(id) OR lower(name) = replace(lower(id), '-', ' '))",
                     (agent,),
                 )
             }
