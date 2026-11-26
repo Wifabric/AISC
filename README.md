@@ -65,7 +65,7 @@ docker version
 
 从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC-Workbench-<版本>-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\AISC Workbench`，并添加用户 `PATH`。
 
-AISC 当前正式安装包尚未代码签名。本机 Windows Sandbox 曾阻止安装程序启动；后续已在一次性 Windows runner 验证静默新装、升级及安装后的 CLI/PATH。该结果不解决强制应用控制环境对未签名包的拦截。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。功能操作与复测参考见[测试教程](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
+AISC 当前正式安装包尚未代码签名。本机 Windows Sandbox 曾阻止安装程序启动；后续已在一次性 Windows runner 验证静默新装、升级及安装后的 CLI/PATH。该结果不解决强制应用控制环境对未签名包的拦截。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。本次升级的功能操作与复测见[2.1.20 手测清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
 
 ### 首次使用流程
 

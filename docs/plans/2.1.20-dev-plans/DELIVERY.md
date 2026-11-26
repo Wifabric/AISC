@@ -21,6 +21,12 @@
 
 11 条反馈原文见[范围表](README.md#范围与验收)，操作步骤见[手测清单](HANDTEST.md)。批次 PR 为 [#109](https://github.com/Wifabric/AISC/pull/109) 至 [#115](https://github.com/Wifabric/AISC/pull/115)，候选整合见 [#116](https://github.com/Wifabric/AISC/pull/116)。Preview.2 本地回归有 912 项前端通过，Rust 423 项通过、2 项忽略，Python 相关测试 406 项通过、12 项跳过。以上计数属于各自候选。
 
+## 正式候选验证
+
+以 `387a8f02` 为功能与版本源码核验。Windows 本机通过前端生产构建与 914 项前端测试、Python 1,854 项测试和 220 项子测试（58 项跳过），Rust 通过 455 项（另有 2 项忽略）。文档检查通过 51 项，随包资源清单通过 1,371 项。CLI wheel、sdist 都通过元数据严格校验、干净环境安装、重装与卸载后重装；pipx 及无仓库环境安装通过。自动跳过项保留原状态。
+
+[候选代码 CI](https://github.com/Wifabric/AISC/actions/runs/45862926958) · [Windows 安装与 2.1.19 覆盖升级流水线](https://github.com/Wifabric/AISC/actions/runs/45863292942)
+
 ## 发布安排
 
 | 项目 | 交付内容与完成条件 |
