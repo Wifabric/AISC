@@ -2,7 +2,7 @@
 
 本目录为 Windows 桌面端（Vue/TypeScript + Tauri/Rust）。Workbench 2.1.20 配套 CLI 0.3.1。产品版本分别取自 `src-tauri/tauri.conf.json` 和仓库的 `src/aisc/VERSION`。
 
-本版操作见[使用手册](../README.md)、[发布说明](../docs/releases/v2.1.20.md)和[逐项验收](../docs/plans/2.1.20-dev-plans/HANDTEST.md)。公开下载与验证见[交付记录](../docs/plans/2.1.20-dev-plans/DELIVERY.md)。
+本版操作见[使用手册](../README.md)、[发布说明](../docs/releases/v2.1.20.md)和[逐项验收](../docs/archive/2.1.20-dev-plans/HANDTEST.md)。公开下载与验证见[交付记录](../docs/archive/2.1.20-dev-plans/DELIVERY.md)。
 
 ## 准备真实桌面环境
 
@@ -42,8 +42,8 @@ npm test
 npm run build
 ```
 
-Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；未执行的自动化项不因用户手测通过而改记开发者 PASS。PR #104、#105 已合入 develop，PR #106 已将正式发布源码合入 main 8d748eef。Provider 编码单测、Windows 静默安装/升级与用户安装交互验收已通过，具体来源见 DELIVERY。
+Rust、Python、真实容器与 GUI 的适用检查见开发手册及本版 HANDTEST。记录实际候选 head、环境、结果和证据；未执行的自动化项不因用户手测通过而改记开发者 PASS。本版正式安装升级核验见 [Windows 流水线](https://github.com/Wifabric/AISC/actions/runs/45875247387)。
 
 ## 打包与发布
 
-Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。[正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19) 已公开，正式安装包仍未签名，签名按用户决定暂不处理。[2.1.19 正式版说明](../docs/releases/v2.1.19.md)已发布，构建与渠道结果见 DELIVERY。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；先同步两个版本事实源，再构建并验证正式包，不能仅重命名 Preview 安装包。创建 PR、推送、tag 和发布沿用用户当次授权。
+Windows 构建入口为仓库 `scripts/build-installer.ps1`；需先准备 sidecar 与 bundle，签名配置由发布方提供。[正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.20) 已公开，正式安装包仍未签名，签名按用户决定暂不处理。[2.1.20 正式版说明](../docs/releases/v2.1.20.md)已发布，构建与渠道结果见 DELIVERY。Workbench notes 按 `docs/releases/v<Workbench版本>.md` 命名，CLI notes 独立维护；先同步两个版本事实源，再构建并验证正式包，不能仅重命名 Preview 安装包。创建 PR、推送、tag 和发布沿用用户当次授权。

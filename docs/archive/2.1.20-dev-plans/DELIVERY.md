@@ -1,6 +1,6 @@
 # Workbench 2.1.20 / CLI 0.3.1 交付记录
 
-2026-11-27，用户确认本轮功能检查全部通过。验收使用 Windows 本地 Preview；正式发布仍需用户对具体发布内容确认。安装器、公开下载和独立 CLI 渠道分别记账。
+2026-11-27，用户确认本轮功能检查全部通过。验收使用 Windows 本地 Preview；用户审阅发布说明后授权提交正式版。安装器、公开下载和独立 CLI 渠道分别记账。
 
 ## 范围与证据
 
@@ -27,7 +27,7 @@
 
 [候选代码 CI](https://github.com/Wifabric/AISC/actions/runs/45862926958) · [Windows 安装与 2.1.19 覆盖升级流水线](https://github.com/Wifabric/AISC/actions/runs/45863292942)
 
-## 发布安排
+## 发布前安排（历史）
 
 | 项目 | 交付内容与完成条件 |
 | --- | --- |
@@ -39,3 +39,20 @@
 | 验证边界 | 本机用户验收不等于在每个 SSH 目标、订阅、模型账户或 Windows 签名策略下均已验证。集中发布证据以 Windows 安装升级报告及适用 CI 为准。 |
 
 开发方法、备用库和 Skill 试用证据在项目外维护。产品内置的技能目录、市场、安装器与测试属于产品交付范围。公开材料只记录验收结论；用户数据库、订阅和凭据保留在本机。
+
+## 正式发布结果（2026-11-27）
+
+升级前请记下原工作区。运行 [Windows x64 安装包](https://github.com/Wifabric/AISC/releases/download/v2.1.20/AISC-Workbench-2.1.20-setup.exe) 覆盖升级后，打开同一工作区核对 Provider。需要新版镜像内工具时，请使用本版资源重建镜像。下载页同时提供 [SHA-256 文件](https://github.com/Wifabric/AISC/releases/download/v2.1.20/AISC-Workbench-2.1.20-setup.exe.sha256)。
+
+| 核对项 | 结果 |
+| --- | --- |
+| 版本与来源 | Workbench 2.1.20、CLI 0.3.1；[发布 PR #119](https://github.com/Wifabric/AISC/pull/119) 合入 main，两个正式标签指向提交 `68d2d1a0d437fbe810a1d6778f2fe945dfd0d449`。 |
+| Windows 下载 | [正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.20) 为 Latest，公开资产含安装包与校验文件。下载 439,491,566 字节，SHA-256 `4c08f55d617c3d9c3397f9f0d426410a9915bcc5c11bc4cbc0edef20aa98c1f3`。已与 GitHub 资产摘要、校验文件及正式标签升级报告逐项比对。 |
+| 安装升级 | [正式标签运行](https://github.com/Wifabric/AISC/actions/runs/45875247387) 完成静默新装和从 2.1.19 覆盖升级，升级报告 8 步通过。安装后桌面版本 2.1.20，CLI 与 bundle 均为 0.3.1。 |
+| 重跑说明 | [首次运行](https://github.com/Wifabric/AISC/actions/runs/45875247387/attempts/1) 在原生窗口检查通过后，清理脚本尝试结束已退出的进程，导致后续步骤中止。保留首次失败记录；上行结果取自同一标签重新执行后的完整通过报告。 |
+| 旧版发现更新 | 用 2.1.19 与 2.1.20 的生产版本选择代码读取公开更新源。旧正式版及 Preview.3 均发现正式 2.1.20，已装正式版不会提示重复升级。 |
+| 独立 CLI | CLI 0.3.1 已在 [PyPI](https://pypi.org/project/aisc-cli/0.3.1/) 上线，两个索引的实际安装均通过，公开 wheel 与源码包摘要一致。 [发布及安装核验](https://github.com/Wifabric/AISC/actions/runs/45875526268) |
+| 用户验收 | Preview 的 11 项功能均获用户确认。正式安装包的证据来自上述标签构建、公开下载和安装升级检查。 |
+| 反馈站 | 11 条反馈保留原文、投票与附件，追加本版处理说明。[反馈提交](https://github.com/Wifabric/aisc-issues-feedback/commit/72a4cc2499c1dfe09759bee72ff9dc742743af13) 已逐条验证；公开站点 11 个列表条目和 11 个详情均读回通过。 |
+| 交接 | 本阶段已归档。Windows 安装器未做代码签名，实际远端 SSH、账号与订阅覆盖范围见上文。负责人对整版交付材料的签收另行记录。 |
+| 开发线 | [PR #120](https://github.com/Wifabric/AISC/pull/120) 已在 develop 开启 CLI 0.3.2.dev0。main、正式安装包和两个正式标签继续对应 CLI 0.3.1。 |

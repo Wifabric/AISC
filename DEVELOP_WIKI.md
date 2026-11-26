@@ -1,14 +1,14 @@
 # AISC 开发者手册
 
-**2026-11-27 发布准备。** 2.1.20 / CLI 0.3.1 已定版，用户已完成 Preview 功能验收。正式标签、公开下载及 PyPI 按 §11.2 在最终授权后执行。[本版交付记录](docs/plans/2.1.20-dev-plans/DELIVERY.md)
+**2026-11-27 正式发布。** Workbench 2.1.20 可从[正式下载页](https://github.com/Wifabric/AISC/releases/tag/v2.1.20)获取，随包 CLI 0.3.1。CLI 0.3.1 已在 [PyPI](https://pypi.org/project/aisc-cli/0.3.1/) 上线，两个索引的实际安装均通过，公开 wheel 与源码包摘要一致。 安装升级、公开下载和 11 条反馈回读已完成。[本版交付记录](docs/archive/2.1.20-dev-plans/DELIVERY.md)
 
 上一轮正式交付为 Workbench **2.1.19** / CLI **0.3.0**。[PR #106](https://github.com/Wifabric/AISC/pull/106) 已合入 main，发布源码为 `8d748eefa37b39baaf7563a556e1a7d0c74f43cc`；[正式下载](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)已验证 Latest、安装包、校验文件与升级报告一致。独立 CLI **0.3.0** 已发布至 [PyPI](https://pypi.org/project/aisc-cli/0.3.0/)，TestPyPI 与正式 index 安装验证通过。用户已确认功能及全部安装交互手测通过，14 条已纳入反馈完成 final 回复及 resolved 回写，偶发卡死暂缓。完整来源及交付结果见[正式说明](docs/releases/v2.1.19.md)、[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)和[操作参考](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
 
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
-CLI 0.3.0 正式发布后，[PR #107](https://github.com/Wifabric/AISC/pull/107) 已按流程在 develop 开启 **0.3.1.dev0**。该开发号尚未发布；正式下载和不可变标签仍对应 Workbench 2.1.19 / CLI 0.3.0。
+CLI 版本以所在分支的 `src/aisc/VERSION` 为准。develop 已在 [PR #120](https://github.com/Wifabric/AISC/pull/120) 开启 0.3.2.dev0；正式标签 `cli-v0.3.1` 和 `v2.1.20` 指向同一个发布提交。
 
-Workbench 2.1.20 的 11 条反馈集中到同一候选，开发证据与用户实测分别记录。见[阶段计划](docs/plans/2.1.20-dev-plans/README.md)及[验收清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
+Workbench 2.1.20 的 11 条反馈集中到同一候选，开发证据与用户实测分别记录。见[阶段计划](docs/archive/2.1.20-dev-plans/README.md)及[验收清单](docs/archive/2.1.20-dev-plans/HANDTEST.md)。
 
 ## 1. 分支与发布角色
 
