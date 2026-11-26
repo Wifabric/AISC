@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$CandidateInstaller,
     [Parameter(Mandatory)][string]$ReportDirectory,
-    [string]$ExpectedVersion = '2.1.19'
+    [string]$ExpectedVersion = '2.1.20-preview.1'
 )
 $ErrorActionPreference = 'Stop'
 # This script installs/uninstalls an application. Never run it on a developer's
@@ -12,7 +12,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
 $candidate = (Resolve-Path -LiteralPath $CandidateInstaller).Path
 New-Item -ItemType Directory -Force -Path $ReportDirectory | Out-Null
 $reportPath = Join-Path $ReportDirectory 'upgrade-result.json'
-$result = [ordered]@{ baseline = '2.1.18'; candidateSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash; steps = @() }
+$result = [ordered]@{ baseline = '2.1.19'; candidateSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash; steps = @() }
 $appDir = Join-Path $env:LOCALAPPDATA 'AISC Workbench'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'AISC\data'
 $workspace = Join-Path $env:RUNNER_TEMP 'aisc-upgrade-project'
@@ -36,19 +36,19 @@ function Check-Files([hashtable]$expected) {
 }
 
 try {
-    $baseline = Join-Path $env:RUNNER_TEMP 'AISC-Workbench-2.1.18-setup.exe'
-    Invoke-WebRequest -Uri 'https://github.com/Wifabric/AISC/releases/download/v2.1.18/AISC-Workbench-2.1.18-setup.exe' -OutFile $baseline
+    $baseline = Join-Path $env:RUNNER_TEMP 'AISC-Workbench-2.1.19-setup.exe'
+    Invoke-WebRequest -Uri 'https://github.com/Wifabric/AISC/releases/download/v2.1.19/AISC-Workbench-2.1.19-setup.exe' -OutFile $baseline
     # GitHub release asset digest, verified when the upgrade test was added.
-    $digest = 'b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315'
+    $digest = 'c790ed32e2360964813500382f578952617cd76b7dd4a9344f39427fc82be60d'
     if ((Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash -ine $digest) {
-        throw 'Official 2.1.18 installer SHA-256 does not match.'
+        throw 'Official 2.1.19 installer SHA-256 does not match.'
     }
     Install-Package $baseline
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AISC Workbench'
-    if ((Get-ItemProperty -LiteralPath $key).DisplayVersion -ne '2.1.18') {
-        throw 'The installed baseline is not official 2.1.18.'
+    if ((Get-ItemProperty -LiteralPath $key).DisplayVersion -ne '2.1.19') {
+        throw 'The installed baseline is not official 2.1.19.'
     }
-    Record-Step 'Install official 2.1.18'
+    Record-Step 'Install official 2.1.19'
 
     $config = Join-Path $dataRoot 'config'
     New-Item -ItemType Directory -Force -Path $config, $workspace | Out-Null
@@ -70,7 +70,7 @@ try {
     $sessionFile = Join-Path $sessionDir "rollout-2026-11-19T00-00-00-$sessionId.jsonl"
     $transcript = @(
         @{type='session_meta'; payload=@{id=$sessionId; cwd=$workspace}},
-        @{type='response_item'; timestamp='2026-11-19T00:00:00Z'; payload=@{type='message'; role='user'; content=@(@{type='input_text'; text='upgrade retention proof'})}}
+        @{type='response_item'; timestamp='2026-11-19T00:00:00Z'; payload=@{type='message'; role='user'; content=@(@{type='input_text'; text=('upgrade retention proof ' + ('x' * 260000) + ' export end marker')})}}
     ) | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }
     [IO.File]::WriteAllLines($sessionFile, [string[]]$transcript, [Text.UTF8Encoding]::new($false))
     $expected = @{}
@@ -92,6 +92,17 @@ try {
         throw 'The upgraded CLI could not read the preserved native conversation.'
     }
     Record-Step 'Installed CLI reads preserved native transcript'
+
+    $readArgs = @('conversation', 'read', '--workspace', $workspace, '--agent', 'codex', '--conversation-id', $sessionId, '--format', 'json')
+    $page = & $cli @readArgs --markdown-cursor start | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $page.data.next -or $page.data.markdown -notlike '*upgrade retention proof*') {
+        throw 'Installed CLI did not return the first Markdown page and its cursor.'
+    }
+    $lastPage = & $cli @readArgs --markdown-cursor $page.data.next | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $null -ne $lastPage.data.next -or $lastPage.data.markdown -notlike '*export end marker*') {
+        throw 'Installed CLI did not export the end of the preserved transcript.'
+    }
+    Record-Step 'Installed CLI exports Markdown beyond the preview limit'
 
     $exe = Get-ChildItem -LiteralPath $appDir -Filter '*.exe' | Where-Object { $_.Name -notin @('aisc.exe','uninstall.exe') } | Select-Object -First 1
     if (-not $exe) { throw 'Installed Workbench executable missing.' }

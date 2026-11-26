@@ -2,6 +2,8 @@
 
 本轮变化见 [2.1.19 正式发布说明](docs/releases/v2.1.19.md)，下载见 [v2.1.19 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)。操作参考见[测试教程](docs/archive/2.1.19-dev-plans/HANDTEST.md)，完整版本、验收与发布结果见[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)。
 
+测试 2.1.20-preview.1 可参照[本轮变更](docs/releases/v2.1.20-preview.1.md)及[逐项验收清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
+
 AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switch 的个人开发工作站，提供两种使用方式：
 
 - **AISC Workbench（推荐）**——桌面应用（Windows）。图形界面完成工作区选择、镜像构建、容器启动、终端、文件管理、Provider 配置与诊断；还可经 SSH 驱动装有 aisc 的远程机器（见[远程机器](#远程机器)）。

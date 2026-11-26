@@ -6,6 +6,8 @@
 
 CLI 0.3.0 正式发布后，[PR #107](https://github.com/Wifabric/AISC/pull/107) 已按流程在 develop 开启 **0.3.1.dev0**。该开发号尚未发布；正式下载和不可变标签仍对应 Workbench 2.1.19 / CLI 0.3.0。
 
+Workbench 2.1.20 的 11 条反馈集中到同一候选，开发证据与用户实测分别记录。见[阶段计划](docs/plans/2.1.20-dev-plans/README.md)及[验收清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
+
 ## 1. 分支与发布角色
 
 | 引用 | 角色 | 自动化 |
