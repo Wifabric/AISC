@@ -30,7 +30,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from aisc.application.data_root import DataRootResolver
 from aisc.domain.models import CliError
@@ -618,7 +618,7 @@ _READ_TOOL_CAP = 32_000
 _READ_MAX_MESSAGES = 4000  # hard bound on the rendered stream
 
 
-def _read_join_text(content: Any, block_type: str) -> Optional[str]:
+def _read_join_text(content: Any, *block_types: str) -> Optional[str]:
     """Join EVERY ``block_type`` text block (unlike _text_from_content, which
     returns the first). A chat bubble must not silently drop the rest of a
     multi-block message."""
@@ -627,7 +627,7 @@ def _read_join_text(content: Any, block_type: str) -> Optional[str]:
     if isinstance(content, list):
         parts = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == block_type:
+            if isinstance(block, dict) and block.get("type") in block_types:
                 text = block.get("text")
                 if isinstance(text, str) and text.strip():
                     parts.append(text)
@@ -696,6 +696,19 @@ def _read_attachment(block: Dict[str, Any]) -> Dict[str, Any]:
     return attachment
 
 
+def _skill_entry(text: str, ts: Any) -> Optional[Dict[str, Any]]:
+    body = text.lstrip()
+    if body.startswith("<skill>") and "</skill>" in body:
+        name = re.search(r"<name>([^<\n]+)</name>", body)
+        return {"role": "user", "kind": "skill", "name": name[1] if name else "Skill",
+                "text": body, "ts": ts}
+    prefix = "Base directory for this skill:"
+    if body.startswith(prefix):
+        name = body.splitlines()[0][len(prefix):].strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        return {"role": "user", "kind": "skill", "name": name or "Skill", "text": body, "ts": ts}
+    return None
+
+
 def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     """One codex rollout line → zero or more rendered entries. Rendered:
     user/assistant messages, reasoning summaries, function calls/results.
@@ -714,6 +727,8 @@ def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
             return []
         content = payload.get("content")
         text = _read_join_text(content, "input_text" if role == "user" else "output_text") or ""
+        if role == "user" and (skill := _skill_entry(text, ts)):
+            return [skill]
         if role == "user" and _CONTEXT_TITLE_RE.match(text.lstrip()):
             return []
         attachments = [_read_attachment(b) for b in content if isinstance(b, dict) and b.get("type") not in ("input_text", "output_text")] if isinstance(content, list) else []
@@ -746,7 +761,7 @@ def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
         attachments = [_read_attachment(b) for b in output if isinstance(b, dict) and b.get("type") not in ("text", "input_text", "output_text")] if isinstance(output, list) else []
         return [{
             "role": "tool", "kind": "tool_result",
-            "text": _read_join_text(output, "text") if isinstance(output, list) else _read_as_text(output),
+            "text": _read_join_text(output, "text", "input_text", "output_text") if isinstance(output, list) else _read_as_text(output),
             "attachments": attachments,
             "call_id": call_id if isinstance(call_id, str) else None,
             "ts": ts,
@@ -773,6 +788,9 @@ def _read_entries_claude(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     def _push_text(text: Any) -> None:
         if isinstance(text, str) and text.strip():
+            if role == "user" and (skill := _skill_entry(text, ts)):
+                out.append(skill)
+                return
             if role == "user" and _CONTEXT_TITLE_RE.match(text.lstrip()):
                 return
             out.append({"role": role, "kind": "message", "text": text, "ts": ts})
@@ -830,16 +848,7 @@ _READ_EXTRACTORS = {
 }
 
 
-def read_conversation(workspace: str, conversation_id: str, agent: str,
-                      tail: Optional[int] = None,
-                      before: Optional[int] = None) -> Dict[str, Any]:
-    """Project a provider transcript into the chat rendering stream.
-
-    Pagination walks the RENDERED stream backwards: ``tail`` returns the
-    last ``tail`` entries; ``before`` (0-based exclusive ordinal) returns
-    the window immediately preceding it. Ordinals are stable per file
-    version — the UI pages with ``before=start`` until start reaches 0.
-    Malformed lines are skipped and counted, never fatal (list semantics)."""
+def _conversation_path(workspace: str, conversation_id: str, agent: str) -> Path:
     if not is_conversation_uuid(conversation_id):
         raise CliError(
             message=f"Invalid conversation ID: {conversation_id}",
@@ -860,10 +869,12 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
             exit_code=3,
             error_code=ERROR_UNRESUMABLE,
         )
+    return path
+
+
+def _conversation_entries(path: Path, agent: str) -> Iterator[Optional[Dict[str, Any]]]:
+    """Read the provider stream once. None marks a malformed JSON line."""
     extract = _READ_EXTRACTORS[agent]
-    entries: deque[Dict[str, Any]] = deque(maxlen=_READ_MAX_MESSAGES)
-    omitted_entries = 0
-    malformed_lines = 0
     try:
         fh = path.open("r", encoding="utf-8", errors="replace")
     except OSError as e:
@@ -880,14 +891,88 @@ def read_conversation(workspace: str, conversation_id: str, agent: str,
             try:
                 obj = json.loads(line)
             except (ValueError, TypeError):
-                malformed_lines += 1
+                yield None
                 continue
             if not isinstance(obj, dict):
                 continue
-            for entry in extract(obj):
-                if len(entries) == _READ_MAX_MESSAGES:
-                    omitted_entries += 1
-                entries.append(entry)
+            yield from extract(obj)
+
+
+def _markdown_line(raw: bytes, agent: str) -> str:
+    if not raw.strip():
+        return ""
+    try:
+        obj = json.loads(raw.decode("utf-8", errors="replace"))
+    except ValueError:
+        return "> Unreadable transcript line\n\n"
+    parts = []
+    for entry in _READ_EXTRACTORS[agent](obj) if isinstance(obj, dict) else []:
+        label = entry.get("name") or entry["kind"]
+        heading = " · ".join(str(value).splitlines()[0] for value in
+                             (entry["role"], label, entry.get("ts")) if value)
+        parts.append(f"## {heading}")
+        body = entry.get("text") or ""
+        if entry["kind"] in {"tool_use", "tool_result"}:
+            fence = "`" * max(3, 1 + max((len(run) for run in re.findall(r"`+", body)), default=0))
+            body = f"{fence}\n{body}\n{fence}"
+        parts.append(body)
+        for attachment in entry.get("attachments", []):
+            label = attachment.get("name") or attachment.get("kind") or "Attachment"
+            parts.append(f"{label}: {attachment.get('url') or ''}")
+    return "\n\n".join(parts) + "\n\n" if parts else ""
+
+
+def conversation_markdown(workspace: str, conversation_id: str, agent: str,
+                          cursor: Optional[str] = None) -> Dict[str, Any]:
+    """Page from a fixed end-of-file using raw byte and rendered line offsets."""
+    path = _conversation_path(workspace, conversation_id, agent)
+    header = f"# {agent} · {conversation_id}\n\n"
+    with path.open("rb") as stream:
+        size = os.fstat(stream.fileno()).st_size
+        if cursor is None:
+            return {"markdown": header + "".join(_markdown_line(line, agent) for line in stream)}
+        if cursor == "start":
+            offset, skip, end = 0, 0, size
+            parts = [header]
+        else:
+            if not re.fullmatch(r"\d{1,20}:\d{1,20}:\d{1,20}", cursor):
+                raise CliError("Invalid Markdown cursor", 2, ERROR_INVALID_ID)
+            offset, skip, end = map(int, cursor.split(":"))
+            if not 0 <= offset <= end <= size:
+                raise CliError("Transcript changed during export", 3, ERROR_UNRESUMABLE)
+            parts = []
+        remaining = 256_000
+        stream.seek(offset)
+        while offset < end:
+            raw = stream.readline(end - offset)
+            if not raw:
+                raise CliError("Transcript changed during export", 3, ERROR_UNRESUMABLE)
+            line = _markdown_line(raw, agent)
+            part = line[skip:skip + remaining]
+            parts.append(part)
+            remaining -= len(part)
+            if skip + len(part) < len(line):
+                return {"markdown": "".join(parts), "next": f"{offset}:{skip + len(part)}:{end}"}
+            offset, skip = stream.tell(), 0
+            if remaining == 0 and offset < end:
+                return {"markdown": "".join(parts), "next": f"{offset}:0:{end}"}
+    return {"markdown": "".join(parts), "next": None}
+
+
+def read_conversation(workspace: str, conversation_id: str, agent: str,
+                      tail: Optional[int] = None,
+                      before: Optional[int] = None) -> Dict[str, Any]:
+    """Page backwards through the bounded preview, pairing tool calls and results."""
+    entries: deque[Dict[str, Any]] = deque(maxlen=_READ_MAX_MESSAGES)
+    omitted_entries = malformed_lines = 0
+    path = _conversation_path(workspace, conversation_id, agent)
+    for entry in _conversation_entries(path, agent):
+        if entry is None:
+            malformed_lines += 1
+        else:
+            if len(entries) == _READ_MAX_MESSAGES:
+                omitted_entries += 1
+            entries.append(entry)
     # Pair tool results into their calls (nearest preceding unmatched match);
     # unpaired results stay standalone so nothing is silently dropped.
     open_calls: Dict[str, Dict[str, Any]] = {}

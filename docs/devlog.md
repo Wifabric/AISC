@@ -1,5 +1,17 @@
 # AISC — 开发日志
 
+## Workbench 2.1.20 / CLI 0.3.1 定版准备（2026-11-27）
+
+Preview.2 修复节点刷新、单项安装、会话归属、记录预览与标签响应；Preview.3 修复市场搜索结果只出现 20 条。同步容器内 Codex 升级后的启动处理。用户已确认本轮功能全部通过；覆盖升级保留四张第三方 Provider 的结果来自原工作区。发布提交、正式下载与反馈状态见[整版记录](plans/2.1.20-dev-plans/DELIVERY.md)。
+
+## Workbench 2.1.20-preview.1 集成验证（2026-11-23）
+
+本轮 7 批覆盖 11 条反馈。供应商迁移用两种引擎的旧配置验证，代理切换经真实 Mihomo 回读，单选 office-hours 用上游技能与 cc-switch 在隔离容器验证。统一源码回归通过 1,850 项 Python 测试、220 个子测试和 907 项前端测试，58 项 Python 测试跳过。桌面验收包含系统剪贴板、保存对话框、真实订阅及会话归属。见[候选说明](releases/v2.1.20-preview.1.md)与[验收清单](plans/2.1.20-dev-plans/HANDTEST.md)。
+
+## Workbench 2.1.20 开工（2026-11-23）
+
+已确认反馈站 11 条反馈，分为 7 个批次，采用统一 Preview。首批修复供应商迁移期间对已配置旧预置的清理，以及工作台把其他无端点记录误显示为官方直连的问题。测试范围和整版进展见[开发计划](plans/2.1.20-dev-plans/README.md)。
+
 ## 2.1.19 正式发布完成（2026-11-19）
 
 [PR #106](https://github.com/Wifabric/AISC/pull/106) 合入 main `8d748eef`，两个 annotated 标签固定同源源码。Workbench [v2.1.19](https://github.com/Wifabric/AISC/releases/tag/v2.1.19) 已发布为 Latest，随包 CLI 0.3.0；正式标签 NSIS 44499717575 成功，公开下载 SHA-256 `c790ed32e2360964813500382f578952617cd76b7dd4a9344f39427fc82be60d` 与升级测试产物一致。定版复核 Python 1841 项及 220 子测试通过，58 项跳过；51 项文档检查、1368 项容器摘要和正式 bundle 校验通过。

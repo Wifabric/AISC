@@ -10,6 +10,8 @@ import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
+import type { LaunchAgent } from "../../types";
+import SessionLaunchMenu from "../workspace/SessionLaunchMenu.vue";
 import { memberRows, type MemberTreeRow } from './workRecordLayout';
 import type { WorkRecordMember, WorkRecordCollection } from "../../types";
 
@@ -28,6 +30,9 @@ const expandedUnfiled = ref(new Set<string>());
 const collapsedCollections = ref(new Set<string>());
 const unfiledExpanded = ref(true);
 const sessionLaunchError = ref<string | null>(null);
+const sessionMenu = ref<{ anchor: HTMLElement; collectionId: string } | null>(null);
+watch(() => props.workspace, () => { sessionMenu.value = null; });
+const deleteDialog = ref<HTMLDialogElement | null>(null);
 const pendingDelete = ref<{
   kind: "collection" | "conversation";
   message: string;
@@ -41,8 +46,7 @@ const contextMenu = ref<{
   y: number;
   collectionId: string | null;
   memberKey: string;
-  agent: "claude" | "codex";
-  conversationId: string;
+  collectionOnly: boolean;
 } | null>(null);
 
 const visibleCollections = computed(() =>
@@ -50,7 +54,7 @@ const visibleCollections = computed(() =>
 );
 const conversationBy = computed(() => {
   const out = new Map<string, ConversationSummary>();
-  for (const item of explorer.conversations) {
+  for (const item of [...records.conversations, ...explorer.conversations]) {
     out.set(item.agent + ":" + item.conversation_id.toLowerCase(), item);
   }
   return out;
@@ -110,7 +114,7 @@ async function performCollectionDelete(id: string) {
   await explorer.loadConversations(true);
   await runtime.resolvePendingConversationAssociations(explorer.conversations);
   await runtime.closeLiveConversationSessions(
-    (records.byId(id)?.members ?? []).map((member) => member.conversation_id),
+    records.byId(id)?.members ?? [],
   );
   await records.delete(id);
   await explorer.loadConversations(true);
@@ -140,6 +144,22 @@ function previewConversation(item: ConversationSummary | null): void {
 function previewMember(memberKey: string): void {
   previewConversation(memberConversation(memberKey));
 }
+
+async function exportFromMenu() {
+  const item = menuConversation();
+  closeMenu();
+  if (!item) return;
+  try { await explorer.exportConversation(item.agent, item.conversation_id, item.title); }
+  catch (cause) { sessionLaunchError.value = (cause as Error)?.message || String(cause); }
+}
+
+watch(pendingDelete, async (pending) => {
+  if (pending) {
+    await nextTick();
+    deleteDialog.value?.showModal?.();
+  }
+});
+watch(() => props.workspace, () => { pendingDelete.value = null; });
 // b2 (反馈 #11): while the provider conversation list is loading, a member row
 // must show a loading placeholder — never flash "missing reference" before the
 // lookup data has actually arrived.
@@ -223,7 +243,9 @@ async function confirmQuietDelete() {
   pendingDelete.value = null;
   if (!pending) return;
   if (pending.kind === "collection" && pending.collectionId) {
-    await performCollectionDelete(pending.collectionId);
+    sessionLaunchError.value = null;
+    try { await performCollectionDelete(pending.collectionId); }
+    catch (e) { sessionLaunchError.value = (e as Error)?.message || String(e); }
   } else if (pending.conversation) {
     await performConversationDelete(pending.conversations ?? [pending.conversation]);
   }
@@ -377,7 +399,11 @@ async function dropCollection(event: DragEvent, targetId: string) {
   event.preventDefault();
   event.stopPropagation();
   const sourceId = event.dataTransfer?.getData("application/x-aisc-work-record-collection");
-  if (!sourceId || sourceId === targetId) return;
+  if (!sourceId) {
+    await dropMember(event, targetId);
+    return;
+  }
+  if (sourceId === targetId) return;
   const ids = records.collections.map((item) => item.id);
   const from = ids.indexOf(sourceId);
   const to = ids.indexOf(targetId);
@@ -487,9 +513,9 @@ function leaveMoveSubmenu(event: MouseEvent) {
   if (target instanceof Node && (submenuEl.value?.contains(target) || submenuTrigger.value?.contains(target))) return;
   moveSubOpen.value = false;
 }
-async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null) {
+async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: string | null, member: WorkRecordMember | null, item: ConversationSummary | null, collectionOnly = false) {
   event.preventDefault();
-  if (!item) { closeMenu(); return; }
+  if (!item && !collectionOnly) { closeMenu(); return; }
   menuOrigin = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   const anchor = menuOrigin?.getBoundingClientRect();
   moveSubOpen.value = false;
@@ -499,9 +525,8 @@ async function openMemberMenu(event: MouseEvent | KeyboardEvent, collectionId: s
     x: "clientX" in event ? event.clientX : anchor?.left ?? 8,
     y: "clientY" in event ? event.clientY : anchor?.bottom ?? 8,
     collectionId,
-    memberKey: member?.member_key ?? unfiledKey(item),
-    agent: item.agent,
-    conversationId: item.conversation_id,
+    memberKey: member?.member_key ?? (item ? unfiledKey(item) : ""),
+    collectionOnly,
   };
   const menu = contextMenu.value;
   await nextTick();
@@ -517,6 +542,12 @@ function closeMenu(restoreFocus = false) {
   moveSubOpen.value = false;
   menuOrigin = null;
   if (restoreFocus && origin?.isConnected) origin.focus({ preventScroll: true });
+}
+function deleteMenuCollection() {
+  const id = contextMenu.value?.collectionId;
+  const collection = id && records.byId(id);
+  closeMenu(true);
+  if (collection) requestCollectionDelete(collection.id, collection.title);
 }
 function isMenuTarget(target: EventTarget | null) {
   return target instanceof Node && !!(menuEl.value?.contains(target) || submenuEl.value?.contains(target));
@@ -569,17 +600,15 @@ function onMemberMenuKey(event: KeyboardEvent, collectionId: string | null, memb
 function menuConversation(): ConversationSummary | null {
   return contextMenu.value ? memberConversation(contextMenu.value.memberKey) : null;
 }
-function collectionLaunchAgent(collection: WorkRecordCollection): "claude" | "codex" {
-  const member = [...collection.members].reverse().find((item) => item.agent === "claude" || item.agent === "codex");
-  return member?.agent === "claude" ? "claude" : "codex";
-}
-
 // b5 (反馈 #7/#8): a Work Record launch is tracked; launch failure closes only
 // the new label and preserves the readable error for recovery.
-async function createSessionInRecord(collection: WorkRecordCollection): Promise<void> {
-  if (runtime.lastCreatedTabId) return;
+async function createSessionInRecord(agent: LaunchAgent | "topics", directory: string): Promise<void> {
+  const menu = sessionMenu.value;
+  sessionMenu.value = null;
+  if (!menu || !records.byId(menu.collectionId)) return;
+  if (agent === "topics") { runtime.openTopicsTab({ collectionId: menu.collectionId, directory }); return; }
   sessionLaunchError.value = null;
-  const result = await runtime.createTrackedTab(collectionLaunchAgent(collection), collection.id);
+  const result = await runtime.createTrackedTab(agent, menu.collectionId, directory || undefined);
   if (result.error) {
     sessionLaunchError.value = result.error === "tab-limit"
       ? t("history.viewer.tabLimit")
@@ -636,13 +665,16 @@ async function moveFromMenu(targetId: string | null) {
     const c = records.unfiled.find(item => unfiledKey(item) === key);
     return c ? [{ memberKey: key, agent: c.agent, conversationId: c.conversation_id }] : [];
   });
-  await moveSubtree({ ...menu, subtree }, targetId);
+  const source = subtree.find(entry => entry.memberKey === menu.memberKey);
+  if (source) await moveSubtree({ ...source, collectionId: menu.collectionId, subtree }, targetId);
   if (contextMenu.value === menu) closeMenu();
 }
 
-watch(() => explorer.conversations, (_value, old) => {
-  if (old.length === explorer.conversations.length) return;
-  void records.reconcile();
+watch(() => explorer.conversations, async (current, old) => {
+  if (current.length === old.length && current.every((c, i) =>
+    c.conversation_id === old[i].conversation_id && c.agent === old[i].agent)) return;
+  await records.reconcile();
+  if (records.workspace === props.workspace) await runtime.resolvePendingConversationAssociations(current);
 });
 onMounted(async () => {
   window.addEventListener("click", onOutsideMenu);
@@ -726,7 +758,8 @@ watch(() => props.workspace, async (workspace) => {
         @dragover.prevent
         @drop="dropCollection($event, collection.id)"
       >
-        <header class="work-record-head">
+        <header class="work-record-head" @contextmenu.prevent="openMemberMenu($event, collection.id, null, null, true)"
+          @keydown.shift.f10.prevent="openMemberMenu($event, collection.id, null, null, true)">
           <button
             class="conversation-twisty"
             type="button"
@@ -751,7 +784,7 @@ watch(() => props.workspace, async (workspace) => {
           <h4 v-else class="collection-title" @dblclick="beginCollectionRename(collection)">{{ records.numbers.get(collection.id) }} {{ collection.title }}</h4>
           <span v-if="collection.status === 'archived'" class="work-record-archived">{{ t("workRecords.archived") }}</span>
           <span class="head-actions">
-            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" :data-testid="'new-session-' + collection.id" @click.stop="createSessionInRecord(collection)">＋</button>
+            <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.newSession')" :aria-label="t('workRecords.newSession')" aria-haspopup="menu" :aria-expanded="sessionMenu?.collectionId === collection.id" :data-testid="'new-session-' + collection.id" @click.stop="sessionMenu = sessionMenu?.collectionId === collection.id ? null : { anchor: $event.currentTarget as HTMLElement, collectionId: collection.id }">＋</button>
             <button class="ui-icon-button sm" type="button" :title="t('workRecords.rename')" :aria-label="t('workRecords.rename')" :data-testid="'rename-' + collection.id" @click.stop="beginCollectionRename(collection)">✎</button>
             <button v-if="collection.status === 'active'" class="ui-icon-button sm" type="button" :title="t('workRecords.archive')" :aria-label="t('workRecords.archive')" @click.stop="records.archive(collection.id)">🗄</button>
             <button v-else class="ui-icon-button sm" type="button" :title="t('workRecords.restore')" :aria-label="t('workRecords.restore')" @click.stop="records.restore(collection.id)">♻</button>
@@ -842,19 +875,22 @@ watch(() => props.workspace, async (workspace) => {
           </li>
         </ul>
       </section>
-    <div v-if="pendingDelete" class="quiet-delete-overlay" data-testid="quiet-delete-overlay" @mousedown.stop>
-      <div class="quiet-delete" role="dialog" aria-modal="true" :aria-label="t('workRecords.deleteTitle')" data-testid="quiet-delete-dialog">
+    <dialog v-if="pendingDelete" ref="deleteDialog" class="quiet-delete" aria-modal="true" :aria-label="t('workRecords.deleteTitle')" data-testid="quiet-delete-dialog" @cancel.prevent="pendingDelete = null">
+        <h3>{{ t("workRecords.deleteTitle") }}</h3>
         <p>{{ pendingDelete.message }}</p>
         <div class="quiet-delete-actions">
-          <button type="button" data-testid="quiet-delete-cancel" @click="pendingDelete = null">{{ t("workRecords.cancel") }}</button>
+          <button autofocus type="button" data-testid="quiet-delete-cancel" @click="pendingDelete = null">{{ t("workRecords.cancel") }}</button>
           <button type="button" class="danger" data-testid="quiet-delete-confirm" @click="confirmQuietDelete">{{ t("workRecords.delete") }}</button>
         </div>
-      </div>
-    </div>
+    </dialog>
+    <SessionLaunchMenu v-if="sessionMenu" :key="sessionMenu.collectionId" :anchor="sessionMenu.anchor" @close="sessionMenu = null" @choose="createSessionInRecord" />
     <Teleport to="body">
       <div v-if="contextMenu" ref="menuEl" class="work-record-menu" role="menu" :aria-label="t('workRecords.title')" :style="{ ...menuLimits, left: menuPosition.x + 'px', top: menuPosition.y + 'px', visibility: menuReady ? 'visible' : 'hidden' }" data-testid="work-record-context-menu" @click.stop>
+        <button v-if="contextMenu.collectionOnly" role="menuitem" type="button" @click="deleteMenuCollection">{{ t("workRecords.delete") }}</button>
+        <template v-else>
         <button role="menuitem" type="button" @click="resumeMember(contextMenu.memberKey); closeMenu()">{{ t("workRecords.resume") }}</button>
         <button role="menuitem" v-if="menuConversation()" type="button" @click="previewConversation(menuConversation()); closeMenu()">{{ t("workRecords.preview") }}</button>
+        <button role="menuitem" v-if="menuConversation()" type="button" @click="exportFromMenu">{{ t("workRecords.exportMarkdown") }}</button>
         <button role="menuitem" v-if="menuConversation()" type="button" @click="forkSessionFromMenu()">{{ t("workRecords.forkSession") }}</button>
         <button role="menuitem" type="button" @click="beginConversationRename(contextMenu.memberKey); closeMenu()">{{ t("workRecords.rename") }}</button>
         <button role="menuitem" type="button" @click="requestConversationDelete(memberConversation(contextMenu.memberKey)!, contextMenu.collectionId); closeMenu()">{{ t("workRecords.delete") }}</button>
@@ -870,6 +906,7 @@ watch(() => props.workspace, async (workspace) => {
           </div>
           </Teleport>
         </div>
+        </template>
       </div>
     </Teleport>
   </div>
@@ -915,7 +952,8 @@ watch(() => props.workspace, async (workspace) => {
 
 </style>
 
-.quiet-delete-overlay { position:fixed; inset:0; z-index:95; background:var(--scrim,rgba(0,0,0,.4)); display:flex; align-items:center; justify-content:center; }
+.quiet-delete::backdrop { background: var(--scrim); }
+.quiet-delete h3 { margin: 0 0 var(--space-3); color: var(--text); }
 .quiet-delete { width:min(420px,90vw); padding:var(--space-3); background:var(--surface); border:var(--border-w) solid var(--border-strong); border-radius:var(--radius-md); box-shadow:var(--shadow-menu); }
 .quiet-delete p { margin:0 0 var(--space-3); color:var(--text); }
 .quiet-delete-actions { display:flex; justify-content:flex-end; gap:var(--space-2); }

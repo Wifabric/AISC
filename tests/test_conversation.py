@@ -348,6 +348,34 @@ class TestConversationRename:
 # ---------------------------------------------------------------------------
 
 class TestConversationRead:
+    def test_markdown_pages_preserve_long_content_and_initial_end(self, ws_env):
+        from aisc.application.conversation import conversation_markdown
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        path = next((ws_dir / "codex" / "sessions").rglob("*.jsonl"))
+        text = "开头" + "测" * 300_000 + "结尾"
+        message = {"type": "response_item", "payload": {"type": "message", "role": "assistant",
+                   "content": [{"type": "output_text", "text": text}]}}
+        path.write_text(json.dumps(message, ensure_ascii=False) + "\n", encoding="utf-8")
+        first = conversation_markdown(str(ws), CODEX_ID, "codex", "start")
+        assert first["next"]
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(message) + "\n")
+        last = conversation_markdown(str(ws), CODEX_ID, "codex", first["next"])
+        assert last["next"] is None
+        assert (first["markdown"] + last["markdown"]).count(text) == 1
+
+    def test_injected_skill_is_available_as_a_collapsible_activity(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        path = next((ws_dir / "codex" / "sessions").rglob("*.jsonl"))
+        text = "<skill>\n<name>office-hours</name>\n<body>skill body</body>\n</skill>"
+        row = {"type": "response_item", "payload": {"type": "message", "role": "user",
+               "content": [{"type": "input_text", "text": text}]}}
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        item, = self._read(ws)["messages"]
+        assert (item["kind"], item["name"], item["text"]) == ("skill", "office-hours", text)
+
     def test_codex_native_index_wins_over_a_newer_duplicate_copy(self, ws_env):
         ws, ws_dir = ws_env
         _install_codex(ws_dir, "codex_normal.jsonl")
@@ -405,14 +433,16 @@ class TestConversationRead:
         payloads = [
             {"type": "message", "role": "assistant", "phase": "commentary", "content": [{"type": "output_text", "text": "正在检查"}]},
             {"type": "custom_tool_call", "call_id": "c", "name": "apply_patch", "input": "patch"},
-            {"type": "custom_tool_call_output", "call_id": "c", "output": "ok"},
+            {"type": "custom_tool_call_output", "call_id": "c", "output": [
+                {"type": "input_text", "text": "Command completed"},
+                {"type": "input_text", "text": "蓝色雨伞 7391"}]},
             {"type": "message", "role": "assistant", "phase": "final_answer", "content": [{"type": "output_text", "text": "x" * 12000}]},
         ]
         path.write_text("\n".join(json.dumps({"type": "response_item", "payload": p}) for p in payloads), encoding="utf-8")
         data = self._read(ws)
         assert data["messages"][0]["phase"] == "commentary"
         assert data["messages"][1]["kind"] == "tool_use"
-        assert data["messages"][1]["result"] == "ok"
+        assert data["messages"][1]["result"] == "Command completed\n\n蓝色雨伞 7391"
         assert len(data["messages"][-1]["text"]) == 12000
 
     def _read(self, ws, conv_id=CODEX_ID, agent="codex", **kw):

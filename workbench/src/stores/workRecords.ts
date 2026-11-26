@@ -28,6 +28,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   const schemaVersion = ref<string>("");
   const collections = ref<WorkRecordCollection[]>([]);
   const unfiled = ref<ConversationSummary[]>([]);
+  const conversations = ref<ConversationSummary[]>([]);
   const revealKey = ref("");
   let loadGeneration = 0;
   const numbers = computed(() => {
@@ -71,6 +72,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     schemaVersion.value = "";
     collections.value = [];
     unfiled.value = [];
+    conversations.value = [];
     error.value = null;
     lastDeleteFailure.value = null;
   }
@@ -92,6 +94,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
       schemaVersion.value = result.schema_version;
       collections.value = result.collections;
       unfiled.value = result.unfiled;
+      conversations.value = result.conversations ?? result.unfiled;
     } catch (e) {
       if (generation !== loadGeneration) return;
       error.value = messageOf(e);
@@ -318,6 +321,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     unarchivedCollections,
     archivedCollections,
     collections,
+    conversations,
     unfiled,
     loading,
     error,

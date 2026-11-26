@@ -1,10 +1,14 @@
 # AISC 开发者手册
 
-当前正式版为 Workbench **2.1.19** / CLI **0.3.0**。[PR #106](https://github.com/Wifabric/AISC/pull/106) 已合入 main，发布源码为 `8d748eefa37b39baaf7563a556e1a7d0c74f43cc`；[正式下载](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)已验证 Latest、安装包、校验文件与升级报告一致。独立 CLI **0.3.0** 已发布至 [PyPI](https://pypi.org/project/aisc-cli/0.3.0/)，TestPyPI 与正式 index 安装验证通过。用户已确认功能及全部安装交互手测通过，14 条已纳入反馈完成 final 回复及 resolved 回写，偶发卡死暂缓。完整来源及交付结果见[正式说明](docs/releases/v2.1.19.md)、[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)和[操作参考](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
+**2026-11-27 发布准备。** 2.1.20 / CLI 0.3.1 已定版，用户已完成 Preview 功能验收。正式标签、公开下载及 PyPI 按 §11.2 在最终授权后执行。[本版交付记录](docs/plans/2.1.20-dev-plans/DELIVERY.md)
+
+上一轮正式交付为 Workbench **2.1.19** / CLI **0.3.0**。[PR #106](https://github.com/Wifabric/AISC/pull/106) 已合入 main，发布源码为 `8d748eefa37b39baaf7563a556e1a7d0c74f43cc`；[正式下载](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)已验证 Latest、安装包、校验文件与升级报告一致。独立 CLI **0.3.0** 已发布至 [PyPI](https://pypi.org/project/aisc-cli/0.3.0/)，TestPyPI 与正式 index 安装验证通过。用户已确认功能及全部安装交互手测通过，14 条已纳入反馈完成 final 回复及 resolved 回写，偶发卡死暂缓。完整来源及交付结果见[正式说明](docs/releases/v2.1.19.md)、[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)和[操作参考](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
 
 > **开发基线：** `develop` 分支；当前产品版本分别读取 `src/aisc/VERSION`（CLI）与 `workbench/src-tauri/tauri.conf.json`（Workbench）。状态 Alpha。活动阶段见 `docs/plans/README.md`；用户安装与命令教程见 `README.md`。
 
 CLI 0.3.0 正式发布后，[PR #107](https://github.com/Wifabric/AISC/pull/107) 已按流程在 develop 开启 **0.3.1.dev0**。该开发号尚未发布；正式下载和不可变标签仍对应 Workbench 2.1.19 / CLI 0.3.0。
+
+Workbench 2.1.20 的 11 条反馈集中到同一候选，开发证据与用户实测分别记录。见[阶段计划](docs/plans/2.1.20-dev-plans/README.md)及[验收清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
 
 ## 1. 分支与发布角色
 
@@ -30,7 +34,7 @@ git status --short
 
 阶段输入除既有反馈 Issue 和开发人员提议外，还应按 §1.5 收集贡献者 PR；已排期的 PR 进入审查与集成批次，与原任务共用验收条件。
 
-1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。计划沿用已有 PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等结构，小修复直接补充现有批次，复杂任务按需要使用 Full 结构；个人环境已有 vibe-coding-skill 时可复用模板。仓库内开发执行入口为 [aisc-development Skill](skills/aisc-development/SKILL.md)，不依赖未安装的个人技能。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
+1. **阶段启动**：用户与 Claude 讨论范围后在 `docs/plans/<workbench版本号>-dev-plans/` 建阶段计划文件夹（当前活动阶段见 `docs/plans/README.md`；已完成阶段归档于 `docs/archive/<版本>-dev-plans/`）。计划沿用已有 PRD / IMPLEMENTATION_PLAN / PROGRESS / LESSONS 等结构，小修复直接补充现有批次，复杂任务按需要使用 Full 结构。项目协作入口为[开发职责](docs/workflows/development-roles.md)与[贡献者流程](docs/workflows/contributor-workflow.md)。开发方法与试用材料在项目外维护。**后续开发永远以文档为准开展**：代码与文档漂移时先改文档再改码。
 2. **CLI 版本全权委托**：开发过程中用户不管控 CLI 版本号；Claude 全权管理——有必要时随时发布新版本、变更版本号（0.x 语义见 §8.4）；拿不准时可提请用户裁定。
 3. **收尾触发**：本阶段 plan 全部闭环（README 阶段表全部完成或显式转期并有裁决记录）后，**由用户宣布**开始收尾。
 4. **收尾清单（Claude 执行）**：
@@ -145,7 +149,7 @@ agent 不得把自动化、数据面或注入测试冒充 CU PASS，也不得静
 
 审查记录绑定 base/head SHA；作者自报、主审验证、CI、用户验收分别记账。合并后检查实际目标提交，再按当前阶段验收条件闭环；可自动合并、已合并或已发布不能代替验收。本文 §1.2 范围纪律、§1.4 验收模式及发布规则继续适用。
 
-修改前后对照与完整示例见[使用效果示例](docs/workflows/pr-intake.md#workflow-example)；本次[专题计划与演练](docs/plans/pr-intake-workflow.md)记录真实 PR 依赖和验证边界。贡献者的对应流程见 §1.6；仓库开发 Skill 见 [aisc-development](skills/aisc-development/SKILL.md)，真实多人使用效果继续记录。
+修改前后对照与完整示例见[使用效果示例](docs/workflows/pr-intake.md#workflow-example)；本次[专题计划与演练](docs/plans/pr-intake-workflow.md)记录真实 PR 依赖和验证边界。贡献者的对应流程见 §1.6，真实多人使用效果继续记录。
 
 ### 1.6 开发职责与贡献者流程
 
@@ -911,7 +915,7 @@ tag 名包含 `-dev` 或 `.dev` 时该 CLI GitHub Release 标为 Pre-release；�
 5. 正式 CLI 用同一审核源码的 `cli-v<CLI版本>` tag，按下节 dispatch PyPI。不要把 Workbench `v2.*` tag 传给 CLI 版本校验，不为 CLI final 额外创建 Workbench Release。
 6. 两条渠道各自验证成功后回填账本；最终发布后按 §1.1 回写本版反馈、归档计划、修正链接、同步 develop，并逐项清理符合条件的 prerelease 及临时分支。未完成外部事项仍明确列出，不用归档隐去。
 
-**每次交付的统一标准（2026-11-09 用户要求）：** 按[完整版本交付清单](docs/workflows/development-roles.md#complete-version-delivery)在阶段 DELIVERY 汇总本版全部成果，供用户转交 leader 确认。包括所有需求/修复、版本与源码、正式渠道及资产、分项验证与用户验收、README/Release Notes、WIKI/交接/Skill/devlog/TODO/阶段文档、反馈回写及归档清理；不能只列最后补丁或补全文档。每项附事实证据和真实状态，权限或外部审批未完成时明确保留。leader 的发布后确认不自动替代现有发布授权，也不得提前记作已确认。
+**每次交付的统一标准（2026-11-09 用户要求）：** 按[完整版本交付清单](docs/workflows/development-roles.md#complete-version-delivery)在阶段 DELIVERY 汇总本版全部成果，供用户转交 leader 确认。包括所有需求/修复、版本与源码、正式渠道及资产、分项验证与用户验收、README/Release Notes、WIKI/交接/devlog/TODO/阶段文档、反馈回写及归档清理；不能只列最后补丁或补全文档。每项附事实证据和真实状态，权限或外部审批未完成时明确保留。leader 的发布后确认不自动替代现有发布授权，也不得提前记作已确认。
 
 创建 tag 前至少运行：
 
@@ -937,7 +941,7 @@ dev 迭代仅 TestPyPI：使用新的 `.devN` 和对应 tag，每次上传前同
 
 不要覆盖已发布 tag 或 force-push 发布引用。正式发布前必须有完整发布说明，不能依赖自动生成 notes 掩盖遗漏；失败渠道单独保留未完成状态。
 
-发布说明参照相邻正式版本（如 [2.1.17](docs/releases/v2.1.17.md)）的清晰程度，按用户功能分组写触发场景、变化后的行为、使用入口和兼容限制；不要只罗列“修复若干问题”或链接到计划。测试证据、未执行项与渠道状态另列，完整原始记录放 DELIVERY。文件名必须与实际 tag 对应，修改名称时同步入口链接；候选文档不能写成 final 已上线。README 正文、WIKI、Skill、教程、devlog、TODO 与阶段状态一并核对，不以添加一个链接代替内容同步。
+发布说明参照相邻正式版本（如 [2.1.17](docs/releases/v2.1.17.md)）的清晰程度，按用户功能分组写触发场景、变化后的行为、使用入口和兼容限制；不要只罗列“修复若干问题”或链接到计划。测试证据、未执行项与渠道状态另列，完整原始记录放 DELIVERY。文件名必须与实际 tag 对应，修改名称时同步入口链接；候选文档不能写成 final 已上线。README 正文、WIKI、教程、devlog、TODO 与阶段状态一并核对，不以添加一个链接代替内容同步。
 
 ## 12. 安全边界
 

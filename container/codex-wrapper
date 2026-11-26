@@ -71,11 +71,23 @@ if [ -n "$real_bin" ]; then
             resolved_bin="$(readlink -f "$real_bin")"
             pkg_root="$(dirname "$(dirname "$resolved_bin")")"
             scope_root="$(dirname "$pkg_root")"
-            shadow_root=/tmp/aisc-codex-shadow
-            shadow_entry="$shadow_root/@openai/codex/bin/codex.js"
-            rm -rf "$shadow_root"
-            mkdir -p "$shadow_root"
-            cp -a "$scope_root" "$shadow_root/"
+            # Other tabs can still be executing an older copy. Publish once
+            # per npm release and keep its executable until the container exits.
+            shadow_root=/run/aisc/codex-packages
+            revision="$(sha256sum < "$pkg_root/package.json")"
+            revision="${revision%% *}"
+            shadow_entry="$shadow_root/$revision/@openai/codex/bin/codex.js"
+            if [ ! -f "$shadow_entry" ]; then
+                mkdir -p -m 0700 "$shadow_root"
+                (
+                    flock -x 9
+                    [ ! -f "$shadow_entry" ] || exit 0
+                    stage="$(mktemp -d "$shadow_root/.install.XXXXXXXX")"
+                    trap 'rm -rf -- "$stage"' EXIT
+                    cp -a "$scope_root" "$stage/"
+                    mv -T "$stage" "$shadow_root/$revision"
+                ) 9>"$shadow_root/install.lock"
+            fi
             export CODEX_MANAGED_BY_NPM=1
             if [ "$has_permission_flag" = "0" ]; then
                 exec node "$shadow_entry" "${full_access_flags[@]}" "$@"

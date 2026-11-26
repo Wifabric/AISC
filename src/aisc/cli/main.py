@@ -1234,6 +1234,8 @@ def _build_parser() -> _AiscArgumentParser:
                       help="Agent type (claude|codex)")
     cvrd.add_argument("--tail", type=int, default=None,
                       help="Return only the LAST N messages (lazy paging)")
+    cvrd.add_argument("--markdown", action="store_true", help="Export the complete readable transcript as Markdown")
+    cvrd.add_argument("--markdown-cursor", help="Read one Markdown export page, starting with 'start'")
     cvrd.add_argument("--before", type=int, default=None,
                       help="Return messages with ordinal < N (with --tail "
                            "for backwards paging)")
@@ -2880,6 +2882,9 @@ def _cmd_conversation(
         )
         return data, 0, []
     elif sub == "read":
+        if getattr(args, "markdown", False) or getattr(args, "markdown_cursor", None):
+            from aisc.application.conversation import conversation_markdown
+            return conversation_markdown(args.workspace, args.conversation_id, args.agent, args.markdown_cursor), 0, []
         data = cmd_conversation_read(
             workspace=args.workspace,
             conversation_id=args.conversation_id,

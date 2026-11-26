@@ -14,6 +14,7 @@ import type { CcSwitchProvider } from "../../types";
 const { t } = useI18n();
 const props = defineProps<{
   provider: CcSwitchProvider;
+  official: boolean;
   busy: boolean;
 }>();
 const emit = defineEmits<{
@@ -22,9 +23,6 @@ const emit = defineEmits<{
   (e: "remove"): void;
 }>();
 
-/** Official-direct entry: cc-switch keeps these always visible (placeholder
- * rows carry no base_url); activating one restores the official config. */
-const official = computed(() => !props.provider.base_url);
 /** Icon resolution: the db icon is a BRAND ID for the official rows
  * ('anthropic' / 'openai' — rendered as inline SVG marks, 手测 r6#2: the
  * raw id leaking through the r5 boundary fix rendered as literal text) or a
@@ -33,7 +31,7 @@ const brand = computed(() =>
   props.provider.icon === "anthropic" || props.provider.icon === "openai"
     ? props.provider.icon : "");
 const displayName = computed(() =>
-  official.value ? t("ccswitch.officialDirect") : (props.provider.name || props.provider.id));
+  props.official ? t("ccswitch.officialDirect") : (props.provider.name || props.provider.id));
 const glyph = computed(() => props.provider.icon && !brand.value
   ? props.provider.icon
   : displayName.value.trim().charAt(0).toUpperCase());
@@ -46,7 +44,7 @@ const startable = computed(() => !props.provider.is_current);
  * what requests actually run on: the primary slot (claude role env) or the
  * row's model (codex). */
 const actualModel = computed(() => {
-  if (!props.provider.is_current || official.value) return "";
+  if (!props.provider.is_current || props.official) return "";
   const env = props.provider.role_env ?? {};
   return env.ANTHROPIC_MODEL || env.ANTHROPIC_DEFAULT_OPUS_MODEL
     || props.provider.model || "";

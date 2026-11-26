@@ -8,6 +8,7 @@
 ARG USE_CN_MIRROR=1
 ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9
 FROM ${NODE_IMAGE}
+LABEL org.aisc.codex-tmpfs="1"
 
 # 是否使用国内镜像源（apt 清华 / npm 淘宝）。1=用（默认），0=用官方源。
 # 启动脚本会按交互选择传入 --build-arg USE_CN_MIRROR=0/1
@@ -103,6 +104,8 @@ USER root
 #   注意：mihomo 是 ELF 二进制，绝不能 sed 处理（同 claude-real 教训）。
 # ==========================================
 COPY container/downloads/ /tmp/dl/
+COPY container/prepare-office-hours.sh /tmp/prepare-office-hours.sh
+RUN sh /tmp/prepare-office-hours.sh
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) mih_arch=amd64;; arm64|aarch64) mih_arch=arm64;; *) echo "unsupported arch $arch for mihomo"; exit 1;; esac; \

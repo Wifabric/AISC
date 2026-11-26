@@ -174,7 +174,7 @@ export interface ConversationRenameResult {
 export interface ConversationReadMessage {
   ordinal: number;
   role: "user" | "assistant" | "tool";
-  kind: "message" | "reasoning" | "tool_use" | "tool_result";
+  kind: "message" | "reasoning" | "tool_use" | "tool_result" | "skill";
   text: string;
   name?: string | null;
   call_id?: string | null;
@@ -1220,6 +1220,7 @@ export interface WorkRecordListResult {
   schema_version: string;
   active_collection_id: string | null;
   collections: WorkRecordCollection[];
+  conversations?: ConversationSummary[];
   unfiled: ConversationSummary[];
 }
 

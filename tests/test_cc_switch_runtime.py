@@ -485,9 +485,8 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
         db.close()
         return settings_json
 
-    def test_migration_removes_seeded_rows_but_keeps_user_rows(self):
-        """D-6.7: the historical seeded third-party rows die (users re-add
-        from templates); a genuinely user-owned row survives untouched."""
+    def test_migration_preserves_configured_presets_and_user_rows(self):
+        """A legacy preset becomes user data once configured."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
             self._create_v5_database(config_dir)
@@ -528,7 +527,7 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
                     config_dir, agent,
                     PROVIDER_HELPER.preset_revision(agent), log,
                 )
-                self.assertEqual(removed, 1)
+                self.assertEqual(removed, 0)
 
             db = sqlite3.connect(config_dir / "cc-switch.db")
             remaining = {
@@ -538,8 +537,8 @@ class CcSwitchProviderPresetTests(unittest.TestCase):
             }
             db.close()
 
-        self.assertNotIn(("deepseek", "claude"), remaining)
-        self.assertNotIn(("deepseek", "codex"), remaining)
+        self.assertEqual(remaining[("deepseek", "claude")], "old")
+        self.assertEqual(remaining[("deepseek", "codex")], "old")
         self.assertEqual(remaining[("my-relay", "claude")], "mine")
 
     def test_migration_removes_retired_codex_claude(self):
@@ -1300,7 +1299,8 @@ class ContainerToolUpdateContractTests(unittest.TestCase):
 class CodexProjectMountUpdateShadowTests(unittest.TestCase):
     def test_project_mount_updates_through_container_shadow(self):
         wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
-        self.assertIn("/tmp/aisc-codex-shadow", wrapper)
+        self.assertIn('shadow_entry="$shadow_root/$revision/@openai/codex/bin/codex.js"', wrapper)
+        self.assertNotIn('rm -rf "$shadow_root"', wrapper)
         self.assertIn("CODEX_MANAGED_BY_NPM=1", wrapper)
         self.assertIn('node "$shadow_entry"', wrapper)
         self.assertIn('cp -a "$scope_root"', wrapper)

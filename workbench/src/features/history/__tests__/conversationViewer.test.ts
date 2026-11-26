@@ -33,6 +33,41 @@ function show(pinia: ReturnType<typeof createPinia>) {
   wrapper = mount(ConversationViewer, { attachTo: document.body, global: { plugins: [pinia, i18n] } });
 }
 describe("Work Record reader", () => {
+  it("renders structured command arguments and output from the same Codex step", async () => {
+    const { pinia, read } = setup();
+    const data = page("final");
+    const tool = data.messages.find(m => m.kind === "tool_use")!;
+    tool.name = "exec";
+    tool.text = 'text(await tools.exec_command({cmd:"head -n 1 qa.txt",workdir:"/root/app"}))';
+    tool.result = "预览测试：蓝色雨伞 7391";
+    read.mockResolvedValue(data);
+    show(pinia); await flushPromises();
+    const activity = document.querySelector(".cv-activity")!;
+    (activity as HTMLDetailsElement).open = true;
+    activity.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+    const button = Array.from(activity.querySelectorAll("summary")).find(e => e.textContent?.includes("exec"))!;
+    const detail = button.closest("details")!;
+    detail.open = true;
+    detail.dispatchEvent(new Event("toggle")); await flushPromises();
+    expect(activity.textContent).toContain("head -n 1 qa.txt");
+    expect(activity.textContent).toContain("/root/app");
+    expect(activity.textContent).toContain("蓝色雨伞 7391");
+    expect(activity.textContent).not.toContain("text(await");
+  });
+
+  it("only links existing bare workspace paths and exports through the active record", async () => {
+    const { pinia, explorer, read } = setup();
+    read.mockResolvedValue(page("Files: `src/known file.md` and `src/missing.md`"));
+    vi.spyOn(explorer, "missingRecordPaths").mockResolvedValue(new Set(["src/missing.md"]));
+    const save = vi.spyOn(explorer, "exportConversation").mockResolvedValue(null);
+    show(pinia); await flushPromises();
+    expect([...document.querySelectorAll(".cv-answer a")].map(a => a.textContent)).toEqual(["src/known file.md"]);
+    (document.querySelector(".cv-foot button") as HTMLButtonElement).click();
+    await flushPromises();
+    expect(save).toHaveBeenCalledWith("codex", "id", "记录阅读");
+    expect(document.querySelector(".cv-answer")?.textContent).toContain("src/missing.md");
+  });
   it("shows one collapsed activity item and a fully rendered answer, with no input or live stream", async () => {
     const { pinia, read } = setup(); read.mockResolvedValue(page("## 阅读结果\n\n**完整答案**\n\n$E=mc^2$"));
     show(pinia); await flushPromises();

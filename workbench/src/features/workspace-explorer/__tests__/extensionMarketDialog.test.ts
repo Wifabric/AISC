@@ -25,7 +25,7 @@ function makeStore() {
     installSkill: vi.fn(async () => {}), installSkillGroup: vi.fn(async (_group: any) => {}), installMcpMarket: vi.fn(async () => {}),
     pluginAction: vi.fn(async () => {}),
     marketSkills: [] as ExtensionsItem[], marketMcp: [] as ExtensionsItem[], marketPlugins: [] as ExtensionsItem[],
-    marketSkillGroups: [] as any[],
+    marketSkillGroups: [] as any[], displayedSkillCount: 0, showMoreMarketSkills: vi.fn(),
     marketCacheByKind: { skills: null, mcp: null, plugins: null } as any,
     skillRepos: [], pluginMarkets: [], error: null as string | null,
   });
@@ -243,6 +243,23 @@ describe("ExtensionMarketDialog", () => {
     expect(wrapper.find("[data-testid='extension-detail-panel']").exists()).toBe(false);
     expect(document.activeElement).toBe(wrapper.get("[data-testid='market-result-github']").element);
     expect(wrapper.emitted("close")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("shows the current result count and offers more only while rows remain", async () => {
+    store.marketSkills = Array.from({ length: 23 }, (_, i) => ({
+      kind: "market-skill", id: `owner/repo:skill-${i}`, name: `skill-${i}`, repo: "owner/repo",
+    }));
+    store.displayedSkillCount = 20;
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-skills']").trigger("click");
+    expect(wrapper.text()).toContain("已显示 20 条，本次搜索返回 23 条");
+    await wrapper.get("[data-testid='market-more-skills']").trigger("click");
+    expect(store.showMoreMarketSkills).toHaveBeenCalledOnce();
+    store.displayedSkillCount = 23;
+    await nextTick();
+    expect(wrapper.text()).toContain("已显示 23 条，本次搜索返回 23 条");
+    expect(wrapper.find("[data-testid='market-more-skills']").exists()).toBe(false);
     wrapper.unmount();
   });
 

@@ -347,6 +347,8 @@ def _cmd_open(args: argparse.Namespace) -> int:
 
     try:
         binary, argv = _agent_argv(args.agent, args.resume_id, args.fork_session)
+        if args.agent == "claude" and not args.resume_id and "--session-id" not in argv:
+            argv += ["--session-id", args.session_id]
     except ValueError as exc:
         _fail(str(exc))
     if binary == "zsh":
@@ -369,6 +371,10 @@ def _cmd_open(args: argparse.Namespace) -> int:
 
     start_ticks = _read_start_ticks(pid)
     record = _new_record(args, "running")
+    if args.resume_id and not args.fork_session:
+        record["conversation_id"] = args.resume_id
+    elif args.agent == "claude" and "--session-id" in argv:
+        record["conversation_id"] = argv[argv.index("--session-id") + 1]
     record["pid"] = pid
     record["pgid"] = pid  # child setpgid(0,0) -> pgid == pid
     # The agent shares the wrapper's session (setpgid, not setsid). Recording
@@ -416,6 +422,34 @@ def _cmd_open(args: argparse.Namespace) -> int:
 # list
 # ---------------------------------------------------------------------------
 
+def _codex_rollout_in_group(record, sessions_root):
+    """Only inspect this live PTY's process group and the names of its open rollouts."""
+    pid = record.get("pid")
+    if not pid or not record.get("start_ticks") or not _identity_matches(pid, record["start_ticks"]):
+        return None
+    root = os.path.realpath(sessions_root) + "/"
+    ids = set()
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            if os.getpgid(int(name)) != pid:
+                continue
+            directory = f"/proc/{name}/fd"
+            for fd in os.listdir(directory):
+                try:
+                    path = os.readlink(f"{directory}/{fd}")
+                except OSError:
+                    continue
+                if path.startswith(root):
+                    match = re.fullmatch(r"rollout-.*-([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\.jsonl", os.path.basename(path))
+                    if match:
+                        ids.add(match[1].lower())
+        except OSError:
+            continue
+    return next(iter(ids)) if len(ids) == 1 else None
+
+
 def _cmd_list(args: argparse.Namespace) -> int:
     records = []
     if os.path.isdir(SESSIONS_DIR):
@@ -428,6 +462,10 @@ def _cmd_list(args: argparse.Namespace) -> int:
             except (json.JSONDecodeError, OSError):
                 continue
             if isinstance(rec, dict):
+                if rec.get("agent") == "codex" and rec.get("state") == "running" and not rec.get("conversation_id"):
+                    directory = _load_context().get("codex_config_dir")
+                    if directory:
+                        rec["conversation_id"] = _codex_rollout_in_group(rec, os.path.join(directory, "sessions"))
                 records.append(rec)
     print(json.dumps(records, ensure_ascii=False))
     return 0

@@ -303,7 +303,7 @@ jobs:
           }
 
 
-      - name: Upgrade from official 2.1.18 and verify installed startup
+      - name: Upgrade from official 2.1.19 and verify installed startup
         shell: pwsh
         run: |
           $setup = Get-ChildItem workbench/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1

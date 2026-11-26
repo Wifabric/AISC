@@ -200,7 +200,19 @@ describe("WorkRecordsView", () => {
     expect(wrapper.findAll("button").some((b) => b.text() === "激活")).toBe(false);
   });
 
-  it("uses a silent in-app delete confirmation instead of the native dialog", async () => {
+  it("opens the collection context menu and cancels deletion in a top-layer dialog", async () => {
+    const { wrapper } = await mountView();
+    await wrapper.get(".work-record-head").trigger("contextmenu");
+    await flushPromises();
+    (document.querySelector("[data-testid=work-record-context-menu] button") as HTMLButtonElement).click();
+    await flushPromises();
+    const dialog = wrapper.get("dialog[data-testid=quiet-delete-dialog]");
+    await dialog.get("[data-testid=quiet-delete-cancel]").trigger("click");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    expect(workRecordDelete).not.toHaveBeenCalled();
+  });
+
+  it("confirms the deletion in the Workbench dialog", async () => {
     const { wrapper } = await mountView();
     await wrapper.find(`[data-testid=delete-${activeCollection.id}]`).trigger("click");
     await flushPromises();
@@ -267,7 +279,7 @@ describe("WorkRecordsView", () => {
     await flushPromises();
 
     expect(order).toEqual(["close", "delete"]);
-    expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([conversationId]);
+    expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([member]);
   });
 
   it("refreshes both ledger and provider conversations", async () => {
@@ -470,6 +482,7 @@ describe("WorkRecordsView", () => {
     await wrapper.find("[data-testid='member-codex:target']").trigger("drop", { dataTransfer: transfer });
     await flushPromises();
     expect(workRecordMoveMember).not.toHaveBeenCalled();
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).text()).toContain(provider.title);
     expect(workRecordReorderMembers).toHaveBeenCalledWith("/ws", "active-1", [member.member_key, "codex:target"]);
   });
 
@@ -547,6 +560,7 @@ describe("WorkRecordsView", () => {
   });
 
   it("disables resume for a missing transcript", async () => {
+    vi.mocked(workRecordList).mockResolvedValue({ ...listResult(), conversations: [], unfiled: [] });
     const explorer = useWorkspaceExplorerStore();
     explorer.workspace = "/ws";
     explorer.conversations = [];
@@ -626,10 +640,20 @@ describe("WorkRecordsView", () => {
   it("creates a tracked session from a Work Record plus button", async () => {
     const { wrapper } = await mountView();
     runtimeMock.createTrackedTab.mockClear();
+    runtimeMock.lastCreatedTabId = "previously-opened-tab";
     vi.mocked(workRecordList).mockClear();
-    await wrapper.find("[data-testid=new-session-active-1]").trigger("click");
+    const button = wrapper.find("[data-testid=new-session-active-1]");
+    button.element.getBoundingClientRect = () => ({ left: 12, bottom: 24, width: 16, height: 16 }) as DOMRect;
+    await button.trigger("click");
+    expect(runtimeMock.createTrackedTab).not.toHaveBeenCalled();
+    const menu = document.querySelector(".tab-new-menu")!;
+    const directory = menu.querySelector("input")!;
+    directory.value = "src";
+    directory.dispatchEvent(new Event("input", { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    (menu.querySelector('[data-agent="codex"]') as HTMLElement).click();
     await flushPromises();
-    expect(runtimeMock.createTrackedTab).toHaveBeenCalledWith("codex", "active-1");
+    expect(runtimeMock.createTrackedTab).toHaveBeenCalledWith("codex", "active-1", "src");
     expect(vi.mocked(workRecordList).mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(wrapper.find("[data-testid=work-record-session-error]").exists()).toBe(false);
   });

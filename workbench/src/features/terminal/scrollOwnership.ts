@@ -62,6 +62,8 @@ export function isTerminalFocusReport(data: string): boolean {
 }
 
 const TERMINAL_REPORTS: RegExp[] = [
+  /^\x1b\[<\d+;\d+;\d+[Mm]$/, // SGR mouse and wheel reports
+  /^\x1b\[\??\d+;[0-4]\$y$/, // DEC/ANSI mode status (DECRPM)
   /^\x1b\[[0-9;]*R$/, // cursor position
   /^\x1b\[\?[0-9;]*c$/, // primary device attributes
   /^\x1b\]1[01];[^\x07\x1b]*(?:\x07|\x1b\\)$/, // foreground/background color

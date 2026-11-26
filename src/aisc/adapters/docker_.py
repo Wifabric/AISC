@@ -337,17 +337,22 @@ class RealDockerExecutor:
             # primary answer — an unparseable body degrades to "" (unknown),
             # never to a failure.
             image_id = ""
+            codex_tmpfs = False
             try:
                 import json as _json
                 docs = _json.loads(proc.stdout or "[]")
                 if isinstance(docs, list) and docs and isinstance(docs[0], dict):
                     image_id = str(docs[0].get("Id") or "")
+                    config = docs[0].get("Config") or {}
+                    labels = config.get("Labels") if isinstance(config, dict) else None
+                    codex_tmpfs = isinstance(labels, dict) and labels.get("org.aisc.codex-tmpfs") == "1"
             except (ValueError, TypeError, IndexError):
                 image_id = ""
             return ImageInspectResult(
                 status=ImageInspectStatus.EXISTS,
                 image=image_name, message="",
                 image_id=image_id,
+                codex_tmpfs=codex_tmpfs,
             )
 
         stderr_text = proc.stderr or ""

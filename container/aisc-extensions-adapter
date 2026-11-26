@@ -634,7 +634,7 @@ def _archive_reachable(url: str) -> bool:
     return True
 
 
-def _github_skill_env(source: str, *, allow_direct: bool = True) -> dict[str, str]:
+def _github_skill_env(source: str) -> Optional[dict[str, str]]:
     """Select direct cc-switch HTTP or a Git mirror for skill installation.
 
     cc-switch builds GitHub archive URLs itself. A successful Git probe is not
@@ -645,20 +645,19 @@ def _github_skill_env(source: str, *, allow_direct: bool = True) -> dict[str, st
     """
     identity = _github_repo_identity(source)
     if identity is None:
-        return {}
+        return None
     (owner, name, requested_branch), url = identity
     branch = requested_branch or _github_branch(url)
     archive = (f"https://github.com/{owner}/{name}/archive/refs/heads/"
                f"{branch}.zip")
-    if allow_direct and _archive_reachable(archive):
-        return {}
+    if _archive_reachable(archive):
+        return None
     for mirror in _GIT_MIRRORS:
         if _archive_reachable(f"{mirror}{archive}"):
             return _git_mirror_env(mirror)
-    raise AdapterError(
-        ERR_CLI,
-        f"github skill archive unreachable after direct and mirror probes: {archive}",
-    )
+    # Git smart HTTP and GitHub archive downloads are separate transports.
+    # Stage through Git even when every archive probe failed.
+    return {}
 
 
 def _run_cli_git_fallback(argv: list[str], *, timeout: float,
@@ -855,8 +854,83 @@ def _skill_enable_states(directory: str) -> Optional[dict[str, bool]]:
     return {"claude": bool(row[0]), "codex": bool(row[1])}
 
 
+def _ensure_office_hours_bun() -> None:
+    import shutil
+    if not shutil.which("bun"):
+        # The image exposes this persistent npm prefix to both engine processes.
+        _run_cli(["npm", "install", "--global", "--prefix", "/opt/aisc/toolchain/npm-global",
+                  "--no-audit", "--no-fund", "--prefer-offline", "--fetch-retries=1", "bun@1.4.4"], timeout=120.0)
+    version = _run_cli(["bun", "--version"], timeout=10.0).strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < (1, 4, 2):
+        raise AdapterError(ERR_CLI, "office-hours requires Bun >= 1.4.2 on PATH")
+
+
+_BUNDLED_OFFICE_HOURS = Path("/opt/aisc/market/gstack")
+
+
+def _is_bundled_office_hours(repo, specs):
+    identity = _github_repo_identity(repo)
+    return bool(identity and identity[0][0].lower() == "garrytan"
+                and identity[0][1].lower() == "gstack" and identity[0][2] in (None, "main")
+                and [_skill_spec_parts(spec)[1] for spec in specs] == ["office-hours"]
+                and (_BUNDLED_OFFICE_HOURS / "office-hours" / "SKILL.md").is_file())
+
+
+def _clone_skill_source(clone, url, requested_branch, git_env, office_only):
+    import shutil
+    candidate_envs: list[dict[str, str]] = []
+    for candidate in (git_env, {}, *(_git_mirror_env(mirror)
+                                      for mirror in _GIT_MIRRORS)):
+        marker = candidate.get("GIT_CONFIG_KEY_0", "")
+        if marker not in [item.get("GIT_CONFIG_KEY_0", "")
+                          for item in candidate_envs]:
+            candidate_envs.append(candidate)
+
+    clone_failures: list[str] = []
+    selected_env: dict[str, str] = {}
+    for candidate in candidate_envs:
+        label = "direct"
+        key = candidate.get("GIT_CONFIG_KEY_0", "")
+        for mirror in _GIT_MIRRORS:
+            if mirror in key:
+                label = mirror
+                break
+        if clone.exists():
+            shutil.rmtree(clone)
+        clone_argv = ["git", "clone", "--depth", "1"]
+        if office_only:
+            clone_argv.extend(["--filter=blob:none", "--sparse"])
+        if requested_branch:
+            clone_argv.extend(["--branch", requested_branch])
+        clone_argv.extend([url, str(clone)])
+        try:
+            _run_cli(clone_argv, timeout=90.0 if office_only else 120.0, env_overrides=candidate)
+            if office_only:
+                _run_cli(["git", "-C", str(clone), "sparse-checkout", "set",
+                          "office-hours", "bin", "lib", "scripts", "docs"],
+                         timeout=60.0, env_overrides=candidate)
+        except AdapterError as exc:
+            clone_failures.append(f"clone {label}: {exc.message}")
+            continue
+        selected_env = candidate
+        break
+    else:
+        raise AdapterError(
+            ERR_CLI,
+            f"github skill repository clone failed for all sources: {url}; "
+            + "; ".join(clone_failures),
+        )
+
+    branch = _run_cli(
+        ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
+        timeout=10.0, env_overrides=selected_env,
+    ).strip() or requested_branch or "main"
+    return branch
+
+
 def _stage_skills_from_git_source(specs: list[str], repo: str,
-                                  git_env: dict[str, str]) -> list[str]:
+                                  git_env: dict[str, str], *, bundled: bool = False) -> list[str]:
     """Stage a repository's requested skills through one selected Git source.
 
     cc-switch builds GitHub archive URLs itself and ignores Git mirror config.
@@ -878,47 +952,13 @@ def _stage_skills_from_git_source(specs: list[str], repo: str,
 
     with tempfile.TemporaryDirectory(prefix="aisc-skill-mirror-") as temporary:
         clone = Path(temporary) / "repo"
-        candidate_envs: list[dict[str, str]] = []
-        for candidate in (git_env, {}, *(_git_mirror_env(mirror)
-                                          for mirror in _GIT_MIRRORS)):
-            marker = candidate.get("GIT_CONFIG_KEY_0", "")
-            if marker not in [item.get("GIT_CONFIG_KEY_0", "")
-                              for item in candidate_envs]:
-                candidate_envs.append(candidate)
-
-        clone_failures: list[str] = []
-        selected_env: dict[str, str] = {}
-        for candidate in candidate_envs:
-            label = "direct"
-            key = candidate.get("GIT_CONFIG_KEY_0", "")
-            for mirror in _GIT_MIRRORS:
-                if mirror in key:
-                    label = mirror
-                    break
-            if clone.exists():
-                shutil.rmtree(clone)
-            clone_argv = ["git", "clone", "--depth", "1"]
-            if requested_branch:
-                clone_argv.extend(["--branch", requested_branch])
-            clone_argv.extend([url, str(clone)])
-            try:
-                _run_cli(clone_argv, timeout=120.0, env_overrides=candidate)
-            except AdapterError as exc:
-                clone_failures.append(f"clone {label}: {exc.message}")
-                continue
-            selected_env = candidate
-            break
+        if bundled and _is_bundled_office_hours(repo, specs):
+            shutil.copytree(_BUNDLED_OFFICE_HOURS, clone)
+            branch = "main"
         else:
-            raise AdapterError(
-                ERR_CLI,
-                f"github skill repository clone failed for all sources: {url}; "
-                + "; ".join(clone_failures),
-            )
-
-        branch = _run_cli(
-            ["git", "-C", str(clone), "rev-parse", "--abbrev-ref", "HEAD"],
-            timeout=10.0, env_overrides=selected_env,
-        ).strip() or requested_branch or "main"
+            office_only = ((owner.lower(), name.lower()) == ("garrytan", "gstack")
+                           and relatives == [Path("office-hours")])
+            branch = _clone_skill_source(clone, url, requested_branch, git_env, office_only)
         _run_cli(["cc-switch", "skills", "repos", "add",
                   f"{owner}/{name}@{branch}"], timeout=30.0)
 
@@ -953,12 +993,42 @@ def _stage_skills_from_git_source(specs: list[str], repo: str,
                 if path.is_symlink() and (not path.is_file() or not path.resolve().is_relative_to(root)):
                     raise AdapterError(ERR_BAD_REQUEST, "Unsupported link in skill source")
 
+        skills_root = _db_path().parent / "skills"
         for source, relative in sources:
-            destination = _db_path().parent / "skills" / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination = skills_root / relative
+            if destination.resolve() != skills_root.resolve() / relative:
+                raise AdapterError(ERR_BAD_REQUEST, "Unsupported link in skill destination")
             if destination.exists():
-                shutil.rmtree(destination)
-            shutil.copytree(source, destination)
+                registered = _registered_repo_for_directory(relative.as_posix())
+                marker = destination / ".aisc-source"
+                if not registered and marker.is_file() and not marker.is_symlink():
+                    registered = marker.read_text(encoding="utf-8")[:256].strip()
+                if not registered or registered.casefold() != f"{owner}/{name}".casefold():
+                    raise AdapterError(ERR_CLI, f"Skill directory already exists: {relative}")
+            if (owner.casefold(), name.casefold(), relative.as_posix()) == ("garrytan", "gstack", "office-hours"):
+                sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+                from gstack_office_hours import package
+                try:
+                    package(clone, source, destination)
+                except (OSError, ValueError) as exc:
+                    raise AdapterError(ERR_CLI, f"Cannot prepare office-hours: {exc}") from exc
+                _ensure_office_hours_bun()
+        for source, relative in sources:
+            destination = skills_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=destination.parent) as work:
+                staged = Path(work) / "new"
+                backup = Path(work) / "old"
+                shutil.copytree(source, staged)
+                (staged / ".aisc-source").write_text(f"{owner}/{name}\n", encoding="utf-8")
+                if destination.exists():
+                    destination.rename(backup)
+                try:
+                    staged.rename(destination)
+                except OSError:
+                    if backup.exists():
+                        backup.rename(destination)
+                    raise
     return []
 
 
@@ -975,8 +1045,14 @@ def _install_skill(spec: str, *, enable_both: bool,
     # cc-switch 幂等），失败不拦截（目录名直装仍是合法形态）。
     repo, directory = _skill_spec_parts(spec)
     previous_state = _skill_enable_states(directory) if restore_state else None
-    git_env = _github_skill_env(repo)
-    if git_env:
+    identity = _github_repo_identity(repo)
+    office_hours = (identity and tuple(part.casefold() for part in identity[0][:2]) == ("garrytan", "gstack")
+                    and directory == "office-hours")
+    git_env = {} if office_hours else _github_skill_env(repo)
+    if not restore_state and _is_bundled_office_hours(repo, [spec]) and _skill_enable_states(directory) is None:
+        _stage_skills_from_git_source([spec], repo, {}, bundled=True)
+        _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+    elif git_env is not None:
         _stage_skill_from_git_source_one(spec, repo, git_env)
         _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     else:
@@ -988,13 +1064,14 @@ def _install_skill(spec: str, *, enable_both: bool,
                 pass
         try:
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
-        except AdapterError:
+        except AdapterError as exc:
             # A HEAD probe can succeed while the real archive body still fails.
             # Retry once through Git staging; this does not enable system proxy.
-            mirror_env = _github_skill_env(repo, allow_direct=False)
-            if not mirror_env:
+            if identity is None or not re.search(
+                    r"archive|download|connect|network|resolve|HTTP|TLS|timed out|zip",
+                    exc.message, re.IGNORECASE):
                 raise
-            _stage_skill_from_git_source_one(spec, repo, mirror_env)
+            _stage_skill_from_git_source_one(spec, repo, {})
             _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
     if enable_both:
         for agent in AGENTS:
@@ -1064,8 +1141,11 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
         try:
             if _github_repo_identity(repo) is None:
                 continue
-            git_env = _github_git_env(repo)
-            missing = _stage_skills_from_git_source(group_specs, repo, git_env)
+            if not update and _is_bundled_office_hours(repo, group_specs) and _skill_enable_states("office-hours") is None:
+                missing = _stage_skills_from_git_source(group_specs, repo, {}, bundled=True)
+            else:
+                git_env = _github_git_env(repo)
+                missing = _stage_skills_from_git_source(group_specs, repo, git_env)
             for spec in missing:
                 missing_errors[spec] = (
                     f"SKILL.md not found for {spec} in selected repository source"
@@ -1239,25 +1319,32 @@ def _parse_skills_api(data: dict[str, Any]) -> list[dict[str, Any]]:
             "updated_at": str(item.get("updatedAt") or item.get("updatedAtISO") or ""),
             "description": str(item.get("description") or "")[:4000],
         })
-    return out[:20]
+    return out
+
+
+# skills.sh currently caps a ranked keyword search at 200 (offset/page are ignored).
+SKILL_SEARCH_LIMIT = 200
 
 
 def _skill_search_remote(query: str) -> list[dict[str, Any]]:
+    params = urllib.parse.urlencode({"q": query.strip(), "limit": SKILL_SEARCH_LIMIT})
     try:
+        data = _http_json([
+            f"https://skills.sh/api/search?{params}",
+            f"https://www.skills.sh/api/search?{params}",
+        ], timeout=15.0)
+        if not isinstance(data.get("skills"), list):
+            raise AdapterError(ERR_CLI, "Skill market returned an invalid result")
+        return _parse_skills_api(data)
+    except AdapterError:
         raw = _run_cli(
-            ["cc-switch", "skills", "market", query, "--limit", "20"], timeout=60.0
+            ["cc-switch", "skills", "market", query, "--limit", str(SKILL_SEARCH_LIMIT)], timeout=60.0
         )
         items = _parse_market_table(raw)
-        if items:
-            return items
-    except AdapterError:
-        pass
-    encoded = urllib.parse.quote(query.strip())
-    data = _http_json([
-        f"https://skills.sh/api/search?q={encoded}",
-        f"https://www.skills.sh/api/search?q={encoded}",
-    ], timeout=15.0)
-    return _parse_skills_api(data)
+        if not items:
+            # An empty CLI fallback after a failed API call must not erase a saved search.
+            raise
+        return items
 
 
 def _skill_name_key(value: str) -> str:

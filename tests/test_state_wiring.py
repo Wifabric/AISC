@@ -163,6 +163,7 @@ class ContainerMountWiringTests(unittest.TestCase):
             self.assertIn(f"{root}", argv)
             self.assertIn(":/root/.claude", argv)
             self.assertIn(":/root/.codex", argv)
+            self.assertNotIn("--tmpfs", argv)  # offline plan, unknown image and empty config
             self.assertIn(":/root/.cc-switch", argv)
             self.assertIn(":/root/.local/state/cc-switch", argv)
             # The IMAGE is the single source of container scripts — no host

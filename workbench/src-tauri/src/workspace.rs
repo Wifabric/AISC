@@ -1303,26 +1303,8 @@ pub fn workspace_reveal_data_file(path: String) -> Result<(), WorkbenchError> {
 /// Open a file/dir with the system default app (after containment).
 pub fn open_path(workspace: &Path, relative: &str) -> Result<(), WorkbenchError> {
     let target = resolve_existing(workspace, relative)?;
-    #[cfg(target_os = "windows")]
-    let status = {
-        // v2.1.7 S1 (#29): cmd is a console binary — CREATE_NO_WINDOW stops
-        // the black flash when opening files from the explorer (same flag as
-        // cli.rs:628 / env.rs:189).
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &target.to_string_lossy()])
-            .creation_flags(0x08000000 /* CREATE_NO_WINDOW */)
-            .status()
-    };
-    #[cfg(target_os = "macos")]
-    let status = std::process::Command::new("open").arg(&target).status();
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let status = std::process::Command::new("xdg-open").arg(&target).status();
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(_) => Err(WorkbenchError::workspace_invalid().with_detail("system open failed")),
-        Err(e) => Err(WorkbenchError::workspace_invalid().with_detail(format!("open: {e}"))),
-    }
+    tauri_plugin_opener::open_path(target, None::<&str>)
+        .map_err(|e| WorkbenchError::workspace_invalid().with_detail(format!("open: {e}")))
 }
 
 /// Reveal a file/dir in the OS file manager (after containment).
@@ -1971,22 +1953,8 @@ pub async fn workspace_open(
         fs::write(&local, &buf).map_err(|e| {
             WorkbenchError::workspace_invalid().with_detail(format!("temp write: {e}"))
         })?;
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            let _ = std::process::Command::new("cmd")
-                .args(["/C", "start", "", &local.to_string_lossy()])
-                .creation_flags(0x08000000)
-                .status();
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(&local)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
-        }
+        tauri_plugin_opener::open_path(local, None::<&str>)
+            .map_err(|e| WorkbenchError::workspace_invalid().with_detail(format!("open: {e}")))?;
         return Ok(());
     }
     open_path(Path::new(&workspace), &relative_path)

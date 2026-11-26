@@ -1,7 +1,7 @@
 # Active Planning
 
 Active/in-progress implementation plans live here. Completed plans are archived
-under `docs/archive/`: version-cycle plan sets as `docs/archive/<version>-dev-plans/`,
+under `docs/archive/`: release plans as `docs/archive/<version>-dev-plans/`,
 topical plans under their own directories.
 
 ## Workflow improvement
@@ -9,6 +9,8 @@ topical plans under their own directories.
 - [`pr-intake-workflow`](pr-intake-workflow.md) — 独立开发协作文档专题：PR 接入、职责分工与贡献者流程；本地自查和隔离演练已记录，真实团队试用待开展。
 
 ## Current active plan
+
+- [Workbench 2.1.20](2.1.20-dev-plans/README.md) 已完成功能验收，覆盖 11 条反馈和统一 Preview 的补充修复。[本版交付](2.1.20-dev-plans/DELIVERY.md)记录正式发布进度。
 
 - 2.1.19 功能、用户验收及 Workbench 正式交付已完成，计划已[归档](../archive/2.1.19-dev-plans/README.md)。[整版交付](../archive/2.1.19-dev-plans/DELIVERY.md)记录正式下载、安装升级、用户手测、14 条反馈回写及 CLI 独立渠道状态；偶发卡死暂缓，后续事项见 [TODO](../todo.md)。
 

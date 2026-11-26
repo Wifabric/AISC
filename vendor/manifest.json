@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated": "2026-10-30",
+  "generated": "2026-11-27",
   "components": [
     {
       "name": "mihomo",
@@ -129,6 +129,15 @@
       "license": "MIT",
       "files": [
         "container/cc-switch-skills/karpathy-guidelines/"
+      ]
+    },
+    {
+      "name": "gstack-office-hours",
+      "version": "8143a91809b2305da6ffa7486923008b72d337e6",
+      "source": "https://github.com/garrytan/gstack/tree/8143a91809b2305da6ffa7486923008b72d337e6",
+      "license": "MIT",
+      "files": [
+        "container/downloads/gstack-office-hours-8143a91809b2.tar.gz"
       ]
     }
   ]
