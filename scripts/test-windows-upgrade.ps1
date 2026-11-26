@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$CandidateInstaller,
     [Parameter(Mandatory)][string]$ReportDirectory,
-    [string]$ExpectedVersion = '2.1.20-preview.1'
+    [string]$ExpectedVersion = (Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../workbench/src-tauri/tauri.conf.json') | ConvertFrom-Json).version
 )
 $ErrorActionPreference = 'Stop'
 # This script installs/uninstalls an application. Never run it on a developer's
@@ -64,6 +64,19 @@ try {
     $env:AISC_UPGRADE_WORKSPACE = $workspace
     $resolved = python -c 'import os; from aisc.application.data_root import DataRootResolver; print(DataRootResolver().resolve(os.environ["AISC_UPGRADE_WORKSPACE"]).workspace_dir)'
     if ($LASTEXITCODE -ne 0) { throw 'Failed to resolve workspace data location.' }
+    # Keep the installer retention check independent of Docker and real API keys.
+    $providerDir = Join-Path $resolved.Trim() 'cc-switch'
+    New-Item -ItemType Directory -Force -Path $providerDir | Out-Null
+    $providerFile = Join-Path $providerDir 'cc-switch.db'
+    if (Test-Path -LiteralPath $providerFile) { throw 'Expected an unused test workspace.' }
+    @'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, PRIMARY KEY (id, app_type))")
+    db.executemany("INSERT INTO providers VALUES (?, ?, ?)", [
+        ("qa-claude", "claude", "QA Claude"), ("qa-codex", "codex", "QA Codex")])
+'@ | python - $providerFile
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to seed the provider retention sample.' }
     $sessionDir = Join-Path $resolved.Trim() 'codex\sessions\2026\11\19'
     New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
     $sessionId = '11191119-1111-4111-8111-000000000001'
@@ -74,7 +87,7 @@ try {
     ) | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }
     [IO.File]::WriteAllLines($sessionFile, [string[]]$transcript, [Text.UTF8Encoding]::new($false))
     $expected = @{}
-    foreach ($path in @($settingsFile, $historyFile, $projectFile, $sessionFile)) {
+    foreach ($path in @($settingsFile, $historyFile, $projectFile, $sessionFile, $providerFile)) {
         $expected[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     }
     Install-Package $candidate
@@ -83,10 +96,16 @@ try {
     if ($version -ne $ExpectedVersion) { throw "Unexpected installed version: $version (expected $ExpectedVersion)." }
     $result.installedVersion = $version
     Record-Step 'Cross-version upgrade preserves settings, history, native transcript and project bytes'
+    Record-Step 'Cross-version installer preserves the per-workspace provider SQLite sample byte-for-byte'
 
     $cli = Join-Path $appDir 'aisc.exe'
-    & $cli version --format json
-    if ($LASTEXITCODE -ne 0) { throw 'Installed CLI cannot start.' }
+    $cliVersion = & $cli --aisc-root (Join-Path $appDir 'aisc-bundle') version --format json | ConvertFrom-Json
+    $expectedCli = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../src/aisc/VERSION') -Raw).Trim()
+    if ($LASTEXITCODE -ne 0 -or $cliVersion.data.cli_version -ne $expectedCli -or $cliVersion.data.bundle_version -ne $expectedCli) {
+        throw "Installed CLI and installed bundle must both report $expectedCli."
+    }
+    $result.cliVersion = $cliVersion.data.cli_version
+    $result.bundleVersion = $cliVersion.data.bundle_version
     $conversation = & $cli conversation read --workspace $workspace --agent codex --conversation-id $sessionId --format json
     if ($LASTEXITCODE -ne 0 -or ($conversation -join '') -notlike '*upgrade retention proof*') {
         throw 'The upgraded CLI could not read the preserved native conversation.'
@@ -129,7 +148,7 @@ try {
     $uninstaller = Join-Path $appDir 'uninstall.exe'
     $remove = Start-Process -FilePath $uninstaller -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
     if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
-    foreach ($path in @($settingsFile,$historyFile,$projectFile,$sessionFile)) {
+    foreach ($path in @($settingsFile,$historyFile,$projectFile,$sessionFile,$providerFile)) {
         if (-not (Test-Path -LiteralPath $path)) { throw "Retained file missing after uninstall: $path" }
     }
     Check-Files @{ $projectFile=$expected[$projectFile]; $sessionFile=$expected[$sessionFile] }

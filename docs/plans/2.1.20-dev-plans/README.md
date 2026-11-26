@@ -22,7 +22,7 @@
 
 ## 统一候选
 
-版本为 Workbench **2.1.20-preview.1**，随包 CLI **0.3.1.dev0**。参照[候选说明](../../releases/v2.1.20-preview.1.md)和[用户验收清单](HANDTEST.md)。
+用户于 2026-11-27 确认统一 Preview 功能均通过。最终功能候选为 Preview.3，源码快照 `3872472b`。正式候选版本为 Workbench 2.1.20 / CLI 0.3.1。参见[操作清单](HANDTEST.md)、[正式版说明](../../releases/v2.1.20.md)和[交付状态](DELIVERY.md)。
 
 | 批次 | 代码审查 |
 | --- | --- |
