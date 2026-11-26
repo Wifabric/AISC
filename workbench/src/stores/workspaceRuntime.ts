@@ -313,6 +313,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   /** Stage 8e: the virtual cc-switch Provider UI tab is open. (The Settings
    * tab moved to the WORKSPACE layer in IDEA-3 3d — see stores/workspaces.) */
   const topicsTabOpen = ref(false);
+  const topicLaunchContext = ref<{ collectionId?: string; directory: string } | null>(null);
+  watch(topicsTabOpen, open => { if (!open) topicLaunchContext.value = null; }, { flush: "sync" });
   const ccSwitchUiTabOpen = ref(false);
 
   let startTimer: number | null = null;
@@ -1611,8 +1613,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   async function createTrackedTab(
     agent: LaunchAgent,
     collectionId?: string | null,
+    workingDirectory?: string,
   ): Promise<{ tabId?: string; error?: string }> {
-    const tabId = createTab(agent, null, false, collectionId);
+    const tabId = createTab(agent, null, false, collectionId, undefined, workingDirectory);
     if (!tabId) return { error: "tab-limit" };
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
@@ -1817,7 +1820,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // --- Stage 8e: the virtual cc-switch Provider UI tab (no session, never
   // persisted). The IDEA-1 Settings tab moved to the WORKSPACE layer (3d). ---
 
-  function openTopicsTab() {
+  function openTopicsTab(context?: { collectionId?: string; directory: string }) {
+    if (context) topicLaunchContext.value = context;
     topicsTabOpen.value = true;
     activeTabId.value = TOPICS_TAB_ID;
   }
@@ -2241,6 +2245,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     tabs,
     activeTabId,
     topicsTabOpen,
+    topicLaunchContext,
     openTopicsTab,
     closeTopicsTab,
     ccSwitchUiTabOpen,

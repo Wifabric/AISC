@@ -1,3 +1,4 @@
+import { createTopicSession } from "./topics";
 import { computed, ref, watch } from "vue";
 import { useRuntimeStore } from "./runtime";
 import { topicCall, type PersonalCapabilityDraft, type PersonalProfile, type PersonalRevision, type PersonalTemplate } from "../lib/ipc";
@@ -89,7 +90,7 @@ async function save() {
 }
 function openAgent(agent: "claude" | "codex") {
   if (dirty.value || busy.value) return;
-  if (!runtime.createTab(agent)) error.value = "无法新建会话，请检查运行环境和会话数量。";
+  if (!createTopicSession(agent)) error.value = "无法新建会话，请检查运行环境和会话数量。";
 }
 
 return { templates, profiles, draft, error, notice, loading, busy, loaded, historical, dirty, selected, oldRevision, latest, load, edit, create, discard, restore, save, openAgent };

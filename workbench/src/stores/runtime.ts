@@ -171,6 +171,7 @@ export const useRuntimeStore = defineStore("runtime", () => {
     tabs: fwdRef("tabs"),
     activeTabId: fwdRef("activeTabId"),
     topicsTabOpen: fwdRef("topicsTabOpen"),
+    topicLaunchContext: fwdRef("topicLaunchContext"),
     openTopicsTab: fwdFn("openTopicsTab"),
     closeTopicsTab: fwdFn("closeTopicsTab"),
     ccSwitchUiTabOpen: fwdRef("ccSwitchUiTabOpen"),
