@@ -1,8 +1,8 @@
 # NSIS installer template
 
-## Current candidate and acceptance
+## Published 2.1.20 installer and acceptance
 
-The 2.1.20 Windows installer bundles CLI 0.3.1. The Windows workflow checks new installation, PATH, upgrade from the official 2.1.19 installer, application startup, user data retention, and silent uninstall. Track the exact build and channel verification in the [2.1.20 delivery record](../../../docs/plans/2.1.20-dev-plans/DELIVERY.md).
+The 2.1.20 Windows installer bundles CLI 0.3.1. The Windows workflow checks new installation, PATH, upgrade from the official 2.1.19 installer, application startup, user data retention, and silent uninstall. Track the exact build and channel verification in the [2.1.20 delivery record](../../../docs/archive/2.1.20-dev-plans/DELIVERY.md).
 
 `scripts/test-windows-upgrade.ps1` deliberately refuses execution outside a GitHub Windows runner. It validates the official baseline SHA-256 and emits `upgrade-result.json` in the `windows-upgrade-acceptance` artifact. Never remove that guard to run it against a personal installation. Silent checks do not exercise the interactive wizard, Docker dependency onboarding, cancellation, or optional Docker/data cleanup. On 2026-11-19 the user reported all remaining manual cases passed, including finish-page launch/shortcut options, Docker installation/start/recheck, and all five uninstall retention/cleanup cases. This is user-reported acceptance, separate from CI and Computer Use evidence. The earlier local sandbox policy block and VM cleanup remain historical evidence; no local VM is required for this CI path.
 
@@ -12,7 +12,7 @@ The desktop configuration uses `installMode: currentUser`. A separate local Wind
 
 From the repository root, `scripts/build-installer.ps1 -SigningConfig <path-to-tauri-overlay.json>` accepts a publisher-provided Tauri configuration with `bundle.windows.certificateThumbprint` or `bundle.windows.signCommand`. With this option, the script selects an installer produced during the current build, requires a valid Authenticode signature, and checks the signer thumbprint when one was specified. Keep private keys and signing credentials outside the repository.
 
-Omitting the option does not sign the installer. The present candidate is unsigned; adding configuration support is not evidence of a successful signed build or of compatibility with the sandbox policy. Verify the actual output signature and installed behavior separately. Do not use an old setup file as proof of the current build.
+Omitting the option does not sign the installer. The published 2.1.20 installer is unsigned; adding configuration support is not evidence of a successful signed build or of compatibility with the sandbox policy. Verify the actual output signature and installed behavior separately. Do not use an old setup file as proof of the current build.
 
 ## Template implementation
 
