@@ -396,7 +396,18 @@ let altScreenDetector = createAltScreenDetector();
 // Codex is not an alt-screen TUI. It clears scrollback with ED3 on startup;
 // suppressing that sequence preserves history and avoids the xterm viewport
 // reset. ED0/ED2 still execute so terminal UIs can redraw normally.
-function installCodexScrollbackGuard(target: Terminal): void {
+function installTerminalProtocolHandlers(target: Terminal): void {
+  // Codex 0.172 asks about alternate scroll before drawing its first frame.
+  // xterm 6 does not implement mode 1007. Answer DECRQM explicitly so the
+  // WebView can continue parsing the rest of the same PTY write.
+  target.parser.registerCsiHandler(
+    { prefix: "?", intermediates: "$", final: "p" },
+    (params) => {
+      if (params.length !== 1 || params[0] !== 1007) return false;
+      target.input("\x1b[?1007;0$y", false);
+      return true;
+    },
+  );
   target.parser.registerCsiHandler(
     { final: "J" },
     (params) => isEraseScrollbackRequest(params),
@@ -407,6 +418,26 @@ function enterLivePromptForInput(): void {
   if (scrollOwnership.onUserInput()) term?.scrollToBottom();
 }
 
+let wheelFrame = 0;
+let mouseFrame = 0;
+let mouseSession = "";
+let mouseReports = "";
+const inputEncoder = new TextEncoder();
+
+function flushMouseReports() {
+  if (mouseFrame) cancelAnimationFrame(mouseFrame);
+  mouseFrame = 0;
+  if (mouseReports) {
+    void writeSession(mouseSession, Array.from(inputEncoder.encode(mouseReports))).catch(() => {});
+    mouseReports = "";
+  }
+}
+
+function cancelWheelCheck() {
+  if (wheelFrame) cancelAnimationFrame(wheelFrame);
+  wheelFrame = 0;
+}
+
 function onTerminalWheelCapture(event: WheelEvent): void {
   // xterm 6 scrolls an internal SmoothScrollableElement; the legacy viewport
   // element does not expose native scroll metrics. Capture at the component
@@ -414,11 +445,13 @@ function onTerminalWheelCapture(event: WheelEvent): void {
   const buffer = term?.buffer.active;
   if (!buffer || buffer.type !== "normal") return;
   if (event.deltaY < 0) {
+    cancelWheelCheck();
     scrollOwnership.onUserScrollAway();
     return;
   }
-  if (event.deltaY > 0) {
-    queueMicrotask(() => {
+  if (event.deltaY > 0 && !wheelFrame) {
+    wheelFrame = requestAnimationFrame(() => {
+      wheelFrame = 0;
       const next = term?.buffer.active;
       if (next?.type === "normal" && next.viewportY >= next.baseY) {
         scrollOwnership.onUserScrollAtBottom();
@@ -432,6 +465,8 @@ function attachTerminalWheelListener(): void {
 }
 
 function detachTerminalWheelListener(): void {
+  cancelWheelCheck();
+  flushMouseReports();
   container.value?.removeEventListener("wheel", onTerminalWheelCapture, { capture: true });
 }
 
@@ -442,9 +477,24 @@ function onTermData(data: string) {
   // keyboard ownership.
   if (data.length > 0 && !isTerminalGeneratedInput(data)) enterLivePromptForInput();
   const sid = sessionId.value;
-  if (sid) {
-    writeSession(sid, Array.from(new TextEncoder().encode(data))).catch(() => {});
+  if (!sid) return;
+  if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(data)) {
+    if (mouseSession !== sid || mouseReports.length >= 8192) flushMouseReports();
+    mouseSession = sid;
+    mouseReports += data;
+    if (!mouseFrame) mouseFrame = requestAnimationFrame(flushMouseReports);
+    return;
   }
+  // Send pending mouse bytes and this keystroke together, in PTY order.
+  if (mouseFrame && mouseSession === sid) {
+    cancelAnimationFrame(mouseFrame);
+    mouseFrame = 0;
+    data = mouseReports + data;
+    mouseReports = "";
+  } else {
+    flushMouseReports();
+  }
+  void writeSession(sid, Array.from(inputEncoder.encode(data))).catch(() => {});
 }
 
 function b64ToUint8(b64: string): Uint8Array {
@@ -578,7 +628,7 @@ function rebuildTerminal() {
   term.loadAddon(fit);
 
   term.open(host);
-  installCodexScrollbackGuard(term);
+  installTerminalProtocolHandlers(term);
   // A rebuilt view has a new viewport and starts a fresh ownership epoch.
   scrollOwnership = createScrollOwnership();
   altScreenDetector = createAltScreenDetector();
@@ -1995,7 +2045,7 @@ onMounted(() => {
   term.loadAddon(fit);
 
   term.open(container.value!);
-  installCodexScrollbackGuard(term);
+  installTerminalProtocolHandlers(term);
   scrollOwnership = createScrollOwnership();
   altScreenDetector = createAltScreenDetector();
   attachTerminalWheelListener();
@@ -2069,46 +2119,37 @@ onMounted(() => {
 
   // veil); one that mounts hidden veils its first real show.
 
-  let shownOnce = visible.value;
-
-  watch(visible, (v) => {
-
-    if (v) {
-
-      if (shownOnce) {
-
-        // B-05 手测十一轮: pin the veil BEFORE the first paint — on every
-
-        // RE-show (hidden panes keep a stale grid; and even an unchanged
-
-        // grid repaints on show). Release paths: a resize send confirms →
-
-        // ok+grace (sendResize); no resize happens → the fallback timer
-
-        // below fades the veil after the grace (token-guarded, so it can
-
-        // never expose a veil held by a newer show).
-
-        veilHold(veilGrace());
-
-        const gen = veilGen;
-
-        window.setTimeout(() => veilRelease(gen), veilGraceMs + 160);
-
-      }
-
-      shownOnce = true;
-
-      setTimeout(() => {
-
-        doResize("show");
-
-        term?.refresh(0, term.rows - 1);
-
-      }, 0);
-
+  let shownBefore = visible.value;
+  let lastShow = -Infinity;
+  watch(visible, (shown, _, onCleanup) => {
+    if (!shown) {
+      flushMouseReports();
+      cancelWheelCheck();
+      return;
     }
-
+    const now = performance.now();
+    let releaseTimer = 0;
+    if (shownBefore && now - lastShow > veilGrace() + 160) {
+      veilHold(veilGrace());
+      const generation = veilGen;
+      releaseTimer = window.setTimeout(() => veilRelease(generation), veilGraceMs + 160);
+    }
+    shownBefore = true;
+    lastShow = now;
+    const frame = requestAnimationFrame(() => {
+      if (!visible.value || !term) return;
+      doResize("show");
+      term.refresh(0, term.rows - 1);
+    });
+    onCleanup(() => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(releaseTimer);
+      if (veilFailsafe !== null) window.clearTimeout(veilFailsafe);
+      veilFailsafe = null;
+      ++veilGen;
+      veilOn.value = false;
+      veilFading.value = false;
+    });
   });
 
   // G-04 (Step 17, A-G04-2): apply the effective theme to the EXISTING xterm -

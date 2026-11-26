@@ -1220,6 +1220,7 @@ export interface WorkRecordListResult {
   schema_version: string;
   active_collection_id: string | null;
   collections: WorkRecordCollection[];
+  conversations?: ConversationSummary[];
   unfiled: ConversationSummary[];
 }
 

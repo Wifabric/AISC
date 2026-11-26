@@ -306,6 +306,9 @@ class ImageInspectResult:
     message: str = ""
     image_id: str = ""
 
+    # Older entrypoints treat a mounted tmp directory as a populated Codex home.
+    codex_tmpfs: bool = False
+
 
 # ---------------------------------------------------------------------------
 # Docker build / run plans (immutable, no side effects)
@@ -419,6 +422,7 @@ class RunPlan:
     # scope one-shots get the same capability as managed runtimes); empty =
     # no toolchain mount (temporary mode -> container-side /tmp layout).
     toolchain_root: str = ""
+    codex_tmpfs: bool = False
 
     @property
     def docker_argv(self) -> list:
@@ -468,6 +472,8 @@ class RunPlan:
                 "-v", f"{base}/cc-switch:/root/.cc-switch",
                 "-v", f"{base}/runtime:/root/.local/state/cc-switch",
             ])
+            if self.codex_tmpfs:
+                argv.extend(["--tmpfs", "/root/.codex/tmp:mode=0700"])
             if self.toolchain_root:
                 from aisc.domain.toolchain import TOOLCHAIN_MOUNT_TARGET
 

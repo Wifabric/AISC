@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$CandidateInstaller,
     [Parameter(Mandatory)][string]$ReportDirectory,
-    [string]$ExpectedVersion = '2.1.19'
+    [string]$ExpectedVersion = (Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../workbench/src-tauri/tauri.conf.json') | ConvertFrom-Json).version
 )
 $ErrorActionPreference = 'Stop'
 # This script installs/uninstalls an application. Never run it on a developer's
@@ -12,7 +12,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
 $candidate = (Resolve-Path -LiteralPath $CandidateInstaller).Path
 New-Item -ItemType Directory -Force -Path $ReportDirectory | Out-Null
 $reportPath = Join-Path $ReportDirectory 'upgrade-result.json'
-$result = [ordered]@{ baseline = '2.1.18'; candidateSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash; steps = @() }
+$result = [ordered]@{ baseline = '2.1.19'; candidateSha256 = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash; steps = @() }
 $appDir = Join-Path $env:LOCALAPPDATA 'AISC Workbench'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'AISC\data'
 $workspace = Join-Path $env:RUNNER_TEMP 'aisc-upgrade-project'
@@ -36,19 +36,19 @@ function Check-Files([hashtable]$expected) {
 }
 
 try {
-    $baseline = Join-Path $env:RUNNER_TEMP 'AISC-Workbench-2.1.18-setup.exe'
-    Invoke-WebRequest -Uri 'https://github.com/Wifabric/AISC/releases/download/v2.1.18/AISC-Workbench-2.1.18-setup.exe' -OutFile $baseline
+    $baseline = Join-Path $env:RUNNER_TEMP 'AISC-Workbench-2.1.19-setup.exe'
+    Invoke-WebRequest -Uri 'https://github.com/Wifabric/AISC/releases/download/v2.1.19/AISC-Workbench-2.1.19-setup.exe' -OutFile $baseline
     # GitHub release asset digest, verified when the upgrade test was added.
-    $digest = 'b9a578c34720577182b5fc2088e7bf579dbee93e430bca7b1776faffef479315'
+    $digest = 'c790ed32e2360964813500382f578952617cd76b7dd4a9344f39427fc82be60d'
     if ((Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash -ine $digest) {
-        throw 'Official 2.1.18 installer SHA-256 does not match.'
+        throw 'Official 2.1.19 installer SHA-256 does not match.'
     }
     Install-Package $baseline
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AISC Workbench'
-    if ((Get-ItemProperty -LiteralPath $key).DisplayVersion -ne '2.1.18') {
-        throw 'The installed baseline is not official 2.1.18.'
+    if ((Get-ItemProperty -LiteralPath $key).DisplayVersion -ne '2.1.19') {
+        throw 'The installed baseline is not official 2.1.19.'
     }
-    Record-Step 'Install official 2.1.18'
+    Record-Step 'Install official 2.1.19'
 
     $config = Join-Path $dataRoot 'config'
     New-Item -ItemType Directory -Force -Path $config, $workspace | Out-Null
@@ -64,17 +64,30 @@ try {
     $env:AISC_UPGRADE_WORKSPACE = $workspace
     $resolved = python -c 'import os; from aisc.application.data_root import DataRootResolver; print(DataRootResolver().resolve(os.environ["AISC_UPGRADE_WORKSPACE"]).workspace_dir)'
     if ($LASTEXITCODE -ne 0) { throw 'Failed to resolve workspace data location.' }
+    # Keep the installer retention check independent of Docker and real API keys.
+    $providerDir = Join-Path $resolved.Trim() 'cc-switch'
+    New-Item -ItemType Directory -Force -Path $providerDir | Out-Null
+    $providerFile = Join-Path $providerDir 'cc-switch.db'
+    if (Test-Path -LiteralPath $providerFile) { throw 'Expected an unused test workspace.' }
+    @'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, PRIMARY KEY (id, app_type))")
+    db.executemany("INSERT INTO providers VALUES (?, ?, ?)", [
+        ("qa-claude", "claude", "QA Claude"), ("qa-codex", "codex", "QA Codex")])
+'@ | python - $providerFile
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to seed the provider retention sample.' }
     $sessionDir = Join-Path $resolved.Trim() 'codex\sessions\2026\11\19'
     New-Item -ItemType Directory -Force -Path $sessionDir | Out-Null
     $sessionId = '11191119-1111-4111-8111-000000000001'
     $sessionFile = Join-Path $sessionDir "rollout-2026-11-19T00-00-00-$sessionId.jsonl"
     $transcript = @(
         @{type='session_meta'; payload=@{id=$sessionId; cwd=$workspace}},
-        @{type='response_item'; timestamp='2026-11-19T00:00:00Z'; payload=@{type='message'; role='user'; content=@(@{type='input_text'; text='upgrade retention proof'})}}
+        @{type='response_item'; timestamp='2026-11-19T00:00:00Z'; payload=@{type='message'; role='user'; content=@(@{type='input_text'; text=('upgrade retention proof ' + ('x' * 260000) + ' export end marker')})}}
     ) | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }
     [IO.File]::WriteAllLines($sessionFile, [string[]]$transcript, [Text.UTF8Encoding]::new($false))
     $expected = @{}
-    foreach ($path in @($settingsFile, $historyFile, $projectFile, $sessionFile)) {
+    foreach ($path in @($settingsFile, $historyFile, $projectFile, $sessionFile, $providerFile)) {
         $expected[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     }
     Install-Package $candidate
@@ -83,15 +96,32 @@ try {
     if ($version -ne $ExpectedVersion) { throw "Unexpected installed version: $version (expected $ExpectedVersion)." }
     $result.installedVersion = $version
     Record-Step 'Cross-version upgrade preserves settings, history, native transcript and project bytes'
+    Record-Step 'Cross-version installer preserves the per-workspace provider SQLite sample byte-for-byte'
 
     $cli = Join-Path $appDir 'aisc.exe'
-    & $cli version --format json
-    if ($LASTEXITCODE -ne 0) { throw 'Installed CLI cannot start.' }
+    $cliVersion = & $cli --aisc-root (Join-Path $appDir 'aisc-bundle') version --format json | ConvertFrom-Json
+    $expectedCli = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../src/aisc/VERSION') -Raw).Trim()
+    if ($LASTEXITCODE -ne 0 -or $cliVersion.data.cli_version -ne $expectedCli -or $cliVersion.data.bundle_version -ne $expectedCli) {
+        throw "Installed CLI and installed bundle must both report $expectedCli."
+    }
+    $result.cliVersion = $cliVersion.data.cli_version
+    $result.bundleVersion = $cliVersion.data.bundle_version
     $conversation = & $cli conversation read --workspace $workspace --agent codex --conversation-id $sessionId --format json
     if ($LASTEXITCODE -ne 0 -or ($conversation -join '') -notlike '*upgrade retention proof*') {
         throw 'The upgraded CLI could not read the preserved native conversation.'
     }
     Record-Step 'Installed CLI reads preserved native transcript'
+
+    $readArgs = @('conversation', 'read', '--workspace', $workspace, '--agent', 'codex', '--conversation-id', $sessionId, '--format', 'json')
+    $page = & $cli @readArgs --markdown-cursor start | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $page.data.next -or $page.data.markdown -notlike '*upgrade retention proof*') {
+        throw 'Installed CLI did not return the first Markdown page and its cursor.'
+    }
+    $lastPage = & $cli @readArgs --markdown-cursor $page.data.next | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $null -ne $lastPage.data.next -or $lastPage.data.markdown -notlike '*export end marker*') {
+        throw 'Installed CLI did not export the end of the preserved transcript.'
+    }
+    Record-Step 'Installed CLI exports Markdown beyond the preview limit'
 
     $exe = Get-ChildItem -LiteralPath $appDir -Filter '*.exe' | Where-Object { $_.Name -notin @('aisc.exe','uninstall.exe') } | Select-Object -First 1
     if (-not $exe) { throw 'Installed Workbench executable missing.' }
@@ -118,7 +148,7 @@ try {
     $uninstaller = Join-Path $appDir 'uninstall.exe'
     $remove = Start-Process -FilePath $uninstaller -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
     if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
-    foreach ($path in @($settingsFile,$historyFile,$projectFile,$sessionFile)) {
+    foreach ($path in @($settingsFile,$historyFile,$projectFile,$sessionFile,$providerFile)) {
         if (-not (Test-Path -LiteralPath $path)) { throw "Retained file missing after uninstall: $path" }
     }
     Check-Files @{ $projectFile=$expected[$projectFile]; $sessionFile=$expected[$sessionFile] }

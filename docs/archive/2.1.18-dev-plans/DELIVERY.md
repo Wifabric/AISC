@@ -35,7 +35,7 @@
 | 交付项 | 内容与入口 | 状态 |
 | --- | --- | --- |
 | 主开发/贡献者职责 | 主开发确定范围和整合，贡献者完成实现/必要自测后提 PR；小问题直接修正；统一 Preview 与最终验证 | 已完成；#75、[职责](../../workflows/development-roles.md)、[贡献者](../../workflows/contributor-workflow.md)、[PR intake](../../workflows/pr-intake.md) |
-| 仓库开发 Skill | 随仓库交付的开发流程入口，与 WIKI/职责一致；不要求每位贡献者各自发布 Preview | 已完成；[SKILL](../../../skills/aisc-development/SKILL.md) |
+| 仓库开发 Skill | 随仓库交付的开发流程入口，与 WIKI/职责一致；不要求每位贡献者各自发布 Preview | 已完成；[SKILL](https://github.com/Wifabric/AISC/blob/v2.1.19/skills/aisc-development/SKILL.md) |
 | 本次及以后完整交付标准 | 每次列整版成果、实际发布资产、源码与 PR、分项证据、全部文档、反馈、归档及遗留责任；供 leader 确认 | 已完成；[统一标准](../../workflows/development-roles.md#complete-version-delivery)，本清单首次执行 |
 | 用户手册与发布说明 | 安装包名称/路径、版本配对、升级步骤、模块及个人能力/主题教程；历史发布说明保留 | 已完成；[README](../../../README.md)、[Workbench Notes](../../releases/v2.1.18.md)、[CLI Notes](../../releases/v0.2.0.md) |
 | 开发手册与交接 | 当前分支、双轨版本、分发渠道、真实批准门和完整交付要求一致；历史快照明确标注 | 已完成；[WIKI](../../../DEVELOP_WIKI.md)、[交接](../../../AISC-开发流程交接.md) |
@@ -172,7 +172,7 @@ Windows 环境复核：WindowsSandbox.exe 不存在；CIM 仅返回宿主机，�
 - F6：GitHub MCP 按引擎配置认证、取消/失败保护与显式连接检查；凭据不进入诊断或重试历史。
 - F7：多层技能目录、固定来源、简介缓存/空简介/重试，合法连字符名称与下划线目录匹配，歧义继续拒绝。
 - F8：关闭失败卡片与同次重复错误文案，保留日志/诊断，新失败仍提示，焦点恢复和目标隔离。
-- 协作：贡献者必要测试后提 PR，主开发者处理小修正、集成和统一 Preview；WIKI、职责、贡献者、PR intake 与 [开发 Skill](../../../skills/aisc-development/SKILL.md) 一致。单代理兼任只记自查。
+- 协作：贡献者必要测试后提 PR，主开发者处理小修正、集成和统一 Preview；WIKI、职责、贡献者、PR intake 与 [开发 Skill](https://github.com/Wifabric/AISC/blob/v2.1.19/skills/aisc-development/SKILL.md) 一致。单代理兼任只记自查。
 
 ## 历史本机候选（Preview.9）
 

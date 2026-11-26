@@ -234,6 +234,17 @@ def test_main_pins_and_both_architectures_come_from_versions_env(tmp_path, monke
     assert calls == [((CLAUDE, "2.1.311", ["x64", "arm64"]), {"no_companions": False}), ((CODEX, "0.164.0", ["x64", "arm64"]), {"no_companions": False}), (("26.9.1", ["x64", "arm64"], {"YAZI_VERSION": "26.9.1", "YAZI_X64_SHA256": "a" * 64, "YAZI_X64_BYTES": "1", "YAZI_ARM64_SHA256": "b" * 64, "YAZI_ARM64_BYTES": "1"}), {})]
 
 
+def test_stages_bun_by_official_package_identity_for_each_arch(tmp_path):
+    registry = Registry()
+    for arch in ("x64", "aarch64"):
+        name = "@oven/bun-linux-" + arch
+        registry.add(name, "1.4.4", tgz(name, "1.4.4"))
+    stage(tmp_path, registry).stage_bun("1.4.4", ["x64", "arm64"])
+    assert {p.name for p in tmp_path.glob("*.tgz")} == {
+        "bun-linux-x64-1.4.4.tgz", "bun-linux-arm64-1.4.4.tgz",
+    }
+
+
 def test_official_integrity_rejects_bad_mirror_and_falls_back_to_official(tmp_path):
     registry = Registry()
     family(registry)

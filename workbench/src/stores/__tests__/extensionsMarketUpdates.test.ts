@@ -12,6 +12,27 @@ beforeEach(() => {
 });
 
 describe("v2.1.17 b2 market metadata and updates", () => {
+  it("reveals ranked skill results in batches without repeating the search", async () => {
+    const rows = Array.from({ length: 43 }, (_, index) => ({
+      kind: "market-skill", id: `repo:skill-${index}`, repo: index % 2 ? "a" : "b",
+      name: `skill-${index}`, description: "Summary",
+    }));
+    call.mockResolvedValue({ items: rows });
+    const store = useExtensionsStore();
+    store.setContext("/ws", "rid");
+    await store.searchSkills("matt");
+    const ids = () => store.marketSkillGroups.flatMap(group => group.items.map(item => item.id)).sort();
+    const firstIds = (n: number) => rows.slice(0, n).map(item => item.id).sort();
+    expect(ids()).toEqual(firstIds(20));
+    store.showMoreMarketSkills();
+    expect(ids()).toEqual(firstIds(40));
+    store.showMoreMarketSkills();
+    expect(ids()).toEqual(firstIds(43));
+    expect(call).toHaveBeenCalledTimes(1);
+    await store.searchSkills("another search");
+    expect(ids()).toEqual(firstIds(20));
+  });
+
   it("keeps market cache metadata per asset kind", async () => {
     call.mockResolvedValueOnce({
       items: [{ kind: "market-skill", id: "owner/repo:skill", name: "skill" }],

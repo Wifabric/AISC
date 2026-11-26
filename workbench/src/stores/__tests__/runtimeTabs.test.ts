@@ -14,6 +14,7 @@ const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   closeSession: vi.fn().mockResolvedValue({ reason: "user_close", exitCode: null }),
   getProviderStatus: vi.fn().mockResolvedValue({}),
+  liveSessionConversations: vi.fn().mockResolvedValue({sessions: []}),
   conversationList: vi.fn().mockResolvedValue({ schema_version: 1, conversations: [] }),
   loadHistory: vi.fn().mockResolvedValue({ schema_version: 2, revision: 0, workspaces: [] }),
   saveHistory: vi.fn().mockResolvedValue(1),
@@ -343,6 +344,27 @@ describe("pending new provider conversation association (b6)", () => {
     expect(s.findRecoverableResumePane("new")).toEqual({ tabId, paneId: associated.activePaneId });
   });
 
+  it("binds concurrent Codex panes by native id and deletes only the requested member", async () => {
+    mockIpc.conversationList.mockResolvedValue({schema_version: 1, conversations: []});
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const first = s.createTab("codex")!;
+    const second = s.createTab("codex")!;
+    await tick(); await tick();
+    const a = s.tabs.find(tab => tab.tabId === first)!;
+    const b = s.tabs.find(tab => tab.tabId === second)!;
+    mockIpc.liveSessionConversations.mockResolvedValueOnce({sessions: [
+      {session_id: b.sessionId, agent: "codex", conversation_id: "native-B"},
+      {session_id: a.sessionId, agent: "codex", conversation_id: "native-A"},
+    ]});
+    expect(await s.resolvePendingConversationAssociations(["native-A", "native-B"].map(
+      conversation_id => ({agent: "codex", conversation_id} as any)))).toBe(2);
+    await s.closeLiveConversationSessions([{agent: "codex", conversation_id: "native-B"}]);
+    expect(mockIpc.closeSession).toHaveBeenCalledWith(b.sessionId);
+    expect(mockIpc.closeSession).not.toHaveBeenCalledWith(a.sessionId);
+    expect(s.tabs.map(tab => tab.tabId)).toEqual([first]);
+  });
+
   it("does not link when new provider conversations are ambiguous", async () => {
     mockIpc.conversationList.mockResolvedValue({
       schema_version: 1,
@@ -391,12 +413,13 @@ describe("closeLiveConversationSessions (b6 delete)", () => {
     matched.resumeConversationId = "Conversation-1";
     other.resumeConversationId = "conversation-2";
 
-    await s.closeLiveConversationSessions(["conversation-1", "conversation-3"]);
+    await s.closeLiveConversationSessions(["conversation-1", "conversation-3"].map(conversation_id => ({agent: "codex", conversation_id})));
 
     expect(mockIpc.closeSession).toHaveBeenCalledWith(matched.sessionId);
     expect(mockIpc.closeSession).not.toHaveBeenCalledWith(other.sessionId);
     expect(matched.sessionState).toBe("closing");
     expect(other.sessionState).not.toBe("closing");
+    expect(s.tabs.map(t => t.tabId)).not.toContain(matchedId);
   });
 });
 

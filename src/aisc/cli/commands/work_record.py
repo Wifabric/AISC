@@ -40,7 +40,8 @@ def cmd_work_record_list(workspace: str) -> Dict[str, Any]:
         "workspace": workspace,
         "active_collection_id": reconciled["active_collection_id"],
         "collections": reconciled["collections"],
-        "unfiled": wc.unfiled(runtime, workspace),
+        "unfiled": reconciled["unfiled"],
+        "conversations": reconciled["conversations"],
     }
 
 

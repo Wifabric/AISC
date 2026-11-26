@@ -433,14 +433,16 @@ class TestConversationRead:
         payloads = [
             {"type": "message", "role": "assistant", "phase": "commentary", "content": [{"type": "output_text", "text": "正在检查"}]},
             {"type": "custom_tool_call", "call_id": "c", "name": "apply_patch", "input": "patch"},
-            {"type": "custom_tool_call_output", "call_id": "c", "output": "ok"},
+            {"type": "custom_tool_call_output", "call_id": "c", "output": [
+                {"type": "input_text", "text": "Command completed"},
+                {"type": "input_text", "text": "蓝色雨伞 7391"}]},
             {"type": "message", "role": "assistant", "phase": "final_answer", "content": [{"type": "output_text", "text": "x" * 12000}]},
         ]
         path.write_text("\n".join(json.dumps({"type": "response_item", "payload": p}) for p in payloads), encoding="utf-8")
         data = self._read(ws)
         assert data["messages"][0]["phase"] == "commentary"
         assert data["messages"][1]["kind"] == "tool_use"
-        assert data["messages"][1]["result"] == "ok"
+        assert data["messages"][1]["result"] == "Command completed\n\n蓝色雨伞 7391"
         assert len(data["messages"][-1]["text"]) == 12000
 
     def _read(self, ws, conv_id=CODEX_ID, agent="codex", **kw):

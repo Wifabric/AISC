@@ -1,6 +1,8 @@
 # AISC 使用手册
 
-本轮变化见 [2.1.19 正式发布说明](docs/releases/v2.1.19.md)，下载见 [v2.1.19 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19)。操作参考见[测试教程](docs/archive/2.1.19-dev-plans/HANDTEST.md)，完整版本、验收与发布结果见[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)。
+Workbench 2.1.20 配套 CLI 0.3.1，Windows x64 安装文件名为 `AISC-Workbench-2.1.20-setup.exe`。已公开的稳定安装器和对应校验文件可从[正式下载页](https://github.com/Wifabric/AISC/releases/latest)取得。请核对页面版本与文件名。[2.1.20 变更与升级说明](docs/releases/v2.1.20.md) · [整版交付状态](docs/plans/2.1.20-dev-plans/DELIVERY.md)
+
+从 2.1.19 升级时沿用原工作区和数据目录，以保留原 Provider 列表。重新构建工作区镜像后，在「扩展市场」搜索技能并点「加载更多」查看后续结果；网络与用量、工作记录和集合操作见[逐项操作](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
 
 AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switch 的个人开发工作站，提供两种使用方式：
 
@@ -9,7 +11,7 @@ AISC 是一个在 Docker 容器中运行 Claude Code、OpenAI Codex 和 cc-switc
 
 容器内的 AI CLI、Provider、凭据、路由和 Skills 均由 cc-switch 统一管理；宿主机不保存第二份凭据。
 
-> **状态：Alpha（0.x）。** Workbench **2.1.19 正式版**已发布，提供 Windows 安装包及 SHA-256 校验文件，随包 CLI 为 **0.3.0**。独立 CLI **0.3.0** 已发布至 [PyPI](https://pypi.org/project/aisc-cli/0.3.0/)，TestPyPI 与正式 index 安装验证通过。正式包的静默新装、2.1.18 升级、启动/CLI/PATH、数据保留和公开下载摘要检查均通过；功能、安装、Docker 引导及交互卸载手测由用户确认通过。命令、配置和持久化契约仍可能变化，升级前请阅读 Release Notes 并备份重要工作区。
+> **状态：Alpha（0.x）。** 工作台通过 [GitHub Releases](https://github.com/Wifabric/AISC/releases/latest) 分发，独立 CLI 通过 [PyPI](https://pypi.org/project/aisc-cli/) 分发。安装前请核对各渠道实际版本，备份重要工作区。
 
 ## 目录
 
@@ -63,7 +65,7 @@ docker version
 
 从 [GitHub Releases](https://github.com/Wifabric/AISC/releases) 下载 Windows 安装器（`AISC-Workbench-<版本>-setup.exe`）及 `.sha256`，校验后运行。安装器默认写入 `%LOCALAPPDATA%\AISC Workbench`，并添加用户 `PATH`。
 
-AISC 当前正式安装包尚未代码签名。本机 Windows Sandbox 曾阻止安装程序启动；后续已在一次性 Windows runner 验证静默新装、升级及安装后的 CLI/PATH。该结果不解决强制应用控制环境对未签名包的拦截。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。功能操作与复测参考见[测试教程](docs/archive/2.1.19-dev-plans/HANDTEST.md)。
+AISC 当前正式安装包尚未代码签名。本机 Windows Sandbox 曾阻止安装程序启动；后续已在一次性 Windows runner 验证静默新装、升级及安装后的 CLI/PATH。该结果不解决强制应用控制环境对未签名包的拦截。SHA256 一致只能确认文件内容一致，不等于系统会允许执行；遇到拦截请记录系统提示及安装包版本，勿将拦截当作安装完成。本次升级的功能操作与复测见[2.1.20 手测清单](docs/plans/2.1.20-dev-plans/HANDTEST.md)。
 
 ### 首次使用流程
 
@@ -169,7 +171,7 @@ pipx install aisc-cli        # 首选：自动隔离 + 独立 bin 目录（Windo
 # 或 uv tool install aisc-cli / 裸 pip（请在 venv 内）
 ```
 
-三点须知：① 分发名是 `aisc-cli`，但命令仍是 `aisc`；② **需要自备 Docker**，装完先跑 `aisc doctor`；③ pip 安装**不含构建资源**。Workbench 2.1.19 正式 Release 提供 Windows 安装器及校验文件，不提供独立 CLI 归档，因此不能承诺 `aisc bundle fetch` 自动取得 CLI 0.3.0 的资源。需要构建镜像时，使用配套 Workbench 的完整 bundle，或按 [开发手册](DEVELOP_WIKI.md) 准备对应源码及资源，并通过 `--aisc-root` 指定；纯 pip 环境的 `bundle_version=null` 表示尚未配置资源根。
+三点须知：① 分发名是 `aisc-cli`，但命令仍是 `aisc`；② **需要自备 Docker**，装完先跑 `aisc doctor`；③ pip 安装**不含构建资源**。Workbench 正式 Release 提供 Windows 安装器和校验文件；独立 CLI 的配套资源请取自对应版本的完整 bundle。需要构建镜像时，使用配套 Workbench 的完整 bundle，或按 [开发手册](DEVELOP_WIKI.md) 准备对应源码及资源，并通过 `--aisc-root` 指定；纯 pip 环境的 `bundle_version=null` 表示尚未配置资源根。
 
 安装陷阱 FAQ：
 
@@ -352,7 +354,7 @@ Workbench 与 CLI 共享统一数据根：
 
 ## 升级
 
-当前正式版为 **Workbench 2.1.19 / CLI 0.3.0**，可从 [正式 Release](https://github.com/Wifabric/AISC/releases/tag/v2.1.19) 下载。该正式包已通过 Windows runner 的 2.1.18 升级、启动、CLI/PATH 与数据保留检查；完整结果见[交付记录](docs/archive/2.1.19-dev-plans/DELIVERY.md)。升级会更新应用及配套 bundle，旧容器内的技能、代理节点适配器和 gh 仍需重建镜像后取得。
+从[正式下载页](https://github.com/Wifabric/AISC/releases/latest)选择 Windows 安装器及同名 SHA-256 文件。升级后打开原工作区；用配套 bundle 重建镜像以更新容器中的节点、技能和启动脚本。
 
 - **Windows Workbench**：设置 → 检查更新 → 下载更新；校验后点击「退出更新」并确认，程序打开目标安装器交互向导后退出。按向导完成覆盖安装；下载本身不退出，取消或启动失败保留应用。升级前保存未提交工作并关闭占用，安装器可能处理 AISC 管理的运行资源；具体构建/清理结果以向导日志为准。用户配置和工作区数据默认保留。
 - **历史 PKG / 便携脚本**：按该历史版本维护方式处理；本版独立 CLI 改用 pip/pipx，先核对 PATH，避免新旧渠道混用。

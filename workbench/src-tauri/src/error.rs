@@ -288,7 +288,7 @@ impl WorkbenchError {
             }
             "AISC_ERR_IMAGE_NOT_FOUND" => ("所选镜像不存在", false, Action::BuildImage),
             "AISC_ERR_PROXY_IMAGE" => ("当前工作区镜像缺少节点管理组件，请用新版资源重建镜像并重新打开工作区", false, Action::BuildImage),
-            "AISC_ERR_PROXY_CONFIG" => ("订阅尚未应用到正在运行的容器，请用代理网络模式重新打开工作区", false, Action::None),
+            "AISC_ERR_PROXY_CONFIG" => ("当前工作区未挂载订阅。请先保存工作，关闭工作区，在启动摘要的高级设置中将网络设为「容器代理」，重新打开后再刷新节点。", false, Action::None),
             "AISC_ERR_PROXY_SOCKET" => ("代理控制服务尚未就绪，请稍后刷新；如果持续失败，请检查代理启动日志", true, Action::Retry),
             "AISC_ERR_NETWORK_PROXY_CONTROL" => ("当前代理节点请求失败，请刷新节点列表后重试", true, Action::Retry),
             // S8b (VM retest feedback #2): build-chain codes used to fall into

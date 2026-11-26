@@ -66,6 +66,7 @@ describe("b3 terminal-generated focus reports", () => {
   it("does not mistake cursor, attribute, or color reports for keystrokes", () => {
     const ESC = String.fromCharCode(27);
     expect(isTerminalGeneratedInput(`${ESC}[38;1R`)).toBe(true);
+    expect(isTerminalGeneratedInput(`${ESC}[?1007;0$y`)).toBe(true);
     expect(isTerminalGeneratedInput(`${ESC}[?62;c`)).toBe(true);
     expect(isTerminalGeneratedInput(`${ESC}]10;rgb:3333/3333/3333${ESC}\\`)).toBe(true);
     expect(isTerminalGeneratedInput(`${ESC}]11;rgb:ffff/ffff/ffff${ESC}\\`)).toBe(true);

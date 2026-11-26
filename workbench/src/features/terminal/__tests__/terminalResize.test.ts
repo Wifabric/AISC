@@ -18,6 +18,7 @@ import Terminal from "../Terminal.vue";
 
 const h = vi.hoisted(() => ({
   fitSize: { cols: 118, rows: 30 },
+  refresh: vi.fn(),
   resizeSession: vi.fn().mockResolvedValue(undefined),
   writeSession: vi.fn().mockResolvedValue(undefined),
   logUiEvent: vi.fn().mockResolvedValue(undefined),
@@ -83,7 +84,7 @@ vi.mock("@xterm/xterm", () => ({
     onSelectionChange() {}
     attachCustomKeyEventHandler() {}
     dispose() {}
-    refresh() {}
+    refresh = h.refresh;
     focus() {}
     clear() {}
     getSelection() {
@@ -369,6 +370,21 @@ describe("resize veil (review P0/P1)", () => {
     // The show fit (grid changes 118→100) keeps it held until ok+grace.
     await vi.advanceTimersByTimeAsync(0);
     expect(wrapper.find('[data-testid="resize-veil"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("cancels stale repaints during a burst of tab switches", async () => {
+    vi.useFakeTimers();
+    const { runtime, wrapper } = await mountTerminal("running");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.refresh.mockClear();
+    for (let i = 0; i < 60; i++) {
+      runtime.activeTabId = "other"; await nextTick();
+      runtime.activeTabId = "t1"; await nextTick();
+    }
+    await vi.advanceTimersByTimeAsync(32);
+    expect(h.refresh.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(wrapper.find('[data-testid="resize-veil"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

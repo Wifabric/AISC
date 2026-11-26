@@ -357,6 +357,11 @@ onMounted(() => { closeRef.value?.focus(); });
               role="alert"
             >{{ store.error }}</p>
 
+            <div v-if="activeTab === 'skills' && store.marketSkills.length" class="skill-result-pages">
+              <span role="status">{{ t("extensions.market.shownSkills", { shown: store.displayedSkillCount, returned: store.marketSkills.length }) }}</span>
+              <button v-if="store.displayedSkillCount < store.marketSkills.length" type="button"
+                data-testid="market-more-skills" @click="store.showMoreMarketSkills()">{{ t("extensions.market.moreSkills") }}</button>
+            </div>
             <div class="market-results">
               <template v-if="activeTab === 'skills'">
                 <section
@@ -369,7 +374,7 @@ onMounted(() => { closeRef.value?.focus(); });
                     <button type="button" class="market-result group-parent" :aria-expanded="expandedMarketGroupId === group.id"
                       @click="expandedMarketGroupId = expandedMarketGroupId === group.id ? null : group.id">
                       <strong>{{ group.name }}</strong>
-                      <span>{{ t("extensions.skillGroupCount", { count: group.items.length }) }}</span>
+                      <span>{{ t("extensions.market.groupShown", { count: group.items.length }) }}</span>
                     </button>
                     <button
                       type="button"
@@ -377,7 +382,7 @@ onMounted(() => { closeRef.value?.focus(); });
                       data-testid="market-group-install"
                       :disabled="store.busy"
                       @click.stop="store.installSkillGroup(group)"
-                    >{{ t("extensions.installAll") }}</button>
+                    >{{ t("extensions.market.installShown", { count: group.items.length }) }}</button>
                   </div>
                   <p v-if="expandedMarketGroupId === group.id" class="market-group-summary">{{ skillGroupSummary(group, locale) }}</p>
                   <ExtensionMarketResult v-for="item in group.items" :key="item.id" :item="item"
@@ -512,6 +517,7 @@ onMounted(() => { closeRef.value?.focus(); });
 .market-search input { flex: 1; min-width: 0; }
 .market-results { display: grid; gap: var(--space-2); align-content: start; }
 .market-result { display: flex; min-height: var(--control-h-md); align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
+.skill-result-pages { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .market-group { display: grid; min-width: 0; gap: var(--space-1); padding: var(--space-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
 .market-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .market-group-head .group-parent { flex: 1 1 200px; min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }

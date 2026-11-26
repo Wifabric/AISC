@@ -1299,7 +1299,8 @@ class ContainerToolUpdateContractTests(unittest.TestCase):
 class CodexProjectMountUpdateShadowTests(unittest.TestCase):
     def test_project_mount_updates_through_container_shadow(self):
         wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
-        self.assertIn("/tmp/aisc-codex-shadow", wrapper)
+        self.assertIn('shadow_entry="$shadow_root/$revision/@openai/codex/bin/codex.js"', wrapper)
+        self.assertNotIn('rm -rf "$shadow_root"', wrapper)
         self.assertIn("CODEX_MANAGED_BY_NPM=1", wrapper)
         self.assertIn('node "$shadow_entry"', wrapper)
         self.assertIn('cp -a "$scope_root"', wrapper)

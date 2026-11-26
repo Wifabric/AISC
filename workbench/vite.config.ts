@@ -1,4 +1,6 @@
 /// <reference types="vitest/config" />
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
@@ -7,6 +9,8 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  // Rollup resolves index.html to its real path, including on Windows junctions.
+  root: realpathSync(fileURLToPath(new URL(".", import.meta.url))),
   plugins: [vue()],
   test: {
     environment: "jsdom",

@@ -1,5 +1,7 @@
 # AISC 小版本开发生命流程（交接文档）
 
+> **2.1.20 发布接续（2026-11-27）**　从[整版交付](docs/plans/2.1.20-dev-plans/DELIVERY.md)查找候选、验证及渠道。产品开发和验收资料留在 AISC；开发方法、备用库与试用证据单独在本地维护。
+
 > **当前版本接续（2026-11-19）**：Workbench 2.1.19 / CLI 0.3.0 已正式发布，用户功能与安装手测已通过，发布结果见 [整版交付](docs/archive/2.1.19-dev-plans/DELIVERY.md)；本文历史步骤不表示仍需重做安装或重建虚拟机。
 
 > **阅读入口（2026-11-09）**：本文是历史快照。当前分工、统一 Preview 与发布渠道以 [DEVELOP_WIKI](DEVELOP_WIKI.md)、[开发职责](docs/workflows/development-roles.md) 和 [贡献者流程](docs/workflows/contributor-workflow.md) 为准；旧版本、个人路径及当时状态不代表当前安装/发布步骤。

@@ -30,7 +30,9 @@ def cmd_proxy_nodes(args: Any) -> Dict[str, Any]:
         probe = executor.run_captured(["exec", container, "sh", "-c",
             "command -v aisc-proxy-nodes >/dev/null || exit 10; "
             "test -f /etc/mihomo/config.yaml || exit 11; "
-            "test -S /run/aisc-mihomo/control.sock || exit 12"], timeout=5)
+            "test -S /run/aisc-mihomo/control.sock || exit 12; "
+            "curl -fsS --max-time 3 --noproxy '*' --unix-socket /run/aisc-mihomo/control.sock "
+            "http://localhost/version >/dev/null 2>&1 || exit 12"], timeout=5)
         code, message = {
             10: ("AISC_ERR_PROXY_IMAGE", "Rebuild the workspace image with the current AISC resources."),
             11: ("AISC_ERR_PROXY_CONFIG", "Reopen the workspace in proxy mode to apply the subscription."),

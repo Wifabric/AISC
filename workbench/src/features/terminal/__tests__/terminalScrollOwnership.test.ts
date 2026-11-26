@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   keyHandler: null as ((event: KeyboardEvent) => boolean) | null,
   csiHandler: null as ((params: (number | number[])[]) => boolean) | null,
   csiIdentifier: null as unknown,
+  modeQueryHandler: null as ((params: (number | number[])[]) => boolean) | null,
+  protocolInput: vi.fn(),
   scrollToBottom: vi.fn(),
   buffer: { active: { type: "normal", viewportY: 0, baseY: 0 } },
 }));
@@ -66,13 +68,18 @@ vi.mock("@xterm/xterm", () => ({
     write(_data: unknown, callback?: () => void) { callback?.(); }
     writeln(_data: unknown, callback?: () => void) { callback?.(); }
     parser = {
-      registerCsiHandler(id: unknown, handler: (params: (number | number[])[]) => boolean) {
-        h.csiIdentifier = id;
-        h.csiHandler = handler;
+      registerCsiHandler(id: { final: string; prefix?: string; intermediates?: string }, handler: (params: (number | number[])[]) => boolean) {
+        if (id.prefix === "?" && id.intermediates === "$" && id.final === "p") {
+          h.modeQueryHandler = handler;
+        } else {
+          h.csiIdentifier = id;
+          h.csiHandler = handler;
+        }
         return { dispose() {} };
       },
     };
     onData(handler: (data: string) => void) { h.dataHandler = handler; }
+    input = h.protocolInput;
     onSelectionChange() {}
     attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) { h.keyHandler = handler; }
     dispose() {}
@@ -180,6 +187,7 @@ beforeEach(() => {
   h.scrollHandler = null;
   h.keyHandler = null;
   h.csiHandler = null;
+  h.modeQueryHandler = null;
   h.csiIdentifier = null;
   h.buffer.active = { type: "normal", viewportY: 0, baseY: 0 };
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = ResizeObserverStub;
@@ -188,6 +196,15 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 describe("Terminal scroll ownership wiring", () => {
+  it("answers the Codex alternate-scroll probe without consuming other mode queries", async () => {
+    const { wrapper } = await mountRunningTerminal();
+    expect(h.modeQueryHandler!([1004])).toBe(false);
+    expect(h.protocolInput).not.toHaveBeenCalled();
+    expect(h.modeQueryHandler!([1007])).toBe(true);
+    expect(h.protocolInput).toHaveBeenCalledWith("\x1b[?1007;0$y", false);
+    wrapper.unmount();
+  });
+
   it("keeps a reviewing viewport undisturbed, then typing returns it to bottom", async () => {
     vi.useFakeTimers();
     const { wrapper, runtime, paneId } = await mountRunningTerminal();
@@ -200,6 +217,20 @@ describe("Terminal scroll ownership wiring", () => {
     h.dataHandler!("x");
     expect(h.writeSession).toHaveBeenCalledWith("sid-1", [120]);
     expect(h.scrollToBottom).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("preserves 300 successive mouse reports in order without flooding PTY writes", async () => {
+    vi.useFakeTimers();
+    const { wrapper } = await mountRunningTerminal();
+    emitWheel(wrapper, -120);
+    const mouse = "\x1b[<64;3;5M";
+    for (let i = 0; i < 300; i++) h.dataHandler!(mouse);
+    expect(h.scrollToBottom).not.toHaveBeenCalled();
+    expect(h.writeSession).not.toHaveBeenCalled();
+    h.dataHandler!("x");
+    expect(h.writeSession).toHaveBeenCalledTimes(1);
+    expect(h.writeSession).toHaveBeenCalledWith("sid-1", Array.from(new TextEncoder().encode(mouse.repeat(300) + "x")));
     wrapper.unmount();
   });
 

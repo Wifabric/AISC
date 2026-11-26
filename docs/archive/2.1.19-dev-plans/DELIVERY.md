@@ -152,7 +152,7 @@
 | [开发手册](../../../DEVELOP_WIKI.md) / [Workbench](../../../workbench/README.md) / [安装器维护](../../../workbench/src-tauri/nsis/README.md) | 补齐本版交接、构建资源配对、接口与签名说明、功能与安装验收边界 |
 | [活动计划](README.md) / [手测教程](HANDTEST.md) | 范围、实际 CI/桌面结果、leader 步骤及安装边界已同步 |
 | [devlog](../../devlog.md) / [TODO](../../todo.md) / [计划索引](../../plans/README.md) | 功能、文档更新与待办分别记账；旧版 PyPI 外部待办独立保留 |
-| [开发 Skill](../../../skills/aisc-development/SKILL.md) | 补充发布说明需与实现及 tag 文件命名一致的检查，保留原授权边界 |
+| [开发 Skill](https://github.com/Wifabric/AISC/blob/v2.1.19/skills/aisc-development/SKILL.md) | 补充发布说明需与实现及 tag 文件命名一致的检查，保留原授权边界 |
 | 正式 2.1.19 / CLI 0.3.0 说明与资产 | [Workbench 正式说明](../../releases/v2.1.19.md)和 [CLI 正式说明](../../releases/v0.3.0.md)已准备；正式版本号、产物和渠道尚未切换，不将 Preview 摘要标作 Final |
 | 反馈站、归档、分支清理 | 用户验收已通过；正式发布后的回写和归档尚未执行，计划保留活动状态 |
 
