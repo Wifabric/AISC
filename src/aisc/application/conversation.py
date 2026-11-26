@@ -618,7 +618,7 @@ _READ_TOOL_CAP = 32_000
 _READ_MAX_MESSAGES = 4000  # hard bound on the rendered stream
 
 
-def _read_join_text(content: Any, block_type: str) -> Optional[str]:
+def _read_join_text(content: Any, *block_types: str) -> Optional[str]:
     """Join EVERY ``block_type`` text block (unlike _text_from_content, which
     returns the first). A chat bubble must not silently drop the rest of a
     multi-block message."""
@@ -627,7 +627,7 @@ def _read_join_text(content: Any, block_type: str) -> Optional[str]:
     if isinstance(content, list):
         parts = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == block_type:
+            if isinstance(block, dict) and block.get("type") in block_types:
                 text = block.get("text")
                 if isinstance(text, str) and text.strip():
                     parts.append(text)
@@ -761,7 +761,7 @@ def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
         attachments = [_read_attachment(b) for b in output if isinstance(b, dict) and b.get("type") not in ("text", "input_text", "output_text")] if isinstance(output, list) else []
         return [{
             "role": "tool", "kind": "tool_result",
-            "text": _read_join_text(output, "text") if isinstance(output, list) else _read_as_text(output),
+            "text": _read_join_text(output, "text", "input_text", "output_text") if isinstance(output, list) else _read_as_text(output),
             "attachments": attachments,
             "call_id": call_id if isinstance(call_id, str) else None,
             "ts": ts,

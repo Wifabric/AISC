@@ -10,7 +10,7 @@ this module never calls ``subprocess.run`` directly.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -341,6 +341,12 @@ def run_container(
             data=result.to_dict(),
         )
     # EXISTS → proceed
+    # A fresh home on a legacy image must remain empty for its first-run seed.
+    initialized_codex = bool(plan.agent_state_root) and (
+        Path(plan.agent_state_root) / "codex" / "config.toml"
+    ).is_file()
+    plan = replace(plan, codex_tmpfs=inspect.codex_tmpfs or initialized_codex)
+    result.docker_argv = list(plan.docker_argv)
 
     # --- r1 #2 + r2 #C, revised 2026-09-19 (cli-run-guard): `aisc run` is
     # FORBIDDEN while a live container exists for this workspace. Previously

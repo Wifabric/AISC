@@ -33,6 +33,29 @@ function show(pinia: ReturnType<typeof createPinia>) {
   wrapper = mount(ConversationViewer, { attachTo: document.body, global: { plugins: [pinia, i18n] } });
 }
 describe("Work Record reader", () => {
+  it("renders structured command arguments and output from the same Codex step", async () => {
+    const { pinia, read } = setup();
+    const data = page("final");
+    const tool = data.messages.find(m => m.kind === "tool_use")!;
+    tool.name = "exec";
+    tool.text = 'text(await tools.exec_command({cmd:"head -n 1 qa.txt",workdir:"/root/app"}))';
+    tool.result = "预览测试：蓝色雨伞 7391";
+    read.mockResolvedValue(data);
+    show(pinia); await flushPromises();
+    const activity = document.querySelector(".cv-activity")!;
+    (activity as HTMLDetailsElement).open = true;
+    activity.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+    const button = Array.from(activity.querySelectorAll("summary")).find(e => e.textContent?.includes("exec"))!;
+    const detail = button.closest("details")!;
+    detail.open = true;
+    detail.dispatchEvent(new Event("toggle")); await flushPromises();
+    expect(activity.textContent).toContain("head -n 1 qa.txt");
+    expect(activity.textContent).toContain("/root/app");
+    expect(activity.textContent).toContain("蓝色雨伞 7391");
+    expect(activity.textContent).not.toContain("text(await");
+  });
+
   it("only links existing bare workspace paths and exports through the active record", async () => {
     const { pinia, explorer, read } = setup();
     read.mockResolvedValue(page("Files: `src/known file.md` and `src/missing.md`"));

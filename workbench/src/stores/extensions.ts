@@ -145,6 +145,13 @@ export const useExtensionsStore = defineStore("extensions", () => {
   );
 
   const marketSkills = ref<ExtensionsItem[]>([]);
+  const skillPageSize = 20;
+  const skillDisplayLimit = ref(skillPageSize);
+  const displayedSkillCount = computed(() => Math.min(marketSkills.value.length, skillDisplayLimit.value));
+
+  function showMoreMarketSkills(): void {
+    skillDisplayLimit.value = Math.min(displayedSkillCount.value + skillPageSize, marketSkills.value.length);
+  }
   const marketMcp = ref<ExtensionsItem[]>([]);
   const marketPlugins = ref<ExtensionsItem[]>([]);
   const pluginMarkets = ref<ExtensionsItem[]>([]);
@@ -295,7 +302,9 @@ export const useExtensionsStore = defineStore("extensions", () => {
   );
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
-  const marketSkillGroups = computed(() => groupSkillItems(marketSkills.value.map(describedItem)));
+  const marketSkillGroups = computed(() =>
+    groupSkillItems(marketSkills.value.slice(0, displayedSkillCount.value).map(describedItem)),
+  );
 
   async function call<T = Record<string, unknown>>(
     op: string,
@@ -663,6 +672,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     const generation = searchGeneration.skills + 1;
     const token = contextToken();
     await runSearch("skills", "skill-search", query, (items) => {
+      skillDisplayLimit.value = skillPageSize;
       marketSkills.value = items;
     });
     // Keep search interactive. Hydrate a bounded number of missing summaries
@@ -785,7 +795,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
   return {
     describeSkill, describedItem, descriptionState,
     kind, context, itemsByKind, items, loading, busy, busyByKind, error, errorsByKind, canLoad,
-    marketSkills, marketSkillGroups, installedSkillGroups, marketBusy,
+    marketSkills, marketSkillGroups, displayedSkillCount, showMoreMarketSkills, installedSkillGroups, marketBusy,
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
     skillRepos, skillReposBusy, skillReposUnsupported,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,

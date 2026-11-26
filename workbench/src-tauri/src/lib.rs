@@ -227,6 +227,7 @@ pub fn run(cli_arg: Option<String>) {
             network_subscription_clear,
             network_subscription_show,
             usage_overview,
+            runtime::live_session_conversations,
             runtime::proxy_nodes,
             load_history,
             save_history,

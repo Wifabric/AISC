@@ -140,7 +140,7 @@ onBeforeUnmount(() => { generation++; });
                     <summary><span class="cv-chevron" aria-hidden="true">›</span><strong>{{ m.kind === 'reasoning' ? t('history.viewer.reasoning') : m.kind === 'message' ? t('history.viewer.progress') : m.name || t('history.viewer.toolResult') }}</strong><span v-if="m.kind === 'message' || m.kind === 'reasoning'" class="cv-step-preview">{{ preview(m.text) }}</span></summary>
                     <template v-if="openSteps.has(m.ordinal)">
                       <RecordContent v-if="m.kind === 'reasoning' || m.kind === 'message' || m.kind === 'skill'" :text="m.text" :attachments="m.attachments" :workspace="explorer.workspace ?? ''" />
-                      <RecordToolValue v-else :value="m.text" :workspace="explorer.workspace ?? ''" />
+                      <RecordToolValue v-else :value="m.text" :command-wrapper="m.name === 'exec'" :workspace="explorer.workspace ?? ''" />
                       <template v-if="m.result != null"><h3>{{ t('history.viewer.toolResult') }}</h3><RecordToolValue :value="m.result" :workspace="explorer.workspace ?? ''" /></template>
                       <RecordContent v-if="m.result_attachments?.length" text="" :attachments="m.result_attachments" :workspace="explorer.workspace ?? ''" />
                     </template>

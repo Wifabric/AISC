@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aisc.domain.models import (
     CliError,
+    ImageInspectResult,
     ImageInspectStatus,
     RuntimeErrorCode,
     RuntimeExitCode,
@@ -316,6 +317,16 @@ def _check_image(image: str, executor: Any) -> Optional[str]:
         return RuntimeErrorCode.DOCKER_UNAVAILABLE
 
 
+def _runtime_image_info(image: str, executor: Any) -> ImageInspectResult:
+    try:
+        result = executor.inspect_image(image)
+        if result.status == ImageInspectStatus.EXISTS:
+            return result
+    except Exception:
+        pass  # Metadata is best-effort for old images and temporary Docker failures.
+    return ImageInspectResult()
+
+
 def _resolve_image_id(image: str, executor: Any) -> Optional[str]:
     """Content-addressed image ID (``docker image inspect .Id``) for the
     image-sync conflict check (容器随镜像同步更新, KI-4 挂账).
@@ -324,14 +335,7 @@ def _resolve_image_id(image: str, executor: Any) -> Optional[str]:
     failure must never block reuse (unknown ≠ changed). Legacy registry
     records without an ``image_id`` are likewise treated as unknown.
     """
-    try:
-        result = executor.inspect_image(image)
-        from aisc.domain.models import ImageInspectStatus
-        if result.status != ImageInspectStatus.EXISTS:
-            return None
-        return (getattr(result, "image_id", "") or "").strip() or None
-    except Exception:
-        return None
+    return (_runtime_image_info(image, executor).image_id or "").strip() or None
 
 
 def _query_docker_labels(
@@ -1045,7 +1049,8 @@ def start_runtime(
         # 容器随镜像同步更新 (KI-4 挂账): the image ID recorded at create time;
         # "" when unobservable (transient probe failure) — the conflict check
         # then simply skips the comparison for this start.
-        image_id_at_start = _resolve_image_id(image, executor) or ""
+        image_info = _runtime_image_info(image, executor)
+        image_id_at_start = (image_info.image_id or "").strip()
 
         # --- workspace lock covers conflict check -> create -> ready -> commit ---
         # Timeout must exceed ready_timeout so a concurrent project start on the same
@@ -1232,6 +1237,8 @@ def start_runtime(
                     "-v", f"{ws_state_dir / 'cc-switch'}:/root/.cc-switch",
                     "-v", f"{ws_state_dir / 'runtime'}:/root/.local/state/cc-switch",
                 ])
+                if image_info.codex_tmpfs or (ws_state_dir / "codex" / "config.toml").is_file():
+                    argv.extend(["--tmpfs", "/root/.codex/tmp:mode=0700"])
                 # runtime-lifecycle-ux 3a: project scope mounts the persistent
                 # toolchain (host_bind per the Windows spike decision). Failures
                 # to prepare propagate — a broken toolchain dir must not be

@@ -279,7 +279,7 @@ describe("WorkRecordsView", () => {
     await flushPromises();
 
     expect(order).toEqual(["close", "delete"]);
-    expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([conversationId]);
+    expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([member]);
   });
 
   it("refreshes both ledger and provider conversations", async () => {
@@ -482,6 +482,7 @@ describe("WorkRecordsView", () => {
     await wrapper.find("[data-testid='member-codex:target']").trigger("drop", { dataTransfer: transfer });
     await flushPromises();
     expect(workRecordMoveMember).not.toHaveBeenCalled();
+    expect(wrapper.find(`[data-testid="member-${member.member_key}"]`).text()).toContain(provider.title);
     expect(workRecordReorderMembers).toHaveBeenCalledWith("/ws", "active-1", [member.member_key, "codex:target"]);
   });
 
@@ -559,6 +560,7 @@ describe("WorkRecordsView", () => {
   });
 
   it("disables resume for a missing transcript", async () => {
+    vi.mocked(workRecordList).mockResolvedValue({ ...listResult(), conversations: [], unfiled: [] });
     const explorer = useWorkspaceExplorerStore();
     explorer.workspace = "/ws";
     explorer.conversations = [];
@@ -638,6 +640,7 @@ describe("WorkRecordsView", () => {
   it("creates a tracked session from a Work Record plus button", async () => {
     const { wrapper } = await mountView();
     runtimeMock.createTrackedTab.mockClear();
+    runtimeMock.lastCreatedTabId = "previously-opened-tab";
     vi.mocked(workRecordList).mockClear();
     const button = wrapper.find("[data-testid=new-session-active-1]");
     button.element.getBoundingClientRect = () => ({ left: 12, bottom: 24, width: 16, height: 16 }) as DOMRect;

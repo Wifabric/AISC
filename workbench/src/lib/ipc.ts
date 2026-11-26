@@ -79,6 +79,11 @@ export const openSession = (
 
 // --- v2.1.8 T4: agent conversation discovery (captured, no PTY) ---
 
+export const liveSessionConversations = (workspace: string, runtimeId: string) =>
+  invoke<{ sessions: {session_id: string; agent: string; conversation_id?: string | null}[] }>(
+    "live_session_conversations", {workspace, runtimeId},
+  );
+
 export const conversationList = (workspace: string) =>
   invoke<import("../types").ConversationListResult>("conversation_list", {
     workspace,
@@ -1071,7 +1076,7 @@ export const workspaceRename = (workspace: string, relativePath: string, newName
 export const workspaceMove = (workspace: string, relativePath: string, destinationDir: string) =>
   invoke<import("../types").WorkspaceMutationResult>("workspace_move", { workspace, relativePath, destinationDir });
 
-export type ProxyGroups = Record<string, { current: string; nodes: string[] }>;
+export type ProxyGroups = Record<string, { current: string; nodes: string[]; selectable?: boolean }>;
 export const proxyNodes = (workspace: string, runtimeId: string, action: "list" | "select" | "delay", group = "", node = "") =>
   invoke<{ groups?: ProxyGroups; delay?: number }>("proxy_nodes", { workspace, runtimeId, action, group, node });
 

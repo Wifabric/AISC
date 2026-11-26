@@ -253,6 +253,20 @@ class Stager:
         if not arches or any(arch not in ARCHES for arch in arches) or len(set(arches)) != len(arches):
             raise StageError("architectures must be unique x64/arm64 values")
 
+    def stage_bun(self, version, arches):
+        version = _exact_version(version)
+        self._arches(arches)
+        with tempfile.TemporaryDirectory(prefix=".stage-bun-", dir=self.downloads) as directory:
+            desired = {}
+            for arch in arches:
+                target = "aarch64" if arch == "arm64" else "x64"
+                package = f"@oven/bun-linux-{target}"
+                filename = f"bun-linux-{arch}-{version}.tgz"
+                archive = self._npm(package, version, filename, Path(directory))
+                package_json(archive, package, version)
+                desired[filename] = archive
+            self._publish(Path(directory), desired, lambda name: name in desired)
+
     def stage_yazi(self, version, arches, pins):
         version = _exact_version(version.removeprefix("v"))
         self._arches(arches)
@@ -321,6 +335,8 @@ def main(argv=None):
             if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
                 raise StageError("official npm latest is not a stable release")
         stager.stage_family(package, version, arches, no_companions=args.no_companions)
+    if not args.no_companions and values.get("BUN_VERSION"):
+        stager.stage_bun(values["BUN_VERSION"], arches)
     if args.yazi:
         yazi_pins = {key: value for key, value in values.items() if key.startswith("YAZI_")}
         stager.stage_yazi(values.get("YAZI_VERSION", ""), arches, yazi_pins)

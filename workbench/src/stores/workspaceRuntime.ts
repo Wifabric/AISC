@@ -247,8 +247,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * provider tabs. A tab is linked only when identity is unambiguous (see
    * resolvePendingConversationAssociations); ambiguity is never guessed. */
   type PendingConversationAssociation = {
-    knownConversationIds: Set<string>;
-    startedAt: string;
+    knownConversationIds: Set<string> | null;
     collectionId?: string | null;
   };
   const pendingConversationAssociations = new Map<string, PendingConversationAssociation>();
@@ -903,7 +902,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
 
   /** Query + cache the provider status for one agent. Only when the runtime is
    * running (04 §五). Per-agent cache, never cross-applied. */
-  async function loadProviderStatus(agent: "claude" | "codex") {
+  type ProbeOutcome = "ok" | "unsettled" | "error";
+  const providerProbes = new Map<string, Promise<ProbeOutcome>>();
+  async function loadProviderStatus(agent: "claude" | "codex", join = false) {
     if (runtimeState.value !== "running") {
       void ipc.logUiEvent?.(`provider_probe ${agent} skip:state=${runtimeState.value}`, "error").catch(() => undefined);
       return "skipped" as const;
@@ -912,16 +913,27 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       void ipc.logUiEvent?.(`provider_probe ${agent} skip:noid`, "error").catch(() => undefined);
       return "skipped" as const;
     }
-    if (providerInFlight.value === agent) {
+    const key = JSON.stringify([workspace.value.trim(), runtimeId.value, agent]);
+    const existing = providerProbes.get(key);
+    if (existing) {
+      if (join) return existing;
       void ipc.logUiEvent?.(`provider_probe ${agent} skip:inflight`, "error").catch(() => undefined);
       return "skipped" as const;
     }
+    const promise = probeProvider(agent, workspace.value.trim(), runtimeId.value);
+    providerProbes.set(key, promise);
+    try { return await promise; }
+    finally { providerProbes.delete(key); }
+  }
+
+  async function probeProvider(agent: "claude" | "codex", path: string, rid: string): Promise<ProbeOutcome> {
     const t0 = performance.now();
     providerInFlight.value = agent;
     providerError.value = null;
     let outcome: "ok" | "unsettled" | "error" = "error";
     try {
-      const status = await ipc.getProviderStatus(workspace.value.trim(), runtimeId.value, agent);
+      const status = await ipc.getProviderStatus(path, rid, agent);
+      if (workspace.value.trim() !== path || runtimeId.value !== rid) return "error";
       providerStatuses.value = { ...providerStatuses.value, [agent]: status };
       // PERF P7 fix v2 (manual-test 2026-09-06): a probe that ANSWERS but
       // reports not-yet-configured/unknown is a "world not settled" signal
@@ -932,7 +944,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     } catch (e) {
       providerError.value = e as WorkbenchError;
     } finally {
-      providerInFlight.value = null;
+      if (providerInFlight.value === agent) providerInFlight.value = null;
       // Manual-test diagnosability (2026-09-06): the provider probe is the
       // claude-page gate and its live timing was invisible in aisc.log
       // (cli_exit only logs at process exit — hung probes vanish). One line
@@ -1390,7 +1402,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
    * guide before any session is opened). */
   async function maybeOpenPaneCreated(tab: Tab, paneId: string, agent: LaunchAgent) {
     if (agent === "claude" || agent === "codex") {
-      const outcome = await loadProviderStatus(agent);
+      const outcome = await loadProviderStatus(agent, true);
       const st = providerStatuses.value[agent];
       const p = tab.panes[paneId];
       if (!p || p.sessionState === "starting" || p.sessionState === "running") return;
@@ -1569,17 +1581,17 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     if (agent !== "claude" && agent !== "codex") return null;
     try {
       const result = await ipc.conversationList(workspace.value.trim());
+      await resolvePendingConversationAssociations(result.conversations);
       return {
         knownConversationIds: new Set(
           result.conversations
             .filter((item) => item.agent === agent)
             .map((item) => item.conversation_id.toLowerCase()),
         ),
-        startedAt: new Date().toISOString(),
         collectionId: collectionId ?? null,
       };
     } catch {
-      return null;
+      return { knownConversationIds: null, collectionId };
     }
   }
 
@@ -1591,7 +1603,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     collectionId?: string | null,
   ) {
     if (agent === "claude" || agent === "codex") {
-      const outcome = await loadProviderStatus(agent);
+      const outcome = await loadProviderStatus(agent, true);
       const st = providerStatuses.value[agent];
       const tab = findTab(tabId);
       if (!tab || activePane(tab).sessionState !== "idle") return;
@@ -1729,80 +1741,86 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     syncProjection(tab);
   }
 
-  /** b6: link a newly created provider transcript only when it is the unique
-   * unknown conversation for the unique pending provider tab of that agent.
-   * Any ambiguity keeps the tab unlinked; deletion then leaves it live. */
-  async function resolvePendingConversationAssociations(
-    conversations: ConversationSummary[],
-  ): Promise<number> {
-    const pending = [...pendingConversationAssociations.entries()].flatMap(([tabId, association]) => {
-      const tab = findTab(tabId);
-      if (!tab || tab.resumeConversationId) {
-        pendingConversationAssociations.delete(tabId);
-        return [];
-      }
-      const live = Object.values(tab.panes).some(
-        (pane) => pane.sessionState === "starting" || pane.sessionState === "running",
-      );
-      if (!live) {
-        pendingConversationAssociations.delete(tabId);
-        return [];
-      }
-      return [{ tabId, tab, association }];
-    });
-    const pendingByAgent = new Map<string, number>();
-    for (const item of pending) {
-      pendingByAgent.set(item.tab.agent, (pendingByAgent.get(item.tab.agent) ?? 0) + 1);
+  async function resolvePendingConversationAssociations(conversations: ConversationSummary[]): Promise<number> {
+    const live = tabs.value.flatMap(tab => Object.entries(tab.panes).flatMap(([paneId, pane]) => {
+      const agent = findLeaf(tab.tree, paneId)?.sessionType;
+      if ((agent !== "codex" && agent !== "claude") || !pane.sessionId ||
+          !["running", "starting"].includes(pane.sessionState)) return [];
+      return [{ tab, pane, paneId, agent }];
+    }));
+    for (const id of pendingConversationAssociations.keys()) {
+      if (!findTab(id)) pendingConversationAssociations.delete(id);
     }
+    if (!live.some(({tab, pane}) => !pane.resumeConversationId || pendingConversationAssociations.has(tab.tabId))) return 0;
 
-    let resolved = 0;
-    for (const { tab, association } of pending) {
-      if ((pendingByAgent.get(tab.agent) ?? 0) !== 1) continue;
-      const candidates = conversations.filter(
-        (item) => item.agent === tab.agent
-          && !association.knownConversationIds.has(item.conversation_id.toLowerCase()),
-      );
-      if (candidates.length !== 1) continue;
-      const panes = Object.entries(tab.panes).filter(([paneId, pane]) =>
-        findLeaf(tab.tree, paneId)?.sessionType === tab.agent &&
-        (pane.sessionState === "starting" || pane.sessionState === "running"));
-      if (panes.length !== 1) continue;
-      tab.resumeConversationId = candidates[0].conversation_id;
-      panes[0][1].resumeConversationId = candidates[0].conversation_id;
-      const collectionId = association.collectionId;
-      pendingConversationAssociations.delete(tab.tabId);
-      if (collectionId && (tab.agent === "claude" || tab.agent === "codex")) {
-        const records = useWorkRecordsStore();
-        await records.addMember(collectionId, tab.agent, candidates[0].conversation_id, runtimeId.value);
+    const sessionIds = new Map<string, string>();
+    try {
+      const response = await ipc.liveSessionConversations(workspace.value.trim(), runtimeId.value!);
+      for (const rec of response.sessions) {
+        if (rec.conversation_id) sessionIds.set(rec.agent + ":" + rec.session_id, rec.conversation_id);
       }
-      resolved += 1;
+    } catch { /* Older runtimes can still resolve a single new transcript from its snapshot. */ }
+    let resolved = 0;
+    for (const {tab, pane, paneId, agent} of live) {
+      if (!tabs.value.includes(tab) || !["starting", "running"].includes(pane.sessionState)) continue;
+      const pending = pendingConversationAssociations.get(tab.tabId);
+      const ownsPending = !!pending && paneId === tab.tabId;
+      let native = pane.resumeConversationId || sessionIds.get(agent + ":" + pane.sessionId);
+      const baseline = ownsPending && pending.knownConversationIds;
+      if (!native && baseline && live.filter(l => l.agent === agent && !l.pane.resumeConversationId).length === 1) {
+        const candidates = conversations.filter(c => c.agent === agent && !c.parent_thread_id &&
+          !baseline.has(c.conversation_id.toLowerCase()) &&
+          !live.some(l => l.pane.resumeConversationId === c.conversation_id));
+        if (candidates.length === 1) native = candidates[0].conversation_id;
+      }
+      if (!native) continue;
+      if (pane.resumeConversationId !== native) resolved++;
+      pane.resumeConversationId = native;
+      if (tab.activePaneId === paneId || Object.keys(tab.panes).length === 1) tab.resumeConversationId = native;
+      if (!ownsPending) continue;
+      if (pending.collectionId) {
+        if (!conversations.some(c => c.agent === agent && c.conversation_id === native)) continue;
+        if (!await useWorkRecordsStore().addMember(pending.collectionId, agent, native, runtimeId.value)) continue;
+      }
+      pendingConversationAssociations.delete(tab.tabId);
     }
     return resolved;
   }
 
-  /** b6: terminate only live sessions known to belong to the given provider
-   * conversations. `runtime_id` is deliberately not used for matching (D-3);
-   * newly created tabs are covered only after unambiguous snapshot resolution,
-   * and unmatched tabs are left untouched. */
-  async function closeLiveConversationSessions(conversationIds: string[]) {
-    const targets = new Set(conversationIds.map((id) => id.toLowerCase()));
-    const closes: Promise<unknown>[] = [];
+  async function closeLiveConversationSessions(members: {agent: string; conversation_id: string}[]) {
+    if (!members.length) return;
+    const targets = new Set(members.map(m => m.agent + ":" + m.conversation_id.toLowerCase()));
+    const closing = [];
     for (const tab of tabs.value) {
-      const resumeId = tab.resumeConversationId?.toLowerCase();
-      if (!resumeId || !targets.has(resumeId)) continue;
-      for (const pane of Object.values(tab.panes)) {
-        if (
-          pane.sessionId &&
-          !TERMINAL_STATES.includes(pane.sessionState) &&
-          pane.sessionState !== "closing"
-        ) {
-          pane.sessionState = "closing";
-          closes.push(ipc.closeSession(pane.sessionId).catch(() => null));
+      const panes = Object.entries(tab.panes);
+      for (const [paneId, pane] of panes) {
+        if (!pane.sessionId || !["starting", "running", "closing"].includes(pane.sessionState)) continue;
+        const agent = findLeaf(tab.tree, paneId)?.sessionType;
+        const native = pane.resumeConversationId || (panes.length === 1 ? tab.resumeConversationId : null);
+        if (native && targets.has(agent + ":" + native.toLowerCase())) {
+          closing.push({tab, pane, sid: pane.sessionId});
+        } else if (!native) {
+          const known = pendingConversationAssociations.get(tab.tabId)?.knownConversationIds;
+          if (members.some(m => m.agent === agent && !known?.has(m.conversation_id.toLowerCase()))) {
+            throw new Error(i18n.global.t("workRecords.unidentifiedLive"));
+          }
         }
       }
-      syncProjection(tab);
     }
-    await Promise.all(closes);
+    for (const {tab, pane, sid} of closing) {
+      const previous = pane.sessionState;
+      pane.sessionState = "closing";
+      syncProjection(tab);
+      try {
+        const exit = await ipc.closeSession(sid);
+        if (exit.reason === "transport_error") throw new Error();
+      } catch {
+        if (pane.sessionState === "closing") pane.sessionState = previous;
+        syncProjection(tab);
+        throw new Error(i18n.global.t("workRecords.stopFailed"));
+      }
+      if (Object.keys(tab.panes).length === 1 && tabs.value.includes(tab)) await removeTab(tab.tabId);
+    }
   }
 
   async function removeTab(tabId: string) {

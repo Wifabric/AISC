@@ -54,7 +54,7 @@ const visibleCollections = computed(() =>
 );
 const conversationBy = computed(() => {
   const out = new Map<string, ConversationSummary>();
-  for (const item of explorer.conversations) {
+  for (const item of [...records.conversations, ...explorer.conversations]) {
     out.set(item.agent + ":" + item.conversation_id.toLowerCase(), item);
   }
   return out;
@@ -114,7 +114,7 @@ async function performCollectionDelete(id: string) {
   await explorer.loadConversations(true);
   await runtime.resolvePendingConversationAssociations(explorer.conversations);
   await runtime.closeLiveConversationSessions(
-    (records.byId(id)?.members ?? []).map((member) => member.conversation_id),
+    records.byId(id)?.members ?? [],
   );
   await records.delete(id);
   await explorer.loadConversations(true);
@@ -243,7 +243,9 @@ async function confirmQuietDelete() {
   pendingDelete.value = null;
   if (!pending) return;
   if (pending.kind === "collection" && pending.collectionId) {
-    await performCollectionDelete(pending.collectionId);
+    sessionLaunchError.value = null;
+    try { await performCollectionDelete(pending.collectionId); }
+    catch (e) { sessionLaunchError.value = (e as Error)?.message || String(e); }
   } else if (pending.conversation) {
     await performConversationDelete(pending.conversations ?? [pending.conversation]);
   }
@@ -397,7 +399,11 @@ async function dropCollection(event: DragEvent, targetId: string) {
   event.preventDefault();
   event.stopPropagation();
   const sourceId = event.dataTransfer?.getData("application/x-aisc-work-record-collection");
-  if (!sourceId || sourceId === targetId) return;
+  if (!sourceId) {
+    await dropMember(event, targetId);
+    return;
+  }
+  if (sourceId === targetId) return;
   const ids = records.collections.map((item) => item.id);
   const from = ids.indexOf(sourceId);
   const to = ids.indexOf(targetId);
@@ -599,7 +605,7 @@ function menuConversation(): ConversationSummary | null {
 async function createSessionInRecord(agent: LaunchAgent | "topics", directory: string): Promise<void> {
   const menu = sessionMenu.value;
   sessionMenu.value = null;
-  if (!menu || !records.byId(menu.collectionId) || runtime.lastCreatedTabId) return;
+  if (!menu || !records.byId(menu.collectionId)) return;
   if (agent === "topics") { runtime.openTopicsTab({ collectionId: menu.collectionId, directory }); return; }
   sessionLaunchError.value = null;
   const result = await runtime.createTrackedTab(agent, menu.collectionId, directory || undefined);
@@ -664,9 +670,11 @@ async function moveFromMenu(targetId: string | null) {
   if (contextMenu.value === menu) closeMenu();
 }
 
-watch(() => explorer.conversations, (_value, old) => {
-  if (old.length === explorer.conversations.length) return;
-  void records.reconcile();
+watch(() => explorer.conversations, async (current, old) => {
+  if (current.length === old.length && current.every((c, i) =>
+    c.conversation_id === old[i].conversation_id && c.agent === old[i].agent)) return;
+  await records.reconcile();
+  if (records.workspace === props.workspace) await runtime.resolvePendingConversationAssociations(current);
 });
 onMounted(async () => {
   window.addEventListener("click", onOutsideMenu);

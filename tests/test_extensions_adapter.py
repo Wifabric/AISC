@@ -534,25 +534,36 @@ class MarketTests(TempEnv):
         self.assertEqual(captured["headers"].get("User-agent"), "AISC/2.1.16")
         self.assertLessEqual(captured["timeout"], 20)
 
-    def test_skill_search_builds_market_argv(self):
-        import urllib.request
-        calls, run = self._fake(stdout="no table")
+    def test_skill_search_uses_cli_when_market_api_is_unavailable(self):
+        table = "\n".join(
+            f"│ owner/repo:skill-{i} ┆ skill-{i} ┆ skill-{i} ┆ 1 ┆ owner/repo │"
+            for i in range(43)
+        )
+        with mock.patch.object(A, "_http_json", side_effect=A.AdapterError(A.ERR_CLI, "offline")), \
+             mock.patch.object(A, "_run_cli", return_value=table) as cli:
+            items = A._skill_search_remote("pdf")
+        self.assertEqual(cli.call_args.args[0], ["cc-switch", "skills", "market", "pdf", "--limit", "200"])
+        self.assertEqual(len(items), 43)
+        self.assertEqual(items[-1]["id"], "owner/repo:skill-42")
 
-        class Resp:
-            def read(self):
-                return json.dumps({"skills": []}).encode()
+    def test_full_ranked_skill_search_preserves_the_second_page(self):
+        rows = [{"source": "mattpocock/skills", "skillId": f"skill-{n}"} for n in range(43)]
+        with mock.patch.object(A, "_http_json", return_value={"skills": rows}) as fetch, \
+             mock.patch.object(A, "_run_cli", return_value=""):
+            items = A._skill_search_remote("matt")
+        self.assertEqual([item["directory"] for item in items], [row["skillId"] for row in rows])
+        self.assertTrue(all("limit=200" in url for url in fetch.call_args.args[0]))
 
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        with mock.patch.object(A.subprocess, "run", run), \
-             mock.patch.object(A.urllib.request, "urlopen", return_value=Resp()):
-            items = A.skill_search("pdf")
-        self.assertEqual(calls[0]["argv"][:5], ["cc-switch", "skills", "market", "pdf", "--limit"])
-        self.assertEqual(items, [])
+    def test_skill_search_keeps_cached_pages_if_api_fails_and_cli_returns_no_rows(self):
+        records = [{"source": "mattpocock/skills", "skillId": f"skill-{i}"} for i in range(41)]
+        with mock.patch.object(A, "_http_json", side_effect=[
+            {"skills": records}, A.AdapterError(A.ERR_CLI, "offline"),
+        ]), mock.patch.object(A, "_run_cli", return_value=""):
+            first = A.skill_search_result("matt")
+            second = A.skill_search_result("matt")
+        self.assertTrue(second["cache"]["cached"])
+        self.assertEqual(second["items"], first["items"])
+        self.assertEqual(len(second["items"]), 41)
 
     def test_deeplink_rejects_non_ccswitch(self):
         with self.assertRaises(A.AdapterError):
@@ -1350,7 +1361,7 @@ class MarketTests(TempEnv):
         kill.assert_called_once_with(123, 9)
         self.assertEqual(proc.communicate.call_count, 2)
 
-    def test_skill_search_falls_back_to_skills_api(self):
+    def test_skill_search_reads_skills_api(self):
         import urllib.request
 
         def failed_run(argv, **kwargs):

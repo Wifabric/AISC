@@ -1369,7 +1369,18 @@ pub async fn network_subscription_show(app: tauri::AppHandle, window: tauri::Web
     aisc_data_call(&app, &window, argv, None, PROVIDER_TIMEOUT).await
 }
 
-/// Subscription status + per-provider token usage across all workspaces.
+#[tauri::command]
+pub async fn live_session_conversations(app: AppHandle, window: tauri::WebviewWindow, workspace: String, runtime_id: String) -> Result<Value, WorkbenchError> {
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
+    let argv = vec!["session".into(), "list".into(), "--workspace".into(), workspace,
+                    "--runtime-id".into(), runtime_id, "--format".into(), "json".into()];
+    let envelope = run_control_target(&target, argv, PROVIDER_TIMEOUT, CancellationToken::new()).await?;
+    if let Some(err) = envelope.errors.first() {
+        return Err(WorkbenchError::map_aisc(&err.code));
+    }
+    Ok(envelope.data.unwrap_or(Value::Null))
+}
+
 #[tauri::command]
 pub async fn proxy_nodes(app: AppHandle, window: tauri::WebviewWindow, workspace: String, runtime_id: String,
                          action: String, group: String, node: String) -> Result<Value, WorkbenchError> {

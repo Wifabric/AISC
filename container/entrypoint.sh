@@ -200,7 +200,8 @@ else
     if [ ! -d "$PROJECT_CODEX_DIR" ]; then
         NEED_COPY_CODEX=1
         echo "📦 首次运行，正在从镜像复制 Codex 配置..."
-    elif [ -z "$(ls -A "$PROJECT_CODEX_DIR" 2>/dev/null)" ]; then
+    # The container-local tmp mount already exists on a fresh project.
+    elif [ -z "$(find "$PROJECT_CODEX_DIR" -mindepth 1 -maxdepth 1 ! -name tmp -print -quit)" ]; then
         NEED_COPY_CODEX=1
         echo "⚠️  项目 .codex 为空，正在从镜像补全..."
     fi

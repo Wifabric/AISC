@@ -56,7 +56,7 @@ async function run(action: "list" | "select" | "delay", group = "") {
 <template>
   <section v-if="runtime.runtimeId && runtime.workspace">
     <h3>{{ t("usage.nodes.title") }}</h3>
-    <button class="ui-button" :disabled="busy" @click="run('list')">{{ t("usage.nodes.list") }}</button>
+    <button class="ui-button" :disabled="busy" @click="run('list')">{{ t(busy ? "usage.nodes.loading" : "usage.nodes.list") }}</button>
     <p v-if="loaded && !Object.keys(groups).length">{{ t("usage.nodes.empty") }}</p>
     <div v-for="(data, name) in groups" :key="name">
       <label>{{ name }} · {{ data.current }}
@@ -64,7 +64,8 @@ async function run(action: "list" | "select" | "delay", group = "") {
           <option v-for="node in data.nodes" :key="node">{{ node }}</option>
         </select>
       </label>
-      <button class="ui-button" :disabled="busy || selection[name] === data.current" @click="run('select', name)">{{ t("usage.nodes.select") }}</button>
+      <span v-if="data.selectable === false">{{ t("usage.nodes.automatic") }}</span>
+      <button v-else class="ui-button" :disabled="busy || selection[name] === data.current" @click="run('select', name)">{{ t("usage.nodes.select") }}</button>
       <button class="ui-button" :disabled="busy" @click="run('delay', name)">{{ t("usage.nodes.delay") }}</button>
       <output>{{ latency[name] }}</output>
     </div>

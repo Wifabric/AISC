@@ -508,6 +508,8 @@ def reconcile(registry_root: Any, workspace: str) -> Dict[str, Any]:
             "active_collection_id": None,
             "collections": copy.deepcopy(doc["collections"]),
             "observed_provider_keys": doc["observed_provider_keys"],
+            "conversations": providers,
+            "unfiled": _ordered_unfiled(doc, [item for key, item in zip(provider_keys, providers) if key not in owners]),
         }
 
 

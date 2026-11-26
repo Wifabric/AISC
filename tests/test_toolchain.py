@@ -81,8 +81,9 @@ class _ArgCapturingExecutor:
 
 
 class StartRuntimeToolchainTests(unittest.TestCase):
-    def _start(self, scope, rid):
+    def _start(self, scope, rid, *, codex_tmpfs=True):
         import os
+        from dataclasses import replace
         from tests.test_runtime_lifecycle import RuntimeFakeExecutor
         from aisc.application.runtime import start_runtime
 
@@ -95,14 +96,21 @@ class StartRuntimeToolchainTests(unittest.TestCase):
         ws = str(Path(ws_tmp.name) / "proj")
         Path(ws).mkdir(parents=True)
         ex = _ArgCapturingExecutor(RuntimeFakeExecutor())
+        image_info = ex.inspect_image("super-claude:latest")
+        ex.inspect_image = lambda image: replace(image_info, codex_tmpfs=codex_tmpfs)
         start_runtime(rid, ws, "super-claude:latest", "direct", scope,
                       "workbench", executor=ex, ready_timeout=2.0)
         return ex, Path(root_tmp.name)
+
+    def test_fresh_project_on_legacy_image_seeds_before_mounting_codex_tmp(self):
+        ex, _ = self._start("project", "11111111-1111-4111-8111-111111111111", codex_tmpfs=False)
+        self.assertNotIn("--tmpfs", ex.create_argv)
 
     def test_project_start_mounts_toolchain_and_stamps_metadata(self):
         ex, data_root = self._start("project", "11111111-1111-4111-8111-111111111111")
         flat = " ".join(ex.create_argv or [])
         self.assertIn(f":{TOOLCHAIN_MOUNT_TARGET}", flat)
+        self.assertIn("--tmpfs /root/.codex/tmp:mode=0700", flat)
         # the entrypoint baseline env var rides along
         self.assertIn("AISC_IMAGE_ID=", flat)
         # registry metadata: policy + backend
@@ -121,6 +129,7 @@ class StartRuntimeToolchainTests(unittest.TestCase):
         ex, data_root = self._start("temporary", "22222222-2222-4222-8222-222222222222")
         flat = " ".join(ex.create_argv or [])
         self.assertNotIn(TOOLCHAIN_MOUNT_TARGET, flat)
+        self.assertNotIn("/root/.codex/tmp", flat)
         # no toolchain skeleton for temporary workspaces
         for ws_dir in (data_root / "workspaces").iterdir():
             self.assertFalse(toolchain_dir_for(ws_dir).exists())
