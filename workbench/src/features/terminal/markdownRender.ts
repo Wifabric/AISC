@@ -15,6 +15,12 @@
  * stays pure; `toggleCodeFold` is the trivial toggle helper. With no fold
  * state the output is byte-identical to the b10 base rendering.
  *
+ * b12 adds path clicks on the same seam: paths in `text` lines and list-item
+ * text are recognized as targets (with optional `:line` / `:line:col`), a
+ * click column can be located back to its target, and an opt-in render mode
+ * wraps them in OSC 8 file links. Code blocks stay verbatim; with path links
+ * off the output is byte-identical to b10/b11.
+ *
  * The live PTY path stays byte passthrough
  * (workspaceRuntime.paneStreams -> Terminal.writeChunks -> term.write);
  * this pure pipeline is where textual engine output is rendered before it is
@@ -41,6 +47,80 @@ const RESET = "\x1b[0m";
 const FENCE_OPEN = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
 const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+
+/**
+ * b12: a filesystem path with at least one directory component (posix form),
+ * optionally suffixed with `:line` or `:line:column`. Bare filenames and URLs
+ * do not match; only matches starting at a token boundary qualify.
+ */
+const PATH_TARGET =
+  /(?:^|(?<=[^\w/.:-]))((?:~\/|\.{1,2}\/|\/)?(?:[\w.@%+-]+\/)+[\w.@%+-]+\.[A-Za-z][\w]*)(?::(\d+))?(?::(\d+))?/g;
+
+/** b12: one recognized path inside a text/list span. */
+export interface TerminalPathTarget {
+  /** Path text without the `:line[:col]` suffix. */
+  path: string;
+  /** 1-based target line from a `:line` suffix, when present. */
+  line?: number;
+  /** 1-based target column from a `:line:col` suffix, when present. */
+  column?: number;
+  /** Full matched text (path plus any `:line[:col]` suffix). */
+  text: string;
+  /** 0-based offset where `text` starts in the scanned string. */
+  start: number;
+  /** 0-based offset just past `text` (exclusive). */
+  end: number;
+}
+
+/** Find clickable path targets in one text/list span. */
+export function findTerminalPathTargets(text: string): TerminalPathTarget[] {
+  const re = new RegExp(PATH_TARGET.source, "g");
+  const targets: TerminalPathTarget[] = [];
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    targets.push({
+      path: match[1],
+      line: match[2] === undefined ? undefined : Number(match[2]),
+      column: match[3] === undefined ? undefined : Number(match[3]),
+      text: match[0],
+      start,
+      end: start + match[0].length,
+    });
+  }
+  return targets;
+}
+
+/** b12 click locate: the path target under a 0-based column, or null. */
+export function locateTerminalPath(
+  text: string,
+  column: number,
+): TerminalPathTarget | null {
+  return (
+    findTerminalPathTargets(text).find(
+      (target) => column >= target.start && column < target.end,
+    ) ?? null
+  );
+}
+
+/** b12: wrap path targets in an OSC 8 file link. Absolute paths become
+ * `file://<path>`; relative paths stay `file:<path>` for the UI to resolve
+ * against its workspace root. The visible text (including `:line:col`) is
+ * unchanged. */
+function linkTerminalPaths(line: string): string {
+  const targets = findTerminalPathTargets(line);
+  if (targets.length === 0) return line;
+  let result = "";
+  let cursor = 0;
+  for (const target of targets) {
+    const uri = target.path.startsWith("/")
+      ? `file://${target.path}`
+      : `file:${target.path}`;
+    result += line.slice(cursor, target.start);
+    result += `\x1b]8;;${uri}\x1b\\${target.text}\x1b]8;;\x1b\\`;
+    cursor = target.end;
+  }
+  return result + line.slice(cursor);
+}
 
 /** Split engine output into prose, fenced-code and list blocks. Unterminated
  * fences (a live stream cut mid-block) are treated as code to the end. */
@@ -93,9 +173,11 @@ export function parseTerminalMarkdown(input: string): TerminalMarkdownBlock[] {
   return blocks;
 }
 
-/** b11 fold state: ordinals (0-based, among `code` blocks) of folded blocks. */
+/** b11 fold state: ordinals (0-based, among `code` blocks) of folded blocks;
+ * b12 path links: wrap recognized paths in text/list spans with OSC 8 links. */
 export interface TerminalRenderOptions {
   folded?: ReadonlySet<number>;
+  pathLinks?: boolean;
 }
 
 /** Toggle one code block's fold state, returning a new set (input untouched). */
@@ -118,6 +200,7 @@ export function renderTerminalMarkdown(
   options: TerminalRenderOptions = {},
 ): string {
   const folded = options.folded ?? new Set<number>();
+  const pathLinks = options.pathLinks ?? false;
   let codeBlockIndex = -1;
   return parseTerminalMarkdown(input)
     .map((block) => {
@@ -135,14 +218,15 @@ export function renderTerminalMarkdown(
       }
       if (block.kind === "list") {
         return block.items
-          .map((item) =>
-            item.ordered
-              ? `${item.indent}${item.marker} ${item.text}`
-              : `${item.indent}• ${item.text}`,
-          )
+          .map((item) => {
+            const text = pathLinks ? linkTerminalPaths(item.text) : item.text;
+            return item.ordered
+              ? `${item.indent}${item.marker} ${text}`
+              : `${item.indent}• ${text}`;
+          })
           .join("\n");
       }
-      return block.lines.join("\n");
+      return pathLinks ? block.lines.map(linkTerminalPaths).join("\n") : block.lines.join("\n");
     })
     .join("\n");
 }

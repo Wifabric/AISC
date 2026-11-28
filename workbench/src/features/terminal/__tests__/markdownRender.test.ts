@@ -5,7 +5,13 @@
  * parsed block model, so the parser and renderer are separate seams.
  */
 import { describe, expect, it } from "vitest";
-import { parseTerminalMarkdown, renderTerminalMarkdown, toggleCodeFold } from "../markdownRender";
+import {
+  findTerminalPathTargets,
+  locateTerminalPath,
+  parseTerminalMarkdown,
+  renderTerminalMarkdown,
+  toggleCodeFold,
+} from "../markdownRender";
 
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -153,5 +159,69 @@ describe("command folding (b11)", () => {
     expect(base).toContain("echo one");
     expect(base).toContain("echo two");
     expect(base).not.toContain("folded");
+  });
+});
+
+/**
+ * b12 (D-9 sub-goal 3) path clicks: builds on the b10 block model. Paths in
+ * `text` lines and list-item text are recognized and can be rendered as
+ * terminal-clickable targets (OSC 8 file links); a click column can be
+ * located back to its target. Paths inside code blocks stay verbatim, and
+ * with path links off the output is byte-identical to the b10/b11 rendering.
+ */
+describe("path clicks (b12)", () => {
+  const PATH_OUTPUT = [
+    "Wrote /root/project/src/file.ts:42 and then",
+    "- opened src/aisc/x.py:10",
+    "```ts",
+    "const p = 'src/not/a/link.ts:1';",
+    "```",
+    "Done.",
+  ].join("\n");
+
+  const stripLinks = (s: string): string => s.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
+
+  it("recognizes paths and their locate info in text and list spans", () => {
+    const abs = findTerminalPathTargets("Wrote /root/project/src/file.ts:42 and then");
+    expect(abs).toHaveLength(1);
+    expect(abs[0]).toMatchObject({
+      path: "/root/project/src/file.ts",
+      line: 42,
+      text: "/root/project/src/file.ts:42",
+    });
+
+    const rel = findTerminalPathTargets("opened src/aisc/x.py:10");
+    expect(rel).toHaveLength(1);
+    expect(rel[0]).toMatchObject({ path: "src/aisc/x.py", line: 10 });
+
+    // no false positive on prose that is not a path
+    expect(findTerminalPathTargets("opened myfile.ts and done")).toEqual([]);
+  });
+
+  it("renders text/list paths as clickable OSC 8 file targets", () => {
+    const out = renderTerminalMarkdown(PATH_OUTPUT, { pathLinks: true });
+    expect(out).toContain("\x1b]8;;file:///root/project/src/file.ts\x1b\\");
+    expect(out).toContain("\x1b]8;;file:src/aisc/x.py\x1b\\");
+    // the visible text keeps the :line suffix
+    expect(stripLinks(out)).toContain("/root/project/src/file.ts:42");
+    expect(stripLinks(out)).toContain("• opened src/aisc/x.py:10");
+    // code block spans stay verbatim and surrounding prose is intact
+    expect(stripLinks(out)).toContain("const p = 'src/not/a/link.ts:1';");
+    expect(stripLinks(out)).toContain("Done.");
+  });
+
+  it("keeps the default render byte-identical and locates a click column", () => {
+    const base = renderTerminalMarkdown(PATH_OUTPUT);
+    expect(base).not.toContain("\x1b]8;;");
+    expect(stripLinks(renderTerminalMarkdown(PATH_OUTPUT, { pathLinks: false }))).toBe(base);
+
+    const line = "Wrote /root/project/src/file.ts:42 and then";
+    const start = line.indexOf("/root/project");
+    expect(locateTerminalPath(line, start + 3)).toMatchObject({
+      path: "/root/project/src/file.ts",
+      line: 42,
+    });
+    expect(locateTerminalPath(line, start - 1)).toBeNull();
+    expect(locateTerminalPath(line, line.length - 1)).toBeNull();
   });
 });
