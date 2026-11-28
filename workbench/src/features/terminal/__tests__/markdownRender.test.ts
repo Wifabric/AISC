@@ -5,7 +5,7 @@
  * parsed block model, so the parser and renderer are separate seams.
  */
 import { describe, expect, it } from "vitest";
-import { parseTerminalMarkdown, renderTerminalMarkdown } from "../markdownRender";
+import { parseTerminalMarkdown, renderTerminalMarkdown, toggleCodeFold } from "../markdownRender";
 
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -77,5 +77,81 @@ describe("renderTerminalMarkdown (b10)", () => {
   it("leaves surrounding prose untouched", () => {
     expect(out).toContain("Here is the plan:");
     expect(out).toContain("Done.");
+  });
+});
+
+/**
+ * b11 (D-9 sub-goal 2) command/code folding: builds on the b10 block model.
+ * A code block (fenced command/code output) can be folded to a single summary
+ * line and unfolded back to its full content. Fold state is a pure
+ * `ReadonlySet<number>` of code-block ordinals, so the renderer stays a pure
+ * function and toggling is a small helper. Folding must not disturb the
+ * surrounding prose/list/code rendering.
+ */
+describe("command folding (b11)", () => {
+  const LONG_COMMAND = [
+    "Running the migration:",
+    "```bash",
+    "pnpm db:migrate --from 20240101 --to 20241231 --verbose \\",
+    "  --confirm --backup --no-interactive",
+    "```",
+    "- background job queued",
+    "Done.",
+  ].join("\n");
+
+  it("folds a long code block to a summary line while keeping surrounding rendering", () => {
+    const folded = stripAnsi(
+      renderTerminalMarkdown(LONG_COMMAND, { folded: new Set([0]) }),
+    );
+    // collapsed body is gone
+    expect(folded).not.toContain("pnpm db:migrate");
+    expect(folded).not.toContain("--no-interactive");
+    // a single summary line replaces the block
+    expect(folded).toContain("── bash (2 lines, folded) ──");
+    expect(folded.split("\n").filter((l) => l.includes("──")).length).toBe(1);
+    // surrounding base rendering is intact
+    expect(folded).toContain("Running the migration:");
+    expect(folded).toContain("• background job queued");
+    expect(folded).toContain("Done.");
+  });
+
+  it("unfolds back to the full base rendering", () => {
+    const folded = toggleCodeFold(new Set<number>(), 0);
+    expect(folded.has(0)).toBe(true);
+    const unfolded = toggleCodeFold(folded, 0);
+    expect(unfolded.has(0)).toBe(false);
+
+    const out = stripAnsi(renderTerminalMarkdown(LONG_COMMAND, { folded: unfolded }));
+    expect(out).toContain("── bash ──");
+    expect(out).toContain("pnpm db:migrate --from 20240101 --to 20241231 --verbose \\");
+    expect(out).toContain("  --confirm --backup --no-interactive");
+    expect(out).toContain("• background job queued");
+    expect(out).toContain("Done.");
+    // byte-for-byte equivalent to the b10 default render
+    expect(out).toBe(stripAnsi(renderTerminalMarkdown(LONG_COMMAND)));
+  });
+
+  it("folds only the selected code block and leaves the default render unchanged", () => {
+    const twoBlocks = [
+      "```sh",
+      "echo one",
+      "```",
+      "middle",
+      "```sh",
+      "echo two",
+      "```",
+    ].join("\n");
+    const out = stripAnsi(renderTerminalMarkdown(twoBlocks, { folded: new Set([1]) }));
+    expect(out).toContain("echo one"); // first block untouched
+    expect(out).not.toContain("echo two"); // second block folded
+    expect(out).toContain("── sh (1 line, folded) ──");
+    expect(out).toContain("middle");
+
+    // no fold state -> b10 base rendering preserved
+    const base = stripAnsi(renderTerminalMarkdown(twoBlocks));
+    expect(base).toContain("── sh ──");
+    expect(base).toContain("echo one");
+    expect(base).toContain("echo two");
+    expect(base).not.toContain("folded");
   });
 });

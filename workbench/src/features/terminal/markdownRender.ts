@@ -9,6 +9,12 @@
  * clicks) build on: they consume `parseTerminalMarkdown` and extend the
  * renderer instead of re-parsing engine text.
  *
+ * b11 adds folding on top of the `code` block type only: a code block (long
+ * command / fenced output) can be collapsed to one summary line. Fold state is
+ * caller-owned (`ReadonlySet<number>` of code-block ordinals) so the renderer
+ * stays pure; `toggleCodeFold` is the trivial toggle helper. With no fold
+ * state the output is byte-identical to the b10 base rendering.
+ *
  * The live PTY path stays byte passthrough
  * (workspaceRuntime.paneStreams -> Terminal.writeChunks -> term.write);
  * this pure pipeline is where textual engine output is rendered before it is
@@ -87,14 +93,42 @@ export function parseTerminalMarkdown(input: string): TerminalMarkdownBlock[] {
   return blocks;
 }
 
+/** b11 fold state: ordinals (0-based, among `code` blocks) of folded blocks. */
+export interface TerminalRenderOptions {
+  folded?: ReadonlySet<number>;
+}
+
+/** Toggle one code block's fold state, returning a new set (input untouched). */
+export function toggleCodeFold(
+  folded: ReadonlySet<number>,
+  codeBlockIndex: number,
+): Set<number> {
+  const next = new Set(folded);
+  if (next.has(codeBlockIndex)) next.delete(codeBlockIndex);
+  else next.add(codeBlockIndex);
+  return next;
+}
+
 /** Render the parsed blocks to terminal text. Basic readability only: code
  * blocks get dimmed header/footer rules (code lines stay verbatim) and lists
- * get a bullet marker / preserved ordinal. */
-export function renderTerminalMarkdown(input: string): string {
+ * get a bullet marker / preserved ordinal. Folded code blocks (b11) collapse
+ * to a single dim summary line. */
+export function renderTerminalMarkdown(
+  input: string,
+  options: TerminalRenderOptions = {},
+): string {
+  const folded = options.folded ?? new Set<number>();
+  let codeBlockIndex = -1;
   return parseTerminalMarkdown(input)
     .map((block) => {
       if (block.kind === "code") {
+        codeBlockIndex++;
         const label = block.lang || "code";
+        if (folded.has(codeBlockIndex)) {
+          const count = block.code === "" ? 0 : block.code.split("\n").length;
+          const lines = `${count} line${count === 1 ? "" : "s"}`;
+          return `${DIM}── ${label} (${lines}, folded) ──${RESET}`;
+        }
         const header = `${DIM}── ${label} ──${RESET}`;
         const footer = `${DIM}──────${RESET}`;
         return [header, block.code, footer].join("\n");
