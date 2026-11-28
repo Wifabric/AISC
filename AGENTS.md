@@ -3,6 +3,10 @@
 > 本文件是任何实施者（含 /implement、/implement-spec、子代理）启动时都应遵守的不变量。
 > 只写「忘了就出事」的规则；需要判断的细节进工单，能机器检查的下沉到脚本或 hook。
 
+## 身份
+
+- 主开发：wangyuncepu（收尾 = 收集贡献者 PR + 合并 + 推 preview/final 的 tag 与 Release）
+
 ## 分支与合并
 
 - 从 develop 切分支；命名 `<version>-bN-<topic>` 或 `<version>-<owner>-integration`。
