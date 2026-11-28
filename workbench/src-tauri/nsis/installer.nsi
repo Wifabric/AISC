@@ -1749,6 +1749,10 @@ Section Uninstall
     Delete "$INSTDIR\\{{this.[1]}}"
   {{/each}}
 
+  ; Directory resources (e.g. aisc-bundle) are not removed by `Delete`, which
+  ; only unlinks files. Recursively remove them so `RMDir "$INSTDIR"` succeeds.
+  RMDir /r "$INSTDIR\aisc-bundle"
+
   ; Delete external binaries
   {{#each binaries}}
     Delete "$INSTDIR\\{{this}}"
