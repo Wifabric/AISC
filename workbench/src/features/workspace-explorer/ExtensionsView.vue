@@ -121,6 +121,13 @@ async function closeMarket(): Promise<void> {
       <span class="op-progress-track" aria-hidden="true">
         <span :style="{ width: `${Math.round((store.activeOperation.completed / store.activeOperation.total) * 100)}%` }" class="op-progress-fill" />
       </span>
+      <button
+        v-if="store.canCancelOperation"
+        type="button"
+        class="op-cancel"
+        data-testid="ext-operation-cancel"
+        @click="store.cancelActiveOperation()"
+      >{{ t("extensions.cancel") }}</button>
     </div>
 
     <ExtensionFailureNotice @dismissed="marketButtonRef?.focus()" />
@@ -385,6 +392,7 @@ async function closeMarket(): Promise<void> {
 .op-target { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-xs); color: var(--text-faint); }
 .op-progress-track { flex: 0 0 100%; height: 3px; overflow: hidden; border-radius: var(--radius-full); background: var(--surface-3); }
 .op-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--duration-normal) var(--ease); }
+.op-cancel { border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); cursor: pointer; }
 .update-badge, .unsupported-badge { flex: none; font-size: var(--font-xs); border-radius: var(--radius-full); padding: 1px 6px; border: 1px solid currentColor; }
 .update-badge { color: var(--warn); font-weight: 700; }
 .unsupported-badge { color: var(--text-muted); }

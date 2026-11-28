@@ -37,6 +37,14 @@ describe("v2.1.17 R2 extension layout contracts", () => {
     expect(block).toContain('class="op-progress-track"');
   });
 
+  it("migrates operation progress and cancel into the market dialog", () => {
+    expect(marketSource).toContain(`data-testid="market-operation-progress"`);
+    expect(marketSource).toContain("store.activeOperation");
+    expect(marketSource).toContain("store.canCancelOperation");
+    expect(marketSource).toContain("cancelActiveOperation");
+    expect(extensionsSource).toContain(`data-testid="ext-operation-cancel"`);
+  });
+
   it("uses native button activation for recommendation disclosures", () => {
     const marker = marketSource.indexOf('data-testid="recommendation-card-header"');
     expect(marker).toBeGreaterThan(-1);

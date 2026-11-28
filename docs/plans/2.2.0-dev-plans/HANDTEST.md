@@ -29,8 +29,9 @@
 - **操作**：① 扩展市场选技能组点「安装本组已显示的 N 项」；② 观察进度显示位置（扩展市场界面而非侧边栏）；③ 配代理等安装完成；④ 无代理再触发一次，观察报错、重试、取消。
 - **理想结果**：配代理装完、进度在扩展市场界面；无代理清晰报错、可重试、可取消，不卡死。
 - **异常判定**：进度仍在侧边栏；卡在「安装中」不能取消；无代理无报错直接卡死。
-- **结果**：NOT RUN
-- **证据**：
+- **实现（2.2.0 b1）**：进度条与「取消」按钮已进入扩展市场弹窗（`market-operation-progress` / `market-operation-cancel`）；取消释放 busy 并记录「结果未知」以避免盲重试；单仓库源失败不再阻塞同组健康仓库，错误保留 direct/mirror 传输诊断。单元/mock 覆盖见 `owners/wangyuncepu/tickets/b1.evidence.md`。
+- **结果**：NOT RUN（本环境无 Docker；「配代理装完」与「无代理真断网」均需真实 Windows + Docker 手测）
+- **证据**：`owners/wangyuncepu/tickets/b1.evidence.md`（Python/前端用例；Docker E2E NOT RUN）
 
 ## T4 工作记录超链接（b7）
 

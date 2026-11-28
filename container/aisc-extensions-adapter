@@ -1135,8 +1135,12 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
                     item["error"] = "skill group enable-state preflight failed"
             return {"total": len(items), "completed": 0, "items": items}
 
-    source_errors: dict[str, str] = {}
-    missing_errors: dict[str, str] = {}
+    # Share the single-skill source selection: `_github_skill_env` probes the
+    # archive URL and picks direct/mirror transport instead of gating the whole
+    # group on a bare `git ls-remote`. A repository that still cannot be staged
+    # only fails its own children; healthy repositories in the same group are
+    # installed normally, and every failure keeps its transport diagnostics.
+    staged_errors: dict[str, tuple[str, str]] = {}
     for repo, group_specs in grouped.items():
         try:
             if _github_repo_identity(repo) is None:
@@ -1144,32 +1148,37 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
             if not update and _is_bundled_office_hours(repo, group_specs) and _skill_enable_states("office-hours") is None:
                 missing = _stage_skills_from_git_source(group_specs, repo, {}, bundled=True)
             else:
-                git_env = _github_git_env(repo)
+                git_env = _github_skill_env(repo) or {}
                 missing = _stage_skills_from_git_source(group_specs, repo, git_env)
-            for spec in missing:
-                missing_errors[spec] = (
-                    f"SKILL.md not found for {spec} in selected repository source"
-                )
         except AdapterError as exc:
             for spec in group_specs:
-                source_errors[spec] = f"repo {repo}: {exc.message}"
+                staged_errors[spec] = ("source_failed", f"repo {repo}: {exc.message}")
+            continue
+        for spec in missing:
+            staged_errors[spec] = (
+                "missing",
+                f"SKILL.md not found for {spec} in selected repository source",
+            )
+        if missing:
+            # One unresolved child blocks this repository's staged set, but the
+            # other repositories in the group still install.
+            for spec in group_specs:
+                if spec not in staged_errors:
+                    staged_errors[spec] = (
+                        "blocked",
+                        f"repo {repo}: sibling source preflight failed; "
+                        "resolve the missing child before installing this set",
+                    )
 
-    if source_errors or missing_errors:
-        for item in items:
-            spec = item["spec"]
-            if spec in missing_errors:
-                item["status"] = "missing"
-                item["error"] = missing_errors[spec]
-            elif spec in source_errors:
-                item["status"] = "source_failed"
-                item["error"] = source_errors[spec]
-            else:
-                item["status"] = "blocked"
-                item["error"] = "skill group source preflight failed"
-        return {"total": len(items), "completed": 0, "items": items}
+    for item in items:
+        failure = staged_errors.get(item["spec"])
+        if failure:
+            item["status"], item["error"] = failure
 
     final_status = "updated" if update else "installed"
     for item in items:
+        if item["status"] != "pending":
+            continue
         spec = item["spec"]
         repo, directory = _skill_spec_parts(spec)
         try:
