@@ -27,7 +27,7 @@
 |---|---|---|---|
 | Python | 3.11.2（`pyproject.toml` 要求 >=3.11，CI 到 3.13） | `python3 -m venv .venv` 后 `.venv/bin/pip install -e '.[dev]'`（pytest / PyYAML / PyInstaller / build + 运行时 docker、requests、watchdog、argcomplete） | `.venv/bin/python --version` → `Python 3.11.2`；`.venv/bin/python -m pytest --version` → `pytest 9.2.0` |
 | Node | 22.23.5（`.nvmrc` = 22） | UNVERIFIED（仓库外 ~/.nvm）：nvm v0.40.1 装到 `~/.nvm`，Node 22.23.5 解压到 `~/.nvm/versions/node/` 并建 `v22` 软链（供 `scripts/local-gates.sh` 识别）；`workbench/` 内 `npm ci` | `~/.nvm/versions/node/v22.23.5/bin/node --version` → `v22.23.5`（PATH 默认仍为 v26.13.0）；`npx vitest --version` → `vitest/4.1.10 linux-x64 node-v22.23.5`；`npx vue-tsc --version` → `Version 5.6.3` |
-| Rust | 1.100.1 stable（`workbench/src-tauri`；目标版本） | `rustup-init -y --profile minimal --default-toolchain stable`；apt 装 `build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev libssl-dev libxdo-dev`；按 CI 建 gitignore 占位 `workbench/src-tauri/binaries/aisc-x86_64-unknown-linux-gnu` 与 `workbench/src-tauri/nsis/bundle/aisc-bundle/` | NOT RUN：PATH 含 `/opt/aisc/toolchain/cargo/bin` 但目录缺失，`cargo` 未装；CI 为 Rust 权威，本地 gate 自动跳过 cargo |
+| Rust | 1.100.1 stable（`workbench/src-tauri`） | `CARGO_HOME=/opt/aisc/toolchain/cargo RUSTUP_HOME=/opt/aisc/toolchain/rustup rustup-init -y --profile minimal --default-toolchain stable --no-modify-path` 后 `rustup default stable`；apt 装 `build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev libssl-dev libxdo-dev`；按 CI 建 gitignore 占位 `workbench/src-tauri/binaries/aisc-x86_64-unknown-linux-gnu` 与 `workbench/src-tauri/nsis/bundle/aisc-bundle/` | `cargo --version` → `cargo 1.100.1`；`cargo test --lib -- --skip diag_engine_reachable` 需 cc/gcc（build-essential）与 Tauri 系统库，装齐后跑 |
 | Docker | NOT RUN（未装） | 容器内无法安装/运行：存在 `/.dockerenv`，无 `/var/run/docker.sock` 与 `dockerd`，CapEff 不含 `cap_sys_admin`（DinD 需特权）；`scripts/local-gates.sh` 自动跳过依赖 daemon 的 `diag_engine_reachable` 测试 | `docker --version` → `command not found` |
 
 ## 4. 日常循环（改哪层怎么生效）
@@ -80,8 +80,8 @@ CLI（src/aisc/）→ Docker SDK（exec pty）→ 容器
 | 需求 | 首要入口 | 关联文件 | 验证 |
 |---|---|---|---|
 | 改前端交互 | `workbench/src/` | `workbench/src-tauri/`（IPC） | `npx vitest run` + `npm run build` |
-| 改工作记录预览 | `workbench/src/features/history/RecordContent.vue`、`ConversationViewer.vue`、`conversationReading.ts` | `workbench/src/stores/workspaceExplorer.ts`（missingRecordPaths / WORKSPACE_ERRORS）、`src/aisc/application/conversation.py`（kind 归一） | `npx vitest run` + `python3 -m pytest tests/test_conversation.py` |
-| 改终端渲染/可观测 | `workbench/src/features/terminal/Terminal.vue`、`MarkdownOutputView.vue`、`markdownOutput.ts`、`markdownRender.ts` | `workbench/src/stores/workspaceRuntime.ts`（paneStreams / 探针）、`stuckProbe.ts` | `npx vitest run` |
+| 改工作记录预览 | `workbench/src/features/history/RecordContent.vue`、`workbench/src/features/history/ConversationViewer.vue`、`workbench/src/features/history/conversationReading.ts` | `workbench/src/stores/workspaceExplorer.ts`（missingRecordPaths / WORKSPACE_ERRORS）、`src/aisc/application/conversation.py`（kind 归一） | `npx vitest run` + `python3 -m pytest tests/test_conversation.py` |
+| 改终端渲染/可观测 | `workbench/src/features/terminal/Terminal.vue`、`workbench/src/features/terminal/MarkdownOutputView.vue`、`workbench/src/features/terminal/markdownOutput.ts`、`workbench/src/features/terminal/markdownRender.ts` | `workbench/src/stores/workspaceRuntime.ts`（paneStreams / 探针）、`workbench/src/features/terminal/stuckProbe.ts` | `npx vitest run` |
 | 改 CLI 行为 | `src/aisc/` | `src/aisc/schemas/` | `python3 -m pytest tests/` |
 | 改容器/引擎适配 | `container/` | `container/Dockerfile` | 重建镜像 + 对应集成测试 |
 
