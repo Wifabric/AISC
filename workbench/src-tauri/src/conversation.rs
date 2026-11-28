@@ -16,7 +16,7 @@ use std::time::Duration;
 use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::cli::{run_control_target, Envelope};
+use crate::cli::{run_control_input_target, run_control_target, Envelope};
 use crate::error::WorkbenchError;
 use crate::runtime::envelope_error;
 
@@ -125,6 +125,24 @@ fn conversation_rename_argv(
 
 /// 批 2 聊天式 UI: normalized read-only message stream with backwards tail
 /// paging. `tail`/`before` are optional — None skips the CLI flag entirely.
+fn conversation_import_argv(workspace: &str, agent: &str, title: &str) -> Vec<String> {
+    let mut argv = vec![
+        "conversation".into(),
+        "import".into(),
+        "--workspace".into(),
+        workspace.into(),
+        "--agent".into(),
+        agent.into(),
+        "--format".into(),
+        "json".into(),
+    ];
+    if !title.is_empty() {
+        argv.push("--title".into());
+        argv.push(title.into());
+    }
+    argv
+}
+
 fn conversation_read_argv(
     workspace: &str,
     conversation_id: &str,
@@ -203,6 +221,13 @@ pub struct ConversationDeleteResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationRenameResult {
     pub renamed: bool,
+    pub conversation_id: String,
+    pub agent: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationImportResult {
     pub conversation_id: String,
     pub agent: String,
     pub title: String,
@@ -381,6 +406,54 @@ pub async fn conversation_read(
         .map_err(|e| {
             WorkbenchError::cli_protocol()
                 .with_detail(format!("conversation read parse: {e}"))
+        })
+}
+
+/// b17 (T5): import a local Markdown work record as a new unfiled
+/// conversation. The file is chosen in the native dialog; its content rides
+/// the CLI's stdin (never argv/disk), and the CLI writes a minimal
+/// provider-native user turn for the existing conversation reader.
+#[tauri::command]
+pub async fn conversation_import(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    workspace: String,
+    agent: String,
+    title: String,
+) -> Result<Option<ConversationImportResult>, WorkbenchError> {
+    use tauri_plugin_dialog::DialogExt;
+    let target = crate::target::resolve_target_for_workspace(&app, &window, &workspace).await?;
+    let (send, receive) = tokio::sync::oneshot::channel();
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .add_filter("Markdown", &["md"]);
+    if std::path::Path::new(&workspace).is_dir() {
+        dialog = dialog.set_directory(&workspace);
+    }
+    dialog.pick_file(move |file| {
+        let _ = send.send(file);
+    });
+    let Some(file) = receive.await.map_err(|_| WorkbenchError::workspace_io())? else {
+        return Ok(None);
+    };
+    let path = file
+        .into_path()
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?;
+    let markdown = std::fs::read_to_string(&path)
+        .map_err(|e| WorkbenchError::workspace_io().with_detail(e.to_string()))?;
+    let argv = conversation_import_argv(&workspace, &agent, &title);
+    let env: Envelope = run_control_input_target(&target, argv, markdown, CONVERSATION_TIMEOUT, CancellationToken::new())
+        .await?;
+    if let Some(e) = envelope_error(&env) {
+        return Err(e);
+    }
+    let data = env.data.unwrap_or(Value::Null);
+    serde_json::from_value::<ConversationImportResult>(data)
+        .map(Some)
+        .map_err(|e| {
+            WorkbenchError::cli_protocol().with_detail(format!("conversation import parse: {e}"))
         })
 }
 

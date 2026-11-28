@@ -1123,6 +1123,7 @@ export const enUS: Record<string, string> = {
   "workRecords.showArchived": "Show archived",
   "workRecords.newTitle": "Work record name",
   "workRecords.create": "Create",
+  "workRecords.importMarkdown": "Import Markdown",
   "workRecords.empty": "No work records.",
   "workRecords.archived": "Archived",
   "workRecords.rename": "Rename",

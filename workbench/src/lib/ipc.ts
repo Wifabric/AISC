@@ -89,6 +89,12 @@ export const conversationList = (workspace: string) =>
     workspace,
   });
 
+export const conversationImport = (workspace: string, agent: string, title: string) =>
+  invoke<{ conversation_id: string; agent: string; title: string } | null>(
+    "conversation_import",
+    { workspace, agent, title },
+  );
+
 export const conversationPreflight = (
   workspace: string,
   conversationId: string,

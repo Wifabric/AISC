@@ -64,8 +64,8 @@ use artifact::{artifact_inspect, artifact_list, artifact_refresh};
 use cache::{cache_cleanup, cache_inspect, cache_usage, container_action, image_rm, image_tag};
 use cli::{cli_clear_pin, cli_discover, cli_pin, negotiate_capabilities, CliArg};
 use conversation::{
-    conversation_delete, conversation_export_markdown, conversation_list, conversation_preflight, conversation_read,
-    conversation_rename,
+    conversation_delete, conversation_export_markdown, conversation_import, conversation_list,
+    conversation_preflight, conversation_read, conversation_rename,
 };
 use docker_admin::{docker_cleanup, docker_rebuild, docker_scan};
 use doctor::{diagnostic_bundle, logs_tail, run_doctor};
@@ -158,6 +158,7 @@ pub fn run(cli_arg: Option<String>) {
             conversation_rename,
             conversation_read,
             conversation_export_markdown,
+            conversation_import,
             work_record_list,
             topic::topic_call,
             work_record_create,

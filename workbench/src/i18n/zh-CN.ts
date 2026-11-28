@@ -1123,6 +1123,7 @@ export const zhCN = {
   "workRecords.showArchived": "显示已归档",
   "workRecords.newTitle": "工作记录名称",
   "workRecords.create": "新建",
+  "workRecords.importMarkdown": "导入 Markdown",
   "workRecords.empty": "暂无工作记录。",
   "workRecords.archived": "已归档",
   "workRecords.rename": "重命名",

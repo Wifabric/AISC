@@ -112,6 +112,16 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     workspace.value = next;
   }
 
+  /** b17 (T5): import a local Markdown work record as a new unfiled
+   *  conversation (the file dialog lives in the Rust command). Returns null
+   *  when the user cancels the picker. */
+  async function importMarkdown(target: string, agent = "claude", title = ""): Promise<boolean> {
+    const result = await ipc.conversationImport(target, agent, title);
+    if (result === null) return false;
+    await load(target);
+    return true;
+  }
+
   async function load(target: string): Promise<void> {
     setWorkspace(target);
     const generation = ++loadGeneration;
@@ -359,6 +369,7 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     setWorkspace,
     load,
     reload,
+    importMarkdown,
     onSessionActivity,
     notifySessionActivity,
     create,

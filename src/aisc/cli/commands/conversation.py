@@ -13,6 +13,7 @@ from typing import Any, Dict
 
 from aisc.application.conversation import (
     delete_conversation,
+    import_conversation_markdown,
     list_conversations,
     preflight_conversation,
     read_conversation,
@@ -45,6 +46,14 @@ def cmd_conversation_delete(workspace: str, conversation_id: str,
                             agent: str) -> Dict[str, Any]:
     """Execute ``aisc conversation delete`` (v2.1.8 T4 手测反馈 #4)."""
     return delete_conversation(workspace, conversation_id, agent)
+
+
+def cmd_conversation_import(workspace: str, agent: str, title: str) -> Dict[str, Any]:
+    """Execute ``aisc conversation import`` (b17 T5): markdown rides stdin."""
+    import sys
+
+    markdown = sys.stdin.read()
+    return import_conversation_markdown(workspace, markdown, agent=agent, title=title)
 
 
 def cmd_conversation_rename(workspace: str, conversation_id: str, agent: str,
@@ -80,6 +89,9 @@ def print_conversation_text(subcommand: str, data: Any, errors: list) -> None:
               f"agent={data.get('agent', '')}")
     elif subcommand == "rename":
         print(f"renamed: {data.get('conversation_id', '')} "
+              f"agent={data.get('agent', '')} title={data.get('title', '')}")
+    elif subcommand == "import":
+        print(f"imported: {data.get('conversation_id', '')} "
               f"agent={data.get('agent', '')} title={data.get('title', '')}")
     elif subcommand == "read":
         if "markdown" in data:

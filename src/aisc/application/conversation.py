@@ -24,11 +24,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing
 from collections import deque
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -1003,6 +1005,43 @@ def conversation_markdown(workspace: str, conversation_id: str, agent: str,
             if remaining == 0 and offset < end:
                 return {"markdown": "".join(parts), "next": f"{offset}:0:{end}"}
     return {"markdown": "".join(parts), "next": None}
+
+
+
+def import_conversation_markdown(workspace: str, markdown: str, *,
+                            agent: str = "claude", title: str = "") -> Dict[str, Any]:
+    """b17 (T5): import an external Markdown work record as a new unfiled
+    conversation. Writes a minimal provider-native user turn so the existing
+    reader surfaces it; the provider never owns this file, so it is display +
+    list compatible only (no live resume)."""
+    if agent not in _AGENTS:
+        raise CliError(
+            message=f"Unsupported agent: {agent}",
+            exit_code=2,
+            error_code=ERROR_INVALID_AGENT,
+        )
+    if not markdown.strip():
+        raise CliError(
+            message="Markdown content is empty",
+            exit_code=2,
+            error_code=ERROR_INVALID_AGENT,
+        )
+    ws_dir = _workspace_dir(workspace)
+    base = ws_dir / agent / ("projects" if agent == "claude" else "sessions")
+    base.mkdir(parents=True, exist_ok=True)
+    conversation_id = str(uuid.uuid4())
+    ts = datetime.now(timezone.utc).isoformat()
+    line = {
+        "type": "user",
+        "message": {"role": "user", "content": [{"type": "text", "text": markdown}]},
+        "timestamp": ts,
+    }
+    (base / f"{conversation_id}.jsonl").write_text(
+        json.dumps(line, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    display_title = sanitize_title(title) if title.strip() else sanitize_title(markdown)
+    return {"conversation_id": conversation_id, "agent": agent, "title": display_title}
+
 
 
 def read_conversation(workspace: str, conversation_id: str, agent: str,
