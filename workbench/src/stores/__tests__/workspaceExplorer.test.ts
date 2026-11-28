@@ -499,3 +499,13 @@ describe("workspaceExplorer nested tree + pagination", () => {
     expect(s.truncatedDirs[""]).toBe(false);
   });
 });
+
+describe("workspaceExplorer record path verification", () => {
+  it("treats a path as missing when its directory cannot be listed", async () => {
+    const { workspaceList } = await import("../../lib/ipc");
+    vi.mocked(workspaceList).mockRejectedValueOnce({ code: "WB_ERR_WORKSPACE_INVALID", message: "not a directory" });
+    const s = useWorkspaceExplorerStore();
+    const missing = await s.missingRecordPaths("/ws", ["moved/gone.md"]);
+    expect(missing.has("moved/gone.md")).toBe(true);
+  });
+});

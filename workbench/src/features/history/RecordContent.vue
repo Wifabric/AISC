@@ -103,7 +103,7 @@ async function click(event: MouseEvent) {
     el?.scrollIntoView?.({ block: "center" }); el?.focus();
   } else {
     try { await explorer.openRecordLink(href, props.workspace); }
-    catch { anchor.replaceWith(...anchor.childNodes); error.value = t("history.viewer.linkUnavailable"); }
+    catch { anchor.replaceWith(...anchor.childNodes); }
   }
 }
 </script>
