@@ -15,15 +15,18 @@ export function readingTurns(messages: ConversationReadMessage[]): ReadingTurn[]
   let response: ConversationReadMessage[] = [];
   function finish() {
     if (!turn) return;
-    const lastAction = response.reduce((last, m, i) => m.kind !== "message" ? i : last, -1);
+    const lastAction = response.reduce((last, m, i) => m.kind !== "message" && m.kind !== "compact" ? i : last, -1);
     response.forEach((m, i) => {
-      if (m.kind !== "message" || m.phase === "commentary" || (i < lastAction && m.phase !== "final_answer")) turn!.activity.push(m);
+      // A compact summary is the reply to a /compact directive, never user input.
+      if (m.kind === "compact") turn!.answers.push(m);
+      else if (m.kind !== "message" || m.phase === "commentary" || (i < lastAction && m.phase !== "final_answer")) turn!.activity.push(m);
       else turn!.answers.push(m);
     });
     response = [];
   }
   for (const m of messages) {
-    if (m.role === "user" && m.kind === "message") {
+    // Slash commands carry the user's actual input; injected skill content is activity.
+    if ((m.role === "user" && m.kind === "message") || m.kind === "command") {
       if (!turn || response.length) {
         finish();
         turn = { id: m.ordinal, questions: [], activity: [], answers: [] };

@@ -28,6 +28,27 @@ describe("record reading", () => {
       expect(recordLink(value, "/ws")).toBeNull();
     }
   });
+  it("splits a slash command from its reply and keeps user input and skill execution separate", () => {
+    const turns = readingTurns([
+      msg(0, "command", "/office-hours\n核对数据", "user"),
+      { ordinal: 1, role: "user", kind: "skill", name: "office-hours", text: "Base directory for this skill: /root/skills/office-hours" },
+      msg(2, "reasoning", "按技能核对", "assistant"),
+      msg(3, "message", "核对完成", "assistant"),
+      msg(4, "command", "/compact", "user"),
+      { ordinal: 5, role: "assistant", kind: "compact", text: "This session is being continued from a previous conversation." },
+      msg(6, "message", "继续", "user"),
+    ]);
+    expect(turns).toHaveLength(3);
+    // User-provided content is the question; injected skill content is execution.
+    expect(turns[0].questions.map(m => m.text)).toEqual(["/office-hours\n核对数据"]);
+    expect(turns[0].activity.map(m => m.kind)).toEqual(["skill", "reasoning"]);
+    expect(turns[0].answers.map(m => m.text)).toEqual(["核对完成"]);
+    // /compact directive and its reply are split, never merged into one user turn.
+    expect(turns[1].questions.map(m => m.text)).toEqual(["/compact"]);
+    expect(turns[1].activity).toHaveLength(0);
+    expect(turns[1].answers.map(m => m.text)).toEqual(["This session is being continued from a previous conversation."]);
+    expect(turns[2].questions.map(m => m.text)).toEqual(["继续"]);
+  });
   it("renders GFM, math, code and footnotes while rejecting executable markup", () => {
     const html = renderRecordMarkdown("# 标题\n\n|a|b|\n|-|-|\n|1|2|\n\n- [x] 完成\n\n$x^2$\n\n```js\nconst x = 1;\n```\n\n脚注[^1]\n\n[^1]: 内容\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))");
     expect(html).toContain("<h1"); expect(html).toContain("<table");
