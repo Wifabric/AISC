@@ -270,6 +270,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   // state phase (for state age) and the last queue depth (stall baseline).
   const paneLastActivityAt: Record<string, number> = {};
   const paneLastFlushAt: Record<string, number> = {};
+  // b13 (D-4 实测): throttle for the PTY-output-driven Work Records push (see
+  // the output branch in openSession). Non-reactive, like the b9 maps above.
+  const paneLastWorkRecordsNotifyAt: Record<string, number> = {};
   const lastProbeQueueDepth: Record<string, number> = {};
   const probePhaseFor = new Map<string, { key: string; since: number }>();
   const loggedStuckKeys = new Set<string>();
@@ -1315,6 +1318,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     const openedAt = Date.now();
     paneLastActivityAt[paneId] = openedAt;
     paneLastFlushAt[paneId] = openedAt;
+    paneLastWorkRecordsNotifyAt[paneId] = openedAt;
     lastProbeQueueDepth[paneId] = 0;
     probePhaseFor.set(paneId, { key: probePhaseKey("starting", sid), since: openedAt });
     syncProjection(tab);
@@ -1332,6 +1336,18 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         // (G-17 feedback 2026-08-10).
         onTabOpenOk(paneId);
         paneLastActivityAt[paneId] = Date.now(); // b9: liveness for the stuck probe
+        // b13 (D-4 实测): a provider CLI can mint a new conversation without a
+        // Workbench openSession (the user types /new or chats in the terminal).
+        // Throttle a Work Records push off PTY output so those sessions appear
+        // without a manual refresh, matching the openSession lifecycle push.
+        if (agent === "claude" || agent === "codex") {
+          const now = Date.now();
+          const lastNotify = paneLastWorkRecordsNotifyAt[paneId] ?? 0;
+          if (now - lastNotify >= 5000) {
+            paneLastWorkRecordsNotifyAt[paneId] = now;
+            useWorkRecordsStore().notifySessionActivity(startingWorkspace);
+          }
+        }
         // S1.3: buffer into the non-reactive pending queue; a single rAF flush
         // applies budget + emits one reactive replacement. O2 (D-11): the raw
         // offset rides along for the spool ("load earlier output") anchor.
@@ -2294,7 +2310,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   function resetStuckProbeState(): void {
     prunePaneBookkeeping(
       null,
-      [paneLastActivityAt, paneLastFlushAt, lastProbeQueueDepth],
+      [paneLastActivityAt, paneLastFlushAt, paneLastWorkRecordsNotifyAt, lastProbeQueueDepth],
       [probePhaseFor],
     );
     loggedStuckKeys.clear();

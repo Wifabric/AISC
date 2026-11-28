@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useRuntimeStore } from "../runtime";
+import { useWorkRecordsStore } from "../workRecords";
 import { AGENT_TITLE, newPaneTab } from "../tabLayout";
 
 type EventLike = { type: string; bytes?: string; offset?: number; reason?: string; exitCode?: number | null };
@@ -25,7 +26,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-vi.mock("../../lib/ipc", () => ({
+const mockIpc = vi.hoisted(() => ({
   logUiEvent: vi.fn().mockResolvedValue(undefined),
   openSession: vi.fn().mockResolvedValue({}),
   ackSessionExit: vi.fn().mockResolvedValue(null),
@@ -39,6 +40,8 @@ vi.mock("../../lib/ipc", () => ({
   getProviderStatus: vi.fn().mockResolvedValue({}),
   stopRuntime: vi.fn(),
 }));
+
+vi.mock("../../lib/ipc", () => mockIpc);
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(), open: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(() => ({
@@ -108,5 +111,60 @@ describe("S1.8 IPC fake → store buffer", () => {
     first.onmessage({ type: "output", bytes: "b2xk", offset: 20 }); // stale "old"
     await flushFrame();
     expect(s.paneStreams[tab.activePaneId]).toEqual(["aGVsbG8="]); // unchanged
+  });
+});
+
+describe("b13 (D-4): Work Records push off PTY output", () => {
+  it("throttles a push for a codex pane", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" } as never);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const s = useRuntimeStore();
+      const records = useWorkRecordsStore();
+      const listener = vi.fn();
+      records.onSessionActivity(listener);
+
+      s.runtimeId = "11111111-1111-4111-8111-111111111111";
+      s.workspace = "/ws";
+      const tab = newPaneTab("codex-tab", "codex", AGENT_TITLE.codex, null);
+      s.tabs = [tab];
+      s.activeTabId = "codex-tab";
+
+      await s.openTab("codex-tab");
+      const channel = channelInstances[0]!;
+      const base = listener.mock.calls.length;
+      expect(base).toBeGreaterThan(0); // openSession already pushed once
+
+      // Output inside the 5s throttle window → no extra push.
+      channel.onmessage({ type: "output", bytes: "aGVsbG8=", offset: 0 });
+      expect(listener.mock.calls.length).toBe(base);
+
+      // After the 5s window the next output pushes exactly once more.
+      nowSpy.mockReturnValue(1_000_000 + 5001);
+      channel.onmessage({ type: "output", bytes: "IHdvcmxk", offset: 5 });
+      expect(listener.mock.calls.length).toBe(base + 1);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("does not push for a bash pane", async () => {
+    const s = useRuntimeStore();
+    const records = useWorkRecordsStore();
+    const listener = vi.fn();
+    records.onSessionActivity(listener);
+
+    s.runtimeId = "11111111-1111-4111-8111-111111111111";
+    s.workspace = "/ws";
+    const tab = newPaneTab("bash-tab", "bash", AGENT_TITLE.bash, null);
+    s.tabs = [tab];
+    s.activeTabId = "bash-tab";
+
+    await s.openTab("bash-tab");
+    const channel = channelInstances[0]!;
+    const base = listener.mock.calls.length; // bash never pushes
+    channel.onmessage({ type: "output", bytes: "aGVsbG8=", offset: 0 });
+    await flushFrame();
+    expect(listener.mock.calls.length).toBe(base);
   });
 });
