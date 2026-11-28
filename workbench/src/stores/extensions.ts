@@ -62,6 +62,13 @@ export interface ExtensionUpdateItem {
 
 type KindRecord<T> = Record<ExtensionsKind, T>;
 
+// Container control ids served by the adapter's read-only `skill-describe`
+// channel. They carry live group-install progress and request a real cancel
+// without holding the host mutation lock (the install already owns it).
+const GROUP_PROGRESS_ID = "__aisc_group_operation__";
+const GROUP_CANCEL_ID = "__aisc_group_cancel__";
+const GROUP_PROGRESS_POLL_MS = 1000;
+
 function kindRecord<T>(value: T): KindRecord<T> {
   return { skills: value, mcp: value, plugins: value };
 }
@@ -265,7 +272,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     errorsByKind.value = kindRecord<string | null>(null);
     operationsByKind.value = kindRecord<ExtensionOperation | null>(null);
     cancelScopes.clear();
-    cancelableByKind.value = kindRecord(false);
+    cancellableByKind.value = kindRecord(false);
   }
 
   function clearUpdateSignals(target: ExtensionsKind, ids: string[]): void {
@@ -306,34 +313,42 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   // Cancellation races the in-flight request so a slow/hung install releases
   // the busy state and lets the user retry. The abandoned request is observed
-  // (see `cancellable`) but its late result never mutates the UI.
+  // (see `cancellable`) but its late result never mutates the UI. Group installs
+  // also carry a real container-side cancel (`abort`) that stops the adapter's
+  // running child processes; the local race only releases the UI immediately.
   class OperationCancelled extends Error {
     constructor() { super("operation cancelled"); }
   }
-  interface CancelScope { cancelled: boolean; promise: Promise<void>; cancel: () => void; }
-  const cancelableByKind = ref<KindRecord<boolean>>(kindRecord(false));
+  interface CancelScope {
+    cancelled: boolean;
+    promise: Promise<void>;
+    cancel: () => void;
+    abort?: () => void;
+  }
+  const cancellableByKind = ref<KindRecord<boolean>>(kindRecord(false));
   const cancelScopes = new Map<ExtensionsKind, CancelScope>();
 
-  function beginCancelScope(target: ExtensionsKind): CancelScope {
+  function beginCancelScope(target: ExtensionsKind, abort?: () => void): CancelScope {
     let resolve!: () => void;
     const scope: CancelScope = {
       cancelled: false,
       promise: new Promise<void>((done) => { resolve = done; }),
       cancel: () => {
         scope.cancelled = true;
-        cancelableByKind.value = { ...cancelableByKind.value, [target]: false };
+        cancellableByKind.value = { ...cancellableByKind.value, [target]: false };
         resolve();
       },
+      abort,
     };
     cancelScopes.set(target, scope);
-    cancelableByKind.value = { ...cancelableByKind.value, [target]: true };
+    cancellableByKind.value = { ...cancellableByKind.value, [target]: true };
     return scope;
   }
 
   function endCancelScope(target: ExtensionsKind, scope: CancelScope): void {
     if (cancelScopes.get(target) === scope) cancelScopes.delete(target);
-    if (cancelableByKind.value[target]) {
-      cancelableByKind.value = { ...cancelableByKind.value, [target]: false };
+    if (cancellableByKind.value[target]) {
+      cancellableByKind.value = { ...cancellableByKind.value, [target]: false };
     }
   }
 
@@ -349,7 +364,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
 
   const canCancelOperation = computed(() => {
     const operation = activeOperation.value;
-    return !!operation && cancelableByKind.value[operation.kind] === true;
+    return !!operation && cancellableByKind.value[operation.kind] === true;
   });
 
   function cancelActiveOperation(): boolean {
@@ -358,6 +373,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     const scope = cancelScopes.get(operation.kind);
     if (!scope || scope.cancelled) return false;
     scope.cancel();
+    scope.abort?.();
     return true;
   }
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
@@ -585,6 +601,15 @@ export const useExtensionsStore = defineStore("extensions", () => {
     ]);
   }
 
+  async function readGroupProgress(): Promise<{ completed: number; total: number } | null> {
+    const out = await call<{
+      items?: Array<{ id?: string; completed?: number; total?: number }>;
+    }>("skill-describe", { id: GROUP_PROGRESS_ID });
+    const row = out.items?.find((item) => item.id === GROUP_PROGRESS_ID);
+    if (!row || typeof row.completed !== "number" || typeof row.total !== "number") return null;
+    return { completed: row.completed, total: row.total };
+  }
+
   async function runSkillGroupOperation(
     group: SkillGroup,
     action: "install" | "update",
@@ -602,7 +627,29 @@ export const useExtensionsStore = defineStore("extensions", () => {
       label: group.name, completed: 0, total: specs.length,
     };
     const started = new Date().toISOString();
-    const scope = beginCancelScope("skills");
+    const scope = beginCancelScope("skills", () => {
+      // Real cancel: the adapter drops a marker and kills the running child
+      // tree, so the install stops instead of finishing in the background.
+      void call("skill-describe", { id: GROUP_CANCEL_ID }).catch(() => undefined);
+    });
+    let progressTimer: ReturnType<typeof setInterval> | undefined;
+    let progressPending = false;
+    progressTimer = setInterval(() => {
+      if (!isCurrentContext(token) || scope.cancelled || progressPending) return;
+      progressPending = true;
+      void readGroupProgress()
+        .then((progress) => {
+          if (!progress || !isCurrentContext(token) || scope.cancelled) return;
+          const current = operationsByKind.value.skills;
+          if (!current) return;
+          const completed = Math.max(0, Math.min(progress.completed, current.total));
+          if (completed > current.completed) {
+            operationsByKind.value.skills = { ...current, completed };
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => { progressPending = false; });
+    }, GROUP_PROGRESS_POLL_MS);
     let loggedResults = false;
     try {
       const result = await cancellable(call<{
@@ -668,6 +715,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       if (!isCurrentContext(token)) return;
       setError("skills", message, operationLog.value.filter(row => row.kind === "skills" && row.status !== "success").slice(-1)[0]?.operationId ?? null);
     } finally {
+      if (progressTimer !== undefined) clearInterval(progressTimer);
       endCancelScope("skills", scope);
       if (isCurrentContext(token)) {
         busyByKind.value.skills = false;

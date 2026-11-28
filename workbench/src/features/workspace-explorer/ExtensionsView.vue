@@ -112,24 +112,6 @@ async function closeMarket(): Promise<void> {
       </span>
     </div>
 
-    <div v-if="store.activeOperation" class="operation-progress" data-testid="ext-operation-progress" role="status">
-      <span class="op-action">{{ t(`extensions.op.${store.activeOperation.action}`) }}</span>
-      <span v-if="store.activeOperation.total > 1" class="op-count">
-        {{ store.activeOperation.completed }}/{{ store.activeOperation.total }}
-      </span>
-      <span class="op-target">{{ store.activeOperation.label }}</span>
-      <span class="op-progress-track" aria-hidden="true">
-        <span :style="{ width: `${Math.round((store.activeOperation.completed / store.activeOperation.total) * 100)}%` }" class="op-progress-fill" />
-      </span>
-      <button
-        v-if="store.canCancelOperation"
-        type="button"
-        class="op-cancel"
-        data-testid="ext-operation-cancel"
-        @click="store.cancelActiveOperation()"
-      >{{ t("extensions.cancel") }}</button>
-    </div>
-
     <ExtensionFailureNotice @dismissed="marketButtonRef?.focus()" />
     <p v-if="store.error" class="explorer-error" role="alert">{{ store.error }}</p>
     <p v-if="!store.canLoad" class="explorer-empty">{{ t("extensions.noRuntime") }}</p>
@@ -386,13 +368,6 @@ async function closeMarket(): Promise<void> {
 .skill-children { display: grid; min-width: 0; gap: 2px; margin: 2px 0 3px; }
 .skill-child { min-height: 28px; border-top: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); }
 .skill-child.selected { background: var(--surface-2); }
-.operation-progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }
-.op-action { flex: 0 0 auto; font-size: var(--font-sm); font-weight: 600; }
-.op-count { flex: 0 0 auto; font-size: var(--font-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.op-target { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-xs); color: var(--text-faint); }
-.op-progress-track { flex: 0 0 100%; height: 3px; overflow: hidden; border-radius: var(--radius-full); background: var(--surface-3); }
-.op-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--duration-normal) var(--ease); }
-.op-cancel { border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); cursor: pointer; }
 .update-badge, .unsupported-badge { flex: none; font-size: var(--font-xs); border-radius: var(--radius-full); padding: 1px 6px; border: 1px solid currentColor; }
 .update-badge { color: var(--warn); font-weight: 700; }
 .unsupported-badge { color: var(--text-muted); }

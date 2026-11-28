@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import type { ExtensionsItem } from "../../lib/ipc";
 import { useExtensionsStore, type ExtensionsKind } from "../../stores/extensions";
 import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
+import ExtensionOperationProgress from "./ExtensionOperationProgress.vue";
 import ExtensionMarketResult from "./ExtensionMarketResult.vue";
 import { skillGroupSummary } from "./extensionSummaries";
 import ExtensionSourceManager from "./ExtensionSourceManager.vue";
@@ -235,28 +236,12 @@ onMounted(() => { closeRef.value?.focus(); });
           </button>
         </header>
 
-        <div
+        <ExtensionOperationProgress
           v-if="store.activeOperation"
-          class="market-operation-progress"
-          data-testid="market-operation-progress"
-          role="status"
-        >
-          <span class="op-action">{{ t(`extensions.op.${store.activeOperation.action}`) }}</span>
-          <span v-if="store.activeOperation.total > 1" class="op-count">
-            {{ store.activeOperation.completed }}/{{ store.activeOperation.total }}
-          </span>
-          <span class="op-target">{{ store.activeOperation.label }}</span>
-          <span class="op-progress-track" aria-hidden="true">
-            <span :style="{ width: `${Math.round((store.activeOperation.completed / store.activeOperation.total) * 100)}%` }" class="op-progress-fill" />
-          </span>
-          <button
-            v-if="store.canCancelOperation"
-            type="button"
-            class="op-cancel"
-            data-testid="market-operation-cancel"
-            @click="store.cancelActiveOperation()"
-          >{{ t("extensions.cancel") }}</button>
-        </div>
+          :operation="store.activeOperation"
+          :cancellable="store.canCancelOperation"
+          @cancel="store.cancelActiveOperation()"
+        />
 
         <div
           class="market-tabs"
@@ -551,11 +536,6 @@ onMounted(() => { closeRef.value?.focus(); });
 .market-cache, .market-search-error { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .market-search-error { color: var(--error); }
 .market-group-summary { margin: var(--space-1); color: var(--text-2); font-size: var(--font-sm); line-height: var(--leading-relaxed); overflow-wrap: anywhere; }
-.market-operation-progress { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; margin: 0 var(--space-4) var(--space-2); padding: var(--space-1) var(--space-2); border: var(--border-w) solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-2); }
-.market-operation-progress .op-target { min-width: 0; overflow-wrap: anywhere; }
-.market-operation-progress .op-progress-track { flex: 1 1 100%; height: 3px; overflow: hidden; border-radius: var(--radius-full); background: var(--surface-3); }
-.market-operation-progress .op-progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--duration-normal) var(--ease); }
-.market-operation-progress .op-cancel { border: var(--border-w) solid var(--border-2); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); cursor: pointer; }
 @media (max-width: 720px) {
   .market-body { grid-template-columns: 1fr; overflow: auto; }
   .recommendation-meta { grid-template-columns: 1fr; padding-bottom: var(--space-2); }

@@ -152,4 +152,30 @@ describe("extension operation recovery",()=>{
   expect(s.operationLog).toHaveLength(1);
   expect(s.operationLog[0]!.status).toBe("unknown");
  });
+
+ it("advances group progress from the adapter per-item progress channel",async()=>{
+  vi.useFakeTimers();
+  try {
+    let finish!:(v:any)=>void;
+    const progress={completed:0,total:2};
+    call.mockImplementation(p=>{
+      if(p.op==="skill-install-group")return new Promise(r=>{finish=r;});
+      if(p.op==="skill-describe"&&p.id==="__aisc_group_operation__")return Promise.resolve({items:[{id:"__aisc_group_operation__",completed:progress.completed,total:progress.total}]});
+      return Promise.resolve({items:[]});
+    });
+    const s=setup();
+    s.marketSkills=[{kind:"market-skill",id:"o/r:a",name:"a",repo:"o/r",directory:"a"},{kind:"market-skill",id:"o/r:b",name:"b",repo:"o/r",directory:"b"}];
+    const pending=s.installSkillGroup(s.marketSkillGroups[0]!);
+    await Promise.resolve();
+    expect(s.activeOperation?.completed).toBe(0);
+    progress.completed=1;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.activeOperation?.completed).toBe(1);
+    finish({total:2,completed:2,items:[{spec:"o/r:a",status:"installed"},{spec:"o/r:b",status:"installed"}]});
+    await pending;
+    expect(s.activeOperation).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+ });
 });
