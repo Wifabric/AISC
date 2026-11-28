@@ -456,6 +456,7 @@ export const enUS: Record<string, string> = {
   "usage.nodes.list": "Load proxy nodes",
   "usage.nodes.empty": "The running proxy has not returned any groups. Refresh after startup and check that the active subscription contains nodes.",
   "usage.nodes.select": "Use node",
+  "usage.nodes.alreadyCurrent": "Already the current node",
   "usage.nodes.delay": "Test latency",
   "usage.nodes.timeout": "Timed out",
   "usage.nodes.current": "Current node",

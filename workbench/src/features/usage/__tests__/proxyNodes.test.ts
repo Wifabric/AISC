@@ -102,6 +102,27 @@ describe("ProxyNodes (b6 hierarchy)", () => {
     tab.unmount();
   });
 
+  it("splits current-node info from the group/node control card (b14)", async () => {
+    const tab = await mountLoaded();
+    // Two distinct cards: current node info + node control.
+    expect(tab.find(".current-node").exists()).toBe(true);
+    expect(tab.find(".node-control").exists()).toBe(true);
+    // The control card owns the group picker and node list, not the info card.
+    expect(tab.find(".node-control .group-pick").exists()).toBe(true);
+    expect(tab.find(".node-control .node-list").exists()).toBe(true);
+    tab.unmount();
+  });
+
+  it("keeps 使用节点 clickable for a selectable group on the current node (b14)", async () => {
+    const tab = await mountLoaded();
+    // Selector group, current HK-01; picked defaults to current, but the button
+    // must stay enabled (only busy / auto-managed group grey it).
+    const useBtn = tab.findAll("button").find((b) => b.text() === "使用节点");
+    expect(useBtn!.attributes("disabled")).toBeUndefined();
+    expect(tab.find(".node-control").text()).toContain("已是当前节点");
+    tab.unmount();
+  });
+
   it("selecting a node applies it to the group and its latency shows on the current node", async () => {
     const tab = await mountLoaded();
 

@@ -456,6 +456,7 @@ export const zhCN = {
   "usage.nodes.list": "刷新代理节点",
   "usage.nodes.empty": "运行中的代理尚未返回策略组。若刚刚启动，请稍后刷新；若持续为空，请检查所用订阅是否包含节点。",
   "usage.nodes.select": "使用节点",
+  "usage.nodes.alreadyCurrent": "已是当前节点",
   "usage.nodes.delay": "测延时",
   "usage.nodes.timeout": "连接超时",
   "usage.nodes.current": "当前节点",

@@ -117,6 +117,8 @@ async function run(action: "list" | "select" | "delay", group = "", node = "") {
       </section>
 
       <!-- 2. 代理组可选 -->
+      <!-- 2+3. 代理组与节点选择（独立面板，与当前节点信息分开） -->
+      <section class="node-control" :aria-label="t('usage.nodes.groupLabel')">
       <label class="group-pick">
         <span>{{ t("usage.nodes.groupLabel") }}</span>
         <select v-model="activeGroup" :disabled="busy">
@@ -139,10 +141,12 @@ async function run(action: "list" | "select" | "delay", group = "", node = "") {
         </ul>
         <button
           class="ui-button"
-          :disabled="busy || active.selectable === false || picked === active.current"
+          :disabled="busy || active.selectable === false"
           @click="run('select', activeGroup, picked)"
         >{{ t("usage.nodes.select") }}</button>
+        <span v-if="picked === active.current" class="dim">{{ t("usage.nodes.alreadyCurrent") }}</span>
       </div>
+      </section>
     </template>
     <p v-if="error" role="alert">{{ error }}</p>
   </section>
@@ -155,6 +159,9 @@ async function run(action: "list" | "select" | "delay", group = "", node = "") {
 .current-node { display: grid; gap: 6px; padding: var(--space-3);
   border: var(--border-w) solid var(--accent); border-radius: var(--radius-md);
   background: var(--accent-soft); }
+.node-control { display: grid; gap: 10px; padding: var(--space-3);
+  border: var(--border-w) solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); }
 .current-node h4, .node-list h4 { margin: 0; font-size: var(--font-sm);
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .current-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
