@@ -480,6 +480,49 @@ class TestConversationRead:
         roles = [(m["role"], m["kind"]) for m in data["messages"]]
         assert roles == [("user", "message"), ("assistant", "message")]
 
+    def test_claude_slash_command_and_compact_summary_are_split(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_claude(ws_dir, "claude_normal.jsonl")
+        path = next((ws_dir / "claude").rglob("*.jsonl"))
+        rows = [
+            {"type": "user", "message": {"role": "user", "content":
+                "<command-name>/office-hours</command-name>\n"
+                "<command-message>office-hours</command-message>\n"
+                "<command-args>核对数据</command-args>"}},
+            {"type": "user", "message": {"role": "user", "content":
+                "Base directory for this skill: /root/skills/office-hours\n\n<body>skill</body>"}},
+            {"type": "user", "message": {"role": "user", "content":
+                "<command-name>/compact</command-name>\n"
+                "<command-message>compact</command-message>\n"
+                "<command-args></command-args>"}},
+            {"type": "user", "isCompactSummary": True,
+             "message": {"role": "user", "content":
+                "This session is being continued from a previous conversation."}},
+        ]
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        data = self._read(ws, CLAUDE_ID, "claude")
+        # Slash command carries the user input as a question; the injected skill
+        # body stays separate; the compact summary is a reply, not a user line.
+        assert [(m["role"], m["kind"]) for m in data["messages"]] == [
+            ("user", "command"),
+            ("user", "skill"),
+            ("user", "command"),
+            ("assistant", "compact"),
+        ]
+        assert data["messages"][0]["text"] == "/office-hours\n核对数据"
+        assert data["messages"][2]["text"] == "/compact"
+        assert data["messages"][3]["text"].startswith("This session is being continued")
+
+    def test_codex_compacted_summary_is_not_a_user_message(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_codex(ws_dir, "codex_normal.jsonl")
+        path = next((ws_dir / "codex").rglob("*.jsonl"))
+        row = {"type": "compacted", "payload": {"message":
+            "Another language model started to solve this problem and produced a summary."}}
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        data = self._read(ws)
+        assert [(m["role"], m["kind"]) for m in data["messages"]] == [("assistant", "compact")]
+
     def test_tail_and_before_pagination(self, ws_env):
         ws, ws_dir = ws_env
         _install_codex(ws_dir, "codex_normal.jsonl")

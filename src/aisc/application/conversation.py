@@ -709,11 +709,39 @@ def _skill_entry(text: str, ts: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
+_COMMAND_NAME_RE = re.compile(r"^\s*<command-name>([^<]*)</command-name>")
+_COMMAND_ARGS_RE = re.compile(r"<command-args>([\s\S]*?)</command-args>")
+
+
+def _command_entry(text: str, ts: Any) -> Optional[Dict[str, Any]]:
+    """A slash-command user line → the user's actual input. Providers record
+    the command as ``<command-name>`` plus the user's ``<command-args>``; the
+    command is what the user sent, so it becomes a question instead of being
+    dropped with the other injected-context blocks."""
+    match = _COMMAND_NAME_RE.match(text.lstrip())
+    if not match:
+        return None
+    name = match.group(1).strip()
+    if not name.startswith("/"):
+        return None
+    args = _COMMAND_ARGS_RE.search(text)
+    provided = (args.group(1) if args else "").strip()
+    return {"role": "user", "kind": "command", "name": name,
+            "text": f"{name}\n{provided}" if provided else name, "ts": ts}
+
+
 def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     """One codex rollout line → zero or more rendered entries. Rendered:
     user/assistant messages, reasoning summaries, function calls/results.
     Dropped: session_meta, event_msg, world_state, turn_context, developer
     messages, injected-context user blocks."""
+    if obj.get("type") == "compacted":
+        payload = obj.get("payload")
+        text = payload.get("message") if isinstance(payload, dict) else None
+        ts = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
+        if isinstance(text, str) and text.strip():
+            return [{"role": "assistant", "kind": "compact", "text": text, "ts": ts}]
+        return []
     if obj.get("type") != "response_item":
         return []
     payload = obj.get("payload")
@@ -784,10 +812,18 @@ def _read_entries_claude(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     ts = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
     role = "user" if obj.get("type") == "user" else "assistant"
     content = msg.get("content")
+    if obj.get("isCompactSummary") is True:
+        text = content if isinstance(content, str) else _read_join_text(content, "text") if isinstance(content, list) else ""
+        if isinstance(text, str) and text.strip():
+            return [{"role": "assistant", "kind": "compact", "text": text, "ts": ts}]
+        return []
     out: List[Dict[str, Any]] = []
 
     def _push_text(text: Any) -> None:
         if isinstance(text, str) and text.strip():
+            if role == "user" and (command := _command_entry(text, ts)):
+                out.append(command)
+                return
             if role == "user" and (skill := _skill_entry(text, ts)):
                 out.append(skill)
                 return

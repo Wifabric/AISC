@@ -126,4 +126,35 @@ describe("Work Record reader", () => {
     expect(document.querySelector(".cv-answer")?.textContent).toContain("失效链接");
     expect(document.querySelector(".record-error")).toBeNull();
   });
+  it("splits a /compact directive from its summary and folds skill content into activity", async () => {
+    const { pinia, read } = setup();
+    const data = page("final");
+    data.agent = "claude";
+    data.messages = [
+      { ordinal: 0, role: "user", kind: "command", name: "/office-hours", text: "/office-hours\n核对数据" },
+      { ordinal: 1, role: "user", kind: "skill", name: "office-hours", text: "Base directory for this skill: /root/skills/office-hours" },
+      { ordinal: 2, role: "assistant", kind: "message", text: "核对完成" },
+      { ordinal: 3, role: "user", kind: "command", name: "/compact", text: "/compact" },
+      { ordinal: 4, role: "assistant", kind: "compact", text: "This session is being continued from a previous conversation." },
+    ];
+    read.mockResolvedValue(data);
+    show(pinia); await flushPromises();
+    const skillTurn = document.querySelector('[data-turn="0"]')!;
+    expect(skillTurn.querySelector(".cv-question")?.textContent).toContain("核对数据");
+    expect(skillTurn.querySelector(".cv-question")?.textContent).not.toContain("Base directory");
+    const activity = skillTurn.querySelector(".cv-activity") as HTMLDetailsElement;
+    activity.open = true;
+    activity.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+    expect(skillTurn.querySelector(".cv-activity-list")?.textContent).toContain("office-hours");
+    const step = skillTurn.querySelector(".cv-step") as HTMLDetailsElement;
+    step.open = true;
+    step.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+    expect(skillTurn.querySelector(".cv-step")?.textContent).toContain("Base directory");
+    const compactTurn = document.querySelector('[data-turn="3"]')!;
+    expect(compactTurn.querySelector(".cv-question")?.textContent).toContain("/compact");
+    expect(compactTurn.querySelector(".cv-question")?.textContent).not.toContain("This session is being continued");
+    expect(compactTurn.querySelector(".cv-answer")?.textContent).toContain("This session is being continued");
+  });
 });
