@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useRuntimeStore } from "../runtime";
+import { useWorkRecordsStore } from "../workRecords";
 import { normalizePath } from "../tabLayout";
 import type { HistoryPatch, WorkbenchHistory } from "../../types";
 
@@ -123,6 +124,23 @@ describe("createTab (A-G08-1/8)", () => {
     for (let i = 0; i < 8; i++) expect(s.createTab("bash")).not.toBeNull();
     expect(s.createTab("bash")).toBeNull();
     expect(s.tabs).toHaveLength(8);
+  });
+
+  it("notifies Work Records when a new provider session opens, not on a plain resume (b5/U-1)", async () => {
+    mockIpc.getProviderStatus.mockResolvedValue({ auth_status: "configured" });
+    const s = useRuntimeStore();
+    s.runtimeState = "running"; s.runtimeId = "rid"; s.workspace = "/ws";
+    const records = useWorkRecordsStore();
+    const listener = vi.fn();
+    const stop = records.onSessionActivity(listener);
+
+    s.createTab("claude"); await tick(); await tick();
+    expect(listener).toHaveBeenCalledWith("/ws");
+
+    listener.mockClear();
+    s.createTab("claude", "existing-conversation"); await tick(); await tick();
+    expect(listener).not.toHaveBeenCalled();
+    stop();
   });
 });
 

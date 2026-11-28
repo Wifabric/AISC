@@ -1118,7 +1118,6 @@ export const zhCN = {
   "workRecords.title": "工作记录",
   "workRecords.allSessions": "全部会话",
   "workRecords.showArchived": "显示已归档",
-  "workRecords.refresh": "刷新",
   "workRecords.newTitle": "工作记录名称",
   "workRecords.create": "新建",
   "workRecords.empty": "暂无工作记录。",
@@ -1214,8 +1213,6 @@ export const zhCN = {
   "explorer.reveal": "在文件管理器中显示",
   "explorer.copy": "复制路径",
   // --- workspace explorer operations (Stage 11, 11c) ---
-  "explorer.toolbar.newFile": "新建文件",
-  "explorer.toolbar.newFolder": "新建文件夹",
   "explorer.menu.newFile": "新建文件",
   "explorer.menu.newFolder": "新建文件夹",
   "explorer.menu.paste": "粘贴",

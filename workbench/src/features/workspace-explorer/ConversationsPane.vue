@@ -7,7 +7,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { errorCodeOf, useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
+import { useWorkspaceExplorerStore, workspaceErrorI18n } from "../../stores/workspaceExplorer";
 import { buildSearchMatcher } from "../../lib/search";
 import { buildConversationTreeRows, type ConversationTreeRow } from "./conversationTree";
 import type { ConversationSummary } from "../../types";
@@ -45,13 +45,7 @@ function flash(key: string, tone: "ok" | "warn" = "ok"): void {
 }
 
 function errorI18nKey(error: unknown): string {
-  switch (errorCodeOf(error)) {
-    case "WB_ERR_WORKSPACE_CONFLICT": return "explorer.error.conflict";
-    case "WB_ERR_WORKSPACE_INVALID": return "explorer.error.invalid";
-    case "WB_ERR_WORKSPACE_NOT_FOUND": return "explorer.error.notFound";
-    case "WB_ERR_WORKSPACE_IO": return "explorer.error.io";
-    default: return "explorer.error.default";
-  }
+  return workspaceErrorI18n(error);
 }
 
 const searchMatcher = computed(() => buildSearchMatcher(panelSearch.value));

@@ -1332,9 +1332,6 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         // (G-17 feedback 2026-08-10).
         onTabOpenOk(paneId);
         paneLastActivityAt[paneId] = Date.now(); // b9: liveness for the stuck probe
-        // 2.2.0 b5 / U-1: real-time push — provider output means a new
-        // conversation is being written; let Work Records refresh itself.
-        announceWorkRecordsActivity(tab, paneId);
         // S1.3: buffer into the non-reactive pending queue; a single rAF flush
         // applies budget + emits one reactive replacement. O2 (D-11): the raw
         // offset rides along for the spool ("load earlier output") anchor.
@@ -1372,6 +1369,13 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         ...(p.workingDirectory ? [p.workingDirectory] : []),
       );
       if (p.sessionId !== sid || !tab.panes[paneId]) return;
+      // 2.2.0 b5 / U-1: a fresh provider session is the new-conversation
+      // event (a fork also writes a new transcript, while a plain resume
+      // reuses an existing one). Work Records refreshes off this session
+      // lifecycle point, not off terminal output.
+      if ((agent === "claude" || agent === "codex") && (!resumeConversationId || forkSession)) {
+        useWorkRecordsStore().notifySessionActivity(startingWorkspace);
+      }
       // v2.1.8 T4: remember the conversation this tab resumed so the
       // History panel can activate the live tab instead of re-resuming
       // (a second provider resume on a live session fails).
@@ -1910,22 +1914,6 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     }
   }
 
-  /** 2.2.0 b5 / U-1: push a Work Records refresh from provider terminal
-   *  output. A conversation created in another tab becomes listable only
-   *  after the provider writes it, so the PTY stream is the in-app signal;
-   *  per-pane throttling keeps a streaming response from spinning the
-   *  conversation scan. */
-  const WORK_RECORD_PUSH_THROTTLE_MS = 5000;
-  const workRecordPushAt = new Map<string, number>();
-  function announceWorkRecordsActivity(tab: Tab, paneId: string): void {
-    const leaf = findLeaf(tab.tree, paneId);
-    if (!leaf || (leaf.sessionType !== "claude" && leaf.sessionType !== "codex")) return;
-    const now = Date.now();
-    if (now - (workRecordPushAt.get(paneId) ?? 0) < WORK_RECORD_PUSH_THROTTLE_MS) return;
-    workRecordPushAt.set(paneId, now);
-    useWorkRecordsStore().notifySessionActivity(workspace.value.trim());
-  }
-
   /** Pane-aware session callbacks: for a single-pane tab paneId === tabId, so
    * callers may pass either. */
   function onTabOpenOk(paneId: string) {
@@ -2279,12 +2267,36 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     void ipc.logUiEvent?.(`renderer_${kind}`, outcome, detail);
   }
 
-  /** b9 (D-8): drop per-pane probe bookkeeping (pane ids are never reused). */
+  /** b9 (D-8): drop per-pane probe bookkeeping. With a `livePaneIds` set only
+   *  entries for closed panes are removed; `null` clears everything (workspace
+   *  reset). Pane ids are never reused, so either way a dropped entry is gone
+   *  for good. Shared by the stuck probe and the reset path. */
+  function prunePaneBookkeeping(
+    livePaneIds: Set<string> | null,
+    records: Record<string, unknown>[],
+    maps: Map<string, unknown>[] = [],
+  ): void {
+    for (const record of records) {
+      for (const k of Object.keys(record)) {
+        if (!livePaneIds || !livePaneIds.has(k)) delete record[k];
+      }
+    }
+    for (const map of maps) {
+      if (!livePaneIds) {
+        map.clear();
+        continue;
+      }
+      for (const k of map.keys()) if (!livePaneIds.has(k)) map.delete(k);
+    }
+  }
+
+  /** b9 (D-8): drop all per-pane probe bookkeeping (pane ids are never reused). */
   function resetStuckProbeState(): void {
-    for (const k of Object.keys(paneLastActivityAt)) delete paneLastActivityAt[k];
-    for (const k of Object.keys(paneLastFlushAt)) delete paneLastFlushAt[k];
-    for (const k of Object.keys(lastProbeQueueDepth)) delete lastProbeQueueDepth[k];
-    probePhaseFor.clear();
+    prunePaneBookkeeping(
+      null,
+      [paneLastActivityAt, paneLastFlushAt, lastProbeQueueDepth],
+      [probePhaseFor],
+    );
     loggedStuckKeys.clear();
   }
 
@@ -2325,10 +2337,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
       }
     }
     // Pane ids are never reused; prune bookkeeping for closed panes.
-    for (const k of probePhaseFor.keys()) if (!livePaneIds.has(k)) probePhaseFor.delete(k);
-    for (const k of Object.keys(lastProbeQueueDepth)) if (!livePaneIds.has(k)) delete lastProbeQueueDepth[k];
-    for (const k of Object.keys(paneLastActivityAt)) if (!livePaneIds.has(k)) delete paneLastActivityAt[k];
-    for (const k of Object.keys(paneLastFlushAt)) if (!livePaneIds.has(k)) delete paneLastFlushAt[k];
+    prunePaneBookkeeping(
+      livePaneIds,
+      [lastProbeQueueDepth, paneLastActivityAt, paneLastFlushAt],
+      [probePhaseFor],
+    );
 
     const report = buildTabStuckReport(
       {

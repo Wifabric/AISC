@@ -1118,7 +1118,6 @@ export const enUS: Record<string, string> = {
   "workRecords.title": "Work Records",
   "workRecords.allSessions": "All Sessions",
   "workRecords.showArchived": "Show archived",
-  "workRecords.refresh": "Refresh",
   "workRecords.newTitle": "Work record name",
   "workRecords.create": "Create",
   "workRecords.empty": "No work records.",
@@ -1213,8 +1212,6 @@ export const enUS: Record<string, string> = {
   "explorer.reveal": "Show in file manager",
   "explorer.copy": "Copy path",
   // --- workspace explorer operations (Stage 11, 11c) ---
-  "explorer.toolbar.newFile": "New File",
-  "explorer.toolbar.newFolder": "New Folder",
   "explorer.menu.newFile": "New File",
   "explorer.menu.newFolder": "New Folder",
   "explorer.menu.paste": "Paste",
