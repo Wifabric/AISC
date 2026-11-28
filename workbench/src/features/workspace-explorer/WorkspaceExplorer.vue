@@ -18,7 +18,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 import { useI18n } from "vue-i18n";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { errorCodeOf, useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
+import { errorCodeOf, useWorkspaceExplorerStore, workspaceErrorI18n } from "../../stores/workspaceExplorer";
 import { useRuntimeStore } from "../../stores/runtime";
 import { WORKSPACE_PATH_MIME } from "../../lib/workspaceDnd";
 import { buildSearchMatcher } from "../../lib/search";
@@ -95,14 +95,7 @@ function showBatchResult(
 }
 
 function errorI18nKey(e: unknown): string {
-  switch (errorCodeOf(e)) {
-    case "WB_ERR_WORKSPACE_CONFLICT": return "explorer.error.conflict";
-    case "WB_ERR_WORKSPACE_INVALID": return "explorer.error.invalid";
-    case "WB_ERR_WORKSPACE_NOT_FOUND": return "explorer.error.notFound";
-    case "WB_ERR_WORKSPACE_READ_ONLY": return "explorer.error.readOnly";
-    case "WB_ERR_WORKSPACE_IO": return "explorer.error.io";
-    default: return "explorer.error.default";
-  }
+  return workspaceErrorI18n(e);
 }
 
 // --- Stage 11: inline create/rename name input (D11-06) ---

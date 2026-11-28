@@ -108,6 +108,33 @@ export function errorCodeOf(e: unknown): string {
   return "";
 }
 
+/** Backend workspace error code -> UI message key, plus whether the
+ *  workspace/directory itself is gone/invalid (permanent) rather than a
+ *  transient failure. Single source of truth for the explorer store,
+ *  ConversationsPane and WorkspaceExplorer (b5 review #4/#7). */
+export const WORKSPACE_ERRORS: Record<string, { i18n: string; gone?: boolean }> = {
+  WB_ERR_WORKSPACE_CONFLICT: { i18n: "explorer.error.conflict" },
+  WB_ERR_WORKSPACE_INVALID: { i18n: "explorer.error.invalid", gone: true },
+  WB_ERR_WORKSPACE_NOT_FOUND: { i18n: "explorer.error.notFound", gone: true },
+  WB_ERR_WORKSPACE_READ_ONLY: { i18n: "explorer.error.readOnly" },
+  WB_ERR_WORKSPACE_IO: { i18n: "explorer.error.io" },
+};
+
+export const WORKSPACE_ERROR_DEFAULT_I18N = "explorer.error.default";
+
+/** Map an invoke rejection to its localized explorer error message key. */
+export function workspaceErrorI18n(error: unknown): string {
+  const code = errorCodeOf(error) as keyof typeof WORKSPACE_ERRORS;
+  return WORKSPACE_ERRORS[code]?.i18n ?? WORKSPACE_ERROR_DEFAULT_I18N;
+}
+
+/** True when the backend reports the workspace/directory itself as gone or
+ *  invalid, so callers stop retrying and treat affected paths as missing. */
+export function isWorkspaceGoneError(error: unknown): boolean {
+  const code = errorCodeOf(error) as keyof typeof WORKSPACE_ERRORS;
+  return WORKSPACE_ERRORS[code]?.gone === true;
+}
+
 /** Parent directory of a workspace-relative path ("" = root). */
 function parentDirOf(relativePath: string): string {
   const idx = relativePath.lastIndexOf("/");
@@ -892,7 +919,7 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
           // hold an openable file; mark the remaining paths missing so the
           // preview removes the hyperlink. Transient failures stay clickable
           // so the reader can retry.
-          if (/^WB_ERR_WORKSPACE_(?:INVALID|NOT_FOUND)$/.test(errorCodeOf(e))) {
+          if (isWorkspaceGoneError(e)) {
             for (const path of wanted) missing.add(path);
           }
         }
