@@ -125,3 +125,4 @@ bash scripts/local-gates.sh
 | 当前待办/悬账 | `docs/todo.md` | `docs/devlog.md` |
 | 计划与交付 | `docs/plans/` | `docs/archive/` |
 | 发布说明 | `docs/releases/` | — |
+| 反馈站（输入源） | Wifabric/aisc-issues-feedback（文件式：索引.md + issues/，非 GitHub Issues） | 开题输入 |
