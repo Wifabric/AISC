@@ -17,6 +17,7 @@ $appDir = Join-Path $env:LOCALAPPDATA 'AISC Workbench'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'AISC\data'
 $workspace = Join-Path $env:RUNNER_TEMP 'aisc-upgrade-project'
 $app = $null
+$caught = $null
 
 function Record-Step([string]$name) {
     $script:result.steps += [ordered]@{ name = $name; status = 'PASS' }
@@ -33,6 +34,29 @@ function Check-Files([hashtable]$expected) {
             throw "User file changed: $path"
         }
     }
+}
+
+function Stop-TestApplication([System.Diagnostics.Process]$target) {
+    if ($null -eq $target) { return }
+    if (-not $target.HasExited) {
+        # The process may exit between the state query and this call; the exit
+        # state below is the only source of truth for cleanup success.
+        try { $target.CloseMainWindow() | Out-Null } catch { }
+        if (-not $target.WaitForExit(10000)) {
+            # The window may exit on its own between the graceful timeout and the
+            # forced termination, so Stop-Process can fail for a process that is
+            # already gone. Judge cleanup by the observed exit state, not by that
+            # error; a process that is still alive keeps the real error.
+            $stopError = $null
+            try { Stop-Process -Id $target.Id -Force -ErrorAction Stop }
+            catch { $stopError = $_.Exception.Message }
+            if (-not $target.WaitForExit(10000) -or -not $target.HasExited) {
+                if ($stopError) { throw "Failed to stop the Workbench process: $stopError" }
+                throw 'The Workbench process did not exit after cleanup.'
+            }
+        }
+    }
+    if (-not $target.HasExited) { throw 'The Workbench process is still running after cleanup.' }
 }
 
 try {
@@ -134,8 +158,7 @@ with sqlite3.connect(sys.argv[1]) as db:
     } until ($app.MainWindowHandle -ne 0 -or [DateTime]::UtcNow -gt $deadline)
     if ($app.MainWindowHandle -eq 0) { throw 'Installed Workbench did not create a native window.' }
     Record-Step 'Installed Workbench creates a native window (launch smoke, not GUI acceptance)'
-    $app.CloseMainWindow() | Out-Null
-    if (-not $app.WaitForExit(10000)) { Stop-Process -Id $app.Id -Force }
+    Stop-TestApplication $app
     $app = $null
     # Workbench may legitimately update revision, CLI discovery and history on
     # startup. Check preserved semantics after launch, exact bytes before launch.
@@ -156,10 +179,19 @@ with sqlite3.connect(sys.argv[1]) as db:
     Record-Step 'Silent uninstall retains real user-state samples and removes application bundle'
     $result.status = 'PASS'
 } catch {
+    $caught = $_
     $result.status = 'FAIL'
     $result.error = $_.Exception.Message
     throw
 } finally {
-    if ($app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+    $cleanupError = $null
+    if ($null -ne $app) {
+        try { Stop-TestApplication $app } catch { $cleanupError = $_ }
+    }
+    if ($cleanupError) {
+        $result.status = 'FAIL'
+        $result.error = "Workbench process cleanup failed: $($cleanupError.Exception.Message)"
+    }
     $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportPath -Encoding utf8
+    if ($cleanupError -and -not $caught) { throw $cleanupError }
 }
