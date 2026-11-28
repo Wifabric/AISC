@@ -27,6 +27,10 @@
 
 - 批次证据落在 `docs/plans/<version>-dev-plans/`。
 
+## 测试隔离
+
+- mock `_run_cli`/`git clone` 走安装路径的测试，必须同步 pin 掉 bundled/market 判定（如 `_is_bundled_office_hours`），否则容器里 `/opt/aisc/market/*` 状态会短路 mock、读到真包。
+
 ## 共享契约
 
 - 版本事实源（`workbench/src-tauri/tauri.conf.json`、`src/aisc/VERSION`）由主开发独占；变更需先形成 D-N。

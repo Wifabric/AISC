@@ -692,6 +692,9 @@ class MarketTests(TempEnv):
                     file.write_text(content, encoding="utf-8")
             return "main"
 
+        # 必须 pin 掉 bundled 判定：容器里若存在 /opt/aisc/market/gstack，
+        # _is_bundled_office_hours 会短路走 bundled 路径、绕过本 mock 的 git clone，
+        # 读到真包而非这里的假文件（测试隔离：不依赖容器状态）。
         with mock.patch.object(A, "_run_cli", side_effect=cli), \
              mock.patch.object(A, "_ensure_office_hours_bun"), \
              mock.patch.object(A, "_is_bundled_office_hours", return_value=False):
