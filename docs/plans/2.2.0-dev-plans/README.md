@@ -1,6 +1,6 @@
 # Workbench 2.2.0 阶段计划
 
-- **状态**：阶段 4（预览验证）· preview.2 发布中（preview.1 的 NSIS 构建失败已修：卸载未清 aisc-bundle，改 RMDir /r；版本 bump 2.2.0-preview.2 待 CI 构建 artifact + 实测）
+- **状态**：阶段 4（预览验证）· preview.2 已发布（NSIS artifact 已挂 Release，CI 升级/卸载冒烟全绿；待主开发实测 T1-T6）
 
 ## 目标
 
