@@ -42,8 +42,9 @@ import urllib.parse
 import uuid
 import signal
 from contextlib import contextmanager, nullcontext
+from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 PROTOCOL = "aisc.extensions/v1"
 AGENTS = ("claude", "codex")
@@ -458,6 +459,9 @@ def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
              input_text: str = "",
              env_overrides: dict[str, str] | None = None,
              plugin_process: bool = False) -> str:
+    operation = _ACTIVE_GROUP_OPERATION
+    if operation is not None and operation.cancelled():
+        raise _GroupOperationCancelled()
     # b10 手测 #3/#4: claude plugin 命令依赖 CLAUDE_CONFIG_DIR 找已装列表；
     # scope wrapper 恢复了 CC_SWITCH_CONFIG_DIR 但 adapter 经 subprocess 丢失
     # 其他 scope env —— 用 /root/app/.claude 兜底（项目模式标准路径）。
@@ -473,6 +477,8 @@ def _run_cli(argv: list[str], *, timeout: float = CLI_TIMEOUT_S,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise AdapterError(ERR_CLI, f"{argv[0]} failed to run: {exc}")
+    if operation is not None and operation.cancelled():
+        raise _GroupOperationCancelled()
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip()[-400:]
         raise AdapterError(ERR_CLI, f"{argv[0]} exit {proc.returncode}: {tail}")
@@ -1093,7 +1099,208 @@ def skill_update(spec: str) -> None:
     _install_skill(spec, enable_both=False, restore_state=True)
 
 
+GROUP_PROGRESS_ID = "__aisc_group_operation__"
+GROUP_CANCEL_ID = "__aisc_group_cancel__"
+GROUP_STATUS_RUNNING = "running"
+GROUP_STATUS_CANCELLED = "cancelled"
+
+
+class _GroupOperationCancelled(Exception):
+    """Raised when a running group install observes a cancel request."""
+
+
+class StageErrorStatus(str, Enum):
+    SOURCE_FAILED = "source_failed"
+    MISSING = "missing"
+    BLOCKED = "blocked"
+
+
+class StageError(NamedTuple):
+    status: StageErrorStatus
+    message: str
+
+
+_ACTIVE_GROUP_OPERATION: Optional["_GroupOperation"] = None
+
+
+def _group_control_dir() -> Path:
+    return _db_path().parent / ".aisc-extension-operations"
+
+
+def _group_operation_files() -> list[Path]:
+    return sorted(_group_control_dir().glob("*.json"))
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, ValueError, OSError):
+        return True
+    return True
+
+
+def _descendant_pids(pid: int) -> list[int]:
+    """Resolve every descendant of an adapter process through /proc."""
+    children: dict[int, list[int]] = {}
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            stat = Path("/proc", entry, "stat").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        tail = stat.rsplit(")", 1)[-1].split()
+        if len(tail) < 2:
+            continue
+        children.setdefault(int(tail[1]), []).append(int(entry))
+    found: list[int] = []
+    stack = [pid]
+    while stack:
+        parent = stack.pop()
+        for child in children.get(parent, []):
+            found.append(child)
+            stack.append(child)
+    return found
+
+
+def _terminate_group_children(pid: int) -> int:
+    """Kill a group install's owned child tree, deepest process first."""
+    killed = 0
+    for child in reversed(_descendant_pids(pid)):
+        try:
+            os.kill(child, signal.SIGKILL)
+            killed += 1
+        except (ProcessLookupError, PermissionError, OSError):
+            continue
+    return killed
+
+
+class _GroupOperation:
+    """Progress and cancel record shared across the group install's processes.
+
+    The install process writes progress after each item; a separate
+    ``skill-describe`` control call reads it and, on cancel, drops a marker
+    file and kills the running child tree. The marker is checked before and
+    after every child process, so a cancelled install really stops.
+    """
+
+    def __init__(self, items: list[dict[str, Any]]):
+        self.total = len(items)
+        self.completed = 0
+        self.current = ""
+        self.status = GROUP_STATUS_RUNNING
+        self.pid = os.getpid()
+        token = uuid.uuid4().hex
+        directory = _group_control_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        self._status_path = directory / f"{token}.json"
+        self._cancel_path = directory / f"{token}.cancel"
+        self._write()
+
+    def _write(self) -> None:
+        payload = {
+            "pid": self.pid,
+            "total": self.total,
+            "completed": self.completed,
+            "current": self.current,
+            "status": self.status,
+        }
+        try:
+            temporary = self._status_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(payload), encoding="utf-8")
+            os.replace(temporary, self._status_path)
+        except OSError:
+            pass
+
+    def advance(self, completed: int, current: str = "") -> None:
+        self.completed = completed
+        self.current = current
+        self._write()
+
+    def cancelled(self) -> bool:
+        if self.status == GROUP_STATUS_CANCELLED:
+            return True
+        if self._cancel_path.exists():
+            self.status = GROUP_STATUS_CANCELLED
+            self._write()
+            return True
+        return False
+
+    def finish(self) -> None:
+        for path in (self._status_path, self._cancel_path):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
+def _group_operation_progress() -> list[dict[str, Any]]:
+    """Read-only progress snapshot for the market dialog's poll."""
+    rows: list[tuple[float, dict[str, Any]]] = []
+    for path in _group_operation_files():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            modified = path.stat().st_mtime
+        except (OSError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        pid = payload.get("pid")
+        if not isinstance(pid, int) or not _pid_alive(pid):
+            continue
+        rows.append((modified, payload))
+    if not rows:
+        return []
+    latest = max(rows, key=lambda row: row[0])[1]
+    return [{
+        "kind": "operation",
+        "id": GROUP_PROGRESS_ID,
+        "name": GROUP_PROGRESS_ID,
+        "completed": int(latest.get("completed", 0)),
+        "total": int(latest.get("total", 0)),
+        "current": str(latest.get("current", "")),
+        "status": str(latest.get("status", GROUP_STATUS_RUNNING)),
+    }]
+
+
+def _cancel_group_operation() -> bool:
+    """Mark the running group install cancelled and stop its child tree."""
+    cancelled = False
+    for path in _group_operation_files():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pid = payload.get("pid") if isinstance(payload, dict) else None
+        if not isinstance(pid, int) or not _pid_alive(pid):
+            continue
+        try:
+            path.with_suffix(".cancel").write_text("", encoding="utf-8")
+        except OSError:
+            continue
+        _terminate_group_children(pid)
+        cancelled = True
+    return cancelled
+
+
+def _group_cancel_result(items: list[dict[str, Any]]) -> dict[str, Any]:
+    for item in items:
+        if item["status"] == "pending":
+            item["status"] = "cancelled"
+            item["error"] = "cancelled"
+    return {"total": len(items), "completed": 0, "cancelled": True,
+            "items": items}
+
+
 def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
+    global _ACTIVE_GROUP_OPERATION
+
     if not isinstance(specs, list) or not specs or not all(
         isinstance(spec, str) and spec.strip() for spec in specs
     ):
@@ -1135,74 +1342,108 @@ def _skill_group_operation(specs: list[str], *, update: bool) -> dict[str, Any]:
                     item["error"] = "skill group enable-state preflight failed"
             return {"total": len(items), "completed": 0, "items": items}
 
-    # Share the single-skill source selection: `_github_skill_env` probes the
-    # archive URL and picks direct/mirror transport instead of gating the whole
-    # group on a bare `git ls-remote`. A repository that still cannot be staged
-    # only fails its own children; healthy repositories in the same group are
-    # installed normally, and every failure keeps its transport diagnostics.
-    staged_errors: dict[str, tuple[str, str]] = {}
-    for repo, group_specs in grouped.items():
+    operation = _GroupOperation(items)
+    _ACTIVE_GROUP_OPERATION = operation
+    staged_errors: dict[str, StageError] = {}
+    try:
+        # Share the single-skill source selection: `_github_skill_env` probes the
+        # archive URL and picks direct/mirror transport instead of gating the whole
+        # group on a bare `git ls-remote`. A repository that still cannot be staged
+        # only fails its own children; healthy repositories in the same group are
+        # installed normally, and every failure keeps its transport diagnostics.
         try:
-            if _github_repo_identity(repo) is None:
-                continue
-            if not update and _is_bundled_office_hours(repo, group_specs) and _skill_enable_states("office-hours") is None:
-                missing = _stage_skills_from_git_source(group_specs, repo, {}, bundled=True)
-            else:
-                git_env = _github_skill_env(repo) or {}
-                missing = _stage_skills_from_git_source(group_specs, repo, git_env)
-        except AdapterError as exc:
-            for spec in group_specs:
-                staged_errors[spec] = ("source_failed", f"repo {repo}: {exc.message}")
-            continue
-        for spec in missing:
-            staged_errors[spec] = (
-                "missing",
-                f"SKILL.md not found for {spec} in selected repository source",
-            )
-        if missing:
-            # One unresolved child blocks this repository's staged set, but the
-            # other repositories in the group still install.
-            for spec in group_specs:
-                if spec not in staged_errors:
-                    staged_errors[spec] = (
-                        "blocked",
-                        f"repo {repo}: sibling source preflight failed; "
-                        "resolve the missing child before installing this set",
+            for repo, group_specs in grouped.items():
+                try:
+                    if _github_repo_identity(repo) is None:
+                        continue
+                    if not update and _is_bundled_office_hours(repo, group_specs) and _skill_enable_states("office-hours") is None:
+                        missing = _stage_skills_from_git_source(group_specs, repo, {}, bundled=True)
+                    else:
+                        git_env = _github_skill_env(repo) or {}
+                        missing = _stage_skills_from_git_source(group_specs, repo, git_env)
+                except AdapterError as exc:
+                    for spec in group_specs:
+                        staged_errors[spec] = StageError(
+                            StageErrorStatus.SOURCE_FAILED,
+                            f"repo {repo}: {exc.message}")
+                    continue
+                for spec in missing:
+                    staged_errors[spec] = StageError(
+                        StageErrorStatus.MISSING,
+                        f"SKILL.md not found for {spec} in selected repository source",
                     )
+                if missing:
+                    # One unresolved child blocks this repository's staged set, but the
+                    # other repositories in the group still install.
+                    for spec in group_specs:
+                        if spec not in staged_errors:
+                            staged_errors[spec] = StageError(
+                                StageErrorStatus.BLOCKED,
+                                f"repo {repo}: sibling source preflight failed; "
+                                "resolve the missing child before installing this set",
+                            )
+        except _GroupOperationCancelled:
+            return _group_cancel_result(items)
 
-    for item in items:
-        failure = staged_errors.get(item["spec"])
-        if failure:
-            item["status"], item["error"] = failure
+        for item in items:
+            failure = staged_errors.get(item["spec"])
+            if failure:
+                item["status"] = failure.status.value
+                item["error"] = failure.message
 
-    final_status = "updated" if update else "installed"
-    for item in items:
-        if item["status"] != "pending":
-            continue
-        spec = item["spec"]
-        repo, directory = _skill_spec_parts(spec)
-        try:
-            _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
-            if update:
-                previous = previous_states.get(spec)
-                if previous is None:
-                    raise AdapterError(
-                        ERR_CLI, f"enable state lost before update: {spec}")
-                for agent in AGENTS:
-                    verb = "enable" if previous[agent] else "disable"
-                    _run_cli(["cc-switch", "skills", verb, directory,
-                              "-a", agent])
-            else:
-                for agent in AGENTS:
-                    _run_cli(["cc-switch", "skills", "enable", directory,
-                              "-a", agent])
-            item["status"] = final_status
-        except AdapterError as exc:
-            item["status"] = "failed"
-            item["error"] = exc.message
+        final_status = "updated" if update else "installed"
+        processed = sum(item["status"] != "pending" for item in items)
+        operation.advance(processed)
+        for item in items:
+            if item["status"] != "pending":
+                continue
+            if operation.cancelled():
+                break
+            spec = item["spec"]
+            repo, directory = _skill_spec_parts(spec)
+            try:
+                _run_cli(["cc-switch", "skills", "install", spec], timeout=120.0)
+                if update:
+                    previous = previous_states.get(spec)
+                    if previous is None:
+                        raise AdapterError(
+                            ERR_CLI, f"enable state lost before update: {spec}")
+                    for agent in AGENTS:
+                        verb = "enable" if previous[agent] else "disable"
+                        _run_cli(["cc-switch", "skills", verb, directory,
+                                  "-a", agent])
+                else:
+                    for agent in AGENTS:
+                        _run_cli(["cc-switch", "skills", "enable", directory,
+                                  "-a", agent])
+                item["status"] = final_status
+            except _GroupOperationCancelled:
+                item["status"] = "cancelled"
+                item["error"] = "cancelled"
+                break
+            except AdapterError as exc:
+                if operation.cancelled():
+                    item["status"] = "cancelled"
+                    item["error"] = "cancelled"
+                    break
+                item["status"] = "failed"
+                item["error"] = exc.message
+            processed += 1
+            operation.advance(processed, spec)
+
+        if operation.cancelled():
+            for item in items:
+                if item["status"] == "pending":
+                    item["status"] = "cancelled"
+                    item["error"] = "cancelled"
+    finally:
+        was_cancelled = operation.cancelled()
+        operation.finish()
+        _ACTIVE_GROUP_OPERATION = None
 
     completed = sum(item["status"] == final_status for item in items)
-    return {"total": len(items), "completed": completed, "items": items}
+    return {"total": len(items), "completed": completed,
+            "cancelled": was_cancelled, "items": items}
 
 
 def skill_install_group(specs: list[str]) -> dict[str, Any]:
@@ -1951,6 +2192,15 @@ def _main(argv: list[str] | None = None) -> int:
             print(json.dumps(envelope))
             return 0
         if args.op == "skill-describe":
+            if args.id == GROUP_PROGRESS_ID:
+                print(json.dumps(_envelope(
+                    args.op, True, items=_group_operation_progress())))
+                return 0
+            if args.id == GROUP_CANCEL_ID:
+                envelope = _envelope(args.op, True, items=[])
+                envelope["cancelled"] = _cancel_group_operation()
+                print(json.dumps(envelope))
+                return 0
             print(json.dumps(_envelope(args.op, True, items=skill_describe(args.id or ""))))
             return 0
         if args.op == "skill-search":

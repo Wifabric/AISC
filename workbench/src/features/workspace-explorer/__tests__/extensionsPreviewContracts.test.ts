@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import extensionsSource from "../ExtensionsView.vue?raw";
+import operationProgressSource from "../ExtensionOperationProgress.vue?raw";
 import marketSource from "../ExtensionMarketDialog.vue?raw";
 import workspaceSource from "../WorkspaceExplorer.vue?raw";
 
@@ -25,24 +26,23 @@ describe("v2.1.17 R2 extension layout contracts", () => {
     expect(extensionsSource).toContain("ExtensionDetailPanel");
   });
 
-  it("renders one stable operation progress surface with completed and total counts", () => {
-    expect(extensionsSource).toContain(`data-testid="ext-operation-progress"`);
-    expect(extensionsSource).toContain("store.activeOperation");
-    expect(extensionsSource).toContain("completed");
-    expect(extensionsSource).toContain("total");
-    const start = extensionsSource.indexOf('class="operation-progress"');
-    const end = extensionsSource.indexOf("</div>", start);
-    const block = extensionsSource.slice(start, end);
-    expect(block).not.toContain('class="spinner"');
-    expect(block).toContain('class="op-progress-track"');
+  it("renders one shared operation progress surface with completed and total counts", () => {
+    expect(marketSource).toContain("ExtensionOperationProgress");
+    expect(operationProgressSource).toContain("operation.completed");
+    expect(operationProgressSource).toContain("operation.total");
+    expect(operationProgressSource).toContain('class="op-progress-track"');
+    expect(operationProgressSource).not.toContain('class="spinner"');
   });
 
-  it("migrates operation progress and cancel into the market dialog", () => {
-    expect(marketSource).toContain(`data-testid="market-operation-progress"`);
+  it("migrates operation progress and cancel into the market dialog only", () => {
     expect(marketSource).toContain("store.activeOperation");
     expect(marketSource).toContain("store.canCancelOperation");
     expect(marketSource).toContain("cancelActiveOperation");
-    expect(extensionsSource).toContain(`data-testid="ext-operation-cancel"`);
+    expect(operationProgressSource).toContain(`data-testid="market-operation-progress"`);
+    expect(operationProgressSource).toContain(`data-testid="market-operation-cancel"`);
+    expect(extensionsSource).not.toContain("ext-operation-progress");
+    expect(extensionsSource).not.toContain("ext-operation-cancel");
+    expect(extensionsSource).not.toContain('class="operation-progress"');
   });
 
   it("uses native button activation for recommendation disclosures", () => {
