@@ -17,6 +17,7 @@
 - 提交前：`bash scripts/local-gates.sh`
 - 全量：`bash scripts/local-gates.sh`
 - 任一红即停。
+- 改 `container/`/`vendor/` 时，pre-commit 钩子自动跑 `tools/vendor-verify.sh`，checksum 漂移拦提交（`scripts/install-hooks.sh` 安装）。
 
 ## 禁区
 

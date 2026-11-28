@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# pre-commit 钩子：改动命中 container/ 或 vendor/ 时跑 vendor-verify，checksum 漂移即拦提交。
+# 安装：bash scripts/install-hooks.sh
+set -uo pipefail
+
+changed="$(git diff --cached --name-only)"
+if ! printf '%s\n' "$changed" | grep -qE '^(container/|vendor/)'; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
+
+if ! bash tools/vendor-verify.sh >/dev/null 2>&1; then
+  printf '\npre-commit: container/vendor 有改动但 vendor checksum 漂移，提交被拦截。\n'
+  printf '  修复：刷新 vendor/checksums.txt（改动文件的真实哈希）后重新提交。\n' >&2
+  exit 1
+fi
+exit 0
