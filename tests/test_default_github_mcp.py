@@ -26,16 +26,10 @@ class DefaultGithubMcpWiringTests(unittest.TestCase):
             dockerfile,
         )
 
-    def test_entrypoint_reconciles_default_mcp_after_factory_skills(self):
+    def test_entrypoint_does_not_seed_default_mcp(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
-        skills = entrypoint.index("cc_switch_skills.py")
-        default_mcp = entrypoint.index("lib/default_mcp.py")
-        migrations = entrypoint.index("cc_switch_preset_providers.py")
-        self.assertLess(skills, default_mcp)
-        self.assertLess(default_mcp, migrations)
-        self.assertIn("--project-dir /root/app", entrypoint)
-        self.assertIn('--codex-config-dir "$CODEX_CONFIG_DIR"', entrypoint)
-        self.assertIn('CC_SWITCH_DEFAULT_MCP_LOG="/tmp/cc-switch-default-mcp.log"', entrypoint)
+        self.assertNotIn("default_mcp.py", entrypoint)
+        self.assertNotIn("CC_SWITCH_DEFAULT_MCP_LOG", entrypoint)
 
 
 class DefaultGithubMcpTests(unittest.TestCase):

@@ -60,15 +60,6 @@
       ]
     },
     {
-      "name": "gstack-skills",
-      "version": "1.1.0",
-      "source": "https://github.com/gstack/skills",
-      "license": "unknown",
-      "files": [
-        "container/_bundle/skills/gstack/"
-      ]
-    },
-    {
       "name": "grill-me",
       "version": "embedded-2026-07-24",
       "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me",
@@ -129,15 +120,6 @@
       "license": "MIT",
       "files": [
         "container/cc-switch-skills/karpathy-guidelines/"
-      ]
-    },
-    {
-      "name": "gstack-office-hours",
-      "version": "8143a91809b2305da6ffa7486923008b72d337e6",
-      "source": "https://github.com/garrytan/gstack/tree/8143a91809b2305da6ffa7486923008b72d337e6",
-      "license": "MIT",
-      "files": [
-        "container/downloads/gstack-office-hours-8143a91809b2.tar.gz"
       ]
     }
   ]

@@ -118,38 +118,19 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         # reconcile 会显式 enable。
         self.assertIn("--reconcile", entrypoint)
 
-    def test_entrypoint_registers_factory_skills_for_claude_and_codex(self):
+    def test_entrypoint_does_not_register_factory_skills(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
-        helper = SKILLS_HELPER_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('CC_SWITCH_SKILLS_HOME="/root/app"', entrypoint)
-        self.assertIn("/usr/local/bin/lib/cc_switch_skills.py", entrypoint)
-        self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
-        self.assertIn("cc-switch 内置 skills 已是最新，跳过同步", entrypoint)
-        self.assertIn("宿主 Skills 已存在", entrypoint)
-        self.assertIn('f"aisc:{name}"', helper)
-        self.assertIn('["skills", "sync-method", "copy"]', helper)
-        self.assertNotIn('["skills", "sync"]', helper)
-        self.assertNotIn(
-            "enabled_claude = 1, enabled_codex = 1",
-            helper,
-        )
+        self.assertNotIn("cc_switch_skills.py", entrypoint)
+        self.assertNotIn("CC_SWITCH_SKILLS_HOME", entrypoint)
         self.assertNotIn("cc-switch skills import-from-apps", entrypoint)
-        self.assertIn(
-            "COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/",
-            dockerfile,
-        )
-        self.assertIn(
+        self.assertNotIn("COPY container/cc-switch-skills/", dockerfile)
+        self.assertNotIn(
             "COPY container/cc_switch_skills.py /usr/local/bin/lib/cc_switch_skills.py",
             dockerfile,
         )
-        self.assertIn("/opt/aisc/skills/.aisc-bundle.sha256", dockerfile)
-        for skill_name, *_ in SKILLS_HELPER.BUNDLED_SKILLS:
-            source = ROOT / "container" / "cc-switch-skills" / skill_name
-            if skill_name.startswith("caveman"):
-                source = ROOT / "container" / "_bundle" / "plugins" / "marketplaces" / "caveman" / "skills" / skill_name
-            self.assertTrue((source / "SKILL.md").is_file())
+        self.assertNotIn("/opt/aisc/skills/.aisc-bundle.sha256", dockerfile)
 
     def test_codex_wrapper_defaults_to_full_container_permissions(self):
         wrapper = (ROOT / "container" / "codex-wrapper").read_text(encoding="utf-8")
@@ -185,7 +166,7 @@ class CcSwitchRuntimeTests(unittest.TestCase):
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("/opt/aisc/factory/.codex/config.toml", dockerfile)
-        self.assertIn("COPY container/_bundle/skills/ /opt/aisc/factory/.codex/skills/", dockerfile)
+        self.assertNotIn("COPY container/_bundle/skills/", dockerfile)
         self.assertIn("COPY container/global-claude.md /opt/aisc/factory/.codex/AGENTS.md", dockerfile)
         self.assertIn("WORKDIR /root/app", dockerfile)
         self.assertIn('ENV PATH="/opt/aisc/venv/bin:${PATH}"', dockerfile)

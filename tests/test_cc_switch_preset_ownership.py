@@ -365,26 +365,24 @@ class S8gUpstreamFormatTests(unittest.TestCase):
 class ClaudeSettingsBaseTests(unittest.TestCase):
     """Retest round 2 (2026-08-21): upstream's claude switch replaces
     settings.json with the row's settings_config WHOLESALE — preset rows must
-    carry the non-env base (statusLine/enabledPlugins/...) or the user's
+    carry the non-env base (enabledPlugins/extraKnownMarketplaces/...) or the user's
     setup is wiped on the first switch."""
 
     def test_base_loads_the_repo_template(self):
         base = H.load_claude_settings_base()
-        self.assertIn("statusLine", base)
         self.assertIn("enabledPlugins", base)
         self.assertIn("extraKnownMarketplaces", base)
         self.assertNotIn("env", base)
 
     def test_fresh_claude_settings_carry_base(self):
         settings = H._settings_config("claude", deepseek())
-        self.assertIn("statusLine", settings)
         self.assertIn("enabledPlugins", settings)
         self.assertTrue(settings["env"]["ANTHROPIC_BASE_URL"])
 
     def test_custom_preset_path_carries_base_too(self):
         kimi = next(p for p in H.PRESET_PROVIDERS if p["id"] == "kimi")
         settings = H._settings_config("claude", kimi)
-        self.assertIn("statusLine", settings)
+        self.assertIn("enabledPlugins", settings)
 
 
 class DeprovisionMigrationTests(unittest.TestCase):
@@ -648,7 +646,7 @@ class ReconcileTests(unittest.TestCase):
         rows = self._rows("claude")
         self.assertNotIn("default", rows)                       # artifact gone
         self.assertEqual(rows["claude-official"][0], 1)         # re-pointed
-        self.assertIn("statusLine", rows["claude-official"][1])  # base seeded
+        self.assertIn("enabledPlugins", rows["claude-official"][1])  # base seeded
         self.assertEqual(rows["deepseek"][0], 0)                # untouched
         # Invariant: both current rows are non-real → both routes off.
         self.assertEqual(
@@ -702,7 +700,7 @@ class ReconcileTests(unittest.TestCase):
         self._reconcile()
         rows = self._rows("claude")
         self.assertIn("claude-official", rows)
-        self.assertIn("statusLine", rows["claude-official"][1])
+        self.assertIn("enabledPlugins", rows["claude-official"][1])
         self.assertEqual(rows["claude-official"][0], 0)   # current untouched
         self.assertIn("codex-official", self._rows("codex"))
         self.assertEqual(
@@ -729,7 +727,7 @@ class ReconcileTests(unittest.TestCase):
         actions = self._reconcile(rc=1)
         self.assertFalse(any(a.startswith("proxy") for a in actions))
         # The DB steps still committed.
-        self.assertIn("statusLine", self._rows("claude")["claude-official"][1])
+        self.assertIn("enabledPlugins", self._rows("claude")["claude-official"][1])
 
     def test_enable_verifies_route_and_recovers_via_daemon_restart(self):
         # Manual round 3 (2026-08-21): enable can silently no-op with a
