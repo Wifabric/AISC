@@ -616,7 +616,10 @@ export const useExtensionsStore = defineStore("extensions", () => {
     op: "skill-install-group" | "skill-update-group",
     successStatus: "installed" | "updated",
   ): Promise<void> {
-    const specs = group.items.map((item) => action === "install" ? item.id : skillUpdateSpec(item));
+    // b15 (T3 实测): always send the canonical `repo:directory` spec. A
+    // cc-switch market row can carry a repo-only `id` (directory lives in a
+    // separate field); `skillUpdateSpec` rebuilds the full spec in that case.
+    const specs = group.items.map((item) => skillUpdateSpec(item));
     if (!context.value || specs.length === 0 || busyByKind.value.skills) return;
     const token = contextToken();
     busyByKind.value.skills = true;
