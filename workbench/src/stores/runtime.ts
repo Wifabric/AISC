@@ -256,6 +256,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
     closeCcSwitchUiTab: fwdFn("closeCcSwitchUiTab"),
     logTerminalResizeError: fwdFn("logTerminalResizeError"),
     logRendererEvent: fwdFn("logRendererEvent"),
+    probeStuckTabs: fwdFn("probeStuckTabs"),
+    logTabStuckProbeIfNeeded: fwdFn("logTabStuckProbeIfNeeded"),
     dispose: fwdFn("dispose"),
   };
 });

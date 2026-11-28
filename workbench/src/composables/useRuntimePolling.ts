@@ -79,6 +79,9 @@ export function useRuntimePolling() {
       // Measure even on failure: a TIMEOUT is the strongest slow signal.
       backoff = nextBackoffState(backoff, performance.now() - t0);
     }
+    // b9 (D-8): piggyback the tab-stuck watchdog on the existing poll cadence.
+    // It only observes/logs (once per stuck episode) and never renders.
+    store.logTabStuckProbeIfNeeded();
     // Background workspaces: only READY ones (launch flows own their state
     // until then), at the downshifted cadence, fire-and-forget (each instance
     // dedupes itself via its own inspectInFlight).

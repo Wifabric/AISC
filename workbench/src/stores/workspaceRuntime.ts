@@ -62,6 +62,15 @@ import {
 } from "./paneTree";
 import type { NavDir } from "./paneTree";
 import { appendWithBudget, type StreamChunk } from "../domain/streamBuffer";
+import {
+  DEFAULT_TAB_STUCK_THRESHOLDS,
+  buildTabStuckReport,
+  formatTabStuckLog,
+  probePhaseKey,
+  type ProbePaneInput,
+  type TabStuckReport,
+  type TabStuckThresholds,
+} from "../features/terminal/stuckProbe";
 
 /** S2.1.a/b startup state machine (02-startup-flow.md §三). S2.2.b adds `conflict`. */
 export type WorkbenchStatus =
@@ -256,6 +265,14 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
   const pendingChunks: Record<string, StreamChunk[]> = {};
   const paneByteCounts: Record<string, number> = {};
   const paneOffsets: Record<string, number[]> = {};
+  // b9 (D-8): tab-stuck observability bookkeeping. Non-reactive like the
+  // pending queue above: last PTY activity / render-flush times, the observed
+  // state phase (for state age) and the last queue depth (stall baseline).
+  const paneLastActivityAt: Record<string, number> = {};
+  const paneLastFlushAt: Record<string, number> = {};
+  const lastProbeQueueDepth: Record<string, number> = {};
+  const probePhaseFor = new Map<string, { key: string; since: number }>();
+  const loggedStuckKeys = new Set<string>();
   const paneStreamMeta = ref<
     Record<string, { truncated: boolean; truncatedBytes: number; headOffset: number }>
   >({});
@@ -294,6 +311,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
           truncatedBytes: state.truncatedBytes,
           headOffset: state.offsets[0] ?? -1,
         };
+        paneLastFlushAt[id] = Date.now(); // b9: a drained queue cannot be stalled
       }
     });
   }
@@ -347,6 +365,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     revision.value = 0;
     clearProviderStatuses();
     clearWebServices();
+    resetStuckProbeState();
   }
 
   function backToPicker() {
@@ -376,6 +395,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     streamCursor.value = {};
     for (const k of Object.keys(pendingChunks)) delete pendingChunks[k];
     for (const k of Object.keys(paneByteCounts)) delete paneByteCounts[k];
+    resetStuckProbeState();
   }
 
   // S2.1.b: build the image with `aisc build --events` (05 §4.1).
@@ -1292,6 +1312,11 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     streamCursor.value[paneId] = 0;
     paneStreamMeta.value[paneId] = { truncated: false, truncatedBytes: 0, headOffset: -1 };
     pendingChunks[paneId] = [];
+    const openedAt = Date.now();
+    paneLastActivityAt[paneId] = openedAt;
+    paneLastFlushAt[paneId] = openedAt;
+    lastProbeQueueDepth[paneId] = 0;
+    probePhaseFor.set(paneId, { key: probePhaseKey("starting", sid), since: openedAt });
     syncProjection(tab);
     const ch = new Channel<PtyEvent>();
     ch.onmessage = (ev) => {
@@ -1306,6 +1331,7 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         // the tab bar on 启动中 while bash is already showing output
         // (G-17 feedback 2026-08-10).
         onTabOpenOk(paneId);
+        paneLastActivityAt[paneId] = Date.now(); // b9: liveness for the stuck probe
         // S1.3: buffer into the non-reactive pending queue; a single rAF flush
         // applies budget + emits one reactive replacement. O2 (D-11): the raw
         // offset rides along for the spool ("load earlier output") anchor.
@@ -2234,6 +2260,100 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     void ipc.logUiEvent?.(`renderer_${kind}`, outcome, detail);
   }
 
+  /** b9 (D-8): drop per-pane probe bookkeeping (pane ids are never reused). */
+  function resetStuckProbeState(): void {
+    for (const k of Object.keys(paneLastActivityAt)) delete paneLastActivityAt[k];
+    for (const k of Object.keys(paneLastFlushAt)) delete paneLastFlushAt[k];
+    for (const k of Object.keys(lastProbeQueueDepth)) delete lastProbeQueueDepth[k];
+    probePhaseFor.clear();
+    loggedStuckKeys.clear();
+  }
+
+  /** b9 (D-8): snapshot every open tab/pane for stuck diagnosis. Reads the
+   * live store (queue depth / activity timings); classification is pure in
+   * features/terminal/stuckProbe.ts. Safe to call at any time — it only
+   * observes. */
+  function probeStuckTabs(
+    now: number = Date.now(),
+    thresholds: TabStuckThresholds = DEFAULT_TAB_STUCK_THRESHOLDS,
+  ): TabStuckReport {
+    const panes: ProbePaneInput[] = [];
+    const livePaneIds = new Set<string>();
+    for (const tab of tabs.value) {
+      for (const [paneId, p] of Object.entries(tab.panes)) {
+        livePaneIds.add(paneId);
+        const key = probePhaseKey(p.sessionState, p.sessionId);
+        const phase = probePhaseFor.get(paneId);
+        if (!phase || phase.key !== key) {
+          // State/session changed since the last observation: restart the age.
+          probePhaseFor.set(paneId, { key, since: now });
+        }
+        const leaf = findLeaf(tab.tree, paneId);
+        panes.push({
+          tabId: tab.tabId,
+          paneId,
+          engine: leaf?.sessionType ?? tab.agent,
+          active: tab.tabId === activeTabId.value && paneId === tab.activePaneId,
+          sessionId: p.sessionId,
+          state: p.sessionState,
+          exit: p.exit,
+          stateSinceAt: probePhaseFor.get(paneId)!.since,
+          lastActivityAt: paneLastActivityAt[paneId] ?? null,
+          lastFlushAt: paneLastFlushAt[paneId] ?? null,
+          queueDepth: (pendingChunks[paneId] ?? []).length,
+          previousQueueDepth: lastProbeQueueDepth[paneId] ?? 0,
+        });
+      }
+    }
+    // Pane ids are never reused; prune bookkeeping for closed panes.
+    for (const k of probePhaseFor.keys()) if (!livePaneIds.has(k)) probePhaseFor.delete(k);
+    for (const k of Object.keys(lastProbeQueueDepth)) if (!livePaneIds.has(k)) delete lastProbeQueueDepth[k];
+    for (const k of Object.keys(paneLastActivityAt)) if (!livePaneIds.has(k)) delete paneLastActivityAt[k];
+    for (const k of Object.keys(paneLastFlushAt)) if (!livePaneIds.has(k)) delete paneLastFlushAt[k];
+
+    const report = buildTabStuckReport(
+      {
+        workspace: workspace.value,
+        runtimeId: runtimeId.value,
+        runtimeState: runtimeState.value,
+        activeTabId: activeTabId.value,
+        visible: typeof document === "undefined" || !document.hidden,
+      },
+      panes,
+      now,
+      thresholds,
+    );
+    for (const p of panes) lastProbeQueueDepth[p.paneId] = p.queueDepth;
+    return report;
+  }
+
+  /** b9 (D-8): watchdog entry — logs each stuck episode ONCE onto the shared
+   * UI timeline (JSONL, tailed by the diagnostic bundle). The dedupe key
+   * clears when the pane recovers, so a later episode logs again. Driven by
+   * the runtime poll loop. */
+  function logTabStuckProbeIfNeeded(
+    now: number = Date.now(),
+    thresholds: TabStuckThresholds = DEFAULT_TAB_STUCK_THRESHOLDS,
+  ): TabStuckReport {
+    const report = probeStuckTabs(now, thresholds);
+    const activeKeys = new Set<string>();
+    for (const finding of report.stuck) {
+      const key = [
+        finding.tabId,
+        finding.paneId,
+        finding.reason,
+        finding.state,
+        finding.sessionId ?? "none",
+      ].join(":");
+      activeKeys.add(key);
+      if (loggedStuckKeys.has(key)) continue;
+      loggedStuckKeys.add(key);
+      void ipc.logUiEvent?.("tab_stuck_probe", "error", formatTabStuckLog(finding, report));
+    }
+    for (const key of [...loggedStuckKeys]) if (!activeKeys.has(key)) loggedStuckKeys.delete(key);
+    return report;
+  }
+
   return {
     id,
     status,
@@ -2245,6 +2365,8 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     reconcile,
     logTerminalResizeError,
     logRendererEvent,
+    probeStuckTabs,
+    logTabStuckProbeIfNeeded,
     launch,
     showAdvanced,
     startElapsedMs,
