@@ -5,7 +5,7 @@
 ## 前置准备（全局）
 
 - 环境状态：真实 Windows x64 安装或覆盖升级后的 Workbench 2.2.0，配 Docker 工作区 + 至少一个 Claude/Codex 引擎账号。
-- 产物来源：`2.2.0-preview.1` 安装包（阶段 4 产出；路径/哈希在发布 preview.1 时回填）。
+- 产物来源：`AISC-Workbench-2.2.0-preview.2-setup.exe`（阶段 4 产出；Release `v2.2.0-preview.2` 资产，sha256 `a12169853ad9a8ab2af01a34575b76f248cc44c0cfbfb75d5d57aa581497ed07`）。
 - 测试对象：真实安装产物，不是开发构建。
 
 ## T1 侧边栏刷新 + 实时 push（b5）
