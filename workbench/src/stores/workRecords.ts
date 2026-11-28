@@ -23,6 +23,12 @@ function messageOf(error: unknown): string {
   return (error as { message?: string })?.message ?? String(error);
 }
 
+/** 2.2.0 b5 / U-1: listeners invoked when a provider session produces
+ *  terminal activity. The runtime calls `notifySessionActivity` from its PTY
+ *  output stream; Work Records subscribes while visible so a conversation
+ *  created in another tab shows up without a manual refresh. */
+type SessionActivityListener = (workspace: string) => void;
+
 export const useWorkRecordsStore = defineStore("workRecords", () => {
   const workspace = ref<string | null>(null);
   const schemaVersion = ref<string>("");
@@ -47,6 +53,29 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const lastDeleteFailure = ref<WorkRecordDeleteResult | null>(null);
+
+  // --- 2.2.0 b5 / U-1: real-time session push -----------------------------
+  const sessionActivityListeners = new Set<SessionActivityListener>();
+
+  /** Subscribe to real-time session activity; returns the unsubscribe fn. */
+  function onSessionActivity(listener: SessionActivityListener): () => void {
+    sessionActivityListeners.add(listener);
+    return () => {
+      sessionActivityListeners.delete(listener);
+    };
+  }
+
+  /** Push from the runtime's PTY output stream to every Work Records
+   *  subscriber. Listener failures never block the session. */
+  function notifySessionActivity(workspace: string): void {
+    for (const listener of [...sessionActivityListeners]) {
+      try {
+        listener(workspace);
+      } catch {
+        /* best-effort: a stale view must not break the terminal */
+      }
+    }
+  }
 
   const unarchivedCollections = computed(() =>
     collections.value.filter((c) => c.status === "active"),
@@ -330,6 +359,8 @@ export const useWorkRecordsStore = defineStore("workRecords", () => {
     setWorkspace,
     load,
     reload,
+    onSessionActivity,
+    notifySessionActivity,
     create,
     rename,
     archive,

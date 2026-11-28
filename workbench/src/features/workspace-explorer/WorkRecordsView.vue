@@ -41,6 +41,9 @@ const pendingDelete = ref<{
   /** b2 (反馈 #11): same-agent + same-title conversations to cascade-delete. */
   conversations?: ConversationSummary[];
 } | null>(null);
+/** 2.2.0 b5 / U-1: unsubscribe handle for the runtime's session push. */
+let stopSessionPush: (() => void) | null = null;
+
 const contextMenu = ref<{
   x: number;
   y: number;
@@ -677,6 +680,12 @@ watch(() => explorer.conversations, async (current, old) => {
   if (records.workspace === props.workspace) await runtime.resolvePendingConversationAssociations(current);
 });
 onMounted(async () => {
+  // 2.2.0 b5 / U-1: real-time push — the runtime announces provider terminal
+  // activity; a conversation created in another tab refreshes this panel
+  // without the user clicking refresh.
+  stopSessionPush = records.onSessionActivity((workspace) => {
+    if (workspace === props.workspace) void refreshWorkRecords();
+  });
   window.addEventListener("click", onOutsideMenu);
   window.addEventListener("focusin", onOutsideMenu);
   window.addEventListener("keydown", onMenuKeydown);
@@ -696,6 +705,8 @@ watch([menuEl, submenuEl], () => {
   if (submenuEl.value) menuResizeObserver?.observe(submenuEl.value);
 });
 onBeforeUnmount(() => {
+  stopSessionPush?.();
+  stopSessionPush = null;
   menuResizeObserver?.disconnect();
   window.removeEventListener("click", onOutsideMenu);
   window.removeEventListener("focusin", onOutsideMenu);
@@ -719,7 +730,6 @@ watch(() => props.workspace, async (workspace) => {
         <input v-model="showArchived" type="checkbox" data-testid="show-archived" />
         {{ t("workRecords.showArchived") }}
       </label>
-      <button class="ui-icon-button sm" type="button" :title="t('workRecords.refresh')" :aria-label="t('workRecords.refresh')" data-testid="refresh-work-records" @click="refreshWorkRecords()">⟳</button>
     </div>
 
       <p v-if="records.error" class="explorer-error" role="alert">{{ records.error }}</p>

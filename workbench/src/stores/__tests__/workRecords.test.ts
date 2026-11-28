@@ -190,4 +190,15 @@ describe("workRecords store", () => {
     expect(s.unfiled).toEqual([]);
     expect(s.lastDeleteFailure).toBeNull();
   });
+
+  it("pushes session activity to subscribers and unsubscribes cleanly (U-1)", () => {
+    const s = useWorkRecordsStore();
+    const listener = vi.fn();
+    const stop = s.onSessionActivity(listener);
+    s.notifySessionActivity("/ws");
+    expect(listener).toHaveBeenCalledWith("/ws");
+    stop();
+    s.notifySessionActivity("/ws");
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
 });
