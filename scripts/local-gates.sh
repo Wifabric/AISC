@@ -126,7 +126,9 @@ elif [ "$SCOPED" = true ]; then
 fi
 
 if [ "$run_cargo" = yes ]; then
-    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    if ! command -v cargo >/dev/null 2>&1; then
+        printf '\n\033[33m[cargo 未安装] 跳过 cargo test --lib（PATH 无 cargo，CI 为 Rust 权威）\033[0m\n' >&2
+    elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
         step "cargo test --lib" bash -c 'cd "$1/workbench/src-tauri" && cargo test --lib' _ "$root"
     else
         printf '\n\033[33m[docker 未安装/未运行] 跳过依赖 daemon 的 diag 测试：\033[0m\n' >&2
