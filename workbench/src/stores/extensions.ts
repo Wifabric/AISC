@@ -264,6 +264,8 @@ export const useExtensionsStore = defineStore("extensions", () => {
     pluginMarketsGeneration += 1;
     errorsByKind.value = kindRecord<string | null>(null);
     operationsByKind.value = kindRecord<ExtensionOperation | null>(null);
+    cancelScopes.clear();
+    cancelableByKind.value = kindRecord(false);
   }
 
   function clearUpdateSignals(target: ExtensionsKind, ids: string[]): void {
@@ -301,6 +303,63 @@ export const useExtensionsStore = defineStore("extensions", () => {
     busyByKind.value.skills || busyByKind.value.plugins,
   );
   const opBusyId = computed(() => activeOperation.value?.id ?? null);
+
+  // Cancellation races the in-flight request so a slow/hung install releases
+  // the busy state and lets the user retry. The abandoned request is observed
+  // (see `cancellable`) but its late result never mutates the UI.
+  class OperationCancelled extends Error {
+    constructor() { super("operation cancelled"); }
+  }
+  interface CancelScope { cancelled: boolean; promise: Promise<void>; cancel: () => void; }
+  const cancelableByKind = ref<KindRecord<boolean>>(kindRecord(false));
+  const cancelScopes = new Map<ExtensionsKind, CancelScope>();
+
+  function beginCancelScope(target: ExtensionsKind): CancelScope {
+    let resolve!: () => void;
+    const scope: CancelScope = {
+      cancelled: false,
+      promise: new Promise<void>((done) => { resolve = done; }),
+      cancel: () => {
+        scope.cancelled = true;
+        cancelableByKind.value = { ...cancelableByKind.value, [target]: false };
+        resolve();
+      },
+    };
+    cancelScopes.set(target, scope);
+    cancelableByKind.value = { ...cancelableByKind.value, [target]: true };
+    return scope;
+  }
+
+  function endCancelScope(target: ExtensionsKind, scope: CancelScope): void {
+    if (cancelScopes.get(target) === scope) cancelScopes.delete(target);
+    if (cancelableByKind.value[target]) {
+      cancelableByKind.value = { ...cancelableByKind.value, [target]: false };
+    }
+  }
+
+  function cancellable<T>(request: Promise<T>, scope: CancelScope): Promise<T> {
+    // Always observe the abandoned request so cancellation cannot surface an
+    // unhandled rejection when the container finishes later.
+    request.catch(() => undefined);
+    return Promise.race([
+      request,
+      scope.promise.then(() => { throw new OperationCancelled(); }),
+    ]);
+  }
+
+  const canCancelOperation = computed(() => {
+    const operation = activeOperation.value;
+    return !!operation && cancelableByKind.value[operation.kind] === true;
+  });
+
+  function cancelActiveOperation(): boolean {
+    const operation = activeOperation.value;
+    if (!operation) return false;
+    const scope = cancelScopes.get(operation.kind);
+    if (!scope || scope.cancelled) return false;
+    scope.cancel();
+    return true;
+  }
   const installedSkillGroups = computed(() => groupSkillItems(itemsByKind.value.skills));
   const marketSkillGroups = computed(() =>
     groupSkillItems(marketSkills.value.slice(0, displayedSkillCount.value).map(describedItem)),
@@ -371,19 +430,25 @@ export const useExtensionsStore = defineStore("extensions", () => {
       kind: target, action, id, label, completed: 0, total: operations.length,
     };
     const failures: string[] = [];
+    const scope = beginCancelScope(target);
     try {
       for (let index = 0; index < operations.length; index += 1) {
-        if (!isCurrentContext(token)) return;
+        if (!isCurrentContext(token) || scope.cancelled) break;
         const started = new Date().toISOString();
         const run = operations[index]!;
         const itemId = affectedIds[index] ?? id;
         try {
-          await run();
+          await cancellable(run(), scope);
           if (!isCurrentContext(token)) return;
           logOperation(target, action, itemId, label, started, "success", "", run, attempt);
           if (action !== "toggle") clearUpdateSignals(target, [itemId]);
         } catch (e) {
           if (!isCurrentContext(token)) return;
+          if (e instanceof OperationCancelled) {
+            logOperation(target, action, itemId, label, started, "unknown",
+              i18n.global.t("extensions.log.cancelled"), run, attempt);
+            break;
+          }
           const message = errorText(e);
           const code = (e as { code?: string })?.code ?? "";
           const unknown = ["WB_ERR_CLI_TIMEOUT", "WB_ERR_CLI_PROTOCOL", "WB_ERR_CLI_CANCELLED", "AISC_ERR_EXTENSIONS_PLUGIN_IN_PROGRESS", "AISC_ERR_EXTENSIONS_PLUGIN_TIMEOUT"].includes(code)
@@ -397,13 +462,16 @@ export const useExtensionsStore = defineStore("extensions", () => {
       }
       await refresh(target, { silent: true });
       if (!isCurrentContext(token)) return;
-      if (failures.length) {
+      if (scope.cancelled) {
+        toast.info(i18n.global.t("extensions.toast.operationCancelled", { target: label }));
+      } else if (failures.length) {
         setError(target, failures.join("; "), operationLog.value.filter(row => row.kind === target && row.status !== "success").slice(-1)[0]?.operationId ?? null);
         toast.error(operationFailure(label, failures.join("; ")));
       } else {
         toast.success(operationSuccess(action, label));
       }
     } finally {
+      endCancelScope(target, scope);
       if (isCurrentContext(token)) {
         busyByKind.value[target] = false;
         operationsByKind.value[target] = null;
@@ -534,13 +602,14 @@ export const useExtensionsStore = defineStore("extensions", () => {
       label: group.name, completed: 0, total: specs.length,
     };
     const started = new Date().toISOString();
+    const scope = beginCancelScope("skills");
     let loggedResults = false;
     try {
-      const result = await call<{
+      const result = await cancellable(call<{
         total?: number;
         completed?: number;
         items?: Array<{ spec: string; status: string; error?: string }>;
-      }>(op, { specs });
+      }>(op, { specs }), scope);
       if (!isCurrentContext(token)) return;
       loggedResults = true;
       for (const [index, spec] of specs.entries()) {
@@ -575,6 +644,18 @@ export const useExtensionsStore = defineStore("extensions", () => {
       toast.success(operationSuccess(action, group.name));
     } catch (e) {
       if (!isCurrentContext(token)) return;
+      if (e instanceof OperationCancelled) {
+        // The container may still finish the request; keep the result unknown
+        // so the user refreshes before a blind retry, but release the UI now.
+        for (const [index, spec] of specs.entries()) {
+          logOperation("skills", action, group.items[index]!.id, spec, started, "unknown",
+            i18n.global.t("extensions.log.cancelled"),
+            () => call(action === "install" ? "skill-install" : "skill-update", { spec }));
+        }
+        toast.info(i18n.global.t("extensions.toast.operationCancelled", { target: group.name }));
+        await refresh("skills", { silent: true }).catch(() => undefined);
+        return;
+      }
       const message = errorText(e);
       if (!loggedResults) {
         for (const [index, spec] of specs.entries()) {
@@ -587,6 +668,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
       if (!isCurrentContext(token)) return;
       setError("skills", message, operationLog.value.filter(row => row.kind === "skills" && row.status !== "success").slice(-1)[0]?.operationId ?? null);
     } finally {
+      endCancelScope("skills", scope);
       if (isCurrentContext(token)) {
         busyByKind.value.skills = false;
         operationsByKind.value.skills = null;
@@ -799,6 +881,7 @@ export const useExtensionsStore = defineStore("extensions", () => {
     pluginMarkets, pluginMarketsBusy, pluginMarketsError, sourceMaintenanceBusy,
     skillRepos, skillReposBusy, skillReposUnsupported,
     skillReposError, marketPlugins, opBusyId, marketMcp, activeOperation,
+    canCancelOperation, cancelActiveOperation,
     operationsByKind, operationLog, latestFailure, dismissFailureNotice, canRetryOperation, retryOperation, copyOperationDiagnostic,
     marketCacheByKind, marketCache, updateItemsByKind, updateItems,
     updatesBusy, updatesError,

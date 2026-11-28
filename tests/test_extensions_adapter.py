@@ -962,6 +962,78 @@ class MarketTests(TempEnv):
         self.assertIn("ghfast.top", clone_attempts[1]["env"]["GIT_CONFIG_KEY_0"])
         self.assertEqual(result["completed"], 1)
 
+    def test_skill_install_group_installs_when_direct_git_probe_fails_but_mirror_is_reachable(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            env = kwargs.get("env") or {}
+            mirror = "ghfast.top" in env.get("GIT_CONFIG_KEY_0", "") or \
+                "gh-proxy.com" in env.get("GIT_CONFIG_KEY_0", "")
+            calls.append({"argv": list(argv), "env": env})
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                if mirror:
+                    return subprocess.CompletedProcess(
+                        argv, 0, "ref: refs/heads/main\tHEAD\nsha HEAD\n", "")
+                return subprocess.CompletedProcess(argv, 1, "", "direct git down")
+            if argv[:2] == ["git", "ls-remote"]:
+                # The old group preflight probed this bare form and failed the
+                # whole group even though the archive/mirror path worked.
+                return subprocess.CompletedProcess(argv, 1, "", "plain git down")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "direct archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "a"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("---\nname: a\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "main\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["owner/repo:a"])
+
+        self.assertEqual(result["completed"], 1)
+        self.assertEqual(result["items"][0]["status"], "installed")
+
+    def test_skill_install_group_marks_only_failed_repo_and_installs_healthy_one(self):
+        def run(argv, **kwargs):
+            mirror = "ghfast.top" in (kwargs.get("env") or {}).get("GIT_CONFIG_KEY_0", "")
+            if argv[:3] == ["git", "ls-remote", "--symref"]:
+                if "bad/repo" in argv[-2]:
+                    return subprocess.CompletedProcess(argv, 1, "", "git down")
+                return subprocess.CompletedProcess(
+                    argv, 0, "ref: refs/heads/main\tHEAD\nsha HEAD\n", "")
+            if argv[:2] == ["curl", "-fsSIL"]:
+                if "bad/repo" in argv[-1] or argv[-1].startswith("https://github.com/"):
+                    return subprocess.CompletedProcess(argv, 1, "", "archive down")
+                return subprocess.CompletedProcess(argv, 0, "HTTP/2 200", "")
+            if argv[:2] == ["git", "clone"]:
+                if "bad/repo" in argv[-2]:
+                    return subprocess.CompletedProcess(argv, 1, "", "clone down")
+                destination = Path(argv[-1])
+                skill = destination / "skills" / "b"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("---\nname: b\n---\n", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(argv, 0, "main\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(A.subprocess, "run", run):
+            result = A.skill_install_group(["bad/repo:a", "good/repo:b"])
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["completed"], 1)
+        by_spec = {item["spec"]: item for item in result["items"]}
+        self.assertEqual(by_spec["bad/repo:a"]["status"], "source_failed")
+        self.assertEqual(by_spec["good/repo:b"]["status"], "installed")
+        self.assertNotIn("skill group source preflight failed",
+                         "\n".join(item["error"] for item in result["items"]))
+
     def test_skill_update_group_supports_local_directory(self):
         connection = sqlite3.connect(self.root / "cc-switch.db")
         connection.execute(
@@ -1038,8 +1110,11 @@ class MarketTests(TempEnv):
         connection.close()
         calls, run = self._fake()
 
-        with mock.patch.object(A, "_github_repo_identity", return_value=("owner", "repo", None)), \
-             mock.patch.object(A, "_github_git_env", return_value={}), \
+        with mock.patch.object(
+                 A, "_github_repo_identity",
+                 return_value=(("owner", "repo", None),
+                               "https://github.com/owner/repo.git")), \
+             mock.patch.object(A, "_github_skill_env", return_value={}), \
              mock.patch.object(A, "_stage_skills_from_git_source", return_value=[]), \
              mock.patch.object(A.subprocess, "run", run):
             result = A.skill_install_group([

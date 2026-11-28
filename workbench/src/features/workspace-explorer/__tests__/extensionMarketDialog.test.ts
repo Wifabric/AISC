@@ -28,6 +28,8 @@ function makeStore() {
     marketSkillGroups: [] as any[], displayedSkillCount: 0, showMoreMarketSkills: vi.fn(),
     marketCacheByKind: { skills: null, mcp: null, plugins: null } as any,
     skillRepos: [], pluginMarkets: [], error: null as string | null,
+    activeOperation: null as any, canCancelOperation: false,
+    cancelActiveOperation: vi.fn(() => true),
   });
 }
 vi.mock("../../../stores/extensions", () => ({ useExtensionsStore: () => store }));
@@ -369,6 +371,30 @@ describe("ExtensionMarketDialog", () => {
     expect(wrapper.emitted("close")).toHaveLength(1);
     const first = wrapper.get("[data-testid='market-close']");
     expect(document.activeElement).toBe(first.element);
+    wrapper.unmount();
+  });
+
+  it("shows group install progress and a cancel action inside the market dialog", async () => {
+    store.marketSkills = [
+      { kind: "market-skill", id: "owner/repo:a", name: "a", repo: "owner/repo", directory: "a" },
+      { kind: "market-skill", id: "owner/repo:b", name: "b", repo: "owner/repo", directory: "b" },
+    ];
+    store.marketSkillGroups = [{
+      id: "owner/repo", name: "owner/repo", repo: "owner/repo",
+      conflict: false, expanded: true, items: store.marketSkills,
+    }];
+    store.activeOperation = {
+      kind: "skills", action: "install", id: "market:owner/repo",
+      label: "owner/repo", completed: 1, total: 2,
+    };
+    store.canCancelOperation = true;
+    const wrapper = mountDialog();
+    await wrapper.get("[data-testid='market-tab-skills']").trigger("click");
+    const progress = wrapper.get("[data-testid='market-operation-progress']");
+    expect(progress.text()).toContain("1/2");
+    expect(progress.text()).toContain("owner/repo");
+    await wrapper.get("[data-testid='market-operation-cancel']").trigger("click");
+    expect(store.cancelActiveOperation).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 });

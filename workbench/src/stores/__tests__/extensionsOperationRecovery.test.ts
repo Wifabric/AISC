@@ -119,4 +119,37 @@ describe("extension operation recovery",()=>{
   await Promise.resolve();await Promise.resolve();await Promise.resolve();s.setContext("/new","r2");complete({items:[]});await pending;expect(s.error).toBeNull();
  });
 
+
+ it("cancels a pending group install and releases the busy state",async()=>{
+  let finish!:(v:any)=>void;
+  call.mockImplementation(p=>p.op==="skill-install-group"?new Promise(r=>{finish=r;}):Promise.resolve({items:[]}));
+  const s=setup();s.marketSkills=[{kind:"market-skill",id:"o/r:a",name:"a",repo:"o/r",directory:"a"},{kind:"market-skill",id:"o/r:b",name:"b",repo:"o/r",directory:"b"}];
+  const pending=s.installSkillGroup(s.marketSkillGroups[0]!);
+  expect(s.activeOperation).toMatchObject({kind:"skills",action:"install"});
+  expect(s.canCancelOperation).toBe(true);
+  expect(s.cancelActiveOperation()).toBe(true);
+  finish({total:2,completed:2,items:[{spec:"o/r:a",status:"installed"},{spec:"o/r:b",status:"installed"}]});
+  await pending;
+  expect(s.activeOperation).toBeNull();
+  expect(s.canCancelOperation).toBe(false);
+  expect(s.operationLog).toHaveLength(2);
+  expect(s.operationLog.every(row=>row.status==="unknown")).toBe(true);
+  expect(s.operationLog.every(row=>row.diagnostic.includes("取消"))).toBe(true);
+ });
+ it("cancels a single pending install and does not offer cancel when idle",async()=>{
+  let finish!:(v:any)=>void;
+  const s=setup();
+  expect(s.canCancelOperation).toBe(false);
+  expect(s.cancelActiveOperation()).toBe(false);
+  call.mockImplementation(p=>p.op==="skill-install"?new Promise(r=>{finish=r;}):Promise.resolve({items:[]}));
+  const pending=s.installSkill("o/r:a");
+  expect(s.canCancelOperation).toBe(true);
+  s.cancelActiveOperation();
+  finish({});
+  await pending;
+  expect(s.activeOperation).toBeNull();
+  expect(s.canCancelOperation).toBe(false);
+  expect(s.operationLog).toHaveLength(1);
+  expect(s.operationLog[0]!.status).toBe("unknown");
+ });
 });
