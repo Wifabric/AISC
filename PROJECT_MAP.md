@@ -80,6 +80,8 @@ CLI（src/aisc/）→ Docker SDK（exec pty）→ 容器
 | 需求 | 首要入口 | 关联文件 | 验证 |
 |---|---|---|---|
 | 改前端交互 | `workbench/src/` | `workbench/src-tauri/`（IPC） | `npx vitest run` + `npm run build` |
+| 改工作记录预览 | `workbench/src/features/history/RecordContent.vue`、`ConversationViewer.vue`、`conversationReading.ts` | `workbench/src/stores/workspaceExplorer.ts`（missingRecordPaths / WORKSPACE_ERRORS）、`src/aisc/application/conversation.py`（kind 归一） | `npx vitest run` + `python3 -m pytest tests/test_conversation.py` |
+| 改终端渲染/可观测 | `workbench/src/features/terminal/Terminal.vue`、`MarkdownOutputView.vue`、`markdownOutput.ts`、`markdownRender.ts` | `workbench/src/stores/workspaceRuntime.ts`（paneStreams / 探针）、`stuckProbe.ts` | `npx vitest run` |
 | 改 CLI 行为 | `src/aisc/` | `src/aisc/schemas/` | `python3 -m pytest tests/` |
 | 改容器/引擎适配 | `container/` | `container/Dockerfile` | 重建镜像 + 对应集成测试 |
 
