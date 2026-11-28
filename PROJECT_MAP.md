@@ -112,7 +112,7 @@ CLI（src/aisc/）→ Docker SDK（exec pty）→ 容器
 | 桌面打包 | `packaging/windows/`、`packaging/aisc.spec` | NSIS 安装器发布 GitHub Release |
 | 容器 | `container/Dockerfile` | 工作区镜像 |
 
-> 发布 preview/final：打 `v*` tag → `nsis-installer.yml` 自动构建 NSIS 并挂 artifact 到 Release（**不要手动 `gh release create`**）；核验 `gh release view <tag>` 有 `.exe` + `.sha256`。
+> 发布 preview/final：打 `v*` tag → `.github/workflows/nsis-installer.yml` 自动构建 NSIS 并挂 setup.exe + .sha256 到 Release（**不要手动 `gh release create`**）；核验 `gh release view` 有 asset。
 
 ## 12. 提交前检查
 
