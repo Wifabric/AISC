@@ -1618,6 +1618,12 @@ _OFFICIAL_ROW_ID = {"claude": "claude-official", "codex": "codex-official"}
 # on the built-in OpenAI profile, no model_providers section.
 _OFFICIAL_CODEX_CONFIG = 'model = "gpt-5.2"\n'
 
+# Upstream 5.11.x localizes the switch confirmation to the CLI language —
+# the Chinese build prints "✓ 已切换到供应商 '<id>'" while still exiting 0.
+# The success check must accept every known wording or a refresh of the
+# already-current official row fails with "(exit 0)" (2.2.0 #45).
+_SWITCH_SUCCESS_MARKERS = ("Switched to provider", "已切换到供应商")
+
 
 def _cli_switch_empty_config(agent: str, provider_id: str) -> None:
     """Switch to an EMPTY-config row (the official/direct placeholders).
@@ -1631,8 +1637,10 @@ def _cli_switch_empty_config(agent: str, provider_id: str) -> None:
         raise AdapterError(ERR_BAD_REQUEST, f"invalid provider id: {provider_id!r}")
     cmd = f"cc-switch -a {agent} provider switch {provider_id}"
     completed = run_raw(["script", "-qec", cmd, "/dev/null"], "y\ny\n")
-    if completed.returncode != 0 or "Switched to provider" not in (completed.stdout or ""):
-        detail = (completed.stdout + completed.stderr).strip()[:300]
+    output = (completed.stdout or "") + (completed.stderr or "")
+    if completed.returncode != 0 or not any(
+            marker in output for marker in _SWITCH_SUCCESS_MARKERS):
+        detail = output.strip()[:300]
         raise AdapterError(
             ERR_CLI,
             f"provider switch {provider_id} failed (exit {completed.returncode}): {detail}",

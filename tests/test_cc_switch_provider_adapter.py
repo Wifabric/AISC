@@ -993,6 +993,28 @@ class SwitchTests(AdapterTestCase):
         self.assertIn("provider switch claude-official", call.args[2])
         self.assertEqual(call.stdin_text, "y\ny\n")
 
+    def test_switch_empty_config_accepts_localized_success_message(self):
+        # b4 (2.2.0 #45): upstream cc-switch 5.11.x localizes the success line
+        # ("✓ 已切换到供应商 'codex-official'") and still exits 0. The old
+        # English-only marker check reported that as
+        # "provider switch codex-official failed (exit 0)".
+        seed_provider(self.dir, "deepseek", {}, agent="codex", is_current=True,
+                      settings={"auth": {}, "config":
+                                'model_provider = "d"\n[model_providers.d]\n'
+                                'base_url = "https://x"\n'})
+        seed_provider(self.dir, "codex-official", {}, agent="codex",
+                      settings={"auth": {}, "config": ""})
+
+        def localized_raw(argv, stdin_text):
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout=("✓ 已切换到供应商 'codex-official'\n"
+                        "注意：请重启 CLI 客户端以应用更改。\n"),
+                stderr="")
+
+        A.run_raw = localized_raw
+        A.op_switch("codex", "official")  # must NOT raise
+
     def test_switch_official_pseudo_target_maps_to_agent_row(self):
         seed_provider(self.dir, "deepseek", CLAUDE_ENV, is_current=True)
         seed_provider(self.dir, "claude-official", {})
