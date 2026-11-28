@@ -887,7 +887,15 @@ export const useWorkspaceExplorerStore = defineStore("workspaceExplorer", {
             cursor = page.next_cursor;
             if (!cursor) for (const path of wanted) missing.add(path);
           } while (cursor && wanted.size);
-        } catch { /* A temporarily unavailable workspace can be retried on click. */ }
+        } catch (e) {
+          // b7 (D-6): a directory the backend reports as gone/invalid cannot
+          // hold an openable file; mark the remaining paths missing so the
+          // preview removes the hyperlink. Transient failures stay clickable
+          // so the reader can retry.
+          if (/^WB_ERR_WORKSPACE_(?:INVALID|NOT_FOUND)$/.test(errorCodeOf(e))) {
+            for (const path of wanted) missing.add(path);
+          }
+        }
       }
       return missing;
     },

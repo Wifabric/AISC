@@ -113,4 +113,17 @@ describe("Work Record reader", () => {
     document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await flushPromises(); expect(document.activeElement).toBe(opener);
   });
+  it("removes a dead link on click without reporting an unavailable-file error", async () => {
+    const { pinia, explorer, read } = setup();
+    read.mockResolvedValue(page("[失效链接](file:///ws/gone.md)"));
+    vi.spyOn(explorer, "missingRecordPaths").mockResolvedValue(new Set());
+    vi.spyOn(explorer, "openRecordLink").mockRejectedValue(new Error("gone"));
+    show(pinia); await flushPromises();
+    const anchor = document.querySelector(".cv-answer a") as HTMLAnchorElement;
+    expect(anchor.textContent).toBe("失效链接");
+    anchor.click(); await flushPromises();
+    expect(document.querySelector(".cv-answer a")).toBeNull();
+    expect(document.querySelector(".cv-answer")?.textContent).toContain("失效链接");
+    expect(document.querySelector(".record-error")).toBeNull();
+  });
 });
