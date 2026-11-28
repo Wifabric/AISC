@@ -285,12 +285,22 @@ RUN mkdir -p /opt/aisc/factory/.claude/skills
 # 1. 注入全局 CLAUDE.md
 COPY container/global-claude.md /opt/aisc/factory/.claude/CLAUDE.md
 
-# b2 (2.2.0 D-3): the image presets no skills/plugins/MCP. Extension
+# b2 (2.2.0 D-3): the image presets no skills/MCP/plugins. Extension
 # configuration is installed explicitly through the extension market at runtime.
-# The factory directories + empty plugin registry must still exist for the
-# first-run project copy.
+# The official plugin marketplace catalog stays bundled offline so search/install
+# works without network; entrypoint rewrites installLocation to the active
+# CLAUDE_CONFIG_DIR. Factory installs stay EMPTY.
+COPY container/_bundle/plugins/marketplaces/claude-plugins-official/ /opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official/
 RUN mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins \
     && echo '{"version":2,"plugins":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
+RUN printf '%s\n' \
+       '{' \
+       '  "claude-plugins-official": {' \
+       '    "source": {"source": "github", "repo": "anthropics/claude-plugins-official"},' \
+       '    "installLocation": "/opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official",' \
+       '    "lastUpdated": "2026-10-23T00:00:00.000Z"' \
+       '  }' \
+       '}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
 
 # Codex 使用同一套 SKILL.md 格式；预置到镜像的完整 .codex，项目模式整目录复制。
 COPY container/global-claude.md /opt/aisc/factory/.codex/AGENTS.md

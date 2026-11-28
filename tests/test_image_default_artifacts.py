@@ -21,7 +21,7 @@ class ImageDefaultArtifactsTest(unittest.TestCase):
     def test_no_default_skills_plugins_or_commands_are_copied(self):
         for source in (
             "container/_bundle/skills/",
-            "container/_bundle/plugins/",
+            "container/_bundle/plugins/cache/",
             "container/cc-switch-skills/",
             "container/commands/",
         ):
@@ -29,7 +29,21 @@ class ImageDefaultArtifactsTest(unittest.TestCase):
                 self.assertNotIn(f"COPY {source}", self.dockerfile)
         self.assertNotIn("prepare-office-hours.sh", self.dockerfile)
         self.assertNotIn("/opt/aisc/skills/", self.dockerfile)
-        self.assertNotIn("known_marketplaces.json", self.dockerfile)
+
+    def test_offline_official_marketplace_catalog_is_bundled(self):
+        # b2 review fix: the official marketplace catalog is not a default
+        # plugin install — it is the offline search index for the extension
+        # market, so it stays in the image while factory installs stay empty.
+        self.assertIn(
+            "COPY container/_bundle/plugins/marketplaces/claude-plugins-official/ "
+            "/opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official/",
+            self.dockerfile,
+        )
+        self.assertIn("anthropics/claude-plugins-official", self.dockerfile)
+        self.assertIn(
+            "/opt/aisc/factory/.claude/plugins/known_marketplaces.json",
+            self.dockerfile,
+        )
 
     def test_factory_plugin_registry_starts_empty(self):
         self.assertIn(
