@@ -1,5 +1,9 @@
 # AISC — 开发日志
 
+## Workbench 2.2.0 批次完成（2026-11-28）
+
+10 项已裁定反馈（7 新 + 3 悬账，D-1…D-10）切为 12 张工单 b1…b12，经 implement-spec 全部合入基线 develop（integration `2.2.0-wangyuncepu-integration`）。code-review 两轴修复全回写：修复 2 个预存测试失败（skill_repo 拒路径穿越 + office-hours 测试隔离）、刷新 adapter vendor checksum、i18n 孤儿键检查接入（非阻断）。统一源码回归：Python 1,912 通过（15 跳过、231 子测试）、cargo 409 通过、vitest 968 通过、vue-tsc 0 错、vendor 1,355 项校验全绿。HANDTEST 已转「可执行」，待主开发宣布收尾进入 preview。见[开发计划](docs/plans/2.2.0-dev-plans/README.md)。
+
 ## Workbench 2.1.20 正式发布（2026-11-27）
 
 Windows 正式包公开下载摘要与 2.1.19 升级报告一致，11 条反馈已逐项回写并回读。CLI 0.3.1 已在 [PyPI](https://pypi.org/project/aisc-cli/0.3.1/) 上线，两个索引的实际安装均通过，公开 wheel 与源码包摘要一致。 [发布证据](archive/2.1.20-dev-plans/DELIVERY.md)
