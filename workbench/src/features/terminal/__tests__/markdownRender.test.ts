@@ -59,6 +59,15 @@ describe("parseTerminalMarkdown (b10)", () => {
   });
 });
 
+describe("renderTerminalMarkdown headings/bold/inline code (b18)", () => {
+  it("wraps # headings, **bold** and `code` in SGR", () => {
+    const out = renderTerminalMarkdown("# Plan\n\n**bold** and `code`");
+    expect(out).toContain("\x1b[1mPlan\x1b[0m");
+    expect(out).toContain("\x1b[1mbold\x1b[0m");
+    expect(out).toContain("\x1b[2mcode\x1b[0m");
+  });
+});
+
 describe("renderTerminalMarkdown (b10)", () => {
   const out = stripAnsi(renderTerminalMarkdown(ENGINE_OUTPUT));
   const lines = out.split("\n");

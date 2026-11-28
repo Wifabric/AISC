@@ -1222,6 +1222,18 @@ def _build_parser() -> _AiscArgumentParser:
                      help="New display title (sanitized, ≤80 chars)")
 
     # conversation read (批 2 聊天式 UI): normalized read-only message stream
+    # conversation import (b17 T5): external Markdown work record → new unfiled
+    # conversation. Markdown rides stdin (never argv).
+    cvi = cvsub.add_parser("import", help="Import a Markdown work record as a conversation",
+                           allow_abbrev=False)
+    _add_global_args(cvi, is_subparser=True)
+    cvi.add_argument("--workspace", type=str, default=None,
+                     help="Workspace path (default: current directory)")
+    cvi.add_argument("--agent", type=str, default="claude",
+                     help="Agent type (claude|codex; default claude)")
+    cvi.add_argument("--title", type=str, default="",
+                     help="Display title (default: derived from markdown)")
+
     cvrd = cvsub.add_parser("read", help="Read a conversation as a normalized "
                                          "message stream (read-only)",
                             allow_abbrev=False)
@@ -2863,6 +2875,7 @@ def _cmd_conversation(
     """
     from aisc.cli.commands.conversation import (
         cmd_conversation_delete,
+        cmd_conversation_import,
         cmd_conversation_list,
         cmd_conversation_preflight,
         cmd_conversation_read,
@@ -2871,7 +2884,14 @@ def _cmd_conversation(
 
     sub = args.conversation_command
 
-    if sub == "list":
+    if sub == "import":
+        data = cmd_conversation_import(
+            workspace=args.workspace,
+            agent=args.agent,
+            title=args.title,
+        )
+        return data, 0, []
+    elif sub == "list":
         data = cmd_conversation_list(workspace=args.workspace)
         return data, 0, []
     elif sub == "preflight":

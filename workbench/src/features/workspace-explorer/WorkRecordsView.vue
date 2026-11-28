@@ -129,6 +129,14 @@ async function refreshWorkRecords() {
   await runtime.resolvePendingConversationAssociations(explorer.conversations);
 }
 
+/** b17 (T5): import a local Markdown work record as a new unfiled
+ *  conversation. The file dialog lives in the Rust command; a cancel is a
+ *  no-op. */
+async function importMarkdown() {
+  if (!props.workspace) return;
+  await records.importMarkdown(props.workspace);
+}
+
 async function removeMember(id: string, agent: "claude" | "codex", conversationId: string) {
   const removed = await records.removeMember(id, agent, conversationId);
   if (removed) await records.reload();
@@ -752,6 +760,14 @@ watch(() => props.workspace, async (workspace) => {
           :aria-label="t('workRecords.create')"
           @click="createCollection"
         >＋</button>
+        <button
+          class="ui-button sm"
+          type="button"
+          data-testid="import-markdown"
+          :title="t('workRecords.importMarkdown')"
+          :aria-label="t('workRecords.importMarkdown')"
+          @click="importMarkdown"
+        >{{ t("workRecords.importMarkdown") }}</button>
       </div>
 
       <p v-if="records.loading" class="explorer-empty">{{ t("explorer.loading") }}</p>

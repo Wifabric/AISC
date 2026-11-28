@@ -81,6 +81,20 @@ describe("extension operation recovery",()=>{
   expect(vi.mocked(writeText).mock.calls[vi.mocked(writeText).mock.calls.length - 1]?.[0]).not.toContain("very-secret");
  });
 
+ it("builds a canonical repo:directory spec when a market row has a repo-only id (b15)",async()=>{
+  let captured:any=null;
+  call.mockImplementation(async p=>{
+    if(p.op==="skill-install-group"){captured=p;return {total:1,completed:1,items:[{spec:"o/r:a",status:"installed"}]};}
+    return {items:[]};
+  });
+  const s=setup();
+  // cc-switch market fallback can emit id=repo (no colon) with directory in a
+  // separate field. install-group must not send the bare repo as the spec.
+  s.marketSkills=[{kind:"market-skill",id:"o/r",name:"a",repo:"o/r",directory:"a"}];
+  await s.installSkillGroup(s.marketSkillGroups[0]!);
+  expect(captured).not.toBeNull();
+  expect(captured.specs).toEqual(["o/r:a"]);
+ });
  it("matches group results when SSOT canonicalizes repository casing",async()=>{
   call.mockImplementation(async p=>p.op==="skill-install-group"?{total:1,completed:1,items:[{spec:"Owner/Repo:a",status:"installed"}]}:{items:[]});
   const s=setup();s.marketSkills=[{kind:"market-skill",id:"owner/repo:a",name:"a",repo:"owner/repo",directory:"a"}];

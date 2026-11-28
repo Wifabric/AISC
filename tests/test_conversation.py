@@ -20,6 +20,7 @@ from aisc.application.conversation import (
     TITLE_MAX_CHARS,
     UNREADABLE_TITLE,
     delete_conversation,
+    import_conversation_markdown,
     list_conversations,
     preflight_conversation,
     rename_conversation,
@@ -700,3 +701,21 @@ class TestParentThreadTree:
         for entry in result["conversations"]:
             if entry["agent"] == "claude":
                 assert entry["parent_thread_id"] is None
+
+
+class TestConversationImport:
+    def test_imports_markdown_as_unfiled_claude_conversation(self, ws_env):
+        ws, ws_dir = ws_env
+        imported = import_conversation_markdown(str(ws), "# Hello\n\nSome body text")
+        assert imported["agent"] == "claude"
+        assert imported["conversation_id"]
+        entry = _by_id(list_conversations(str(ws)), imported["conversation_id"])
+        assert entry["agent"] == "claude"
+        # title derives from the first user message
+        assert "Hello" in entry["title"]
+        assert (ws_dir / "claude" / "projects" / f"{imported['conversation_id']}.jsonl").is_file()
+
+    def test_rejects_empty_markdown(self, ws_env):
+        ws, _ = ws_env
+        with pytest.raises(CliError):
+            import_conversation_markdown(str(ws), "   \n ")

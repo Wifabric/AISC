@@ -76,6 +76,14 @@ describe("buildMarkdownLines", () => {
     }
   });
 
+  it("renders # headings and **bold** as bold segments (b18)", () => {
+    const lines = buildMarkdownLines("# Plan\n\n**bold** and `code`");
+    expect(lines[0]!.segments.some((seg) => seg.kind === "bold" && seg.text === "Plan")).toBe(true);
+    const styled = lines.find((l) => l.text.includes("bold"));
+    expect(styled!.segments.some((seg) => seg.kind === "bold" && seg.text === "bold")).toBe(true);
+    expect(styled!.segments.some((seg) => seg.kind === "dim" && seg.text === "code")).toBe(true);
+  });
+
   it("collapses a folded code block to its summary line", () => {
     const lines = buildMarkdownLines(SOURCE, { folded: new Set([0]) });
     expect(lines.some((l) => l.text === "const x = 1;")).toBe(false);

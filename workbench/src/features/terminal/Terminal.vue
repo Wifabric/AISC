@@ -278,6 +278,7 @@ const markdownOpen = ref(false);
 const markdownFolded = ref<ReadonlySet<number>>(new Set<number>());
 const markdownLines = ref<MarkdownRenderedLine[]>([]);
 let markdownRefreshTimer: number | null = null;
+const markdownViewRef = ref<{ scrollToBottom: () => void } | null>(null);
 const MARKDOWN_VIEW_MAX_BYTES = 512 * 1024;
 
 function refreshMarkdownView(): void {
@@ -302,6 +303,9 @@ function toggleMarkdownView(): void {
   if (markdownOpen.value) {
     markdownFolded.value = new Set<number>();
     refreshMarkdownView();
+    // b18 (T6): open at the live tail so toggling MD↔raw does not jump to the
+    // top of a different "pile" of output.
+    void nextTick(() => markdownViewRef.value?.scrollToBottom());
   } else if (markdownRefreshTimer !== null) {
     window.clearTimeout(markdownRefreshTimer);
     markdownRefreshTimer = null;
@@ -2695,6 +2699,7 @@ defineExpose({
          byte stream underneath is untouched (TUI/ANSI stays passthrough). -->
     <div v-if="markdownOpen" class="md-overlay" data-testid="markdown-overlay">
       <MarkdownOutputView
+        ref="markdownViewRef"
         :lines="markdownLines"
         @toggle-fold="toggleMarkdownFold"
         @open-path="openMarkdownPath"

@@ -7,6 +7,7 @@ import ExtensionDetailPanel from "./ExtensionItemDetail.vue";
 import ExtensionOperationProgress from "./ExtensionOperationProgress.vue";
 import ExtensionMarketResult from "./ExtensionMarketResult.vue";
 import { skillGroupSummary } from "./extensionSummaries";
+import { splitSkillSubgroups, type SkillGroup } from "./skillGroups";
 import ExtensionSourceManager from "./ExtensionSourceManager.vue";
 import ExtensionModulesPanel from "./ExtensionModulesPanel.vue";
 import {
@@ -39,6 +40,19 @@ function setKeyboardMode(event: Event, enabled: boolean): void {
 const selectedRecommendation = ref<CategorizedRecommendation | null>(null);
 const selectedMarketItem = ref<ExtensionsItem | null>(null);
 const expandedMarketGroupId = ref<string | null>(null);
+const expandedSubgroups = ref<Set<string>>(new Set());
+function subgroupKey(groupId: string, key: string): string {
+  return `${groupId}\u0000${key}`;
+}
+function toggleSubgroup(groupId: string, key: string): void {
+  const k = subgroupKey(groupId, key);
+  const next = new Set(expandedSubgroups.value);
+  if (next.has(k)) next.delete(k); else next.add(k);
+  expandedSubgroups.value = next;
+}
+function subgroupsFor(group: SkillGroup) {
+  return splitSkillSubgroups(group.items);
+}
 const panelRef = ref<HTMLElement | null>(null);
 const closeRef = ref<HTMLButtonElement | null>(null);
 
@@ -393,9 +407,31 @@ onMounted(() => { closeRef.value?.focus(); });
                     >{{ t("extensions.market.installShown", { count: group.items.length }) }}</button>
                   </div>
                   <p v-if="expandedMarketGroupId === group.id" class="market-group-summary">{{ skillGroupSummary(group, locale) }}</p>
-                  <ExtensionMarketResult v-for="item in group.items" :key="item.id" :item="item"
-                    :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
-                    @close="closeMarketItem(item)" @install="installDetail(item)" />
+                  <template v-if="subgroupsFor(group)">
+                    <ExtensionMarketResult v-for="item in subgroupsFor(group)!.roots" :key="item.id" :item="item"
+                      :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
+                      @close="closeMarketItem(item)" @install="installDetail(item)" />
+                    <section v-for="sg in subgroupsFor(group)!.subgroups" :key="sg.key" class="market-subgroup">
+                      <button type="button" class="market-subgroup-head"
+                        :aria-expanded="expandedSubgroups.has(subgroupKey(group.id, sg.key))"
+                        :data-testid="'market-subgroup-' + group.id + '-' + sg.key"
+                        @click="toggleSubgroup(group.id, sg.key)">
+                        <span class="subgroup-caret">{{ expandedSubgroups.has(subgroupKey(group.id, sg.key)) ? "▾" : "▸" }}</span>
+                        <strong>{{ sg.name }}</strong>
+                        <span>{{ t("extensions.market.groupShown", { count: sg.items.length }) }}</span>
+                      </button>
+                      <div v-if="expandedSubgroups.has(subgroupKey(group.id, sg.key))" class="subgroup-children">
+                        <ExtensionMarketResult v-for="item in sg.items" :key="item.id" :item="item"
+                          :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
+                          @close="closeMarketItem(item)" @install="installDetail(item)" />
+                      </div>
+                    </section>
+                  </template>
+                  <template v-else>
+                    <ExtensionMarketResult v-for="item in group.items" :key="item.id" :item="item"
+                      :expanded="selectedMarketItem?.id === item.id" @select="selectMarketItem(item)"
+                      @close="closeMarketItem(item)" @install="installDetail(item)" />
+                  </template>
                 </section>
               </template>
               <template v-else>
@@ -529,6 +565,14 @@ onMounted(() => { closeRef.value?.focus(); });
 .market-group { display: grid; min-width: 0; gap: var(--space-1); padding: var(--space-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
 .market-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .market-group-head .group-parent { flex: 1 1 200px; min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
+.market-subgroup { display: grid; gap: var(--space-1); margin-left: var(--space-3); }
+.market-subgroup-head { display: flex; align-items: center; gap: var(--space-2); width: 100%;
+  padding: var(--space-1) var(--space-2); border: none; background: transparent;
+  color: var(--text); text-align: left; cursor: pointer; font: inherit; border-radius: var(--radius-sm); }
+.market-subgroup-head:hover { background: var(--surface-2); }
+.market-subgroup-head .subgroup-caret { width: 1.1em; color: var(--text-muted); }
+.subgroup-children { display: grid; gap: var(--space-1); padding-left: var(--space-3);
+  border-left: var(--border-w) solid var(--border-2); }
 .group-install { min-height: var(--control-h-sm); padding: 0 var(--space-3); border: var(--border-w) solid var(--accent); background: var(--accent-soft); color: var(--text); cursor: pointer; }
 .market-result strong { color: var(--text); }
 .market-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
