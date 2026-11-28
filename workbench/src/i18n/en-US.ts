@@ -652,6 +652,8 @@ export const enUS: Record<string, string> = {
   "terminal.narrowTui.title": "Window too narrow",
   "terminal.narrowTui.detail": "The {agent} UI needs about {min} columns; currently ~{cols}. Please widen the window — the session keeps running and reappears once it is wide enough.",
   "terminal.clipboardError": "Clipboard unavailable: {message}",
+  "terminal.markdownView": "Markdown view",
+  "terminal.markdownViewTitle": "Markdown view (code blocks / fold / path clicks)",
   // --- one-click diagnosis (G-13, Step 12) ---
   "doctor.title": "Diagnostics",
   "doctor.run": "Run diagnostics",

@@ -2706,8 +2706,8 @@ defineExpose({
       class="md-toggle"
       :class="{ active: markdownOpen }"
       :aria-pressed="markdownOpen"
-      aria-label="Markdown view"
-      title="Markdown view (code blocks / fold / path clicks)"
+      :aria-label="t('terminal.markdownView')"
+      :title="t('terminal.markdownViewTitle')"
       data-testid="markdown-toggle"
       @click.stop="toggleMarkdownView"
     >

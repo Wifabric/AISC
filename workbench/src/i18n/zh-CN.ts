@@ -652,6 +652,8 @@ export const zhCN = {
   "terminal.narrowTui.title": "窗口太窄",
   "terminal.narrowTui.detail": "{agent} 界面至少需要约 {min} 列，当前约 {cols} 列。请放大窗口——会话仍在后台运行，放大后自动恢复显示。",
   "terminal.clipboardError": "剪贴板不可用：{message}",
+  "terminal.markdownView": "Markdown 视图",
+  "terminal.markdownViewTitle": "Markdown 视图（代码块 / 折叠 / 路径点击）",
   // --- 一键诊断 (G-13, Step 12) ---
   "doctor.title": "诊断",
   "doctor.run": "运行诊断",
