@@ -26,9 +26,9 @@
 | 组件 | 版本 | 安装·配置 | 核验方式 |
 |---|---|---|---|
 | Python | 3.11.2（`pyproject.toml` 要求 >=3.11，CI 到 3.13） | `python3 -m venv .venv` 后 `.venv/bin/pip install -e '.[dev]'`（pytest / PyYAML / PyInstaller / build + 运行时 docker、requests、watchdog、argcomplete） | `.venv/bin/python --version` → `Python 3.11.2`；`.venv/bin/python -m pytest --version` → `pytest 9.2.0` |
-| Node | 22.23.5（`.nvmrc` = 22） | nvm v0.40.1 装到 `~/.nvm`，Node 22.23.5 解压到 `~/.nvm/versions/node/` 并建 `v22` 软链（供 `local-gates.sh` 识别）；`workbench/` 内 `npm ci` | `~/.nvm/versions/node/v22.23.5/bin/node --version` → `v22.23.5`（PATH 默认仍为 v26.13.0）；`npx vitest --version` → `vitest/4.1.10 linux-x64 node-v22.23.5`；`npx vue-tsc --version` → `Version 5.6.3` |
+| Node | 22.23.5（`.nvmrc` = 22） | UNVERIFIED（仓库外 ~/.nvm）：nvm v0.40.1 装到 `~/.nvm`，Node 22.23.5 解压到 `~/.nvm/versions/node/` 并建 `v22` 软链（供 `scripts/local-gates.sh` 识别）；`workbench/` 内 `npm ci` | `~/.nvm/versions/node/v22.23.5/bin/node --version` → `v22.23.5`（PATH 默认仍为 v26.13.0）；`npx vitest --version` → `vitest/4.1.10 linux-x64 node-v22.23.5`；`npx vue-tsc --version` → `Version 5.6.3` |
 | Rust | 1.100.1 stable（`workbench/src-tauri`） | `rustup-init -y --profile minimal --default-toolchain stable`；apt 装 `build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev libssl-dev libxdo-dev`；按 CI 建 gitignore 占位 `workbench/src-tauri/binaries/aisc-x86_64-unknown-linux-gnu` 与 `workbench/src-tauri/nsis/bundle/aisc-bundle/` | `cargo --version` → `cargo 1.100.1`；`cargo test --lib -- --skip diag_engine_reachable` → `409 passed; 0 failed; 1 ignored` |
-| Docker | NOT RUN（未装） | 容器内无法安装/运行：存在 `/.dockerenv`，无 `/var/run/docker.sock` 与 `dockerd`，CapEff 不含 `cap_sys_admin`（DinD 需特权）；`local-gates.sh` 自动跳过依赖 daemon 的 `diag_engine_reachable` 测试 | `docker --version` → `command not found` |
+| Docker | NOT RUN（未装） | 容器内无法安装/运行：存在 `/.dockerenv`，无 `/var/run/docker.sock` 与 `dockerd`，CapEff 不含 `cap_sys_admin`（DinD 需特权）；`scripts/local-gates.sh` 自动跳过依赖 daemon 的 `diag_engine_reachable` 测试 | `docker --version` → `command not found` |
 
 ## 4. 日常循环（改哪层怎么生效）
 
@@ -49,7 +49,7 @@ bash scripts/local-gates.sh
 python3 -m pytest tests/
 ```
 
-> 门禁以 CI（`.github/workflows/`）为权威；本容器未装 cargo/docker/pytest，未实际跑通。
+> 门禁以 CI（`.github/workflows/`）为权威。本容器基线（2026-11-28）：`scripts/local-gates.sh` 第一步 Python 全测 1896 passed / 2 failed / 15 skipped——2 个预存失败（test_skill_repo_remove_rejects_malformed_source、test_office_hours_includes_only_selected_skill_and_referenced_runtime）；后三步 cargo 409 绿 / vitest 914 绿 / vue-tsc 绿；Docker NOT RUN（未装）。
 
 ## 6. 架构与调用链
 
