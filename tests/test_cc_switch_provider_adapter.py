@@ -521,7 +521,7 @@ class ClaudeSettingsBaseTests(AdapterTestCase):
     """Retest round 2 (2026-08-21): upstream's claude switch REPLACES
     settings.json with the row's settings_config wholesale — every claude
     settings_config the adapter writes must carry the non-env base
-    (statusLine/enabledPlugins/...) or the user's setup is wiped on the
+    (enabledPlugins/extraKnownMarketplaces/...) or the user's setup is wiped on the
     next switch (live-probed)."""
 
     def _add_settings(self, request: dict) -> dict:
@@ -535,7 +535,6 @@ class ClaudeSettingsBaseTests(AdapterTestCase):
             "mode": "simple", "id": "deepseek", "provider": "deepseek",
             "api_key": "sk-new-secret-777",
         })
-        self.assertIn("statusLine", sent)
         self.assertIn("enabledPlugins", sent)
         self.assertEqual(sent["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-new-secret-777")
 
@@ -544,7 +543,7 @@ class ClaudeSettingsBaseTests(AdapterTestCase):
             "mode": "custom", "id": "my-endpoint", "name": "My Endpoint",
             "base_url": "https://api.example.com", "api_key": "sk-k",
         })
-        self.assertIn("statusLine", sent)
+        self.assertIn("enabledPlugins", sent)
         self.assertEqual(sent["env"]["ANTHROPIC_BASE_URL"], "https://api.example.com")
 
     def test_edit_preserves_non_env_keys_through_the_dance(self):

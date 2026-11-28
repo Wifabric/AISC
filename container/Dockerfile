@@ -104,8 +104,6 @@ USER root
 #   注意：mihomo 是 ELF 二进制，绝不能 sed 处理（同 claude-real 教训）。
 # ==========================================
 COPY container/downloads/ /tmp/dl/
-COPY container/prepare-office-hours.sh /tmp/prepare-office-hours.sh
-RUN sh /tmp/prepare-office-hours.sh
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) mih_arch=amd64;; arm64|aarch64) mih_arch=arm64;; *) echo "unsupported arch $arch for mihomo"; exit 1;; esac; \
@@ -287,30 +285,14 @@ RUN mkdir -p /opt/aisc/factory/.claude/skills
 # 1. 注入全局 CLAUDE.md
 COPY container/global-claude.md /opt/aisc/factory/.claude/CLAUDE.md
 
-# 2. 注入插件机制技能套件（离线可用）：
-#    caveman（默认激活）/ claude-hud / document-skills / superpowers / skill-creator
-#    由 stage-skills.sh 预暂存到 _bundle/plugins（含 cache + marketplaces + 注册表）
-# b10 手测 #6: 工厂 plugins 清空——用户经商城自装（2026-10-23 用户裁定）
-
-# 2b. b12: factory installs stay EMPTY, but the official plugin marketplace is
-# available offline for search/install. entrypoint rewrites installLocation to
-# the active CLAUDE_CONFIG_DIR.
-COPY container/_bundle/plugins/marketplaces/claude-plugins-official/ /opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official/
-RUN mkdir -p /opt/aisc/factory/.claude/plugins \
-    && printf '%s\n' \
-       '{' \
-       '  "claude-plugins-official": {' \
-       '    "source": {"source": "github", "repo": "anthropics/claude-plugins-official"},' \
-       '    "installLocation": "/opt/aisc/factory/.claude/plugins/marketplaces/claude-plugins-official",' \
-       '    "lastUpdated": "2026-10-23T00:00:00.000Z"' \
-       '  }' \
-       '}' > /opt/aisc/factory/.claude/plugins/known_marketplaces.json
-
-# 3. 注入扁平技能（来源 _bundle/skills）：gstack（仅文档，6 子技能）
-COPY container/_bundle/skills/ /opt/aisc/factory/.claude/skills/
+# b2 (2.2.0 D-3): the image presets no skills/plugins/MCP. Extension
+# configuration is installed explicitly through the extension market at runtime.
+# The factory directories + empty plugin registry must still exist for the
+# first-run project copy.
+RUN mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins \
+    && echo '{"version":2,"plugins":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 
 # Codex 使用同一套 SKILL.md 格式；预置到镜像的完整 .codex，项目模式整目录复制。
-COPY container/_bundle/skills/ /opt/aisc/factory/.codex/skills/
 COPY container/global-claude.md /opt/aisc/factory/.codex/AGENTS.md
 RUN sed -i -e 's/Super Claude/Super Codex/' \
            -e 's/Claude Code/Codex/g' /opt/aisc/factory/.codex/AGENTS.md \
@@ -326,15 +308,8 @@ RUN find /opt/aisc/factory/.claude -type l | while read -r l; do \
         if [ -e "$t" ]; then cp -f --remove-destination "$t" "$l"; fi; \
     done
 
-# 3b. gstack 6 个技能的斜杠命令（/plan-ceo-review 等，包装对应 skill）
-COPY container/commands/ /opt/aisc/factory/.claude/commands/
-
-# 5. CLI settings.json：启用 5 个插件 + marketplace 来源 + claude-hud 状态栏(statusLine)
-#    statusLine 用 node 跑 claude-hud 的 dist/index.js（容器无 bun）
+# 5. CLI settings.json：无预置插件/marketplace/状态栏（b2：扩展全部经市场安装）
 COPY container/claude-settings.json /opt/aisc/factory/.claude/settings.json
-
-# 6. skill-creator 在 host 未预装，从本地 marketplace 离线安装（写入 installed_plugins.json）
-# b10: skill-creator 出厂安装移除（用户裁定清空初始插件）
 
 # 7. 默认 settings.local.json 放入 CLI 原生目录（随 .claude 一并复制到项目）
 RUN echo '{ "enableAllProjectMcpServers": true }' > /opt/aisc/factory/.claude/settings.local.json
@@ -599,7 +574,6 @@ COPY container/cc-switch-wrapper /usr/local/bin/cc-switch
 RUN sed -i 's/\r$//' /usr/local/bin/cc-switch \
     && chmod +x /usr/local/bin/cc-switch
 
-COPY container/cc_switch_skills.py /usr/local/bin/lib/cc_switch_skills.py
 COPY container/lib/cc_switch_preset_providers.py /usr/local/bin/lib/cc_switch_preset_providers.py
 COPY container/lib/default_mcp.py /usr/local/bin/lib/default_mcp.py
 # Stage 8c (D8-06): the DeepSeek preset consumes this official-docs fixture
@@ -627,22 +601,6 @@ RUN echo '# >>> aisc managed >>>' >> /root/.bashrc \
     && echo 'fi' >> /root/.bashrc \
     && echo '# <<< aisc managed <<<' >> /root/.bashrc
 
-# D-17 offline basics: 13 caveman skills, grill-me, grilling and Karpathy guidelines.
-# 仍走既有 cc-switch 注册/同步管理链路；其他技能由扩展商城安装。
-COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/
-COPY container/cc-switch-skills/grilling/ /opt/aisc/skills/grilling/
-COPY container/cc-switch-skills/karpathy-guidelines/ /opt/aisc/skills/karpathy-guidelines/
-COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/
-RUN set -eux; \
-    for skill in caveman caveman-commit caveman-compress caveman-discover caveman-evidence-review caveman-explore caveman-help caveman-learn caveman-manage caveman-optimize caveman-review caveman-setup caveman-stats grill-me grilling karpathy-guidelines; do \
-        test -f "/opt/aisc/skills/$skill/SKILL.md"; \
-    done; \
-    (cd /opt/aisc/skills && \
-        find . -type f -print0 | sort -z | xargs -0 sha256sum | \
-        sha256sum | awk '{print $1}') > /tmp/aisc-skills.sha256; \
-    mv /tmp/aisc-skills.sha256 /opt/aisc/skills/.aisc-bundle.sha256; \
-    mkdir -p /opt/aisc/factory/.claude/skills /opt/aisc/factory/.claude/plugins; \
-    echo '{"version":2,"plugins":{}}' > /opt/aisc/factory/.claude/plugins/installed_plugins.json
 # Stage 8b (CS-02): provenance labels — the resolver receipt baked into the
 # image. Empty on manual builds (only the legacy version ARG is set).
 LABEL org.aisc.cc-switch.version="${CC_SWITCH_RESOLVED_VERSION}" \

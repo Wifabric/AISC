@@ -112,9 +112,6 @@ else
     elif [ ! -d "$PROJECT_CLAUDE_DIR/skills" ] || [ ! -d "$PROJECT_CLAUDE_DIR/plugins" ]; then
         NEED_COPY=1
         echo "⚠️  检测到项目 .claude 残缺（缺 skills/plugins），正在从镜像补全复制..."
-    elif [ -z "$(ls -A "$PROJECT_CLAUDE_DIR/skills" 2>/dev/null)" ] || [ -z "$(ls -A "$PROJECT_CLAUDE_DIR/plugins" 2>/dev/null)" ]; then
-        NEED_COPY=1
-        echo "⚠️  检测到项目 .claude skills/plugins 为空，正在从镜像补全复制..."
     fi
 
     if [ "$NEED_COPY" = 1 ]; then
@@ -128,13 +125,9 @@ else
             exit 1
         fi
 
-        # 验证关键目录存在且非空
+        # b2: 镜像不再预置技能/插件，skills 为空是合法状态——只要求目录存在。
         if [ ! -d "$PROJECT_CLAUDE_DIR/skills" ] || [ ! -d "$PROJECT_CLAUDE_DIR/plugins" ]; then
             echo "❌ 复制后 skills/plugins 目录仍然不存在" >&2
-            exit 1
-        fi
-        if [ -z "$(ls -A "$PROJECT_CLAUDE_DIR/skills" 2>/dev/null)" ] || [ -z "$(ls -A "$PROJECT_CLAUDE_DIR/plugins" 2>/dev/null)" ]; then
-            echo "❌ 复制后 skills/plugins 目录为空" >&2
             exit 1
         fi
 
@@ -392,8 +385,6 @@ fi
 # ==========================================
 CC_SWITCH_DAEMON_LOG="/tmp/cc-switch-daemon.log"
 CC_SWITCH_CODEX_INIT_LOG="/tmp/cc-switch-codex-init.log"
-CC_SWITCH_SKILLS_LOG="/tmp/cc-switch-skills-init.log"
-CC_SWITCH_DEFAULT_MCP_LOG="/tmp/cc-switch-default-mcp.log"
 if command -v cc-switch >/dev/null 2>&1; then
     # P3 热切换拓扑（手测 r2）：daemon worker 默认绑 15721/15722——那两个
     # 端口属于 model-shim（存量会话的内存 env 指向那里）。daemon 启动
@@ -465,63 +456,8 @@ if command -v cc-switch >/dev/null 2>&1; then
             fi
         fi
 
-        # cc-switch 的 skills 路径以 HOME 为根：项目态用 /root（skills 落在
-        # 挂载的 /root/.claude、/root/.codex，持久到宿主 data root），
-        # 临时态同步到 /tmp/aisc-home。旧宿主回退布局时保持 /root/app。
-        if [ "$SCOPE" = "global" ] || [ "$SCOPE" = "temp" ] || [ "$SCOPE" = "temporary" ]; then
-            CC_SWITCH_SKILLS_HOME="$TEMP_HOME"
-        elif [ "$PROJECT_CLAUDE_DIR" = "/root/.claude" ]; then
-            CC_SWITCH_SKILLS_HOME="/root"
-        else
-            CC_SWITCH_SKILLS_HOME="/root/app"
-        fi
-        # 默认仅在首次安装、内置内容变化或已启用目标缺失时同步。
-        # always 可强制同步，off 可完全跳过；现有启停状态由 cc-switch 管理。
-        if CC_SWITCH_SKILLS_RESULT="$(
-            HOME="$CC_SWITCH_SKILLS_HOME" python3 /usr/local/bin/lib/cc_switch_skills.py \
-                --config-dir "$CC_SWITCH_CONFIG_DIR" \
-                --skills-home "$CC_SWITCH_SKILLS_HOME" \
-                --bundle-dir /opt/aisc/skills \
-                --log "$CC_SWITCH_SKILLS_LOG" \
-                --mode "${AISC_SKILLS_SYNC:-auto}"
-        )"; then
-            case "$CC_SWITCH_SKILLS_RESULT" in
-                synced)
-                    echo "✅ cc-switch 已配置 16 个通用技能（caveman、grill-me、grilling、Karpathy）（Claude + Codex）"
-                    ;;
-                current)
-                    echo "ℹ️  cc-switch 内置 skills 已是最新，跳过同步。"
-                    ;;
-                off)
-                    echo "ℹ️  AISC_SKILLS_SYNC=off，已跳过 cc-switch 内置 skills 同步。"
-                    ;;
-                declined)
-                    echo "ℹ️  文件锁不可用且宿主 Skills 已存在，已按默认选择保留现有内容并跳过同步。"
-                    ;;
-            esac
-        else
-            echo "⚠️  cc-switch skills 离线安装失败；日志: $CC_SWITCH_SKILLS_LOG" >&2
-        fi
-
-        # v2.1.17 preview fixes b3: install the official hosted GitHub MCP only
-        # when no user/custom github registration exists. AISC owns just its
-        # tagged row; switches/config edits survive every restart.
-        if AISC_DEFAULT_MCP_RESULT="$(
-            python3 /usr/local/bin/lib/default_mcp.py \
-                --config-dir "$CC_SWITCH_CONFIG_DIR" \
-                --project-dir /root/app \
-                --codex-config-dir "$CODEX_CONFIG_DIR" \
-                --log "$CC_SWITCH_DEFAULT_MCP_LOG"
-        )"; then
-            case "$AISC_DEFAULT_MCP_RESULT" in
-                installed) echo "✅ GitHub MCP 已默认安装（Claude + Codex）" ;;
-                synced) echo "ℹ️  GitHub MCP 默认配置已与当前开关同步" ;;
-                custom|custom-config|custom-live) echo "ℹ️  检测到自定义 GitHub MCP，保留用户配置" ;;
-                *) echo "ℹ️  GitHub MCP 默认同步结果：$AISC_DEFAULT_MCP_RESULT" ;;
-            esac
-        else
-            echo "⚠️  GitHub MCP 默认安装失败；日志: $CC_SWITCH_DEFAULT_MCP_LOG" >&2
-        fi
+        # b2 (2.2.0 D-3): the image seeds no skills or MCP servers. Every
+        # extension is installed explicitly through the extension market.
 
         # 2.1.12 (D-6.7, 2026-09-18): images no longer pre-seed keyless
         # provider cards. One-shot migration removes the historical preset
@@ -902,14 +838,8 @@ json.dump(ctx, open(p, 'w'), indent=2, ensure_ascii=False)
 
     # 2.1.9 T3b 补丁（#3）：存量工作区的 agent 指令面停在首次建区时的工厂副本
     # ——工厂后来加的登记节与 env 缺省技能从未同步进去，agent 自登记因此从未
-    # 触发。每次启动幂等回填：
-    #   a) artifact 技能完全 AISC 所有 → 直接以工厂版覆盖
-    #   b) CLAUDE.md / AGENTS.md 仅在标记块缺失时追加登记节（不动用户其余内容）
-    for _sk_dir in "$CLAUDE_CONFIG_DIR/skills/artifact" "$CODEX_CONFIG_DIR/skills/artifact"; do
-        if [ -d "$_sk_dir" ] && [ -f /opt/aisc/factory/.claude/skills/artifact/SKILL.md ]; then
-            cp /opt/aisc/factory/.claude/skills/artifact/SKILL.md "$_sk_dir/SKILL.md"
-        fi
-    done
+    # 触发。每次启动幂等回填 CLAUDE.md / AGENTS.md 的登记节（标记块缺失时
+    # 追加，不动用户其余内容）。b2：镜像不再预置技能，故无 artifact 技能回填。
     _reg_mark=">>> aisc artifact-register >>>"
     _reg_block='## Deliverable registration (变更页归因)
 

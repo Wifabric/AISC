@@ -59,34 +59,18 @@ class PreviewFactorySkillsTests(unittest.TestCase):
             "caveman-stats",
         })
 
-    def test_dockerfile_stages_only_the_ruled_skills_offline(self):
+    def test_dockerfile_stages_no_default_skills(self):
         dockerfile = (ROOT / "container" / "Dockerfile").read_text(encoding="utf-8")
-        self.assertIn(
-            "COPY container/cc-switch-skills/grill-me/ /opt/aisc/skills/grill-me/",
-            dockerfile,
-        )
-        self.assertIn(
-            "COPY container/_bundle/plugins/marketplaces/caveman/skills/ /opt/aisc/skills/",
-            dockerfile,
-        )
-        self.assertIn(".aisc-bundle.sha256", dockerfile)
+        self.assertNotIn("COPY container/cc-switch-skills/", dockerfile)
         self.assertNotIn(
-            "COPY container/cc-switch-skills/ /opt/aisc/skills/", dockerfile
+            "COPY container/_bundle/plugins/marketplaces/caveman/skills/", dockerfile
         )
-        for skill in (
-            "caveman", "caveman-commit", "caveman-compress",
-            "caveman-discover", "caveman-evidence-review", "caveman-explore",
-            "caveman-help", "caveman-learn", "caveman-manage",
-            "caveman-optimize", "caveman-review", "caveman-setup",
-            "caveman-stats",
-        ):
-            self.assertIn(f" {skill} ", dockerfile)
+        self.assertNotIn("/opt/aisc/skills/", dockerfile)
 
-    def test_entrypoint_reports_the_managed_factory_skills(self):
+    def test_entrypoint_does_not_seed_factory_skills(self):
         entrypoint = (ROOT / "container" / "entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("已配置 16 个通用技能", entrypoint)
-        self.assertIn("/usr/local/bin/lib/cc_switch_skills.py", entrypoint)
-        self.assertIn('--mode "${AISC_SKILLS_SYNC:-auto}"', entrypoint)
+        self.assertNotIn("cc_switch_skills.py", entrypoint)
+        self.assertNotIn("已配置 16 个通用技能", entrypoint)
 
     def test_state_query_supports_variable_bundled_skill_count(self):
         with tempfile.TemporaryDirectory() as tmp:

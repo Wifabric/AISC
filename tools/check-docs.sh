@@ -147,7 +147,6 @@ body_paths=(
   "container/mihomo-build-config.js"
   "container/claude-settings.json"
   "container/global-claude.md"
-  "container/commands"
   "container/_bundle"
   "container/downloads"
 )

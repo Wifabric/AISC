@@ -13,7 +13,6 @@ in the AISC project for offline and China-network builds.
 | claude-hud | 0.0.11 | MIT | MIT | Real-time HUD for Claude Code |
 | claude-plugins-official | embedded | Apache-2.0 | Apache-2.0 | Official Claude Code plugin marketplace |
 | anthropic-agent-skills | 1.0.0 | Apache-2.0 | Apache-2.0 | Anthropic example/document skills |
-| gstack-skills | 1.1.0 | unknown | — | gstack browser QA skills suite |
 
 ## License Compatibility
 
@@ -28,7 +27,7 @@ All currently identified licenses are permissive (MIT, Apache-2.0) or copyleft
 - **Apache-2.0 (claude-plugins-official, anthropic-agent-skills)**: Permissive —
   requires license notice, copyright notice, and a copy of the license text to
   be distributed with any substantial portions.
-- **unknown (geodata, gstack-skills)**: License terms have not been confirmed.
+- **unknown (geodata)**: License terms have not been confirmed.
   These should be verified before redistribution.
 
 ## Verifying Licenses
