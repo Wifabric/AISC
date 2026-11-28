@@ -63,6 +63,8 @@ import { useSettingsStore } from "../../stores/settings";
 
 import { useToastStore } from "../../stores/toast";
 
+import { useWorkspaceExplorerStore } from "../../stores/workspaceExplorer";
+
 import { AGENTS } from "../../stores/tabLayout";
 
 import {
@@ -86,6 +88,14 @@ import { containerPathFor, quoteForTerminal } from "./dropPath";
 import { resolveRenderer, terminalTheme, webglGpuSummary } from "./renderer";
 
 import { alignSpoolPage, linearizeSpoolPage } from "./spoolReplay";
+import MarkdownOutputView from "./MarkdownOutputView.vue";
+import {
+  buildMarkdownLines,
+  decodeStreamChunks,
+  stripTerminalAnsi,
+  type MarkdownRenderedLine,
+} from "./markdownOutput";
+import { toggleCodeFold, type TerminalPathTarget } from "./markdownRender";
 import {
   createAltScreenDetector,
   createScrollOwnership,
@@ -110,6 +120,8 @@ const props = defineProps<{ tabId: string; paneId: string }>();
 const store = useRuntimeStore();
 
 const settingsStore = useSettingsStore();
+
+const explorerStore = useWorkspaceExplorerStore();
 
 const container = ref<HTMLDivElement | null>(null);
 
@@ -258,6 +270,61 @@ const hasSelection = ref(false);
 const lastSelectionText = ref("");
 
 const canCopy = computed(() => hasSelection.value || lastSelectionText.value.length > 0);
+
+// D-9 (review fix): opt-in Markdown view over the pane's buffered TEXT stream.
+// The live xterm path stays byte passthrough (TUI/ANSI untouched); this view
+// only reads paneStreams and renders it through the b10/b11/b12 pipeline.
+const markdownOpen = ref(false);
+const markdownFolded = ref<ReadonlySet<number>>(new Set<number>());
+const markdownLines = ref<MarkdownRenderedLine[]>([]);
+let markdownRefreshTimer: number | null = null;
+const MARKDOWN_VIEW_MAX_BYTES = 512 * 1024;
+
+function refreshMarkdownView(): void {
+  const chunks = store.paneStreams[props.paneId] ?? [];
+  const text = stripTerminalAnsi(decodeStreamChunks(chunks, MARKDOWN_VIEW_MAX_BYTES));
+  markdownLines.value = buildMarkdownLines(text, {
+    folded: markdownFolded.value,
+    pathLinks: true,
+  });
+}
+
+function scheduleMarkdownView(): void {
+  if (!markdownOpen.value || markdownRefreshTimer !== null) return;
+  markdownRefreshTimer = window.setTimeout(() => {
+    markdownRefreshTimer = null;
+    if (markdownOpen.value) refreshMarkdownView();
+  }, 120);
+}
+
+function toggleMarkdownView(): void {
+  markdownOpen.value = !markdownOpen.value;
+  if (markdownOpen.value) {
+    markdownFolded.value = new Set<number>();
+    refreshMarkdownView();
+  } else if (markdownRefreshTimer !== null) {
+    window.clearTimeout(markdownRefreshTimer);
+    markdownRefreshTimer = null;
+  }
+}
+
+function toggleMarkdownFold(codeIndex: number): void {
+  markdownFolded.value = toggleCodeFold(markdownFolded.value, codeIndex);
+  refreshMarkdownView();
+}
+
+/** Resolve a clicked path against the workspace and open it. Absolute paths
+ * inside the workspace become relative; others are passed through. */
+async function openMarkdownPath(target: TerminalPathTarget): Promise<void> {
+  const ws = store.workspace ?? "";
+  let rel = target.path;
+  if (ws && rel.startsWith(`${ws}/`)) rel = rel.slice(ws.length + 1);
+  try {
+    await explorerStore.openFile(rel);
+  } catch (err) {
+    console.warn("[markdown-view] open path failed:", err);
+  }
+}
 
 /** G-06: build the Terminal from the typed settings (02 §三.4 table). Values
 
@@ -2224,6 +2291,8 @@ onMounted(() => {
 
       consumed = Math.max(consumed, total);
 
+      scheduleMarkdownView();
+
     },
 
     { immediate: true }
@@ -2474,6 +2543,8 @@ onBeforeUnmount(() => {
 
   if (healTimer !== null) window.clearInterval(healTimer);
 
+  if (markdownRefreshTimer !== null) window.clearTimeout(markdownRefreshTimer);
+
   if (veilFailsafe !== null) window.clearTimeout(veilFailsafe);
 
   veilGen += 1; // invalidate any in-flight veil callbacks (review P1)
@@ -2618,6 +2689,30 @@ defineExpose({
       </p>
 
     </div>
+
+    <!-- D-9 (review fix): opt-in Markdown view of the pane's text output.
+         Renders paneStreams through the b10/b11/b12 pipeline; the live xterm
+         byte stream underneath is untouched (TUI/ANSI stays passthrough). -->
+    <div v-if="markdownOpen" class="md-overlay" data-testid="markdown-overlay">
+      <MarkdownOutputView
+        :lines="markdownLines"
+        @toggle-fold="toggleMarkdownFold"
+        @open-path="openMarkdownPath"
+      />
+    </div>
+
+    <button
+      v-if="leafSessionType !== null"
+      class="md-toggle"
+      :class="{ active: markdownOpen }"
+      :aria-pressed="markdownOpen"
+      aria-label="Markdown view"
+      title="Markdown view (code blocks / fold / path clicks)"
+      data-testid="markdown-toggle"
+      @click.stop="toggleMarkdownView"
+    >
+      MD
+    </button>
 
     <!-- G-03 search overlay -->
 
@@ -2851,6 +2946,62 @@ defineExpose({
 .truncation-banner:disabled {
 
   cursor: default;
+
+}
+
+/* D-9 (review fix): the opt-in Markdown view toggle + overlay. */
+
+.md-toggle {
+
+  position: absolute;
+
+  bottom: 8px;
+
+  right: 12px;
+
+  /* Above .md-overlay (--z-overlay) so the toggle stays clickable while open. */
+
+  z-index: calc(var(--z-overlay) + 1);
+
+  padding: 1px 8px;
+
+  font-size: var(--font-xs);
+
+  font-family: var(--font-mono, ui-monospace, monospace);
+
+  color: var(--text-muted);
+
+  opacity: 0.55;
+
+  background: var(--surface-2);
+
+  border: var(--border-w) solid var(--border);
+
+  border-radius: var(--radius-sm);
+
+  cursor: pointer;
+
+}
+
+.md-toggle:hover,
+
+.md-toggle.active {
+
+  opacity: 1;
+
+  color: var(--text-2);
+
+  border-color: var(--border-strong);
+
+}
+
+.md-overlay {
+
+  position: absolute;
+
+  inset: 0;
+
+  z-index: var(--z-overlay);
 
 }
 

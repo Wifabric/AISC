@@ -30,8 +30,9 @@ export const DEFAULT_TAB_STUCK_THRESHOLDS: TabStuckThresholds = {
   queueStallMs: 3_000,
 };
 
-/** One pane's raw state as observed by the store probe. */
-export interface ProbePaneInput {
+/** Identity/state fields shared by the raw probe input and every per-pane
+ * snapshot, so a locating field is declared in ONE place. */
+export interface PaneProbeCore {
   tabId: string;
   paneId: string;
   /** Launch engine of the pane's leaf (claude / codex / bash / cc-switch). */
@@ -41,14 +42,18 @@ export interface ProbePaneInput {
   sessionId: string | null;
   state: TabSessionState;
   exit: TabExit | null;
+  /** Chunks waiting for the next render flush. */
+  queueDepth: number;
+}
+
+/** One pane's raw state as observed by the store probe. */
+export interface ProbePaneInput extends PaneProbeCore {
   /** When the pane entered `state` (store-observed, not guessed). */
   stateSinceAt: number;
   /** Last PTY output observed for this pane. */
   lastActivityAt: number | null;
   /** When the pending output queue was last drained. */
   lastFlushAt: number | null;
-  /** Chunks waiting for the next render flush. */
-  queueDepth: number;
   /** Queue depth seen on the previous probe (0 when never observed). */
   previousQueueDepth: number;
 }
@@ -63,17 +68,9 @@ export interface TabStuckProbeContext {
 }
 
 /** Per-pane snapshot carried in every report (locating state). */
-export interface TabProbeSnapshot {
-  tabId: string;
-  paneId: string;
-  engine: LaunchAgent;
-  active: boolean;
-  sessionId: string | null;
-  state: TabSessionState;
-  exit: TabExit | null;
+export interface TabProbeSnapshot extends PaneProbeCore {
   stateAgeMs: number;
   lastActivityAgeMs: number | null;
-  queueDepth: number;
   queueStallMs: number | null;
 }
 
@@ -107,7 +104,8 @@ function queueStallAge(pane: ProbePaneInput, now: number): number | null {
   return Math.max(0, now - pane.lastFlushAt);
 }
 
-function snapshotPane(pane: ProbePaneInput, now: number): TabProbeSnapshot {
+/** Project the shared core fields (one place to extend the snapshot shape). */
+function coreOf(pane: ProbePaneInput): PaneProbeCore {
   return {
     tabId: pane.tabId,
     paneId: pane.paneId,
@@ -116,10 +114,16 @@ function snapshotPane(pane: ProbePaneInput, now: number): TabProbeSnapshot {
     sessionId: pane.sessionId,
     state: pane.state,
     exit: pane.exit,
+    queueDepth: pane.queueDepth,
+  };
+}
+
+function snapshotPane(pane: ProbePaneInput, now: number): TabProbeSnapshot {
+  return {
+    ...coreOf(pane),
     stateAgeMs: Math.max(0, now - pane.stateSinceAt),
     lastActivityAgeMs:
       pane.lastActivityAt === null ? null : Math.max(0, now - pane.lastActivityAt),
-    queueDepth: pane.queueDepth,
     queueStallMs: queueStallAge(pane, now),
   };
 }
@@ -201,6 +205,24 @@ export function buildTabStuckReport(
   };
 }
 
+/** Shared snake_case projection of a pane snapshot — the single place that
+ * knows the log schema, so snapshot fields are added once. */
+function snapshotLogFields(s: TabProbeSnapshot) {
+  return {
+    id: s.tabId,
+    pane: s.paneId,
+    engine: s.engine,
+    active: s.active,
+    session: s.sessionId,
+    state: s.state,
+    exit: s.exit,
+    state_age_ms: s.stateAgeMs,
+    last_activity_age_ms: s.lastActivityAgeMs,
+    queue_depth: s.queueDepth,
+    queue_stall_ms: s.queueStallMs,
+  };
+}
+
 /** One-line JSON payload for the shared UI timeline (`log_ui_event`). The
  * repro path is duplicated at the top level so it survives log tailing. */
 export function formatTabStuckLog(finding: TabStuckFinding, report: TabStuckReport): string {
@@ -208,19 +230,7 @@ export function formatTabStuckLog(finding: TabStuckFinding, report: TabStuckRepo
     probe: "tab_stuck",
     reason: finding.reason,
     repro: finding.repro,
-    tab: {
-      id: finding.tabId,
-      pane: finding.paneId,
-      engine: finding.engine,
-      active: finding.active,
-      session: finding.sessionId,
-      state: finding.state,
-      exit: finding.exit,
-      state_age_ms: finding.stateAgeMs,
-      last_activity_age_ms: finding.lastActivityAgeMs,
-      queue_depth: finding.queueDepth,
-      queue_stall_ms: finding.queueStallMs,
-    },
+    tab: snapshotLogFields(finding),
     context: {
       generated_at: report.generatedAt,
       workspace: report.workspace,
