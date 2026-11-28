@@ -22,6 +22,7 @@ import {
   workRecordRemoveMember,
 } from "../../../lib/ipc";
 import { useWorkspaceExplorerStore } from "../../../stores/workspaceExplorer";
+import { useWorkRecordsStore } from "../../../stores/workRecords";
 import WorkRecordsView from "../WorkRecordsView.vue";
 import type { WorkRecordListResult } from "../../../types";
 
@@ -146,6 +147,20 @@ async function mountView() {
 }
 
 describe("WorkRecordsView", () => {
+  it("auto-refreshes on a real-time session push for its workspace (U-1)", async () => {
+    const { wrapper } = await mountView();
+    const records = useWorkRecordsStore();
+    vi.mocked(workRecordList).mockClear();
+    records.notifySessionActivity("/other");
+    await flushPromises();
+    expect(workRecordList).not.toHaveBeenCalled();
+    records.notifySessionActivity("/ws");
+    await flushPromises();
+    await flushPromises();
+    expect(workRecordList).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("shows a failed resume inline instead of silently doing nothing", async () => {
     const { wrapper, explorer } = await mountView();
     explorer.resumeErrors[conversationId] = "Docker not ready";
@@ -282,10 +297,10 @@ describe("WorkRecordsView", () => {
     expect(runtimeMock.closeLiveConversationSessions).toHaveBeenCalledWith([member]);
   });
 
-  it("refreshes both ledger and provider conversations", async () => {
-    const { wrapper } = await mountView();
-    const refresh = wrapper.findAll("button").find((button) => button.attributes("title") === "刷新");
-    await refresh!.trigger("click");
+  it("refreshes both ledger and provider conversations via the session push", async () => {
+    await mountView();
+    useWorkRecordsStore().notifySessionActivity("/ws");
+    await flushPromises();
     await flushPromises();
 
     expect(workRecordList).toHaveBeenCalledTimes(2);
@@ -308,11 +323,11 @@ describe("WorkRecordsView", () => {
     expect(wrapper.find("[data-testid^='unfiled-']").text()).toContain("Provider");
   });
 
-  it("resolves pending new provider tabs after refresh", async () => {
-    const { wrapper } = await mountView();
+  it("resolves pending new provider tabs after a session push", async () => {
+    await mountView();
     runtimeMock.resolvePendingConversationAssociations.mockClear();
-    const refresh = wrapper.findAll("button").find((button) => button.attributes("title") === "刷新");
-    await refresh!.trigger("click");
+    useWorkRecordsStore().notifySessionActivity("/ws");
+    await flushPromises();
     await flushPromises();
 
     expect(runtimeMock.resolvePendingConversationAssociations).toHaveBeenLastCalledWith([provider]);

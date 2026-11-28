@@ -1332,6 +1332,9 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
         // (G-17 feedback 2026-08-10).
         onTabOpenOk(paneId);
         paneLastActivityAt[paneId] = Date.now(); // b9: liveness for the stuck probe
+        // 2.2.0 b5 / U-1: real-time push — provider output means a new
+        // conversation is being written; let Work Records refresh itself.
+        announceWorkRecordsActivity(tab, paneId);
         // S1.3: buffer into the non-reactive pending queue; a single rAF flush
         // applies budget + emits one reactive replacement. O2 (D-11): the raw
         // offset rides along for the spool ("load earlier output") anchor.
@@ -1905,6 +1908,22 @@ export function createWorkspaceRuntime(deps: WorkspaceRuntimeDeps) {
     } catch {
       /* best-effort; Exit event still finalizes if the child is reaped */
     }
+  }
+
+  /** 2.2.0 b5 / U-1: push a Work Records refresh from provider terminal
+   *  output. A conversation created in another tab becomes listable only
+   *  after the provider writes it, so the PTY stream is the in-app signal;
+   *  per-pane throttling keeps a streaming response from spinning the
+   *  conversation scan. */
+  const WORK_RECORD_PUSH_THROTTLE_MS = 5000;
+  const workRecordPushAt = new Map<string, number>();
+  function announceWorkRecordsActivity(tab: Tab, paneId: string): void {
+    const leaf = findLeaf(tab.tree, paneId);
+    if (!leaf || (leaf.sessionType !== "claude" && leaf.sessionType !== "codex")) return;
+    const now = Date.now();
+    if (now - (workRecordPushAt.get(paneId) ?? 0) < WORK_RECORD_PUSH_THROTTLE_MS) return;
+    workRecordPushAt.set(paneId, now);
+    useWorkRecordsStore().notifySessionActivity(workspace.value.trim());
   }
 
   /** Pane-aware session callbacks: for a single-pane tab paneId === tabId, so

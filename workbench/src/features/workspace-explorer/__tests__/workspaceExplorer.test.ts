@@ -349,47 +349,57 @@ describe("WorkspaceExplorer activation semantics (11c)", () => {
   });
 });
 
-/** Stage 11 (11c): toolbar new-file/new-folder/refresh (D11-17). */
-describe("WorkspaceExplorer toolbar (11c)", () => {
-  it("new-file creates at the selection-aware target (selected dir)", async () => {
-    const { workspaceCreateFile } = await import("../../../lib/ipc");
+/** 2.2.0 b5 (D-4): the sidebar toolbar keeps ONLY refresh + collapse. */
+describe("WorkspaceExplorer toolbar (2.2.0 b5)", () => {
+  it("offers only refresh and collapse (no new-file/new-folder)", async () => {
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
-    const rows = wrapper.findAll("[role=treeitem]");
-    await rows[0].trigger("click"); // select + expand src
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
     const buttons = wrapper.findAll(".explorer-actions button");
-    expect(buttons.length).toBe(4); // FIX-3: + collapse (new-file/-folder/refresh/collapse)
-    expect(buttons[0].attributes("aria-label")).toBe("新建文件");
-
-    await buttons[0].trigger("click");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const input = wrapper.find("[data-testid=name-input]");
-    expect(input.exists()).toBe(true);
-
-    await input.setValue("made.ts");
-    await input.trigger("keydown.enter");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(workspaceCreateFile).toHaveBeenCalledWith("/ws", "src", "made.ts");
-    expect(wrapper.find("[data-testid=name-input]").exists()).toBe(false);
+    expect(buttons.length).toBe(2);
+    expect(buttons.map((b) => b.attributes("aria-label"))).toEqual([
+      "刷新",
+      "折叠资源管理器",
+    ]);
     wrapper.unmount();
   });
 
-  it("toolbar buttons stay disabled without a workspace", async () => {
+  it("refresh stays disabled without a workspace; collapse always enabled", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     // Fresh runtime store: workspace defaults to "" (no workspace chosen).
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
     const buttons = wrapper.findAll(".explorer-actions button");
-    expect(buttons.length).toBe(4);
-    // FIX-3: collapse is workspace-independent (always enabled); the three
-    // workspace actions stay disabled.
-    for (const b of buttons.slice(0, 3)) {
-      expect(b.attributes("disabled")).toBeDefined();
-    }
-    expect(buttons[3].attributes("aria-label")).toBe("折叠资源管理器");
-    expect(buttons[3].attributes("disabled")).toBeUndefined();
+    expect(buttons.length).toBe(2);
+    expect(buttons[0].attributes("aria-label")).toBe("刷新");
+    expect(buttons[0].attributes("disabled")).toBeDefined();
+    expect(buttons[1].attributes("aria-label")).toBe("折叠资源管理器");
+    expect(buttons[1].attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("refresh re-lists the current file panel", async () => {
+    const { workspaceList } = await import("../../../lib/ipc");
+    const { explorer } = await setup();
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await flushPromises();
+    vi.mocked(workspaceList).mockClear();
+    explorer.activeKind = "explorer";
+    await wrapper.findAll(".explorer-actions button")[0].trigger("click");
+    await flushPromises();
+    expect(workspaceList).toHaveBeenCalledWith("/ws", "", null);
+    wrapper.unmount();
+  });
+
+  it("refresh targets Work Records when that panel is active", async () => {
+    const { conversationList } = await import("../../../lib/ipc");
+    const { explorer } = await setup();
+    const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
+    await flushPromises();
+    explorer.activeKind = "work-records";
+    vi.mocked(conversationList).mockClear();
+    await wrapper.findAll(".explorer-actions button")[0].trigger("click");
+    await flushPromises();
+    expect(conversationList).toHaveBeenCalledWith("/ws");
     wrapper.unmount();
   });
 });
@@ -613,8 +623,10 @@ describe("WorkspaceExplorer inline naming (11c)", () => {
     const { workspaceCreateFile } = await import("../../../lib/ipc");
     await setup();
     const wrapper = mount(WorkspaceExplorer, { global: { plugins: [i18n] } });
-    const buttons = wrapper.findAll(".explorer-actions button");
-    await buttons[0].trigger("click"); // new file at root (no selection)
+    stubViewport();
+    // 2.2.0 b5: creation stays on the root context menu (toolbar button removed).
+    await wrapper.find(".explorer-body").trigger("contextmenu", { clientX: 300, clientY: 300 });
+    await wrapper.find('[data-action="new-file"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve, 10));
     const input = wrapper.find("[data-testid=name-input]");
     await input.setValue("blurred.md");

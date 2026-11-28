@@ -7,8 +7,9 @@
  *
  * Stage 11 (11c): VS Code-style operations — single-click selects (files no
  * longer preview, D11-01; D-11 (2.1.13) removed the artifacts click-to-
- * D11-16), double-click/Enter opens, dir click toggles; toolbar new-file /
- * new-folder / refresh (selection-aware target, D11-17); target-aware context
+ * D11-16), double-click/Enter opens, dir click toggles; toolbar keeps a single
+ * refresh bound to the ACTIVE panel (2.2.0 b5 / D-4: new-file and new-folder
+ * buttons removed; create stays on context menus); target-aware context
  * menus (root/dir/file); inline create/rename name input with instant
  * validation and error-preserving conflicts (D11-06); in-app copy/paste
  * clipboard (D11-02/03). All mutations run through the Rust containment
@@ -545,26 +546,12 @@ function onDragEnd() {
   draggingPath.value = null;
 }
 
-function selectedNode(): WorkspaceNode | null {
-  const rows = selectedRows();
-  return rows.length === 1 ? rows[0] : null;
-}
-
 function pasteTargetDir(): string {
   const rows = selectedRows();
   if (rows.length === 0) return "";
   if (rows.length === 1 && rows[0].kind === "dir") return rows[0].relative_path;
   const parents = new Set(rows.map((row) => parentOf(row.relative_path)));
   return parents.size === 1 ? [...parents][0] : "";
-}
-
-/** Toolbar target directory (D11-17): selected dir → inside it; selected
- *  file → its parent; nothing selected → workspace root. */
-function toolbarTargetDir(): string {
-  const node = selectedNode();
-  if (!node) return "";
-  if (node.kind === "dir") return node.relative_path;
-  return parentOf(node.relative_path);
 }
 
 // --- create / rename flows ---
@@ -875,9 +862,12 @@ function refreshFromMenu() {
   void explorer.refreshRoot();
 }
 
-/** Toolbar refresh dispatches per active panel: the history tab rescans
- *  conversations (手测反馈: refresh was artifact/tree-only and the list
- *  went stale), everything else keeps refreshRoot. */
+/** Toolbar refresh dispatches per active panel (2.2.0 b5 / D-4): the
+ *  history tab rescans conversations, the Work Records tab reloads its
+ *  collections + provider conversations, everything else refreshes the
+ *  file tree/artifacts. This is the ONLY refresh control in the sidebar —
+ *  each panel's own refresh button was removed so the action always means
+ *  "refresh what I am looking at". */
 function onToolbarRefresh() {
   if (explorer.activeKind === "conversations") {
     void explorer.loadConversations(true);
@@ -888,6 +878,7 @@ function onToolbarRefresh() {
       const records = useWorkRecordsStore();
       void records.reload();
     });
+    void explorer.loadConversations(true);
     return;
   }
   void explorer.refreshRoot();
@@ -1072,33 +1063,6 @@ function onTreeKeydown(e: KeyboardEvent) {
       <!-- Stage 11 (11c): VS Code-density action row. Icon-only so Compact
            widths never squeeze (03 §2). -->
       <div class="explorer-actions">
-        <button
-          class="ui-icon-button sm"
-          type="button"
-          :aria-label="t('explorer.toolbar.newFile')"
-          :title="t('explorer.toolbar.newFile')"
-          :disabled="!runtime.workspace"
-          @click="beginCreate(false, toolbarTargetDir())"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-            <path d="M4 1.5h5l3 3v10H4z" />
-            <path d="M9 1.5v3h3" />
-            <path d="M8.5 9.5h4M10.5 7.5v4" />
-          </svg>
-        </button>
-        <button
-          class="ui-icon-button sm"
-          type="button"
-          :aria-label="t('explorer.toolbar.newFolder')"
-          :title="t('explorer.toolbar.newFolder')"
-          :disabled="!runtime.workspace"
-          @click="beginCreate(true, toolbarTargetDir())"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-            <path d="M1.5 3.5h4.5l1.5 2h7v7h-13z" />
-            <path d="M8.5 10.5h4M10.5 8.5v4" />
-          </svg>
-        </button>
         <button
           class="ui-icon-button sm"
           type="button"
