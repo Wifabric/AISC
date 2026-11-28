@@ -49,7 +49,7 @@ bash scripts/local-gates.sh
 python3 -m pytest tests/
 ```
 
-> 门禁以 CI（`.github/workflows/`）为权威。本容器基线（2026-11-28）：`scripts/local-gates.sh` 第一步 Python 全测 1896 passed / 2 failed / 15 skipped——2 个预存失败（test_skill_repo_remove_rejects_malformed_source、test_office_hours_includes_only_selected_skill_and_referenced_runtime）；后三步 cargo 409 绿 / vitest 914 绿 / vue-tsc 绿；Docker NOT RUN（未装）。
+> 门禁以 CI（`.github/workflows/`）为权威。本容器基线（2026-11-28，2.2.0 已修 2 个基线失败）：Python 全测全绿；vitest / vue-tsc 绿；cargo NOT RUN（容器未装 cargo）；Docker NOT RUN（未装）。
 
 ## 6. 架构与调用链
 

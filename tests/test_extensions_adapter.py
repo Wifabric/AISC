@@ -693,7 +693,8 @@ class MarketTests(TempEnv):
             return "main"
 
         with mock.patch.object(A, "_run_cli", side_effect=cli), \
-             mock.patch.object(A, "_ensure_office_hours_bun"):
+             mock.patch.object(A, "_ensure_office_hours_bun"), \
+             mock.patch.object(A, "_is_bundled_office_hours", return_value=False):
             A.skill_install("garrytan/gstack:office-hours")
         installed = self.root / "skills" / "office-hours"
         shared = installed / ".aisc-gstack"

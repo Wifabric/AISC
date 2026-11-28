@@ -76,10 +76,8 @@ step() {
 }
 
 # 已知预存失败（与 PROJECT_MAP §5 基线一致）：pytest 失败集合 ⊆ 本清单时判绿。
-KNOWN_PYTHON_FAILURES='
-tests/test_extensions_adapter.py::MarketTests::test_skill_repo_remove_rejects_malformed_source
-tests/test_extensions_adapter.py::MarketTests::test_office_hours_includes_only_selected_skill_and_referenced_runtime
-'
+# 当前无预存失败（2.2.0 已修复 2 个基线失败）；再出现预存失败时把 node id 加进来。
+KNOWN_PYTHON_FAILURES=''
 
 # 本次改动面（--scoped 与 vendor-verify 触发用）
 changed="$(git diff --name-only origin/develop...HEAD 2>/dev/null)"

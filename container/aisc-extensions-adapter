@@ -1895,6 +1895,8 @@ def _skill_repo_identity(source: str) -> str:
         if len(parts) < 2:
             raise AdapterError(ERR_BAD_REQUEST, f"repository URL has no owner/name: {source}")
         value = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+    if ".." in value:
+        raise AdapterError(ERR_BAD_REQUEST, f"invalid repository identity: {source}")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
         raise AdapterError(ERR_BAD_REQUEST, f"invalid repository identity: {source}")
     return value
