@@ -730,6 +730,15 @@ def _command_entry(text: str, ts: Any) -> Optional[Dict[str, Any]]:
             "text": f"{name}\n{provided}" if provided else name, "ts": ts}
 
 
+def _read_compact_entry(text: Any, ts: Optional[str]) -> List[Dict[str, Any]]:
+    """A compact-summary marker → one assistant entry, or nothing when blank.
+    Shared by the codex and Claude readers so the rendered contract lives in
+    exactly one place."""
+    if isinstance(text, str) and text.strip():
+        return [{"role": "assistant", "kind": "compact", "text": text, "ts": ts}]
+    return []
+
+
 def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     """One codex rollout line → zero or more rendered entries. Rendered:
     user/assistant messages, reasoning summaries, function calls/results.
@@ -739,9 +748,7 @@ def _read_entries_codex(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
         payload = obj.get("payload")
         text = payload.get("message") if isinstance(payload, dict) else None
         ts = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
-        if isinstance(text, str) and text.strip():
-            return [{"role": "assistant", "kind": "compact", "text": text, "ts": ts}]
-        return []
+        return _read_compact_entry(text, ts)
     if obj.get("type") != "response_item":
         return []
     payload = obj.get("payload")
@@ -813,10 +820,13 @@ def _read_entries_claude(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     role = "user" if obj.get("type") == "user" else "assistant"
     content = msg.get("content")
     if obj.get("isCompactSummary") is True:
-        text = content if isinstance(content, str) else _read_join_text(content, "text") if isinstance(content, list) else ""
-        if isinstance(text, str) and text.strip():
-            return [{"role": "assistant", "kind": "compact", "text": text, "ts": ts}]
-        return []
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = _read_join_text(content, "text")
+        else:
+            text = ""
+        return _read_compact_entry(text, ts)
     out: List[Dict[str, Any]] = []
 
     def _push_text(text: Any) -> None:

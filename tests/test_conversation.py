@@ -523,6 +523,21 @@ class TestConversationRead:
         data = self._read(ws)
         assert [(m["role"], m["kind"]) for m in data["messages"]] == [("assistant", "compact")]
 
+    def test_claude_compact_summary_accepts_block_list_and_drops_blank(self, ws_env):
+        ws, ws_dir = ws_env
+        _install_claude(ws_dir, "claude_normal.jsonl")
+        path = next((ws_dir / "claude").rglob("*.jsonl"))
+        rows = [
+            {"type": "user", "isCompactSummary": True, "message": {"role": "user", "content": [
+                {"type": "text", "text": "第一段"},
+                {"type": "text", "text": "第二段"}]}},
+            {"type": "user", "isCompactSummary": True, "message": {"role": "user", "content": "   "}},
+        ]
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+        data = self._read(ws, CLAUDE_ID, "claude")
+        assert [(m["role"], m["kind"]) for m in data["messages"]] == [("assistant", "compact")]
+        assert data["messages"][0]["text"] == "第一段\n\n第二段"
+
     def test_tail_and_before_pagination(self, ws_env):
         ws, ws_dir = ws_env
         _install_codex(ws_dir, "codex_normal.jsonl")
