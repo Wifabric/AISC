@@ -7,10 +7,18 @@
  * segments emitted by `pathLinks` (b12) are anchors that emit `open-path`.
  * The live xterm byte stream is untouched — this view is an opt-in overlay.
  */
+import { ref } from "vue";
 import type { MarkdownRenderedLine } from "./markdownOutput";
 import type { TerminalPathTarget } from "./markdownRender";
 
 defineProps<{ lines: MarkdownRenderedLine[] }>();
+
+const rootEl = ref<HTMLElement | null>(null);
+function scrollToBottom(): void {
+  const el = rootEl.value;
+  if (el) el.scrollTop = el.scrollHeight;
+}
+defineExpose({ scrollToBottom });
 
 const emit = defineEmits<{
   (e: "toggle-fold", codeIndex: number): void;
@@ -23,7 +31,7 @@ function onLineClick(line: MarkdownRenderedLine): void {
 </script>
 
 <template>
-  <div class="md-output" data-testid="markdown-output">
+  <div ref="rootEl" class="md-output" data-testid="markdown-output">
     <div
       v-for="(line, li) in lines"
       :key="li"
@@ -49,7 +57,7 @@ function onLineClick(line: MarkdownRenderedLine): void {
           @click.stop.prevent="emit('open-path', seg.target)"
           >{{ seg.text }}</a
         >
-        <span v-else :class="seg.kind === 'dim' ? 'md-dim' : undefined">{{ seg.text }}</span>
+        <span v-else :class="seg.kind === 'dim' ? 'md-dim' : seg.kind === 'bold' ? 'md-bold' : undefined">{{ seg.text }}</span>
       </template>
     </div>
   </div>
@@ -76,8 +84,11 @@ function onLineClick(line: MarkdownRenderedLine): void {
 
 .md-code-header {
   cursor: pointer;
-  user-select: none;
   border-radius: var(--radius-sm, 3px);
+}
+
+.md-bold {
+  font-weight: 600;
 }
 
 .md-code-header:hover,

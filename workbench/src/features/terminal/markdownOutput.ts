@@ -18,7 +18,7 @@ import {
 } from "./markdownRender";
 
 export interface MarkdownTextSegment {
-  kind: "text" | "dim";
+  kind: "text" | "dim" | "bold";
   text: string;
 }
 
@@ -108,13 +108,14 @@ function parseSegments(line: string): MarkdownSegment[] {
   const segments: MarkdownSegment[] = [];
   let buf = "";
   let dim = false;
+  let bold = false;
   let linkUri: string | null = null;
   let linkText = "";
 
   const flush = (): void => {
     if (!buf) return;
     if (linkUri !== null) linkText += buf;
-    else segments.push({ kind: dim ? "dim" : "text", text: buf });
+    else segments.push({ kind: bold ? "bold" : dim ? "dim" : "text", text: buf });
     buf = "";
   };
 
@@ -151,7 +152,9 @@ function parseSegments(line: string): MarkdownSegment[] {
     const sgr = /^\x1b\[([0-9;]*)m/.exec(line.slice(i));
     if (sgr) {
       flush();
-      dim = sgr[1].split(";").includes("2");
+      const codes = sgr[1].split(";");
+      if (codes.includes("0")) { dim = false; bold = false; }
+      else { if (codes.includes("2")) dim = true; if (codes.includes("1")) bold = true; }
       i += sgr[0].length;
       continue;
     }

@@ -42,6 +42,7 @@ export type TerminalMarkdownBlock =
   | { kind: "list"; items: TerminalListItem[] };
 
 const DIM = "\x1b[2m";
+const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
 
 const FENCE_OPEN = /^\s*```(.*)$/;
@@ -191,6 +192,21 @@ export function toggleCodeFold(
   return next;
 }
 
+/** b18 (T6): headings / bold / inline code read like a real markdown
+ * preview. Depth stays conservative — no blockquotes, tables or LaTeX (those
+ * remain out of the terminal renderer). */
+const HEADING_LINE = /^(#{1,6})\s+(.*)$/;
+const BOLD_SPAN = /\*\*([^*\n]+)\*\*/g;
+const INLINE_CODE = /`([^`\n]+)`/g;
+
+function styleInlineMarkdown(line: string): string {
+  const heading = HEADING_LINE.exec(line);
+  if (heading) return `${BOLD}${heading[2]}${RESET}`;
+  return line
+    .replace(INLINE_CODE, `${DIM}$1${RESET}`)
+    .replace(BOLD_SPAN, `${BOLD}$1${RESET}`);
+}
+
 /** Render the parsed blocks to terminal text. Basic readability only: code
  * blocks get dimmed header/footer rules (code lines stay verbatim) and lists
  * get a bullet marker / preserved ordinal. Folded code blocks (b11) collapse
@@ -226,7 +242,12 @@ export function renderTerminalMarkdown(
           })
           .join("\n");
       }
-      return pathLinks ? block.lines.map(linkTerminalPaths).join("\n") : block.lines.join("\n");
+      return block.lines
+        .map((line) => {
+          const styled = styleInlineMarkdown(line);
+          return pathLinks ? linkTerminalPaths(styled) : styled;
+        })
+        .join("\n");
     })
     .join("\n");
 }
